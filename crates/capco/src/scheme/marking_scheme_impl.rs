@@ -54,11 +54,8 @@ impl MarkingScheme for CapcoScheme {
     type ParseError = CapcoParseError;
     type OpenVocabRef = CapcoOpenVocabRef;
 
-    // PR 3c.2.A — GAT + plain associated type bindings introduced
+    // GAT + plain associated type bindings introduced in PR 3c.2.A
     // per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1.
-    // PR 3c.2.B (landed) implements the CapcoScheme override below;
-    // the adapter `marque_ism::from_parsed_unchecked` is retained as
-    // a wrapper until PR 3c.2.E.
     type Parsed<'src> = ParsedAttrs<'src>;
     type Canonical = CanonicalAttrs;
 
@@ -66,28 +63,111 @@ impl MarkingScheme for CapcoScheme {
     /// `ParsedAttrs<'src>` produced by `marque-core`'s strict parser
     /// to the owned `CanonicalAttrs` form rules consume.
     ///
-    /// **PR 3c.2.B**: body is `marque_ism::from_parsed_unchecked(parsed)`
-    /// **verbatim** per `docs/plans/2026-05-20-pr3c2-b-pm-decisions.md`
-    /// PM-B-1 §1. `&self` is unused today (the transformation is a
-    /// pure structural rename), but the trait method signature
-    /// reserves `&self` for stateful future schemes (CUI/NATO) that
-    /// may need it. The adapter `marque_ism::from_parsed_unchecked`
-    /// is retained as a wrapper for PR 3c.2.B–D; PR 3c.2.E deletes
-    /// it once every call site routes through this method.
+    /// **Structural rename only.** Every field is moved across without
+    /// transformation — no case folding, no deprecated-token migration,
+    /// no canonicalization. Phase A: this is the only shape CapcoScheme
+    /// needs; future schemes (CUI / NATO) that fold or migrate fields
+    /// override this method with their own logic.
     ///
-    /// Both `ParsedAttrs` and `CanonicalAttrs` are `#[non_exhaustive]`
-    /// in `marque-ism`, so the body cannot be lifted out of
-    /// `marque-ism` into this crate without breaking the
-    /// non-exhaustive contract. Delegation through the adapter is
-    /// the only Constitution-VII-compatible shape for the override
-    /// until PR 3c.2.E retires both surfaces together.
+    /// `&self` is unused today, but the trait signature reserves it
+    /// for stateful future schemes.
     ///
-    /// **Byte-identity invariant**: T056 corpus regression matrix is
-    /// the structural gate.
-    /// `crates/capco/tests/canonicalize_byte_equivalence.rs` (PM-B-10)
-    /// pins the per-input equivalence at the unit-test level.
+    /// **FR-043 sole-path invariant**: this is the only public
+    /// `ParsedAttrs → CanonicalAttrs` route for production code.
+    /// The `marque_ism::from_parsed_unchecked` adapter that PR 3a–3c
+    /// kept in `crates/ism/src/canonical.rs` retired in PR 3c.2.E
+    /// once `ParsedAttrs` and `CanonicalAttrs` lost their
+    /// `#[non_exhaustive]` attributes — destructure and literal
+    /// construction outside `marque-ism` is the path that lets this
+    /// body live in the scheme adapter, where it belongs.
     fn canonicalize<'src>(&self, parsed: Self::Parsed<'src>) -> Self::Canonical {
-        marque_ism::from_parsed_unchecked(parsed)
+        let ParsedAttrs {
+            classification,
+            sci_markings,
+            sci_controls,
+            sar_markings,
+            aea_markings,
+            fgi_marker,
+            dissem_us,
+            dissem_nato,
+            non_ic_dissem,
+            rel_to,
+            display_only_to,
+            declassify_on,
+            classified_by,
+            derived_from,
+            declass_exemption,
+            token_spans,
+            source_bytes_origin: _, // discarded; not on CanonicalAttrs
+        } = parsed;
+
+        let out = CanonicalAttrs {
+            classification: classification.map(|c| c.value),
+            sci_controls,
+            sci_markings: Vec::from(sci_markings)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            sar_markings: sar_markings.map(|p| p.value),
+            aea_markings: Vec::from(aea_markings)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            fgi_marker: fgi_marker.map(|p| p.value),
+            // PR 9b (T132): preserve the parser-side attribution. The
+            // attribution function lives on the `ParsedAttrs` side; this
+            // canonicalize impl is a pure structural rename and must not
+            // re-run it.
+            dissem_us: Vec::from(dissem_us)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            dissem_nato: Vec::from(dissem_nato)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            non_ic_dissem: Vec::from(non_ic_dissem)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            rel_to: Vec::from(rel_to)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            display_only_to: Vec::from(display_only_to)
+                .into_iter()
+                .map(|p| p.value)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            declassify_on: declassify_on.map(|p| p.value),
+            classified_by: classified_by.map(Box::<str>::from),
+            derived_from: derived_from.map(Box::<str>::from),
+            declass_exemption,
+            token_spans,
+        };
+
+        // PR 9b (T132) invariant insurance. `attribute_dissems` is the
+        // single source of truth; this debug-only assertion catches a
+        // future bug where attribution is skipped or the canonical
+        // adapter is fed a hand-built `ParsedAttrs` with both fields
+        // populated.
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(
+                out.dissem_nato.is_empty() || out.us_classification().is_none(),
+                "dissem_nato populated alongside US classification — \
+                 attribute_dissems was skipped or bypassed. CAPCO-2016 p41 \
+                 reciprocity rule violated."
+            );
+        }
+
+        out
     }
 
     fn name(&self) -> &str {
@@ -563,10 +643,13 @@ impl MarkingScheme for CapcoScheme {
             } else {
                 inventory.push(ClosureRuleMetadata {
                     name: row.name,
-                    // Bitmask rows currently expose citation text only; until
-                    // they grow an explicit display label, inventory surfaces
-                    // reuse that citation text as the human-facing label.
-                    label: row.label,
+                    // PR 10.A.1 split the pre-existing `label: &'static str`
+                    // into `display_label: &'static str` (human-facing UI
+                    // text) + `label: Citation` (typed authoritative-source
+                    // anchor). Metadata reads from each field directly —
+                    // no string-form display of the citation, which would
+                    // need runtime formatting.
+                    label: row.display_label,
                     citation: Some(row.label),
                     default_severity: row.default_severity,
                 });

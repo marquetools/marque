@@ -69,7 +69,6 @@ when ODNI publishes updates and the ism-data workspace is re-vendored.
 |------|---------|
 | `ParsedAttrs<'src>` | Borrowed parser output. Each token retains a `&'src str` slice into the source buffer for FR-019 round-trip. |
 | `CanonicalAttrs` | Owned post-canonical pivot. What rules consume. Fields use `Box<[T]>` to avoid over-allocation. |
-| `from_parsed_unchecked` | `#[doc(hidden)]` transitional adapter that converts `ParsedAttrs<'_>` → `CanonicalAttrs` by structural rename only. PR 3c replaces this with `MarkingScheme::canonicalize`. |
 | `Span` | Byte offset range into the original source buffer. Never copies. |
 | `MarkingCandidate`, `MarkingType` | Scanner output (Portion, Banner, CAB, PageBreak). |
 | `Zone`, `DocumentPosition` | Structural context. Both are `Option`-typed in `RuleContext`. |
@@ -114,7 +113,7 @@ Pre-PR-3a a single owned struct named `IsmAttributes` lived in `attrs.rs` and se
 - `CanonicalAttrs` (in `canonical.rs`) — owned post-canonical pivot type rules consume. Field shape mirrors the prior `IsmAttributes` exactly.
 - `ProjectedMarking` (in `projected.rs`) — output of `MarkingScheme::project(scope, ...)`. Defined at PR 3a; PR 6 wires the engine to consume it. The type carries `scope: Scope` (from `marque-scheme`); the `marque-ism → marque-scheme` edge this introduces is anticipated by the consolidated plan's Appendix D and Constitution VII v1.4.0.
 
-The `from_parsed_unchecked(ParsedAttrs<'_>) -> CanonicalAttrs` adapter is the transitional bridge through the keystone window; PR 3c replaces it with `MarkingScheme::canonicalize`.
+Conversion from `ParsedAttrs<'_>` to `CanonicalAttrs` flows through `MarkingScheme::canonicalize` (FR-043 sole production path; the CAPCO override lives in `marque_capco::CapcoScheme::canonicalize`). PR 3a → PR 3c carried a transitional `marque_ism::from_parsed_unchecked` free-function adapter; PR 3c.2.E retired both the adapter and the path-based promote-callsite-lint carve-out, lifting the structural rename body into the trait override where it belongs.
 
 ### 0.3.0: `SarIdentifier` → `SarMarking`
 

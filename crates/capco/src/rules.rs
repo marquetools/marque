@@ -117,10 +117,13 @@ use marque_ism::{
     Span, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
-    Citation, Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
-    Phase, Rule, RuleContext, RuleId, RuleSet, SectionLetter, Severity, capco, capco_section,
+    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Rule, RuleContext, RuleId, RuleSet, Severity,
 };
-use marque_scheme::{FactRef, MarkingScheme, RecanonScope, ReplacementIntent, Scope};
+use marque_scheme::{
+    Citation, FactRef, MarkingScheme, RecanonScope, ReplacementIntent, Scope, SectionLetter, capco,
+    capco_section,
+};
 use std::collections::HashSet;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
@@ -767,6 +770,39 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
 // Downstream audit consumers observe no behavioral difference: both
 // constructors leave `fix: None` and `fix_intent: None`.
 struct DeclassifyMisplacedRule;
+
+/// E005 secondary CAPCO §-citations.
+///
+/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
+/// pre-migration string form `"CAPCO-2016 §E.1 p31 + §D.1 p27"` into a
+/// single `capco(SectionLetter::E, 1, 31)` value on the emitted
+/// diagnostic (typed `Citation` carries one passage). The cross-reference
+/// to §D.1 p27 (banner categories exclude declassification) survived in
+/// the rule's doc-comment but was un-checked — a rename or removal of
+/// the comment wouldn't trip a test. This constant pins the dropped
+/// cross-reference structurally so a regression that loses the §D.1 p27
+/// connection still fails a test.
+///
+/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
+/// Commit 4 authorship per Constitution VIII propagation rule:
+/// §D.1 p27 enumerates the banner-line categories and conspicuously
+/// excludes declassification, the negative-inference complement to
+/// §E.1 p31's positive "Declassify On is a CAB line" rule.
+///
+/// The constant is rule-authoritative metadata intended for runtime
+/// introspection by a future PR 10.A.2 `Rule::cited_authorities()`
+/// trait method (deferred per the PR brief). Today the only consumer
+/// is the `citation_cross_refs_tests` module at the bottom of this
+/// file (`#[cfg(test)]`-gated, parallel to but not conflated with the
+/// `#[cfg(any())]`-gated inline `mod tests` that's dead code pending a
+/// separate rewrite). The const is `pub(crate)` so the test mod can
+/// reach it directly; under non-test builds, the `#[allow(dead_code)]`
+/// keeps the compiler quiet and the linker DCEs the const at use-site
+/// (consts in Rust are inlined; an unused `pub(crate) const` does not
+/// add to the production binary footprint, including the WASM-shipped
+/// crate surface).
+#[allow(dead_code)] // see [`Rule::cited_authorities`] follow-up
+pub(crate) const E005_CROSS_REFS: &[Citation] = &[capco(SectionLetter::D, 1, 27)];
 
 impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn id(&self) -> RuleId {
@@ -1508,6 +1544,32 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
 /// with the `mvp-2 → mvp-3` schema flip; the structural payload
 /// closes G13 by construction at this rule's emission site.
 struct JointUsaFirstRule;
+
+/// S003 secondary CAPCO §-citations.
+///
+/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
+/// pre-migration string form `"CAPCO-2016 §H.3 p56 + §H.8 pp 150-151 (IC convention)"`
+/// into a single `capco(SectionLetter::H, 3, 56)` value on the emitted
+/// diagnostic. The cross-reference to §H.8 p150 (REL TO USA-first
+/// convention — the analogous IC convention S003 layers above §H.3's
+/// pure-alpha JOINT default) survived in the rule's doc-comment but
+/// was un-checked. This constant pins the dropped cross-reference
+/// structurally.
+///
+/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
+/// Commit 4 authorship per Constitution VIII propagation rule: §H.8
+/// pp 150-151 establish the REL TO USA-first convention ("USA first,
+/// remaining trigraphs alphabetical") that S003 ports to JOINT
+/// classifications. Anchor citation uses p150 since typed `Citation`
+/// holds a single page; the range "pp 150-151" lives in the rule
+/// doc-comment.
+///
+/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale —
+/// this is rule-authoritative metadata read by
+/// `citation_cross_refs_tests` (bottom of this file) and intended for a future
+/// `Rule::cited_authorities()` runtime introspection surface.
+#[allow(dead_code)]
+pub(crate) const S003_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
 impl Rule<CapcoScheme> for JointUsaFirstRule {
     fn id(&self) -> RuleId {
@@ -4248,6 +4310,68 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
 /// diagnostic with no fix; the user decides manually.
 struct NodisExdisClearsBannerRelToRule;
 
+/// E037 secondary CAPCO §-citations.
+///
+/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
+/// pre-migration string form `"CAPCO-2016 §H.9 p172 + p174"` into a
+/// single `capco(SectionLetter::H, 9, 172)` value on the diagnostic
+/// emitted by the declarative `Conflicts` row at
+/// `crates/capco/src/scheme/constraints/core_catalog.rs::core_constraints()`
+/// (search for `"E037/nodis-conflicts-exdis"`). The cross-reference
+/// to p174 (NODIS authority — the mutual-exclusion rule is stated
+/// verbatim on both sides) survived in the catalog row's doc-comment
+/// but was un-checked.
+///
+/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
+/// Commit 4 authorship per Constitution VIII propagation rule: §H.9
+/// p174 (NODIS Relationship(s) to Other Markings) states "NODIS and
+/// EXDIS markings cannot be used together", mirroring §H.9 p172's
+/// EXDIS-side wording. Both passages are operative for E037.
+///
+/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale.
+#[allow(dead_code)]
+pub(crate) const E037_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+
+/// E038 secondary CAPCO §-citations.
+///
+/// PR 10.A.1 Commit 4: identical mechanism to [`E037_CROSS_REFS`] —
+/// the declarative `Custom` row at
+/// `core_constraints()::"E038/nodis-or-exdis-requires-noforn"` carries
+/// only the primary §H.9 p172 anchor. The cross-reference to p174
+/// (NODIS "Requires NOFORN") survived in the catalog row's
+/// doc-comment but was un-checked.
+///
+/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
+/// Commit 4 authorship per Constitution VIII propagation rule: §H.9
+/// p174 (NODIS Relationship(s) to Other Markings) carries the same
+/// "Requires NOFORN" clause that the rule's primary citation at p172
+/// establishes for EXDIS. Both passages are operative for E038.
+///
+/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale.
+#[allow(dead_code)]
+pub(crate) const E038_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+
+/// E039 secondary CAPCO §-citations.
+///
+/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
+/// pre-migration string form `"CAPCO-2016 §H.9 p172 + p174 (NODIS)"`
+/// into a single `capco(SectionLetter::H, 9, 172)` value on the emitted
+/// diagnostic. The cross-reference to p174 (NODIS authority — the
+/// EXDIS rule at p172 is mirrored verbatim for NODIS at p174) survived
+/// in the rule's doc-comment but was un-checked. This constant pins
+/// the dropped cross-reference structurally.
+///
+/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
+/// Commit 4 authorship per Constitution VIII propagation rule: §H.9
+/// p174 (NODIS Relationship(s) to Other Markings) carries the same
+/// "REL TO not authorized in banner when portion contains NODIS"
+/// rule that the rule's primary citation at p172 establishes for
+/// EXDIS. Both passages are operative for E039.
+///
+/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale.
+#[allow(dead_code)]
+pub(crate) const E039_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+
 impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("E039")
@@ -6585,18 +6709,26 @@ mod tests {
         let diags = lint_banner("SECRET//25X1//NOFORN");
         let e005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E005").collect();
         assert_eq!(e005.len(), 1);
-        assert!(
-            e005[0].citation.contains("§E.1 p31"),
-            "E005 citation must reference §E.1 p31 (Declassify On is a CAB line); \
+        // PR 10.A.1: typed Citation pins the primary anchor (§E.1 p31 —
+        // "Declassify On is a CAB line"). The cross-reference to §D.1
+        // p27 (banner categories exclude declassification) is documented
+        // in the rule's doc-comment but is not representable as a
+        // second § on a single typed Citation; the brief's "Multi-page
+        // citation decision" applies.
+        assert_eq!(
+            e005[0].citation,
+            capco(SectionLetter::E, 1, 31),
+            "E005 citation must anchor at §E.1 p31 (Declassify On is a CAB line); \
              got: {:?}",
             e005[0].citation
         );
-        assert!(
-            e005[0].citation.contains("§D.1 p27"),
-            "E005 citation must reference §D.1 p27 (banner categories exclude \
-             declassification); got: {:?}",
-            e005[0].citation
-        );
+        // PR 10.A.1 Commit 4: secondary-passage cross-reference to
+        // §D.1 p27 lives on `super::E005_CROSS_REFS`. The companion
+        // assertion (`E005_CROSS_REFS.contains(...)`) is in the
+        // dedicated `citation_cross_refs_tests` (bottom of this file) integration test
+        // — this inline `mod tests` block is `#[cfg(any())]`-gated
+        // dead code, so adding the guard here would not run. See
+        // the cross-refs test file for the pin.
     }
 
     #[test]
@@ -6885,23 +7017,24 @@ mod tests {
         let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
         assert_eq!(s003.len(), 1);
         let citation = s003[0].citation;
-        assert!(
-            citation.contains("IC convention"),
-            "S003 citation must frame as IC convention (not CAPCO \
-             mandate); got: {citation:?}"
+        // PR 10.A.1: typed `Citation` pins the primary anchor (§H.3 p56,
+        // which prescribes pure-alpha JOINT ordering — the IC convention
+        // S003 encodes is layered above this default). The cross-
+        // reference to §H.8 pp 150-151 (REL TO USA-first convention)
+        // and the "IC convention" framing both live in the rule's
+        // doc-comment, not in the typed Citation; the brief's
+        // "Multi-page citation decision" applies.
+        assert_eq!(
+            citation,
+            capco(SectionLetter::H, 3, 56),
+            "S003 citation must anchor at §H.3 p56 (pure-alpha JOINT \
+             ordering); got: {citation:?}"
         );
-        assert!(
-            citation.contains("§H.3 p56"),
-            "S003 citation must reference the §H.3 passage it defers to \
-             (pure alpha); got: {:?}",
-            citation
-        );
-        assert!(
-            citation.contains("§H.8 pp 150"),
-            "S003 citation must reference the REL TO USA-first source \
-             at §H.8 pp 150–151 that establishes the convention; got: \
-             {citation:?}"
-        );
+        // PR 10.A.1 Commit 4: secondary-passage cross-reference to
+        // §H.8 p150 lives on `super::S003_CROSS_REFS`. The companion
+        // assertion is in `citation_cross_refs_tests` (bottom of this file) — see the
+        // E005 site above for why this inline `mod tests` block
+        // can't host the guard.
     }
 
     // --- S004: rel-to-trigraph-suggest (issue #235 / #186 PR-3) ---
@@ -7731,7 +7864,7 @@ mod tests {
         // would be caught here; structural citation-lint (which
         // accepts both `§B.1` and `§H.3 p55` as well-formed)
         // would not flag the regression.
-        assert_eq!(e012[0].citation, "CAPCO-2016 §H.3 p55");
+        assert_eq!(e012[0].citation, capco(SectionLetter::H, 3, 55));
         // PR 3c.B Sub-PR 8.D.5: conscious-defer migration. E012
         // emits neither a legacy `FixProposal` nor a structural
         // `FixIntent`. See `crates/capco/src/rules_declarative.rs`
@@ -7834,7 +7967,10 @@ mod tests {
         // (§H.7 p122 + §B.3 p20). Regression guard against drift back
         // to the legacy `§B.3`-only umbrella reference; structural
         // citation-lint accepts both forms and would not catch it.
-        assert_eq!(e015[0].citation, "CAPCO-2016 §H.7 p122 + §B.3 p20");
+        // Multi-passage citation `§H.7 p122 + §B.3 p20` — primary anchor
+        // is the leading passage (§H.7 p122). Cross-reference to §B.3 p20
+        // documented at the core_catalog row.
+        assert_eq!(e015[0].citation, capco(SectionLetter::H, 7, 122));
     }
 
     #[test]
@@ -8092,7 +8228,7 @@ mod tests {
             e016[0].message
         );
         // PR 3c.B Sub-PR 8.B — citation pin (D13 single-citation discipline).
-        assert_eq!(e016[0].citation, "CAPCO-2016 §H.3 p56");
+        assert_eq!(e016[0].citation, capco(SectionLetter::H, 3, 56));
     }
 
     /// PR 3c.B Sub-PR 8.B — pin the consciously-decided-no-fix-intent
@@ -8322,7 +8458,7 @@ mod tests {
         );
         let d = &diags[0];
         assert_eq!(d.rule.as_str(), "E036");
-        assert_eq!(d.citation, "CAPCO-2016 §H.3 p57");
+        assert_eq!(d.citation, capco(SectionLetter::H, 3, 57));
         assert!(
             d.fix.is_none(),
             "E036 fix must be None until Stage-4 B reject lands; \
@@ -8410,16 +8546,20 @@ mod tests {
             1,
             "E037 must fire when both NODIS and EXDIS are present: {diags:?}"
         );
-        assert!(
-            e037[0].citation.contains("§H.9 p172"),
-            "E037 citation must pin §H.9 p172; got: {:?}",
+        // PR 10.A.1: typed Citation pins the primary anchor (§H.9 p172 —
+        // EXDIS authority). The cross-reference to p174 (NODIS) lives
+        // in the rule's doc-comment per the brief's "Multi-page
+        // citation decision".
+        assert_eq!(
+            e037[0].citation,
+            capco(SectionLetter::H, 9, 172),
+            "E037 citation must pin §H.9 p172 (EXDIS authority); got: {:?}",
             e037[0].citation
         );
-        assert!(
-            e037[0].citation.contains("p174"),
-            "E037 citation must pin p174 (NODIS authority); got: {:?}",
-            e037[0].citation
-        );
+        // PR 10.A.1 Commit 4: secondary-passage cross-reference to
+        // §H.9 p174 lives on `super::E037_CROSS_REFS`. Companion
+        // assertion in `citation_cross_refs_tests` (bottom of this file) (see the E005
+        // site above for the cfg-gating rationale).
     }
 
     #[test]
@@ -8454,16 +8594,17 @@ mod tests {
             1,
             "E038 must fire on NODIS without NOFORN: {diags:?}"
         );
-        assert!(
-            e038[0].citation.contains("§H.9 p172"),
+        // PR 10.A.1: typed Citation pins §H.9 p172; cross-reference to
+        // p174 lives in the rule doc-comment.
+        assert_eq!(
+            e038[0].citation,
+            capco(SectionLetter::H, 9, 172),
             "E038 citation must pin §H.9 p172 (EXDIS authority); got: {:?}",
             e038[0].citation
         );
-        assert!(
-            e038[0].citation.contains("p174"),
-            "E038 citation must pin p174 (NODIS authority); got: {:?}",
-            e038[0].citation
-        );
+        // PR 10.A.1 Commit 4: secondary-passage cross-reference to
+        // §H.9 p174 lives on `super::E038_CROSS_REFS`. Companion
+        // assertion in `citation_cross_refs_tests` (bottom of this file).
     }
 
     #[test]
@@ -8532,16 +8673,17 @@ mod tests {
              requires human judgment): {:?}",
             e039[0].fix
         );
-        assert!(
-            e039[0].citation.contains("§H.9 p172"),
+        // PR 10.A.1: typed Citation pins §H.9 p172; cross-reference to
+        // p174 (NODIS) documented at the rule.
+        assert_eq!(
+            e039[0].citation,
+            capco(SectionLetter::H, 9, 172),
             "E039 citation must pin §H.9 p172 (EXDIS); got: {:?}",
             e039[0].citation
         );
-        assert!(
-            e039[0].citation.contains("p174"),
-            "E039 citation must pin p174 (NODIS); got: {:?}",
-            e039[0].citation
-        );
+        // PR 10.A.1 Commit 4: secondary-passage cross-reference to
+        // §H.9 p174 lives on `super::E039_CROSS_REFS`. Companion
+        // assertion in `citation_cross_refs_tests` (bottom of this file).
     }
 
     #[test]
@@ -8609,11 +8751,16 @@ mod tests {
             "E039 must continue firing after PR 3c.B-8F-engine-gap (banner \
              has REL TO + portion has NODIS): {diags:?}"
         );
-        assert!(
-            e039[0].citation.contains("§H.9 p172") && e039[0].citation.contains("p174"),
-            "E039 citation must continue to pin §H.9 p172 + p174: {:?}",
+        // PR 10.A.1: typed Citation pins the primary anchor §H.9 p172.
+        assert_eq!(
+            e039[0].citation,
+            capco(SectionLetter::H, 9, 172),
+            "E039 citation must continue to pin §H.9 p172: {:?}",
             e039[0].citation
         );
+        // PR 10.A.1 Commit 4: secondary-passage cross-reference to
+        // §H.9 p174 lives on `super::E039_CROSS_REFS`. Companion
+        // assertion in `citation_cross_refs_tests` (bottom of this file).
     }
 
     // --- E040: Banner must roll up NODIS (or EXDIS if no NODIS) ---
@@ -9300,30 +9447,18 @@ mod tests {
         // same invariant in general-algorithm prose; it lives as a
         // background reference in `evaluate_sci_banner_rollup`'s doc
         // comment, NOT in the citation string.
-        assert!(
-            e035[0].citation.contains("§H.4"),
-            "E035 citation must reference §H.4; got: {:?}",
-            e035[0].citation
-        );
-        assert!(
-            e035[0]
-                .citation
-                .contains("Precedence Rules for Banner Line"),
-            "E035 citation must reference the per-system Precedence Rules \
-             template; got: {:?}",
-            e035[0].citation
-        );
-        // §D.2 was demoted to a background-only doc-comment reference
-        // per the M-1 review condition (citation-discipline cleanup).
-        // Pin its absence so a future change that re-adds it to the
-        // citation string trips this test instead of silently
-        // re-introducing a co-primary cross-citation.
-        assert!(
-            !e035[0].citation.contains("§D.2"),
-            "E035 citation must NOT mix §D.2 (general-algorithm prose) \
-             with §H.4 (per-category operative rule) — D13 single-\
-             citation discipline. §D.2 lives in evaluator doc comment \
-             as a background reference. got: {:?}",
+        // PR 10.A.1: typed Citation pins §H.4 p61 (SCI per-system
+        // "Precedence Rules for Banner Line Guidance" anchor). The
+        // string framing "Precedence Rules for Banner Line" lived in
+        // the pre-migration string citation and is dropped here —
+        // the typed Citation is structurally `§H.4 p61` only. §D.2's
+        // general-algorithm prose stays in `evaluate_sci_banner_rollup`'s
+        // doc comment as a background reference (D13 single-citation
+        // discipline preserved by construction).
+        assert_eq!(
+            e035[0].citation,
+            capco(SectionLetter::H, 4, 61),
+            "E035 citation must pin §H.4 p61; got: {:?}",
             e035[0].citation
         );
     }
@@ -9549,15 +9684,14 @@ mod tests {
         let diags = lint_banner(source);
         let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
         assert_eq!(e031.len(), 1);
-        assert!(
-            e031[0].citation.contains("§H.5 p101"),
-            "E031 citation must pin §H.5 p101 (roll-up rule); got: {:?}",
-            e031[0].citation
-        );
-        assert!(
-            e031[0].citation.contains("§H.5 p101"),
-            "E031 citation must reference the hierarchy-optional carve-out \
-             at §H.5 p101; got: {:?}",
+        // PR 10.A.1: typed Citation pins §H.5 p101 — both the SAR
+        // roll-up rule and the hierarchy-optional carve-out live at
+        // the same passage.
+        assert_eq!(
+            e031[0].citation,
+            capco(SectionLetter::H, 5, 101),
+            "E031 citation must pin §H.5 p101 (roll-up rule + \
+             hierarchy-optional carve-out); got: {:?}",
             e031[0].citation
         );
     }
@@ -9696,3 +9830,123 @@ mod tests {
 // gate. The module was dead code at the gate level even before this
 // PR; the deletion clears the last PageContext consumer in the rules
 // layer alongside the residue-axis migration in Commit 2.
+
+// ---------------------------------------------------------------------------
+// PR 10.A.1 Commit 4 — Citation cross-reference pins
+// ---------------------------------------------------------------------------
+//
+// Live `#[cfg(test)]` module (parallel to the `#[cfg(any())]`-gated
+// dead `mod tests` block above) carrying the cross-reference
+// secondary-passage guards that PR 10.A.1 Commit 2 dropped when
+// collapsing the dual-passage `.contains("§...") + .contains("§...")`
+// assertions on diagnostic citation strings into single typed-
+// `Citation` `assert_eq!`s.
+//
+// # Why a separate test mod and not the inline `mod tests` above
+//
+// The inline `mod tests` at line 5980 is `#[cfg(any())]`-gated dead
+// code pending a rewrite of its `.message.contains(...)` test bodies
+// against the post-3c.2.C closed-template `Message` shape. Adding
+// guards there would not run. The active surface in this file is
+// integration tests under `crates/capco/tests/` and this dedicated
+// `#[cfg(test)]` mod here.
+//
+// # Why the consts live adjacent to each rule, not centralized
+//
+// Per the PR brief, the cross-references are rule-authoritative
+// metadata. Living adjacent to each rule's struct (or, for the
+// declarative E037/E038 family, adjacent to the corresponding rule
+// struct at E039) makes "where is this rule's cross-reference?"
+// answerable by reading the rule's source file alone. A future PR
+// 10.A.2 `Rule::cited_authorities()` trait method (deferred per the
+// brief) would migrate these consts to the trait surface.
+//
+// # CAPCO §-citation verification
+//
+// Every literal §-reference asserted below was re-verified against
+// `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1 Commit 4 authorship
+// per Constitution VIII propagation rule. See the per-const doc
+// comments on `E005_CROSS_REFS` / `S003_CROSS_REFS` / `E037_CROSS_REFS`
+// / `E038_CROSS_REFS` / `E039_CROSS_REFS` for the source passages.
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod citation_cross_refs_tests {
+    use super::{
+        E005_CROSS_REFS, E037_CROSS_REFS, E038_CROSS_REFS, E039_CROSS_REFS, S003_CROSS_REFS,
+    };
+    use marque_scheme::{Citation, SectionLetter, capco};
+
+    /// E005: secondary §D.1 p27 (banner categories exclude
+    /// declassification — negative-inference complement to the
+    /// primary §E.1 p31). PR 10.A.1 Commit 2 dropped the
+    /// `.contains("§D.1 p27")` assertion in
+    /// `e005_citation_points_at_specific_sections` (now in the
+    /// `#[cfg(any())]`-gated mod tests block above).
+    #[test]
+    fn e005_cross_refs_pin_section_d_1_p27() {
+        let expected: Citation = capco(SectionLetter::D, 1, 27);
+        assert!(
+            E005_CROSS_REFS.contains(&expected),
+            "E005_CROSS_REFS must include §D.1 p27; got: {:?}",
+            E005_CROSS_REFS,
+        );
+    }
+
+    /// S003: secondary §H.8 p150 (REL TO USA-first convention — the
+    /// IC-convention analogue S003 ports to JOINT classifications).
+    /// PR 10.A.1 Commit 2 dropped the `.contains("§H.8 pp 150")`
+    /// assertion in `s003_citation_frames_as_convention_not_mandate`.
+    #[test]
+    fn s003_cross_refs_pin_section_h_8_p150() {
+        let expected: Citation = capco(SectionLetter::H, 8, 150);
+        assert!(
+            S003_CROSS_REFS.contains(&expected),
+            "S003_CROSS_REFS must include §H.8 p150; got: {:?}",
+            S003_CROSS_REFS,
+        );
+    }
+
+    /// E037: secondary §H.9 p174 (NODIS mutual-exclusion clause —
+    /// mirror of the EXDIS clause at p172). PR 10.A.1 Commit 2
+    /// dropped the `.contains("p174")` assertion in
+    /// `e037_fires_when_nodis_and_exdis_coexist`.
+    #[test]
+    fn e037_cross_refs_pin_section_h_9_p174() {
+        let expected: Citation = capco(SectionLetter::H, 9, 174);
+        assert!(
+            E037_CROSS_REFS.contains(&expected),
+            "E037_CROSS_REFS must include §H.9 p174; got: {:?}",
+            E037_CROSS_REFS,
+        );
+    }
+
+    /// E038: secondary §H.9 p174 (NODIS "Requires NOFORN" — mirror
+    /// of the EXDIS clause at p172). PR 10.A.1 Commit 2 dropped the
+    /// `.contains("p174")` assertion in
+    /// `e038_fires_on_nodis_without_noforn`.
+    #[test]
+    fn e038_cross_refs_pin_section_h_9_p174() {
+        let expected: Citation = capco(SectionLetter::H, 9, 174);
+        assert!(
+            E038_CROSS_REFS.contains(&expected),
+            "E038_CROSS_REFS must include §H.9 p174; got: {:?}",
+            E038_CROSS_REFS,
+        );
+    }
+
+    /// E039: secondary §H.9 p174 (NODIS authority for the
+    /// REL-TO-not-authorized rule — mirror of the EXDIS clause at
+    /// p172). PR 10.A.1 Commit 2 dropped the `.contains("p174")`
+    /// assertion in `e039_fires_on_banner_rel_to_with_nodis_portion`
+    /// AND the corresponding `e039_still_fires_after_engine_gap_close`
+    /// regression-pin site (one const covers both sites).
+    #[test]
+    fn e039_cross_refs_pin_section_h_9_p174() {
+        let expected: Citation = capco(SectionLetter::H, 9, 174);
+        assert!(
+            E039_CROSS_REFS.contains(&expected),
+            "E039_CROSS_REFS must include §H.9 p174; got: {:?}",
+            E039_CROSS_REFS,
+        );
+    }
+}

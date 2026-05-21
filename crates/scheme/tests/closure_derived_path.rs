@@ -25,11 +25,22 @@
 //!    independently testable.
 
 use marque_scheme::{
-    Category, ClosureRule, Constraint, ConstraintViolation, FactRef, JoinSemilattice,
-    MarkingScheme, MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef,
-    category::CategoryId, closure::MAX_CLOSURE_ITERATIONS, severity::Severity,
+    Category, Citation, ClosureRule, Constraint, ConstraintViolation, FactRef, JoinSemilattice,
+    MarkingScheme, MeetSemilattice, PageRewrite, Parsed, Scope, SectionLetter, Template, TokenId,
+    TokenRef, category::CategoryId, closure::MAX_CLOSURE_ITERATIONS, severity::Severity,
 };
 use smallvec::{SmallVec, smallvec};
+
+// Sentinel test citation — derived-cone fixtures; routes through
+// `AuthoritativeSource::EngineInternal` so Display renders `[engine-internal]`.
+const DERIVED_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct BitMarking {
@@ -87,7 +98,7 @@ fn derived_cone_emits_y(_m: &BitMarking) -> SmallVec<[FactRef<DerivedOnlyScheme>
 static DERIVED_ONLY_RULES: &[ClosureRule<DerivedOnlyScheme>] = &[ClosureRule {
     name: "derived/emits-y",
     display_label: "Derived cone emits Y",
-    label: "derived-only test fixture",
+    label: DERIVED_CITATION,
     triggers: &[],
     suppressors: &[],
     cone: &[],
@@ -224,7 +235,7 @@ fn closure_derived_path_routes_facts() {
 static STATIC_PARITY_RULES: &[ClosureRule<StaticParityScheme>] = &[ClosureRule {
     name: "static/emits-y",
     display_label: "Static cone emits Y",
-    label: "static-cone parity fixture",
+    label: DERIVED_CITATION,
     triggers: &[],
     suppressors: &[],
     cone: &[TokenRef::Token(TOK_Y)],

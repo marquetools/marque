@@ -42,9 +42,22 @@ use marque_ism::{
     CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
 };
 use marque_scheme::{
-    ApplyIntentError, CategoryAction, CategoryPredicate, FactRef, MarkingScheme, PageRewrite,
-    RecanonScope, ReplacementIntent, Scope, TokenId,
+    ApplyIntentError, CategoryAction, CategoryPredicate, Citation, FactRef, MarkingScheme,
+    PageRewrite, RecanonScope, ReplacementIntent, Scope, SectionLetter, TokenId,
 };
+
+// Test-fixture sentinel Citation (Constitution V Principle V test
+// carve-out). Routes through `AuthoritativeSource::EngineInternal`
+// so Display renders `[engine-internal]` and the value carries no
+// false CAPCO §-claim.
+const TEST_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -73,7 +86,7 @@ fn wrap(attrs: CanonicalAttrs) -> CapcoMarking {
 fn page_rewrite_intent_fact_add_mutates_projection() {
     let rewrite = PageRewrite {
         id: "test/intent-fact-add",
-        citation: "test fixture",
+        citation: TEST_CITATION,
         // Fires when the rel-to axis is empty — true on the input
         // portion below (which carries only a classification) and
         // remains true after the closure operator runs (the closure
@@ -113,7 +126,7 @@ fn page_rewrite_intent_fact_add_mutates_projection() {
 fn page_rewrite_intent_fact_remove_mutates_projection() {
     let rewrite = PageRewrite {
         id: "test/intent-fact-remove",
-        citation: "test fixture",
+        citation: TEST_CITATION,
         // Fires when NOFORN is present in dissem — the input below
         // carries NOFORN, so the trigger fires.
         trigger: CategoryPredicate::Contains {
@@ -158,7 +171,7 @@ fn page_rewrite_intent_fact_remove_mutates_projection() {
 fn page_rewrite_intent_fact_add_idempotent_when_already_present() {
     let rewrite = PageRewrite {
         id: "test/intent-fact-add-idempotent",
-        citation: "test fixture",
+        citation: TEST_CITATION,
         // Fires on the presence of NOFORN — and adds NOFORN. The
         // marking already has NOFORN; the add is a no-op.
         trigger: CategoryPredicate::Contains {
@@ -216,7 +229,7 @@ fn page_rewrite_intent_recanonicalize_is_no_op() {
     // Same input through a scheme with a Recanonicalize rewrite.
     let rewrite = PageRewrite {
         id: "test/intent-recanonicalize",
-        citation: "test fixture",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Contains {
             category: CAT_DISSEM,
             token: TOK_NOFORN,
@@ -269,7 +282,7 @@ fn engine_new_rejects_intent_with_unroutable_cve_token() {
     let unroutable = TokenId(u32::MAX);
     let rewrite = PageRewrite {
         id: "test/intent-unroutable-token",
-        citation: "test fixture",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Empty {
             category: CAT_DISSEM,
         },
@@ -335,7 +348,7 @@ fn g13_open_vocab_factref_does_not_leak_source_bytes() {
     let gbr = CountryCode::try_new(b"GBR").expect("GBR is a valid trigraph");
     let rewrite = PageRewrite {
         id: "test/intent-open-vocab-no-leak",
-        citation: "test fixture",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Empty {
             category: CAT_REL_TO,
         },

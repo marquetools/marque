@@ -97,11 +97,12 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
         };
         match parser.parse(&candidate, parse_bytes) {
             Ok(parsed) => {
-                // PR 3c.2.B B2: canonicalization seam migrated from
-                // the `marque_ism::from_parsed_unchecked` adapter to
-                // the `MarkingScheme::canonicalize` trait method per
-                // PM-B-1. The recognizer receives the scheme via the
-                // `&S` parameter threaded through `recognize()` after
+                // Canonicalization seam: `MarkingScheme::canonicalize`
+                // is the sole `ParsedAttrs → CanonicalAttrs` route per
+                // FR-043 (PR 3c.2.E retired the transitional
+                // `marque_ism::from_parsed_unchecked` adapter). The
+                // recognizer receives the scheme via the `&S`
+                // parameter threaded through `recognize()` after
                 // `engine-S-generic-recognizer-cleanup` (#634) landed.
                 let mut attrs = scheme.canonicalize(parsed.attrs);
                 // Two shifts collapsed into one (issue #431):

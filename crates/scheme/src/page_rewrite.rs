@@ -21,6 +21,7 @@
 //! See §7a of the Phase B design doc.
 
 use crate::category::CategoryId;
+use crate::citation::Citation;
 use crate::scheme::MarkingScheme;
 
 /// Stable identifier for a [`PageRewrite`]. Alias for `&'static str` —
@@ -67,8 +68,11 @@ pub struct PageRewrite<S: MarkingScheme + ?Sized> {
     /// audit records. Convention: `"scheme/snake-case-description"`
     /// (e.g., `"capco/noforn-clears-rel-to"`).
     pub id: RewriteId,
-    /// The rewrite's CAPCO / CUI / other-spec citation.
-    pub citation: &'static str,
+    /// The rewrite's typed authoritative-source citation. Migrated from
+    /// `&'static str` to [`Citation`] in PR 10.A.1 so the catalog
+    /// declaration carries the same closed-template citation surface
+    /// the engine emits on `Diagnostic.citation`.
+    pub citation: Citation,
     /// When this rewrite fires.
     pub trigger: CategoryPredicate<S>,
     /// What to do when it fires.
@@ -100,7 +104,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// [`PageRewrite::custom`] which fails closed on empty annotations.
     pub const fn declarative(
         id: RewriteId,
-        citation: &'static str,
+        citation: Citation,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
         reads: &'static [CategoryId],
@@ -145,7 +149,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// and engine-construct).
     pub const fn custom(
         id: RewriteId,
-        citation: &'static str,
+        citation: Citation,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
         reads: &'static [CategoryId],
@@ -199,7 +203,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// construction time.
     pub fn try_custom(
         id: RewriteId,
-        citation: &'static str,
+        citation: Citation,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
         reads: &'static [CategoryId],
@@ -562,9 +566,17 @@ mod tests {
 
     #[test]
     fn try_custom_rejects_empty_reads() {
+        // Test fixture: sentinel `Citation` for fake-scheme construction;
+        // routes through `AuthoritativeSource::EngineInternal` so Display
+        // omits §/page and the value carries no source-relative claim.
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let res = PageRewrite::<FakeScheme>::try_custom(
             "bad",
-            "test",
+            test_citation,
             CategoryPredicate::Custom(|_: &FakeMarking| false),
             CategoryAction::Custom(|_: &mut FakeMarking| {}),
             &[],
@@ -579,9 +591,14 @@ mod tests {
 
     #[test]
     fn try_custom_rejects_empty_writes() {
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let res = PageRewrite::<FakeScheme>::try_custom(
             "bad",
-            "test",
+            test_citation,
             CategoryPredicate::Custom(|_: &FakeMarking| false),
             CategoryAction::Custom(|_: &mut FakeMarking| {}),
             &[crate::category::CategoryId(1)],
@@ -596,9 +613,14 @@ mod tests {
 
     #[test]
     fn try_custom_accepts_non_empty_axes() {
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let ok = PageRewrite::<FakeScheme>::try_custom(
             "ok",
-            "test",
+            test_citation,
             CategoryPredicate::Custom(|_: &FakeMarking| false),
             CategoryAction::Custom(|_: &mut FakeMarking| {}),
             &[crate::category::CategoryId(1)],
@@ -618,9 +640,16 @@ mod tests {
     #[test]
     fn page_rewrite_struct_fields_accessible() {
         // Exercise the PageRewrite struct itself — store, read back.
+        // Test fixture: sentinel `Citation` routes through
+        // `AuthoritativeSource::EngineInternal` so Display omits §/page.
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let rw: PageRewrite<FakeScheme> = PageRewrite {
             id: "test/r1",
-            citation: "doc test-fixture",
+            citation: test_citation,
             trigger: CategoryPredicate::Empty {
                 category: crate::category::CategoryId(1),
             },
@@ -631,7 +660,7 @@ mod tests {
             writes: &[crate::category::CategoryId(1)],
         };
         assert_eq!(rw.id, "test/r1");
-        assert_eq!(rw.citation, "doc test-fixture");
+        assert_eq!(rw.citation, test_citation);
         assert_eq!(rw.reads, &[crate::category::CategoryId(1)]);
         assert_eq!(rw.writes, &[crate::category::CategoryId(1)]);
         // Trigger / action reachable through pattern match.

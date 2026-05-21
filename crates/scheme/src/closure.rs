@@ -58,6 +58,7 @@
 //! declarations.
 
 use crate::category::TokenId;
+use crate::citation::Citation;
 use crate::constraint::TokenRef;
 use crate::severity::Severity;
 
@@ -91,8 +92,10 @@ pub struct ClosureRuleMetadata {
     pub name: &'static str,
     /// Human-readable row label.
     pub label: &'static str,
-    /// Optional authoritative citation payload.
-    pub citation: Option<&'static str>,
+    /// Optional authoritative citation payload. `None` for rows without
+    /// a structured §-citation. Migrated from `Option<&'static str>` to
+    /// `Option<Citation>` in PR 10.A.1.
+    pub citation: Option<Citation>,
     /// Catalog default severity intent.
     pub default_severity: Severity,
 }
@@ -160,13 +163,14 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// Human-readable display label for inventory surfaces.
     pub display_label: &'static str,
 
-    /// Authoritative-source citation passage (e.g., `"CAPCO-2016 §H.8 p145"`).
+    /// Typed authoritative-source citation (e.g., `capco(SectionLetter::H, 8, 145)`).
     ///
     /// Per Constitution VIII, citations MUST refer to a real passage in the
     /// authoritative source, accurately reflect what that passage says, and
     /// be re-verifiable by any reviewer with the source in hand. Carried
-    /// through to `AuditNote.citation` when the rule fires.
-    pub label: &'static str,
+    /// through to `AuditNote.citation` when the rule fires. Migrated from
+    /// `&'static str` to [`Citation`] in PR 10.A.1.
+    pub label: Citation,
 
     /// N-ary OR over triggers.
     ///

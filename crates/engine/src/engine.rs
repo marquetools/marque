@@ -121,10 +121,12 @@ const DECODER_RULE_ID: &str = "R001";
 /// canonicalizes input toward.
 ///
 /// PR 3c.2.C C5 migrated this from `&'static str` →
-/// [`marque_rules::Citation`] atomically with the `Diagnostic.citation`
-/// field-type flip.
-const DECODER_CITATION_TYPED: marque_rules::Citation =
-    marque_rules::capco(marque_rules::SectionLetter::A, 6, 15);
+/// [`marque_scheme::Citation`] atomically with the `Diagnostic.citation`
+/// field-type flip. (PR 10.A.1 Commit 4 retargeted the import path from
+/// `marque_rules::Citation` to the canonical `marque_scheme::Citation`
+/// when the back-compat re-export was deleted.)
+const DECODER_CITATION_TYPED: marque_scheme::Citation =
+    marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15);
 
 /// Synthetic rule identifier for `R002 reparse-failed` diagnostics
 /// (PR 7b, FR-024). Emitted when the post-pass-1 buffer fails to
@@ -144,18 +146,21 @@ const DECODER_CITATION_TYPED: marque_rules::Citation =
 /// deferred (D-7.4).
 pub const R002_RULE_ID: RuleId = RuleId::new("R002");
 
-/// Typed [`Citation`](marque_rules::Citation) attached to `R002`
+/// Typed [`Citation`](marque_scheme::Citation) attached to `R002`
 /// diagnostics — the synthetic re-parse-failure sentinel has no CAPCO
 /// §-citation by construction (Constitution VIII requires a real
 /// passage; R002 is engine-internal guidance, not a CAPCO rule). Uses
-/// [`marque_rules::AuthoritativeSource::EngineInternal`]. Display
+/// [`marque_scheme::AuthoritativeSource::EngineInternal`]. Display
 /// renders as `[engine-internal]`.
 ///
 /// PR 3c.2.C C5 migrated this from `&'static str` → typed `Citation`
-/// atomically with the `Diagnostic.citation` field-type flip.
-const R002_CITATION_TYPED: marque_rules::Citation = marque_rules::Citation::new(
-    marque_rules::AuthoritativeSource::EngineInternal,
-    marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+/// atomically with the `Diagnostic.citation` field-type flip. PR 10.A.1
+/// Commit 4 retargeted the import path from `marque_rules::Citation`
+/// to the canonical `marque_scheme::Citation` when the back-compat
+/// re-export was deleted.
+const R002_CITATION_TYPED: marque_scheme::Citation = marque_scheme::Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
     // Niche-sentinel page value — never rendered (Display elides
     // section/page when source is non-CAPCO).
     match core::num::NonZeroU16::new(1) {
@@ -2338,15 +2343,19 @@ impl Engine {
             .scheme
             .fix_intent_by_name(v.constraint_label, attrs, candidate.kind);
 
-        // PR 3c.2.C C5 / PM-C-1 bridge layer: convert the carrier-
-        // string `ConstraintViolation.message: String` and
-        // `ConstraintViolation.citation: &'static str` to the typed
-        // `Diagnostic.message: Message` + `Diagnostic.citation: Citation`.
+        // PR 3c.2.C C5 / PM-C-1 / PR 10.A.1 bridge layer: convert the
+        // carrier-string `ConstraintViolation.message: String` to a typed
+        // `Diagnostic.message: Message`. The citation channel is no
+        // longer bridged — PR 10.A.1 made `Constraint.label: Citation`
+        // typed at declaration, and `ConstraintViolation.citation:
+        // Citation` flows verbatim through the evaluator. The
+        // `citation_by_name` lookup and `EngineInternal` sentinel
+        // fallback were retired in PR 10.A.1.
         //
-        // Both lookups fall back to a generic sentinel when the
-        // constraint_label is not in the explicit mapping. The fallback
-        // shape preserves audit-content-ignorance (no `v.message` raw
-        // bytes flow through).
+        // The message lookup still falls back to a generic sentinel
+        // when the constraint_label is not in the explicit mapping;
+        // the fallback shape preserves audit-content-ignorance (no
+        // `v.message` raw bytes flow through).
         let message = self
             .scheme
             .message_by_name(v.constraint_label, attrs, candidate.kind)
@@ -2367,29 +2376,13 @@ impl Engine {
                 )
             });
 
-        let citation = self
-            .scheme
-            .citation_by_name(v.constraint_label)
-            .unwrap_or_else(|| {
-                // Unknown constraint label — emit an EngineInternal
-                // sentinel so the audit record carries a structured
-                // citation rather than a parsed string. The original
-                // `v.citation: &'static str` is dropped.
-                tracing::trace!(
-                    target: "marque_engine::constraint_bridge",
-                    constraint = v.constraint_label,
-                    legacy_citation = v.citation,
-                    "no typed Citation mapping for constraint_label; using engine-internal sentinel",
-                );
-                marque_rules::Citation::new(
-                    marque_rules::AuthoritativeSource::EngineInternal,
-                    marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
-                    match core::num::NonZeroU16::new(1) {
-                        Some(p) => p,
-                        None => unreachable!(),
-                    },
-                )
-            });
+        // PR 10.A.1: catalog-row citations are now typed end-to-end. The
+        // `ConstraintViolation.citation: Citation` value flowed verbatim
+        // from the constraint's `label: Citation` declaration via
+        // `marque_scheme::constraint::evaluate`, so the bridge is a direct
+        // copy — the prior `citation_by_name` fallback and
+        // `EngineInternal` sentinel are gone.
+        let citation = v.citation;
 
         let mut diag =
             Diagnostic::with_fix(rule_id, final_severity, span, message, citation, fix_intent);
@@ -5325,11 +5318,13 @@ mod tests {
     use marque_ism::CanonicalAttrs;
     use marque_rules::audit::AppliedFix;
     use marque_rules::{
-        AuthoritativeSource, Citation, Diagnostic, FixIntent, FixSource, Message, MessageArgs,
-        MessageTemplate, Rule, RuleContext, RuleId, RuleSet, SectionLetter, SectionRef, Severity,
+        Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule, RuleContext,
+        RuleId, RuleSet, Severity,
     };
-    use marque_scheme::ReplacementIntent;
     use marque_scheme::fix_intent::RecanonScope;
+    use marque_scheme::{
+        AuthoritativeSource, Citation, ReplacementIntent, SectionLetter, SectionRef,
+    };
     use secrecy::ExposeSecret as _;
     use std::time::{Duration, UNIX_EPOCH};
 

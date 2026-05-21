@@ -460,7 +460,10 @@ pub(crate) fn evaluate_custom_by_attrs(
         return sci_per_system_catalog_eval(attrs, bits, name);
     }
     match name {
-        "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 pp 62-66"),
+        "E010/HCS-system-constraints" => hcs_system_constraints(
+            attrs,
+            marque_scheme::capco(marque_scheme::SectionLetter::H, 4, 62),
+        ),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
         "E021/rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs, bits),

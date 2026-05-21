@@ -198,7 +198,7 @@ fn auto_portion_fouo_matches_render_portion() {
 // today so the migration is mechanical (just remove the attribute).
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_portion_secret_returns_portion_mark() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
@@ -210,7 +210,7 @@ fn explicit_portion_secret_returns_portion_mark() {
 }
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_portion_noforn_returns_portion_mark() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
@@ -221,7 +221,7 @@ fn explicit_portion_noforn_returns_portion_mark() {
 }
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_portion_fouo_returns_portion_mark() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();
@@ -236,7 +236,7 @@ fn explicit_portion_fouo_returns_portion_mark() {
 // ===========================================================================
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_title_secret_returns_title() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
@@ -251,7 +251,7 @@ fn explicit_banner_title_secret_returns_title() {
 }
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_title_noforn_returns_title() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
@@ -266,7 +266,7 @@ fn explicit_banner_title_noforn_returns_title() {
 }
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_title_fouo_returns_title() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();
@@ -285,7 +285,7 @@ fn explicit_banner_title_fouo_returns_title() {
 // ===========================================================================
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_abbreviation_secret_falls_back_to_title() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
@@ -303,7 +303,7 @@ fn explicit_banner_abbreviation_secret_falls_back_to_title() {
 }
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_abbreviation_noforn_returns_abbreviation() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
@@ -318,7 +318,7 @@ fn explicit_banner_abbreviation_noforn_returns_abbreviation() {
 }
 
 #[test]
-#[ignore = "TODO(3c.2.B): unblock when §G.1 Table 4 dispatch lands in CapcoScheme::render_canonical body"]
+#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_abbreviation_fouo_returns_abbreviation() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();

@@ -26,9 +26,9 @@ use marque_config::Config;
 use marque_engine::Engine;
 use marque_ism::CanonicalAttrs;
 use marque_rules::{
-    AuthoritativeSource, Citation, Diagnostic, Message, MessageArgs, MessageTemplate, Rule,
-    RuleContext, RuleId, RuleSet, SectionLetter, SectionRef, Severity,
+    Diagnostic, Message, MessageArgs, MessageTemplate, Rule, RuleContext, RuleId, RuleSet, Severity,
 };
+use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 
 /// A rule that always panics in `check()`.
 ///

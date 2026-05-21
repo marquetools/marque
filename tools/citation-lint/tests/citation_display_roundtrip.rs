@@ -5,10 +5,13 @@
 //! PR 3c.2.C C6 — round-trip: format!("{citation}") through
 //! citation-lint's real scanner ([`citation_lint::find_in_fragment`]).
 //!
-//! Proves the typed [`marque_rules::Citation`] `Display` output is
+//! Proves the typed [`marque_scheme::Citation`] `Display` output is
 //! parseable by the citation-lint tool's real parser. Closes
 //! C-FOLLOWUP-1 from the deferred-findings register at
 //! `specs/006-engine-rule-refactor/followups/2026-05-19-pr-3c2-a-deferred-findings.md`.
+//! PR 10.A.1 Commit 4 retargeted the `marque-rules` dev-dep to
+//! `marque-scheme` to match the new home of the `Citation` type
+//! (`marque-rules` no longer re-exports it).
 //!
 //! # Why this test lives here (not in `crates/rules/tests/`)
 //!
@@ -45,8 +48,8 @@
 use core::num::NonZeroU16;
 
 use citation_lint::{Citation as LintCitation, CitationFind, find_in_fragment};
-use marque_rules::{
-    AuthoritativeSource, Citation as RulesCitation, SectionLetter, SectionRef, capco, capco_table,
+use marque_scheme::{
+    AuthoritativeSource, Citation as SchemeCitation, SectionLetter, SectionRef, capco, capco_table,
 };
 
 /// Extract the single parsed citation from a fragment, asserting it
@@ -70,7 +73,7 @@ fn parsed_one(fragment: &str) -> LintCitation {
 #[test]
 fn h4_p61_sci_grammar_roundtrips() {
     // Per CAPCO-2016 §H.4 p61 — SCI grammar reminder.
-    let c: RulesCitation = capco(SectionLetter::H, 4, 61);
+    let c: SchemeCitation = capco(SectionLetter::H, 4, 61);
     let rendered = format!("{c}");
     assert_eq!(rendered, "§H.4 p61");
 
@@ -92,7 +95,7 @@ fn b3_table_2_p21_caveated_fdr_roundtrips_partially() {
     // as a single citation; the `Table N` modifier shadows the
     // page anchor.
     //
-    // Result: `marque_rules::Citation` Display output for the
+    // Result: `marque_scheme::Citation` Display output for the
     // table-variant `§B.3 Table 2 p21` is parsed by citation-lint as
     // `(section: B, subsection: 3, pages: None)`. The page number is
     // dropped at the round-trip boundary.
@@ -112,7 +115,7 @@ fn b3_table_2_p21_caveated_fdr_roundtrips_partially() {
     // `§<L>.<sub> Table <N> p<page>` form. Tracked as a follow-up
     // item alongside C-FOLLOWUP-1; see PR description and
     // `specs/006-engine-rule-refactor/followups/2026-05-19-pr-3c2-a-deferred-findings.md`.
-    let c: RulesCitation = capco_table(SectionLetter::B, 3, 2, 21);
+    let c: SchemeCitation = capco_table(SectionLetter::B, 3, 2, 21);
     let rendered = format!("{c}");
     assert_eq!(rendered, "§B.3 Table 2 p21");
 
@@ -126,7 +129,7 @@ fn b3_table_2_p21_caveated_fdr_roundtrips_partially() {
 #[test]
 fn a6_p15_formatting_roundtrips() {
     // Per CAPCO-2016 §A.6 p15 — Figure 2 baseline.
-    let c: RulesCitation = capco(SectionLetter::A, 6, 15);
+    let c: SchemeCitation = capco(SectionLetter::A, 6, 15);
     let rendered = format!("{c}");
     assert_eq!(rendered, "§A.6 p15");
 
@@ -139,7 +142,7 @@ fn a6_p15_formatting_roundtrips() {
 #[test]
 fn h5_p99_sar_anchor_roundtrips() {
     // Per CAPCO-2016 §H.5 p99 — SAR anchor.
-    let c: RulesCitation = capco(SectionLetter::H, 5, 99);
+    let c: SchemeCitation = capco(SectionLetter::H, 5, 99);
     let rendered = format!("{c}");
     assert_eq!(rendered, "§H.5 p99");
 
@@ -152,7 +155,7 @@ fn h5_p99_sar_anchor_roundtrips() {
 #[test]
 fn h8_p134_fouo_eviction_roundtrips() {
     // Per CAPCO-2016 §H.8 p134 — FOUO eviction rule.
-    let c: RulesCitation = capco(SectionLetter::H, 8, 134);
+    let c: SchemeCitation = capco(SectionLetter::H, 8, 134);
     let rendered = format!("{c}");
     assert_eq!(rendered, "§H.8 p134");
 
@@ -170,7 +173,7 @@ fn bare_section_letter_h_p60_roundtrips() {
     // `with_subsection`. Citation-lint accepts the resulting
     // `§H p60` shape (the parser tolerates a bare letter + page
     // anchor per its grammar at `tools/citation-lint/src/citation.rs`).
-    let c = RulesCitation::new(
+    let c = SchemeCitation::new(
         AuthoritativeSource::Capco2016,
         SectionRef::new(SectionLetter::H),
         NonZeroU16::new(60).unwrap(),
@@ -192,7 +195,7 @@ fn non_capco_sentinel_emits_no_citation() {
     // on the `§` UTF-8 sequence — so sentinel citations are
     // citation-lint-invisible by design. This is the PR 3c.2.C PM-C-4
     // shape: non-CAPCO sentinels are not citation-lint-resolvable.
-    let config = RulesCitation::new(
+    let config = SchemeCitation::new(
         AuthoritativeSource::Config,
         SectionRef::new(SectionLetter::A),
         NonZeroU16::new(1).unwrap(),
@@ -203,7 +206,7 @@ fn non_capco_sentinel_emits_no_citation() {
         "citation-lint MUST NOT find a citation in a [config] sentinel"
     );
 
-    let engine_internal = RulesCitation::new(
+    let engine_internal = SchemeCitation::new(
         AuthoritativeSource::EngineInternal,
         SectionRef::new(SectionLetter::A),
         NonZeroU16::new(1).unwrap(),
@@ -223,8 +226,8 @@ fn const_fn_helpers_produce_citation_lint_recognizable_form() {
     // evaluated boundary: catalog rows in `crates/capco/src/` that
     // construct `Citation` at compile time produce Display output
     // that citation-lint can scan at runtime.
-    const SCI_GRAMMAR: RulesCitation = capco(SectionLetter::H, 4, 61);
-    const CAVEATED_FDR: RulesCitation = capco_table(SectionLetter::B, 3, 2, 21);
+    const SCI_GRAMMAR: SchemeCitation = capco(SectionLetter::H, 4, 61);
+    const CAVEATED_FDR: SchemeCitation = capco_table(SectionLetter::B, 3, 2, 21);
 
     // Concatenated fragment: citation-lint scans left-to-right and
     // emits multiple `CitationFind::Parsed` entries.

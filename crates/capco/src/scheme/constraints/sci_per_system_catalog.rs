@@ -9,7 +9,7 @@
 //!
 //! Row order preserved verbatim from the pre-split catalog.
 
-use marque_scheme::Constraint;
+use marque_scheme::{Constraint, SectionLetter, capco};
 
 // ================================================================
 // PR 3b.E (T026e) — SCI per-system catalog (§H.4)
@@ -59,23 +59,23 @@ pub(super) fn sci_per_system_constraints() -> Vec<Constraint> {
     vec![
         Constraint::Custom {
             name: "sci-per-system/HCS-O-companions",
-            label: "CAPCO-2016 §H.4 p64",
+            label: capco(SectionLetter::H, 4, 64),
         },
         Constraint::Custom {
             name: "sci-per-system/HCS-P-NOFORN",
-            label: "CAPCO-2016 §H.4 p66",
+            label: capco(SectionLetter::H, 4, 66),
         },
         Constraint::Custom {
             name: "sci-per-system/HCS-P-sub-companions",
-            label: "CAPCO-2016 §H.4 p68",
+            label: capco(SectionLetter::H, 4, 68),
         },
         Constraint::Custom {
             name: "sci-per-system/SI-G-companions",
-            label: "CAPCO-2016 §H.4 p80",
+            label: capco(SectionLetter::H, 4, 80),
         },
         Constraint::Custom {
             name: "sci-per-system/TK-compartment-NOFORN",
-            label: "CAPCO-2016 §H.4 p87 + p91 + p95",
+            label: capco(SectionLetter::H, 4, 87),
         },
     ]
 }

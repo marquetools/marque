@@ -13,14 +13,18 @@
 //!
 //! # Module layout
 //!
-//! - [`citation`] — `Citation`, `SectionRef`, `SectionLetter`,
-//!   `PageNumber`, `AuthoritativeSource`. Typed citation surface for
-//!   diagnostics; `Display` emits the citation-lint regex form
+//! - The typed citation surface (`Citation`, `SectionRef`,
+//!   `SectionLetter`, `PageNumber`, `AuthoritativeSource`) lives in
+//!   [`marque_scheme::citation`] (relocated from `marque-rules` in
+//!   PR 10.A.1 so the scheme-level catalog rows can carry typed
+//!   citations without inverting the crate dependency graph). The
+//!   `Display` impl emits the citation-lint regex form
 //!   (`§<L>.<sub>[.<sub_sub>] [Table <N>] p<page>`). Const-fn
 //!   construction; no runtime validation per D25.2 in
-//!   `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md`. Migration
-//!   from `&'static str` literal citations to `Citation` lands at PR
-//!   3c.2.C.
+//!   `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md`. The
+//!   `&'static str` → `Citation` literal-site migration completed at
+//!   PR 3c.2.C; PR 10.A.1 finished the type flip on catalog row
+//!   declarations (`Constraint`, `PageRewrite`, `ClosureRule`).
 //! - [`confidence`] — `Confidence` (recognition × rule axes), `FeatureId`,
 //!   `FeatureContribution`. Phase D audit-provenance payload attached to
 //!   every `FixIntent<S>`.
@@ -72,13 +76,14 @@
 
 pub mod audit;
 pub mod audit_note;
-pub mod citation;
 pub mod confidence;
 pub mod fix_intent;
 pub mod message;
 
 use marque_ism::CanonicalAttrs;
-use marque_scheme::{MarkingScheme, Span};
+use marque_scheme::{
+    AuthoritativeSource, Citation, MarkingScheme, SectionLetter, SectionRef, Span,
+};
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -88,10 +93,6 @@ pub use audit::{
     Discriminant,
 };
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
-pub use citation::{
-    AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
-    capco_table,
-};
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
 // Re-export `SmallVec` + the `smallvec!` macro so external consumers

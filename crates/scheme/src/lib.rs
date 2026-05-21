@@ -79,6 +79,7 @@ pub mod ambiguity;
 pub mod builtins;
 pub mod canonical;
 pub mod category;
+pub mod citation;
 pub mod closure;
 pub mod codec;
 pub mod constraint;
@@ -105,6 +106,10 @@ pub use canonical::{Canonical, CanonicalConstructor, EngineConstructor, TokenSou
 pub use category::{
     AggregationOp, Cardinality, Category, CategoryId, CategoryShape, ExpansionFn, IntraOrdering,
     TokenId, reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,
+};
+pub use citation::{
+    AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
+    capco_table,
 };
 pub use closure::{ClosureRule, ClosureRuleMetadata, ConeDerivedFn, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};

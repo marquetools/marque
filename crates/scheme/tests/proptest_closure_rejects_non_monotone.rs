@@ -38,11 +38,22 @@
 //! closure operator's monotonicity property fails."
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
-    MeetSemilattice, PageRewrite, Parsed, RenderContext, Scope, Template, TokenId, TokenRef,
-    closure::ClosureRule, severity::Severity,
+    Category, Citation, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
+    MeetSemilattice, PageRewrite, Parsed, RenderContext, Scope, SectionLetter, Template, TokenId,
+    TokenRef, closure::ClosureRule, severity::Severity,
 };
 use proptest::prelude::*;
+
+// Sentinel test citation — non-monotone proptest fixtures; routes through
+// `AuthoritativeSource::EngineInternal` so Display renders `[engine-internal]`.
+const NON_MONOTONE_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 // ---------------------------------------------------------------------------
 // Bitset marking (same as proptest_closure.rs but standalone).
@@ -105,7 +116,7 @@ fn bit_index(id: TokenId) -> Option<u8> {
 static MONOTONE_RULES: &[ClosureRule<MonotoneScheme>] = &[ClosureRule {
     name: "stub/a-implies-b",
     display_label: "Monotone fixture A implies B",
-    label: "non-monotone test fixture",
+    label: NON_MONOTONE_CITATION,
     triggers: &[TokenRef::Token(TOK_A)],
     suppressors: &[], // No suppressor — unconditional.
     cone: &[TokenRef::Token(TOK_B)],
@@ -343,7 +354,7 @@ fn non_monotone_scenario_is_detectable() {
 static NON_MONOTONE_RULES: &[ClosureRule<NonMonotoneScheme>] = &[ClosureRule {
     name: "stub/a-implies-b-suppressed-by-c",
     display_label: "Non-monotone fixture A implies B suppressed by C",
-    label: "non-monotone test fixture",
+    label: NON_MONOTONE_CITATION,
     triggers: &[TokenRef::Token(TOK_A)],
     // SUPPRESSOR shape that creates non-monotonicity: C is a token that
     // CAN be present in a marking (it's in our 3-token universe), so a
@@ -620,7 +631,7 @@ fn non_monotone_derived_cone(m: &BitMarking) -> SmallVec<[FactRef<NonMonotoneDer
 static MONOTONE_DERIVED_RULES: &[ClosureRule<MonotoneDerivedScheme>] = &[ClosureRule {
     name: "stub/derived-monotone",
     display_label: "Monotone derived-cone fixture",
-    label: "derived-cone monotone test fixture",
+    label: NON_MONOTONE_CITATION,
     // Unconditional firing — the cone_derived fn does the marking-shape work.
     triggers: &[],
     suppressors: &[],
@@ -632,7 +643,7 @@ static MONOTONE_DERIVED_RULES: &[ClosureRule<MonotoneDerivedScheme>] = &[Closure
 static NON_MONOTONE_DERIVED_RULES: &[ClosureRule<NonMonotoneDerivedScheme>] = &[ClosureRule {
     name: "stub/derived-non-monotone",
     display_label: "Non-monotone derived-cone fixture",
-    label: "derived-cone non-monotone test fixture",
+    label: NON_MONOTONE_CITATION,
     triggers: &[],
     suppressors: &[],
     cone: &[],

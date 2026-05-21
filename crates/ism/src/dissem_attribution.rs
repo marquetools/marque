@@ -49,9 +49,10 @@
 //! `attribute_dissems` operates only on [`ParsedAttrs`] and
 //! [`MarkingClassification`], both of which live in this crate. The
 //! parser in `marque-core` calls it as the last step before returning
-//! `ParsedAttrs`, and the `marque-ism::from_parsed_unchecked` adapter
-//! relies on the fields already being split (it is a pure structural
-//! rename and MUST NOT contain attribution logic).
+//! `ParsedAttrs`, and the downstream `MarkingScheme::canonicalize`
+//! step relies on the fields already being split (the canonicalize
+//! impl is a pure structural rename and MUST NOT contain attribution
+//! logic).
 //!
 //! Hosting `attribute_dissems` in `marque-ism` is what keeps the
 //! one-directional dependency graph (`marque-ism ← marque-core`)

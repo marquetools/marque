@@ -190,6 +190,20 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(feature, values("corpus-override"))',
 ] }
 
+[workspace.lints.clippy]
+# PR 3c.2.E lifted `#[non_exhaustive]` from `ParsedAttrs<'src>` and
+# `CanonicalAttrs` so the structural rename body could move from
+# `marque_ism::from_parsed_unchecked` into `CapcoScheme::canonicalize`
+# (FR-043 sole-path invariant). The lift made the
+# `let mut x = T::default(); x.foo = ...;` test-fixture pattern
+# (legible under `#[non_exhaustive]` because struct-update was
+# unavailable outside `marque-ism`) trip clippy::field_reassign_with_default
+# at hundreds of pre-existing sites. The style preference is real but
+# the migration cost is mechanical churn across ~270 test sites with
+# no correctness gain; suppress workspace-wide and reconsider when a
+# new construction pattern lands.
+field_reassign_with_default = "allow"
+
 [profile.bench]
 inherits = "release"
 debug = true

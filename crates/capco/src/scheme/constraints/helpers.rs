@@ -22,6 +22,7 @@ use super::super::predicates::{
 };
 use super::super::*;
 use marque_ism::TokenKind;
+use marque_scheme::{SectionLetter, capco};
 use marque_scheme::{Severity, Span, TokenRef};
 
 // ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ pub(crate) fn e012_dual_classification(
                 us.banner_str(),
                 foreign_desc
             ),
-            citation: "CAPCO-2016 §H.3 p55",
+            citation: capco(SectionLetter::H, 3, 55),
             span: Some(span),
             severity: Some(Severity::Fix),
         }]
@@ -122,7 +123,7 @@ pub(crate) fn e014_joint_rel_to_coverage(
             "JOINT participants [{}] must appear in REL TO list",
             missing.join(", ")
         ),
-        citation: "CAPCO-2016 §H.3 p57",
+        citation: capco(SectionLetter::H, 3, 57),
         span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),
         severity: Some(Severity::Fix),
     }]

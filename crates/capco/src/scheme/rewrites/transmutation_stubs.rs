@@ -10,7 +10,7 @@
 //! `rewrites.rs` per the issue #466 Stage 2 PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
-use marque_scheme::{CategoryAction, CategoryPredicate, PageRewrite};
+use marque_scheme::{CategoryAction, CategoryPredicate, PageRewrite, SectionLetter, capco};
 
 use super::super::actions::noop_action;
 use super::super::predicates::never_fires;
@@ -155,7 +155,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // entry: the AEA axis is otherwise un-written.
         PageRewrite::custom(
             "capco/frd-sigma-consolidates-into-rd-sigma",
-            "CAPCO-2016 §H.6 p113",
+            capco(SectionLetter::H, 6, 113),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E4_READS,
@@ -197,7 +197,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/fgi-rollup-on-us-contact",
-            "CAPCO-2016 §H.7 p122",
+            capco(SectionLetter::H, 7, 122),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E1_READS,
@@ -230,7 +230,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/fgi-restricted-rollup-on-us-contact",
-            "CAPCO-2016 §H.7 p122",
+            capco(SectionLetter::H, 7, 122),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E2_READS,
@@ -267,7 +267,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/joint-cross-class-rollup",
-            "CAPCO-2016 §H.3 p57",
+            capco(SectionLetter::H, 3, 57),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E3_READS,
@@ -302,7 +302,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/us-presence-promotes-bare-fgi-attribution",
-            "CAPCO-2016 §H.7 p122",
+            capco(SectionLetter::H, 7, 122),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E7_READS,
@@ -340,7 +340,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/orcon-nato-to-us-orcon-on-us-contact",
-            "CAPCO-2016 §H.8 p136",
+            capco(SectionLetter::H, 8, 136),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E5_READS,
@@ -377,7 +377,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/sbu-nf-transmutes-on-classified-contact",
-            "CAPCO-2016 §H.9 p178",
+            capco(SectionLetter::H, 9, 178),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E6A_READS,
@@ -411,7 +411,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 stub: see Entry 4 doc-comment.
         PageRewrite::custom(
             "capco/les-nf-transmutes-on-classified-contact",
-            "CAPCO-2016 §H.9 p185",
+            capco(SectionLetter::H, 9, 185),
             CategoryPredicate::Custom(never_fires),
             CategoryAction::Custom(noop_action),
             E6B_READS,

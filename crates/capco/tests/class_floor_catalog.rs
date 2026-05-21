@@ -128,11 +128,16 @@ fn catalog_declares_27_class_floor_rows() {
 /// soft); §H.7 p122 (ATOMAL — worked example in §H.7).
 #[test]
 fn pr_9c_1_nato_rows_pin_citation_anchors() {
+    use marque_scheme::{Citation, SectionLetter, capco};
     let scheme = CapcoScheme::new();
-    let expected: &[(&str, &str)] = &[
-        ("class-floor/BALK", "CAPCO-2016 §G.2 p40"),
-        ("class-floor/BOHEMIA", "CAPCO-2016 §G.2 p40"),
-        ("class-floor/ATOMAL", "CAPCO-2016 §H.7 p122"),
+    // PR 10.A.1: typed Citation pin — assertions compare structured
+    // §/page values directly. Constitution VIII propagation: every
+    // row's expected citation re-verified at PR 9c.1 authorship; this
+    // PR preserves the per-row anchor values verbatim.
+    let expected: &[(&str, Citation)] = &[
+        ("class-floor/BALK", capco(SectionLetter::G, 2, 40)),
+        ("class-floor/BOHEMIA", capco(SectionLetter::G, 2, 40)),
+        ("class-floor/ATOMAL", capco(SectionLetter::H, 7, 122)),
     ];
 
     for (row_name, expected_cite) in expected {
@@ -145,7 +150,7 @@ fn pr_9c_1_nato_rows_pin_citation_anchors() {
             row.label(),
             *expected_cite,
             "{row_name} citation drifted (PR 9c.1 D5 pin); \
-             expected {expected_cite:?}, got {actual:?}",
+             expected {expected_cite}, got {actual}",
             actual = row.label(),
         );
     }
@@ -167,6 +172,7 @@ fn catalog_row_names_are_unique() {
 
 #[test]
 fn catalog_citations_reference_capco_or_passthrough() {
+    use marque_scheme::AuthoritativeSource;
     let scheme = CapcoScheme::new();
     for c in scheme.constraints() {
         let n = c.name();
@@ -174,12 +180,21 @@ fn catalog_citations_reference_capco_or_passthrough() {
             continue;
         }
         let label = c.label();
-        let valid =
-            label.starts_with("CAPCO-2016 §") || label.starts_with("marque-applied.md §3.7");
+        // PR 10.A.1: typed Citation pin — row labels are either
+        // `AuthoritativeSource::Capco2016` (the 23 enumerated rows) or
+        // `AuthoritativeSource::EngineInternal` (the 4 passthrough rows
+        // that cite `marque-applied.md §3.7`, not a CAPCO passage).
+        // No other source variants are valid for this catalog.
+        let valid = matches!(
+            label.document,
+            AuthoritativeSource::Capco2016 | AuthoritativeSource::EngineInternal
+        );
         assert!(
             valid,
-            "class-floor row {n:?} citation must start with `CAPCO-2016 §` or \
-             `marque-applied.md §3.7` (passthrough); got: {label:?}"
+            "class-floor row {n:?} citation must originate from CAPCO-2016 \
+             or the engine's marque-applied.md passthrough policy; got: \
+             document={:?} ({})",
+            label.document, label,
         );
     }
 }
@@ -248,7 +263,7 @@ fn hcs_p_subcompartment_fires_below_top_secret() {
     // PR 3c.2.C C7 (R-C1): bridge now reads per-row `citation_typed`
     // from `CLASS_FLOOR_CATALOG`; class-floor row `class-floor/HCS-comp-sub`
     // anchors at §H.4 p60 (SCI section General Information).
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         hcs_sub[0].citation,
         capco(SectionLetter::H, 4, 60),
@@ -420,7 +435,7 @@ fn cnwdi_fires_below_secret() {
     );
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // CNWDI anchors at §H.6 p104.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         cnwdi[0].citation,
         capco(SectionLetter::H, 6, 104),
@@ -449,7 +464,7 @@ fn rd_sigma_fires_below_secret() {
     );
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // RD-SIGMA anchors at §H.6 p113.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         rd_sigma[0].citation,
         capco(SectionLetter::H, 6, 113),
@@ -492,7 +507,7 @@ fn sar_fires_on_unclassified() {
     assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // SAR anchors at §H.5 p99 (SAR section start).
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         sar[0].citation,
         capco(SectionLetter::H, 5, 99),
@@ -546,7 +561,7 @@ fn dod_ucni_fires_above_unclassified() {
     assert_eq!(ucni.len(), 1, "DOD UCNI ceiling must fire on S: {diags:?}");
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // DOD UCNI anchors at §H.6 p116.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         ucni[0].citation,
         capco(SectionLetter::H, 6, 116),
@@ -577,7 +592,7 @@ fn doe_ucni_fires_above_unclassified() {
     assert_eq!(ucni.len(), 1, "DOE UCNI ceiling must fire on S: {diags:?}");
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // DOE UCNI anchors at §H.6 p118.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         ucni[0].citation,
         capco(SectionLetter::H, 6, 118),
@@ -1114,7 +1129,7 @@ fn tk_family_fires_below_secret_on_bare_tk() {
     assert_eq!(tk[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // TK family anchors at §H.4 p60.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         tk[0].citation,
         capco(SectionLetter::H, 4, 60),
@@ -1174,7 +1189,7 @@ fn frd_sigma_fires_below_secret() {
     assert_eq!(frd_sg[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // FRD-SIGMA anchors at §H.6 p113.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         frd_sg[0].citation,
         capco(SectionLetter::H, 6, 113),
@@ -1245,7 +1260,7 @@ fn rsen_fires_below_secret() {
     // `class-floor/TK` (§H.4 p60) — assert the diagnostic-set
     // contains both citations rather than asserting a positional
     // index (sort order is determined by the engine).
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     let citations: Vec<_> = rsen.iter().map(|d| d.citation).collect();
     assert!(
         citations.contains(&capco(SectionLetter::H, 8, 149)),
@@ -1299,7 +1314,7 @@ fn imcon_fires_below_secret() {
     assert_eq!(imcon[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // IMCON anchors at §H.8 p144.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         imcon[0].citation,
         capco(SectionLetter::H, 8, 144),
@@ -1351,7 +1366,7 @@ fn si_bare_fires_when_no_classification() {
     assert_eq!(si[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // SI bare anchors at §H.4 p60.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         si[0].citation,
         capco(SectionLetter::H, 4, 60),
@@ -1417,7 +1432,7 @@ fn rd_bare_fires_when_no_classification_token() {
     assert_eq!(rd[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // RD bare anchors at §H.6 p104.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         rd[0].citation,
         capco(SectionLetter::H, 6, 104),
@@ -1453,7 +1468,7 @@ fn frd_bare_fires_when_unclassified() {
     assert_eq!(frd[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // FRD bare anchors at §H.6 p104.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         frd[0].citation,
         capco(SectionLetter::H, 6, 104),
@@ -1499,7 +1514,7 @@ fn tfni_fires_when_unclassified() {
     assert_eq!(tfni[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // TFNI anchors at §H.6 p107.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         tfni[0].citation,
         capco(SectionLetter::H, 6, 107),
@@ -1559,7 +1574,7 @@ fn orcon_family_fires_when_unclassified() {
     assert_eq!(orcon[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // ORCON family anchors at §H.8 p136.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         orcon[0].citation,
         capco(SectionLetter::H, 8, 136),
@@ -1605,7 +1620,7 @@ fn eyes_only_fires_when_unclassified() {
     assert_eq!(eyes[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
     // EYES ONLY anchors at §H.8 p152.
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         eyes[0].citation,
         capco(SectionLetter::H, 8, 152),

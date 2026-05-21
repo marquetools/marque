@@ -9,6 +9,7 @@
 
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::predicates::{fouo_classified_trigger, fouo_with_non_fdr_other_control_trigger};
@@ -129,7 +130,7 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/classification-evicts-fouo",
-            "CAPCO-2016 §H.8 p134",
+            capco(SectionLetter::H, 8, 134),
             CategoryPredicate::Custom(fouo_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactRemove {
                 facts: smallvec::smallvec![FactRef::Cve(TOK_FOUO)],
@@ -188,7 +189,7 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/non-fdr-control-evicts-fouo",
-            "CAPCO-2016 §H.8 p134",
+            capco(SectionLetter::H, 8, 134),
             CategoryPredicate::Custom(fouo_with_non_fdr_other_control_trigger),
             CategoryAction::Intent(ReplacementIntent::FactRemove {
                 facts: smallvec::smallvec![FactRef::Cve(TOK_FOUO)],
