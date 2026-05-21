@@ -40,6 +40,17 @@ jobs:
       - name: typos
         uses: crate-ci/typos@7c572958218557a3272c2d6719629443b5cc26fd
 
+      # T138a — FR-037 absence-check (006 polish phase, PR 10.B).
+      # Asserts the clean-break audit-schema cutover (marque-mvp-3 →
+      # marque-1.0, PR 3c.2.D) stays a type-level guarantee rather
+      # than a convention: no audit-reader crate, no reader feature,
+      # no `marque_engine::reader::*` public surface. Source plan
+      # §10.1 calls comment-propagated absence the failure mode the
+      # murder board (W6) identified; this step is the positive
+      # enforcement.
+      - name: Audit-cleanup absence check (FR-037)
+        run: bash tools/audit-cleanup-check.sh
+
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
