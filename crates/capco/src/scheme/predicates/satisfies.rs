@@ -13,7 +13,9 @@
 use marque_ism::{Classification, CountryCode};
 use marque_scheme::TokenRef;
 
-use super::super::constraints::{e012_dual_classification, e014_joint_rel_to_coverage};
+use super::super::constraints::{
+    e012_dual_classification, e014_joint_rel_to_coverage, w005_rel_to_not_in_joint_coverage,
+};
 use super::super::*;
 use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
 use super::joint_hcs::{hcs_system_constraints, joint_requires_usa};
@@ -466,6 +468,7 @@ pub(crate) fn evaluate_custom_by_attrs(
         ),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
+        "W005/rel-to-not-in-joint-coverage" => w005_rel_to_not_in_joint_coverage(attrs),
         "E021/rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs, bits),
         "E024/rd-precedence" => e024_rd_precedence(attrs, bits),
         // W002/us-commingled-with-fgi retired in the PR closing #470.
