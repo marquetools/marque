@@ -9,8 +9,7 @@
 //!
 //! Row order preserved verbatim from the pre-split catalog.
 
-use marque_scheme::Constraint;
-use marque_rules::{SectionLetter, capco};
+use marque_scheme::{Constraint, SectionLetter, capco};
 
 use super::super::class_floor::PASSTHROUGH_CITATION;
 

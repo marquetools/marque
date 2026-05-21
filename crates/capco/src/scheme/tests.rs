@@ -696,9 +696,9 @@ fn project_applies_declarative_contains_then_clear() {
     // match arms in the project() dispatch.
     let rewrites = vec![PageRewrite {
         id: "test/nf-clears-rel-to",
-        citation: marque_rules::Citation::new(
-            marque_rules::AuthoritativeSource::EngineInternal,
-            marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+        citation: marque_scheme::Citation::new(
+            marque_scheme::AuthoritativeSource::EngineInternal,
+            marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
             core::num::NonZeroU16::new(1).unwrap(),
         ),
         trigger: CategoryPredicate::Contains {
@@ -738,9 +738,9 @@ fn project_applies_declarative_empty_then_replace() {
 
     let rewrites = vec![PageRewrite {
         id: "test/empty-rel-to-triggers-replace-dissem",
-        citation: marque_rules::Citation::new(
-            marque_rules::AuthoritativeSource::EngineInternal,
-            marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+        citation: marque_scheme::Citation::new(
+            marque_scheme::AuthoritativeSource::EngineInternal,
+            marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
             core::num::NonZeroU16::new(1).unwrap(),
         ),
         trigger: CategoryPredicate::Empty {

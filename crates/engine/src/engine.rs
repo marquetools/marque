@@ -121,10 +121,12 @@ const DECODER_RULE_ID: &str = "R001";
 /// canonicalizes input toward.
 ///
 /// PR 3c.2.C C5 migrated this from `&'static str` →
-/// [`marque_rules::Citation`] atomically with the `Diagnostic.citation`
-/// field-type flip.
-const DECODER_CITATION_TYPED: marque_rules::Citation =
-    marque_rules::capco(marque_rules::SectionLetter::A, 6, 15);
+/// [`marque_scheme::Citation`] atomically with the `Diagnostic.citation`
+/// field-type flip. (PR 10.A.1 Commit 4 retargeted the import path from
+/// `marque_rules::Citation` to the canonical `marque_scheme::Citation`
+/// when the back-compat re-export was deleted.)
+const DECODER_CITATION_TYPED: marque_scheme::Citation =
+    marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15);
 
 /// Synthetic rule identifier for `R002 reparse-failed` diagnostics
 /// (PR 7b, FR-024). Emitted when the post-pass-1 buffer fails to
@@ -144,18 +146,21 @@ const DECODER_CITATION_TYPED: marque_rules::Citation =
 /// deferred (D-7.4).
 pub const R002_RULE_ID: RuleId = RuleId::new("R002");
 
-/// Typed [`Citation`](marque_rules::Citation) attached to `R002`
+/// Typed [`Citation`](marque_scheme::Citation) attached to `R002`
 /// diagnostics — the synthetic re-parse-failure sentinel has no CAPCO
 /// §-citation by construction (Constitution VIII requires a real
 /// passage; R002 is engine-internal guidance, not a CAPCO rule). Uses
-/// [`marque_rules::AuthoritativeSource::EngineInternal`]. Display
+/// [`marque_scheme::AuthoritativeSource::EngineInternal`]. Display
 /// renders as `[engine-internal]`.
 ///
 /// PR 3c.2.C C5 migrated this from `&'static str` → typed `Citation`
-/// atomically with the `Diagnostic.citation` field-type flip.
-const R002_CITATION_TYPED: marque_rules::Citation = marque_rules::Citation::new(
-    marque_rules::AuthoritativeSource::EngineInternal,
-    marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+/// atomically with the `Diagnostic.citation` field-type flip. PR 10.A.1
+/// Commit 4 retargeted the import path from `marque_rules::Citation`
+/// to the canonical `marque_scheme::Citation` when the back-compat
+/// re-export was deleted.
+const R002_CITATION_TYPED: marque_scheme::Citation = marque_scheme::Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
     // Niche-sentinel page value — never rendered (Display elides
     // section/page when source is non-CAPCO).
     match core::num::NonZeroU16::new(1) {
@@ -5313,11 +5318,13 @@ mod tests {
     use marque_ism::CanonicalAttrs;
     use marque_rules::audit::AppliedFix;
     use marque_rules::{
-        AuthoritativeSource, Citation, Diagnostic, FixIntent, FixSource, Message, MessageArgs,
-        MessageTemplate, Rule, RuleContext, RuleId, RuleSet, SectionLetter, SectionRef, Severity,
+        Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule, RuleContext,
+        RuleId, RuleSet, Severity,
     };
-    use marque_scheme::ReplacementIntent;
     use marque_scheme::fix_intent::RecanonScope;
+    use marque_scheme::{
+        AuthoritativeSource, Citation, ReplacementIntent, SectionLetter, SectionRef,
+    };
     use secrecy::ExposeSecret as _;
     use std::time::{Duration, UNIX_EPOCH};
 

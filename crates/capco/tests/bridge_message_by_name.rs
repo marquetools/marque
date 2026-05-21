@@ -344,7 +344,7 @@ fn message_by_name_class_floor_unknown_label_returns_none() {
 /// at §H.4 p60 (SCI section start).
 #[test]
 fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     let scheme = CapcoScheme::new();
     let row = scheme
         .constraints()
@@ -364,7 +364,7 @@ fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
 /// Mirror of the class-floor test for the SCI per-system catalog.
 #[test]
 fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     let scheme = CapcoScheme::new();
     let row = scheme
         .constraints()
@@ -386,7 +386,7 @@ fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
 /// typed Citation `label`.
 #[test]
 fn class_floor_passthrough_carries_engine_internal_citation() {
-    use marque_rules::AuthoritativeSource;
+    use marque_scheme::AuthoritativeSource;
     let scheme = CapcoScheme::new();
     let row = scheme
         .constraints()

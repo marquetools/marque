@@ -12,9 +12,9 @@
 //! catalog — DAG-sibling rows whose declaration order seeds Kahn's
 //! algorithm with the right cohort ordering.
 
-use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::predicates::{les_nf_classified_trigger, sbu_nf_classified_trigger};

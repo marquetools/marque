@@ -60,8 +60,7 @@
 //! row-name severity overrides); they are not re-derived from any other
 //! authority here.
 
-use marque_scheme::{FactBitmask, Severity};
-use marque_rules::{Citation, SectionLetter, capco, capco_table};
+use marque_scheme::{Citation, FactBitmask, SectionLetter, Severity, capco, capco_table};
 
 use crate::fact_bitmask::{
     MASK_FDR_DOMINATORS, MASK_FDR_OR_RELIDO_INCOMPAT, MASK_RELIDO_US_CLASS_SUPPRESSORS, fact_bit,

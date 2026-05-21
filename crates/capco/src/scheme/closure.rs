@@ -48,8 +48,7 @@
 //! into the single `CLOSURE_NOFORN_CAVEATED` row that PR-D then
 //! retired into the `CLOSURE_TABLE` Row 0.
 
-use marque_scheme::{ClosureRule, FactRef, Severity, TokenRef};
-use marque_rules::{SectionLetter, capco};
+use marque_scheme::{ClosureRule, FactRef, SectionLetter, Severity, TokenRef, capco};
 use smallvec::{SmallVec, smallvec};
 
 use super::*;

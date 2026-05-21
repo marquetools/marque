@@ -462,7 +462,7 @@ pub(crate) fn evaluate_custom_by_attrs(
     match name {
         "E010/HCS-system-constraints" => hcs_system_constraints(
             attrs,
-            marque_rules::capco(marque_rules::SectionLetter::H, 4, 62),
+            marque_scheme::capco(marque_scheme::SectionLetter::H, 4, 62),
         ),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),

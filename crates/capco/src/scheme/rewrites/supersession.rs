@@ -41,9 +41,9 @@
 //! through `scheme.project(Scope::Page, ...)` exercising the
 //! lattice helper.
 
-use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::*;

@@ -58,8 +58,7 @@
 //! PR.
 
 use marque_ism::canonical::CanonicalAttrs;
-use marque_rules::{SectionLetter, Severity, capco};
-use marque_scheme::{ConstraintViolation, TokenRef};
+use marque_scheme::{ConstraintViolation, SectionLetter, Severity, TokenRef, capco};
 
 use crate::fact_bitmask::fact_bit;
 

@@ -369,7 +369,7 @@ impl CapcoScheme {
     ///
     /// [`fix_intent_by_name`]: Self::fix_intent_by_name
     /// [`MessageTemplate`]: marque_rules::MessageTemplate
-    /// [`Citation`]: marque_rules::Citation
+    /// [`Citation`]: marque_scheme::Citation
     pub fn message_by_name(
         &self,
         name: &str,
@@ -489,17 +489,21 @@ impl CapcoScheme {
     /// O(27) linear lookup for a `ClassFloorRow` by `name`. The
     /// catalog has 27 rows; the linear scan is faster than a
     /// `&'static phf::Map` build-time cost for this size. Used by
-    /// [`message_by_name`](Self::message_by_name) and
-    /// [`citation_by_name`](Self::citation_by_name) — the bridge
-    /// hook from `marque-engine`'s `bridge_constraint_diagnostic` —
-    /// to surface per-row [`MessageTemplate`](marque_rules::MessageTemplate)
-    /// + [`Citation`](marque_rules::Citation) on emission.
+    /// [`message_by_name`](Self::message_by_name) — the bridge hook
+    /// from `marque-engine`'s `bridge_constraint_diagnostic` — to
+    /// surface per-row [`MessageTemplate`](marque_rules::MessageTemplate)
+    /// on emission. (PR 10.A.1 retired the companion
+    /// `citation_by_name` lookup: typed
+    /// [`Citation`](marque_scheme::Citation) now flows verbatim from
+    /// the catalog row through the evaluator into
+    /// `ConstraintViolation.citation`, so a per-name citation lookup
+    /// is no longer needed.)
     ///
     /// Returns `None` when `name` doesn't match any row — typically
     /// indicates a stale label in the engine's constraint catalog
     /// or a typo in a new row's `name` field. The bridge falls back
-    /// to a generic template + sentinel citation in that case (the
-    /// pre-PR-3c.2.C-C7 behavior).
+    /// to a generic template in that case (the pre-PR-3c.2.C-C7
+    /// behavior).
     fn find_class_floor_row(&self, name: &str) -> Option<&'static super::ClassFloorRow> {
         super::CLASS_FLOOR_CATALOG.iter().find(|r| r.name == name)
     }

@@ -10,8 +10,7 @@
 //! `rewrites.rs` per the issue #466 Stage 2 PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
-use marque_scheme::{CategoryAction, CategoryPredicate, PageRewrite};
-use marque_rules::{SectionLetter, capco};
+use marque_scheme::{CategoryAction, CategoryPredicate, PageRewrite, SectionLetter, capco};
 
 use super::super::actions::noop_action;
 use super::super::predicates::never_fires;

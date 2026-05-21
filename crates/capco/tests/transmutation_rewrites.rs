@@ -41,8 +41,9 @@ use marque_capco::scheme::{
 };
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_rules::{SectionLetter, capco};
-use marque_scheme::{CategoryAction, CategoryPredicate, MarkingScheme, PageRewrite};
+use marque_scheme::{
+    CategoryAction, CategoryPredicate, MarkingScheme, PageRewrite, SectionLetter, capco,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

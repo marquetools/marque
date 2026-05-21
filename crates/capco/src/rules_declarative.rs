@@ -31,9 +31,10 @@
 
 use marque_ism::{CanonicalAttrs, TokenKind};
 use marque_rules::{
-    Citation, Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase,
-    Rule, RuleContext, RuleId, SectionLetter, Severity, capco,
+    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    RuleContext, RuleId, Severity,
 };
+use marque_scheme::{Citation, SectionLetter, capco};
 
 use crate::scheme::CapcoScheme;
 

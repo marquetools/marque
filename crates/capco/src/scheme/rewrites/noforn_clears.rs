@@ -22,9 +22,9 @@
 //! Lifted from the monolithic `rewrites.rs` per the issue #466
 //! Stage 2 PR A leaf split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
-use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::*;

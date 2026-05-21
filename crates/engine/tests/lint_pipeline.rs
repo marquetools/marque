@@ -162,7 +162,7 @@ fn diagnostic_carries_citation() {
     // by construction (every `Diagnostic` has a `Citation` field).
     assert_eq!(
         e002.citation.document,
-        marque_rules::AuthoritativeSource::Capco2016,
+        marque_scheme::AuthoritativeSource::Capco2016,
         "FR-003: E002 diagnostic must cite CAPCO-2016; got: {:?}",
         e002.citation,
     );

@@ -11,9 +11,9 @@
 //! UCNI pair so the promote predicate sees UCNI before the strip
 //! removes it.
 
-use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::actions::{strip_dod_ucni_action, strip_doe_ucni_action};

@@ -14,10 +14,10 @@
 //! (the parent module's `pub use self::adapter::CapcoScheme` re-export).
 
 use super::actions::*;
-use marque_rules::{SectionLetter, capco};
 use super::predicates::*;
 use super::*;
 use crate::fact_bitmask::fact_bit;
+use marque_scheme::{SectionLetter, capco};
 
 // ===========================================================================
 // PR 3b.E (T026e) — SCI per-system catalog (§H.4)
@@ -185,7 +185,7 @@ pub(crate) struct SciPerSystemRow {
     /// The engine's constraint-catalog bridge reads it directly; the
     /// `Citation` `Display` impl produces the `§<L>.<sub> p<page>`
     /// canonical form when emitted into diagnostics.
-    pub(crate) citation: marque_rules::Citation,
+    pub(crate) citation: marque_scheme::Citation,
 }
 
 // ---------------------------------------------------------------------------

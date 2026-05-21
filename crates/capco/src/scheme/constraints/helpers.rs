@@ -17,12 +17,12 @@
 //! [`FactBitmask`]: marque_scheme::FactBitmask
 
 use super::super::actions::emit_companion_required;
-use marque_rules::{SectionLetter, capco};
 use super::super::predicates::{
     class_floor_anchor_span, class_floor_satisfied, rel_to_covers, token_span_attrs,
 };
 use super::super::*;
 use marque_ism::TokenKind;
+use marque_scheme::{SectionLetter, capco};
 use marque_scheme::{Severity, Span, TokenRef};
 
 // ---------------------------------------------------------------------------

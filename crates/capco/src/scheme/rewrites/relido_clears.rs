@@ -74,9 +74,9 @@
 //! (`IntentInapplicable`, silent), so pages without RELIDO
 //! experience no effect.
 
-use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryId, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::{

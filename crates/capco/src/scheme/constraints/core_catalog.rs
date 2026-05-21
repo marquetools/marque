@@ -12,8 +12,7 @@
 //! tiebreakers; the entries below preserve the exact pre-split
 //! ordering.
 
-use marque_scheme::{Constraint, Severity, TokenRef};
-use marque_rules::{SectionLetter, capco};
+use marque_scheme::{Constraint, SectionLetter, Severity, TokenRef, capco};
 
 use super::super::*;
 

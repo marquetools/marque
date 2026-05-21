@@ -9,8 +9,7 @@
 //!
 //! Row order preserved verbatim from the pre-split catalog.
 
-use marque_scheme::Constraint;
-use marque_rules::{SectionLetter, capco};
+use marque_scheme::{Constraint, SectionLetter, capco};
 
 // ================================================================
 // PR 3b.E (T026e) — SCI per-system catalog (§H.4)

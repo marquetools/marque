@@ -53,10 +53,8 @@ use std::time::SystemTime;
 use marque_capco::CapcoScheme;
 use marque_rules::{
     AuditNote, AuditNoteKind, AuditNoteStructural, Confidence, EnginePromotionToken, RuleId,
-    SectionLetter, capco,
 };
-use marque_scheme::Span;
-use marque_scheme::{Scope, TokenId, TokenRef};
+use marque_scheme::{Scope, SectionLetter, Span, TokenId, TokenRef, capco};
 
 /// Smoke test: construct a synthetic `AuditNote` via the sealed
 /// `__engine_promote` constructor and verify (a) construction succeeds,

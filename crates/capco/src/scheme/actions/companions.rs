@@ -42,7 +42,7 @@ pub(crate) fn emit_companion_insert(
     fix_scope: marque_scheme::Scope,
     token: &str,
     message: marque_rules::Message,
-    citation: marque_rules::Citation,
+    citation: marque_scheme::Citation,
 ) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_rules::{
         Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,

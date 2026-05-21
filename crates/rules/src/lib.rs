@@ -77,7 +77,9 @@ pub mod fix_intent;
 pub mod message;
 
 use marque_ism::CanonicalAttrs;
-use marque_scheme::{MarkingScheme, Span};
+use marque_scheme::{
+    AuthoritativeSource, Citation, MarkingScheme, SectionLetter, SectionRef, Span,
+};
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -87,16 +89,6 @@ pub use audit::{
     Discriminant,
 };
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
-// PR 10.A.1: `Citation` and related types moved to `marque-scheme` so the
-// scheme-level catalog row types (`Constraint.label`, `PageRewrite.citation`,
-// `ClosureRule.label`, `ConstraintViolation.citation`) can carry typed
-// citations without inverting the crate dependency graph. Re-exported here
-// so existing `marque_rules::Citation` imports continue to resolve through
-// the historical path.
-pub use marque_scheme::{
-    AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
-    capco_table,
-};
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
 // Re-export `SmallVec` + the `smallvec!` macro so external consumers

@@ -12,7 +12,7 @@
 //! the `Classification` / `TokenKind` types directly from `marque_ism`.
 
 use marque_ism::{Classification, TokenKind};
-use marque_rules::{Citation, SectionLetter, capco};
+use marque_scheme::{Citation, SectionLetter, capco};
 
 use crate::fact_bitmask::fact_bit;
 
@@ -115,18 +115,18 @@ pub(crate) struct ClassFloorRow {
     /// the catalog declaration is now structurally constructed via
     /// `capco(...)` / `capco_section(...)` / `capco_table(...)`, and
     /// the engine's constraint-catalog bridge reads this field
-    /// directly. Display via the [`Citation`](marque_rules::Citation)
+    /// directly. Display via the [`Citation`](marque_scheme::Citation)
     /// `Display` impl produces the canonical `§<L>.<sub> p<page>`
     /// form when emitted into diagnostics.
     ///
     /// Passthrough rows (`passthrough: true`) use
-    /// [`AuthoritativeSource::EngineInternal`](marque_rules::AuthoritativeSource::EngineInternal)
+    /// [`AuthoritativeSource::EngineInternal`](marque_scheme::AuthoritativeSource::EngineInternal)
     /// because their citation references `marque-applied.md Section 3.7`,
     /// the engine's own policy document — not a CAPCO-2016 anchor. The
     /// page number for passthrough rows is a synthetic `1` since
     /// marque-applied.md has no canonical page anchor; the stable
     /// identifier is the source kind, not the page.
-    pub(crate) citation: marque_rules::Citation,
+    pub(crate) citation: marque_scheme::Citation,
     /// True for the unknown-floor passthrough rows. Drives the
     /// diagnostic message variant (passthrough rows quote the §3.7
     /// passthrough-policy framing).
@@ -183,9 +183,9 @@ pub(crate) const PASSTHROUGH_CITATION: Citation = {
     // bare-section reference; the AuthoritativeSource::EngineInternal
     // Display arm drops both §/page entirely. The page value is
     // synthetic; pick `1` as the stable sentinel.
-    use marque_rules::SectionRef;
+    use marque_scheme::SectionRef;
     Citation::new(
-        marque_rules::AuthoritativeSource::EngineInternal,
+        marque_scheme::AuthoritativeSource::EngineInternal,
         SectionRef::new(SectionLetter::A),
         match core::num::NonZeroU16::new(1) {
             Some(p) => p,
