@@ -1817,9 +1817,10 @@ impl Engine {
                 if page_portions.is_empty() {
                     page_join_acc = attrs.clone();
                 } else {
-                    page_join_acc = marque_capco::CapcoMarking::join_via_lattice(
-                        &[std::mem::take(&mut page_join_acc), attrs.clone()],
-                    );
+                    page_join_acc = marque_capco::CapcoMarking::join_via_lattice(&[
+                        std::mem::take(&mut page_join_acc),
+                        attrs.clone(),
+                    ]);
                 }
                 if intent_emitted {
                     parsed_markings.push((
