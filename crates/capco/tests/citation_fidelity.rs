@@ -16,7 +16,7 @@
 //!
 //! ## Declared set
 //!
-//! Three sources contribute:
+//! Four sources contribute:
 //!
 //! 1. `scheme.constraints()` — every `Constraint::label()` value.
 //! 2. `scheme.page_rewrites()` — every `PageRewrite::citation` value.
@@ -24,6 +24,19 @@
 //!    value (the `label` field rendered through the metadata view).
 //! 4. `ruleset.rules()` — every `Rule::cited_authorities()` slice
 //!    union'd across registered rules.
+//!
+//! ## Adding a fixture vs. a whitelist entry
+//!
+//! When the gate fails with assertion (a) — declared citation with
+//! no corpus coverage — the default response is to add a fixture
+//! under `tests/corpus/{valid,invalid,foreign,lattice,mangled}/`
+//! that exercises the cited authority. The corpus tree's fixture-
+//! add procedure (frontmatter requirements, sidecar `.expected.json`
+//! shape, §-citation re-verification) lives in
+//! `tests/corpus/CORPUS_CONTRACT.md`. Only when the citation is
+//! provably unreachable from any fixture (one of the structural
+//! reasons in the whitelist contract below) should the response be
+//! an `EXPECTED_UNCOVERED` carve-out instead.
 //!
 //! ## Harvested set
 //!
@@ -88,10 +101,13 @@ use marque_scheme::{
 /// documented in `docs/refactor-006/citation-coverage-report.md`.
 /// Two synthetic sentinels (`[config]` / `[engine-internal]`), one
 /// cross-reference pin (`§D.1 p27`), one data-dependent rule trigger
-/// gap (`§F p35` — no dissem entries in MIGRATIONS), one parser-
-/// interaction follow-up (`§H.6 p120` — FRD/TFNI commingling), and
-/// six PageRewrite citations whose enforcement is projection-time
-/// only with no `Diagnostic` emission.
+/// gap (`§F p35` — no dissem entries in MIGRATIONS), one engine-
+/// bridge structural suppression (`§H.6 p120` — E070 emits a
+/// `ConstraintViolation` with `span: None, severity: None`, which
+/// the bridge silently drops; tracked at
+/// [issue #661](https://github.com/marquetools/marque/issues/661)),
+/// and six PageRewrite citations whose enforcement is projection-
+/// time only with no `Diagnostic` emission.
 const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
     // Synthetic non-CAPCO sentinels.
     (marque_rules::CORRECTIONS_MAP_CITATION, "config-sentinel"),
@@ -343,9 +359,15 @@ fn citation_coverage_probe() {
         }
     }
 
-    // Sort declared citations by Display form so output is reviewer-readable.
+    // Sort declared citations by native `Ord` (PR 10.A.2 review-fix
+    // Commit 8 added `Ord` + `PartialOrd` to `Citation` and its three
+    // component types). Lexicographic on
+    // `(AuthoritativeSource, SectionLetter, subsection, table, page)`
+    // — close enough to the Display form for reviewer-readability,
+    // and avoids the per-element `format!()` allocation of the prior
+    // `sort_by_key(|c| format!("{c}"))` workaround.
     let mut declared_sorted: Vec<Citation> = declared.into_iter().collect();
-    declared_sorted.sort_by_key(|c| format!("{c}"));
+    declared_sorted.sort();
 
     println!("=== Citation coverage probe ===");
     for cite in &declared_sorted {
@@ -383,6 +405,50 @@ fn corpus_directory_exists() {
         contract.is_file(),
         "corpus contract file {} not found",
         contract.display()
+    );
+}
+
+#[test]
+fn whitelist_anchors_exist_in_report() {
+    // Load-bearing 5-year property: every `(citation, anchor)` row in
+    // `EXPECTED_UNCOVERED` MUST resolve to a matching
+    // `<a id="..."></a>` fragment in
+    // `docs/refactor-006/citation-coverage-report.md`. Without this
+    // assertion, the whitelist silts up over time as report anchors
+    // get renamed, deleted, or never written — the test would still
+    // pass because the citation-side mechanics (in-set / not-harvested)
+    // hold, but a reviewer following the anchor would land on a
+    // missing target.
+    //
+    // Separated from `corpus_covers_every_declared_authority` so the
+    // failure mode is precisely diagnosed: a missing anchor is a
+    // documentation-side defect distinct from a coverage gap.
+    let report_path = workspace_root()
+        .join("docs")
+        .join("refactor-006")
+        .join("citation-coverage-report.md");
+    let report = fs::read_to_string(&report_path).unwrap_or_else(|e| {
+        panic!(
+            "citation coverage report must be readable at {}: {e}",
+            report_path.display()
+        )
+    });
+    let mut missing_anchors: Vec<&'static str> = Vec::new();
+    for (_cite, anchor) in EXPECTED_UNCOVERED {
+        let needle = format!("<a id=\"{anchor}\"></a>");
+        if !report.contains(&needle) {
+            missing_anchors.push(*anchor);
+        }
+    }
+    assert!(
+        missing_anchors.is_empty(),
+        "EXPECTED_UNCOVERED anchors with no matching <a id=\"...\"></a> \
+         in {}: {:?}\n\n\
+         Either add the missing anchor paragraph to the coverage report, \
+         or remove the EXPECTED_UNCOVERED row and add a fixture that \
+         covers the citation (see tests/corpus/CORPUS_CONTRACT.md).",
+        report_path.display(),
+        missing_anchors,
     );
 }
 

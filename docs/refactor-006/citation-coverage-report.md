@@ -16,13 +16,15 @@ corresponding `EXPECTED_UNCOVERED` row (and vice versa).
 
 | Component | Count |
 |-----------|-------|
-| `CapcoScheme::constraints()` | varies (see catalog) |
-| `CapcoScheme::page_rewrites()` | 27 declared |
-| `CapcoScheme::closure_rules()` | 10 declared |
+| `CapcoScheme::constraints()` | 46 declared |
+| `CapcoScheme::page_rewrites()` | 30 declared |
+| `CapcoScheme::closure_rules()` (residual fn-pointer catalog) | 1 declared |
 | Hand-written `Rule::cited_authorities()` overrides | 24 rules |
 | **Declared citations (unique)** | **55** |
 | **Harvested citations (over full corpus)** | **45** |
 | **`EXPECTED_UNCOVERED` whitelist** | **11** |
+
+> The 10-row bitmask `CLOSURE_TABLE` (see `crates/capco/src/scheme/closure_table.rs`) is iterated by `scheme.closure_inventory()` for tooling discovery, NOT by `scheme.closure_rules()`. The F.1 gate iterates `closure_rules()` (the residual fn-pointer catalog, 1 row); closure citations enter the declared set primarily through their bytewise-twin Rule `cited_authorities()` overrides (e.g., `S007`, `S008`).
 
 ## Whitelist contract
 
@@ -181,26 +183,41 @@ relative to PR 10.A.2.
 
 ### `§H.6 p120` — E070 FRD/TFNI precedence
 
-Property: (5) — Rule trigger conditions not exercisable via the
-current parser path for FRD+TFNI commingling.
+Property: (1) — Engine-bridge structural suppression (no
+`Diagnostic` emission for advisory `ConstraintViolation`s).
 
-The E070 predicate (`e070_frd_tfni_precedence` in
-`crates/capco/src/scheme/predicates/tier1_mask.rs`) fires when
-both AEA_FRD and AEA_TFNI bits are set on the same marking.
-Empirical probing during PR 10.A.2 authorship: `SECRET//FRD/TFNI`
-(banner form), `(S//FRD/TFNI//NOFORN)` (portion form), and
-several variants produced no E070 diagnostic — the parser routes
-the FRD/TFNI commingling through the structural AEA subparser
-in a way that either (a) drops one of the tokens before bitmask
-projection or (b) emits the bitmask but the predicate guard
-mismatches. Root-cause analysis is a parser/predicate
-investigation outside PR 10.A.2 scope.
+Root cause re-verified at PR 10.A.2 reviewer fix-pass: the
+predicate **does** fire correctly when both `AEA_FRD` and
+`AEA_TFNI` bits are present, but its emitted
+`ConstraintViolation` carries `span: None, severity: None` (see
+`crates/capco/src/scheme/predicates/tier1_mask.rs:215-234`). The
+engine bridge at `crates/engine/src/engine.rs:1640-1663` (entry
+point) and `engine.rs:2290-2312` (guard logic) requires both
+`span` and `severity` to be `Some` before producing a user-
+visible `Diagnostic`. Advisory violations are logged via
+`tracing::trace!` but never surface on the diagnostic stream —
+so no fixture can harvest §H.6 p120 today, by construction of
+the bridge.
 
-To remove this whitelist entry: investigate the AEA subparser's
-FRD+TFNI commingling shape against the §H.6 p120 grammar, add a
-parser fix or predicate adjustment, and author a fixture whose
-diagnostic stream carries the §H.6 p120 citation. Tracked as a
-follow-up to PR 10.A.2.
+The earlier hypothesis (parser routing gap) was incorrect; the
+predicate is structurally complete and the suppression is on
+the bridge side.
+
+To remove this whitelist entry, two paths exist:
+
+- **Path A (narrow):** populate `span` + `severity` on E070's
+  `ConstraintViolation` (lift the `token_span_attrs(...,
+  TokenRef::Token(...))` shape from sibling helpers like
+  `e024_rd_precedence`), then add a fixture exercising
+  `SECRET//FRD/TFNI` or `(S//FRD/TFNI//NOFORN)`.
+- **Path B (broad):** generalize the engine bridge to surface
+  advisory `(None span, None severity)` diagnostics as
+  informational entries — a behavior change with ripple impact
+  across every dyadic helper in `tier1_mask.rs`.
+
+Tracked in [issue #661](https://github.com/marquetools/marque/issues/661)
+(filed PR 10.A.2 reviewer fix-pass; supersedes the earlier
+closed-and-unrelated #578 pointer in `tier1_mask.rs:211-214`).
 
 <a id="h8-p134-fouo-eviction"></a>
 
@@ -208,12 +225,16 @@ follow-up to PR 10.A.2.
 
 Property: (1) — PageRewrite citation, no `Diagnostic` emission.
 
-Two PageRewrite rows at `crates/capco/src/scheme/rewrites/`
-declare §H.8 p134:
-`capco/classification-evicts-fouo` (classified-document
-sub-clause) and `capco/non-fdr-control-evicts-fouo`
-(UNCLASSIFIED-with-other-non-FD&R-control sub-clause). Both
-operate at projection time via `CapcoScheme::project(Scope::Page,
+Two PageRewrite rows in
+`crates/capco/src/scheme/rewrites/pattern_b.rs` declare §H.8
+p134 (search by row-name string, which is stable across edits):
+
+- `capco/classification-evicts-fouo` (classified-document
+  sub-clause, row 1 in `pattern_b_rows()`).
+- `capco/non-fdr-control-evicts-fouo` (UNCLASSIFIED-with-other-
+  non-FD&R-control sub-clause, row 2 in `pattern_b_rows()`).
+
+Both operate at projection time via `CapcoScheme::project(Scope::Page,
 ...)` — they mutate the projected `ProjectedMarking` (removing
 FOUO from the projected dissem set) but do not emit any
 diagnostic carrying §H.8 p134.
@@ -228,15 +249,25 @@ would be removed (assertion (c) firing).
 
 <a id="h8-p140-oc-usgov-supersession"></a>
 
-### `§H.8 p140` — OC-USGOV supersession PageRewrite
+### `§H.8 p140` — OC-USGOV clears RELIDO PageRewrite
 
 Property: (1) — PageRewrite citation, no `Diagnostic` emission.
 
-The §H.8 p140 anchor is carried by the OC-USGOV supersession
-overlay declared on the DissemSet lattice (see
-`crates/capco/src/lattice.rs::DissemSet::with_oc_usgov_supersession`)
-and surfaced via PageRewrite logic. Same architectural property
-as `§H.8 p134` — projection-time mutation only.
+The §H.8 p140 anchor is carried by the `capco/orcon-usgov-clears-relido`
+PageRewrite in
+`crates/capco/src/scheme/rewrites/relido_clears.rs` (within
+`relido_clears_rows()`; rule-id pin E057, pre-#559). Same
+architectural property as `§H.8 p134` — projection-time mutation
+only, no `Diagnostic` emission. The rewrite removes `TOK_RELIDO` from the page when
+`TOK_ORCON_USGOV` is present, per CAPCO-2016 §H.8 p140 (ORCON-
+USGOV entry, "Relationship(s) to Other Markings": ORCON-USGOV
+*"May not be used with RELIDO."*).
+
+Path correction during PR 10.A.2 reviewer fix-pass: the earlier
+entry pointed at a `DissemSet::with_oc_usgov_supersession`
+helper that does not exist (no such symbol in
+`crates/capco/src/lattice.rs`). The actual source of §H.8 p140
+is the PageRewrite row above.
 
 <a id="h9-p170-limdis-eviction"></a>
 
@@ -244,12 +275,12 @@ as `§H.8 p134` — projection-time mutation only.
 
 Property: (1) — PageRewrite citation, no `Diagnostic` emission.
 
-`capco/limdis-evicted-by-classified` PageRewrite at
-`crates/capco/src/scheme/rewrites/pattern_c.rs`. Operates at
-projection time; the engine harvests the W003 diagnostic at
-§H.9 p169 (`NonIcInClassifiedBannerRule`) for the same
-underlying violation, so the user gets a diagnostic — just not
-one carrying §H.9 p170.
+`capco/limdis-evicted-by-classified` PageRewrite (row 1) in
+`crates/capco/src/scheme/rewrites/pattern_c.rs::pattern_c_rows()`.
+Operates at projection time; the engine harvests the W003
+diagnostic at §H.9 p169 (`NonIcInClassifiedBannerRule`) for the
+same underlying violation, so the user gets a diagnostic — just
+not one carrying §H.9 p170.
 
 <a id="h9-p176-sbu-eviction"></a>
 
@@ -257,10 +288,12 @@ one carrying §H.9 p170.
 
 Property: (1) — PageRewrite citation, no `Diagnostic` emission.
 
-Companion to §H.9 p170; same architectural property. W003 at
-§H.9 p169 surfaces the SBU-in-classified-banner violation; the
-PageRewrite's §H.9 p176 anchor is the catalog declaration
-visible to tooling.
+Companion to §H.9 p170; same architectural property.
+`capco/sbu-evicted-by-classified` PageRewrite (row 2) in
+`crates/capco/src/scheme/rewrites/pattern_c.rs::pattern_c_rows()`.
+W003 at §H.9 p169 surfaces the SBU-in-classified-banner
+violation; the PageRewrite's §H.9 p176 anchor is the catalog
+declaration visible to tooling.
 
 <a id="h9-p178-sbu-nf-supersession"></a>
 
@@ -269,9 +302,18 @@ visible to tooling.
 Property: (1) — PageRewrite citation, no `Diagnostic` emission.
 
 Two PageRewrite rows declare §H.9 p178:
-`capco/sbu-nf-implies-noforn` (pattern_a) and a corresponding
-supersession row. Both are projection-time rewrites that the
-renderer reflects in canonical output; no diagnostic emission.
+
+- `capco/sbu-nf-implies-noforn` in
+  `crates/capco/src/scheme/rewrites/pattern_a.rs` (NOFORN
+  injection on SBU-NF presence — search by row-name string,
+  which is stable across edits).
+- `capco/sbu-nf-supersedes-sbu` in
+  `crates/capco/src/scheme/rewrites/supersession.rs` (within
+  `supersession_rows()`; drops bare `SBU` when `SBU-NF` is also
+  present).
+
+Both are projection-time rewrites that the renderer reflects in
+canonical output; no diagnostic emission.
 
 <a id="h9-p185-les-nf-supersession"></a>
 
@@ -280,9 +322,18 @@ renderer reflects in canonical output; no diagnostic emission.
 Property: (1) — PageRewrite citation, no `Diagnostic` emission.
 
 Companion to §H.9 p178 for the LES-NF supersession family. Two
-PageRewrite rows declare §H.9 p185
-(`capco/les-nf-implies-noforn` and a supersession row in
-pattern_a). Same architectural property as the SBU-NF entry.
+PageRewrite rows declare §H.9 p185:
+
+- `capco/les-nf-implies-noforn` in
+  `crates/capco/src/scheme/rewrites/pattern_a.rs` (NOFORN
+  injection on LES-NF presence — search by row-name string,
+  which is stable across edits).
+- `capco/les-nf-supersedes-les` in
+  `crates/capco/src/scheme/rewrites/supersession.rs` (within
+  `supersession_rows()`; drops bare `LES` when `LES-NF` is also
+  present).
+
+Same architectural property as the SBU-NF entry.
 
 ## Removing a whitelist entry
 
