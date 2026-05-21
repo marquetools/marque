@@ -84,8 +84,7 @@ fn s010_does_not_fire_when_off_by_default() {
 #[test]
 fn s010_fires_when_single_portion_matches_banner() {
     let engine = engine_with_s010();
-    let result =
-        engine.lint(b"SECRET//REL TO USA, GBR\n(S//REL TO USA, GBR) paragraph text");
+    let result = engine.lint(b"SECRET//REL TO USA, GBR\n(S//REL TO USA, GBR) paragraph text");
     let diags = s010_diags(&result);
     assert_eq!(
         diags.len(),
@@ -163,8 +162,7 @@ fn s010_no_fire_when_any_portion_diverges() {
 fn s010_no_fire_when_no_explicit_rel_to_portions() {
     let engine = engine_with_s010();
     // Portions have bare REL (no explicit list) — nothing to collapse.
-    let result = engine
-        .lint(b"SECRET//REL TO USA, GBR\n(S//REL) paragraph");
+    let result = engine.lint(b"SECRET//REL TO USA, GBR\n(S//REL) paragraph");
     let diags = s010_diags(&result);
     assert!(
         diags.is_empty(),
@@ -199,8 +197,7 @@ fn s010_no_fire_when_noforn_present() {
 #[test]
 fn s010_replacement_is_exactly_rel() {
     let engine = engine_with_s010();
-    let result =
-        engine.lint(b"TOP SECRET//REL TO USA, AUS, CAN\n(TS//REL TO USA, AUS, CAN) para");
+    let result = engine.lint(b"TOP SECRET//REL TO USA, AUS, CAN\n(TS//REL TO USA, AUS, CAN) para");
     let diags = s010_diags(&result);
     assert!(!diags.is_empty(), "expected S010 to fire; got {diags:?}");
     let tc = diags[0]
@@ -212,5 +209,36 @@ fn s010_replacement_is_exactly_rel() {
         "REL",
         "replacement must be exactly 'REL' (not 'REL TO ...'): got {:?}",
         tc.replacement,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tetragraph in portion expands to match trigraph-form banner
+// ---------------------------------------------------------------------------
+
+#[test]
+fn s010_fires_when_portion_uses_tetragraph_matching_banner_trigraphs() {
+    let engine = engine_with_s010();
+    // Banner spells out the FVEY members as individual trigraphs.
+    // Portion uses the FVEY tetragraph — after expansion both sides are
+    // {AUS, CAN, GBR, NZL, USA}, so the rule must fire.
+    let result = engine.lint(
+        b"SECRET//REL TO USA, AUS, CAN, GBR, NZL\n\
+          (S//REL TO USA, FVEY) fvey portion",
+    );
+    let diags = s010_diags(&result);
+    assert_eq!(
+        diags.len(),
+        1,
+        "S010 must fire when tetragraph-expanded portion matches banner; got {diags:?}",
+    );
+    assert_eq!(
+        diags[0]
+            .text_correction
+            .as_ref()
+            .expect("must carry text_correction")
+            .replacement
+            .as_str(),
+        "REL",
     );
 }

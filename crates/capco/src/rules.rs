@@ -114,7 +114,7 @@
 //!   S010 = collapse-uniform-rel-portions — suggest bare REL when all
 //!           portions carry the same REL TO list as the banner
 //!           (issue #251, §H.8 p150). Default: Off.
-//!   E072 = bare-rel-portion-divergence — error when bare-REL and explicit-
+//!   E072 = bare-rel-portion-divergence — warns when bare-REL and explicit-
 //!           REL-TO portions coexist with an inconsistent list
 //!           (issue #251, §H.8 p150-151). Default: Warn.
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -4367,8 +4367,7 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
         }
 
         // O(1)-lookup set for membership tests.
-        let rel_to_codes: HashSet<&str> =
-            attrs.rel_to.iter().map(|c| c.as_str()).collect();
+        let rel_to_codes: HashSet<&str> = attrs.rel_to.iter().map(|c| c.as_str()).collect();
 
         // Find decomposable tetragraphs (non-empty member slice per ISMCAT)
         // whose full member set is covered by the current REL TO list.
@@ -4394,9 +4393,7 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
 
         // Greedy set cover: largest-member-set first, alpha tie-break.
         // Larger groups preferred (FVEY 5-member over ACGU 4-member).
-        candidates.sort_unstable_by(|a, b| {
-            b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(b.0))
-        });
+        candidates.sort_unstable_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(b.0)));
 
         // `collapsed` tracks non-USA trigraphs absorbed into a selected
         // tetragraph. USA is intentionally excluded — §H.8 p150 worked
@@ -4552,6 +4549,29 @@ impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
     }
 }
 
+/// Expand a REL TO list into an atomic set of trigraphs.
+///
+/// Tetragraph codes in `rel_to` (e.g. `FVEY`, `NATO`) are replaced by their
+/// member trigraphs. Opaque tetragraphs with no published membership (e.g.
+/// `EU`) pass through unchanged. This normalises both the banner-projected
+/// set and per-portion sets to a common representation before comparison, so
+/// `(S//REL TO USA, FVEY)` and `(S//REL TO USA, AUS, CAN, GBR, NZL)` are
+/// treated as equivalent.
+fn expand_rel_to_atomic(codes: &[marque_ism::CountryCode]) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for code in codes {
+        let s = code.as_str();
+        if let Some(members) = crate::vocab::expand_tetragraph(s) {
+            for m in members {
+                out.insert((*m).to_owned());
+            }
+        } else {
+            out.insert(s.to_owned());
+        }
+    }
+    out
+}
+
 fn check_collapse_uniform_rel_portions(
     _attrs: &CanonicalAttrs,
     ctx: &RuleContext,
@@ -4575,8 +4595,7 @@ fn check_collapse_uniform_rel_portions(
     if any_noforn {
         return Vec::new();
     }
-    let banner_set: std::collections::BTreeSet<&str> =
-        page_mark.rel_to.iter().map(|c| c.as_str()).collect();
+    let banner_set = expand_rel_to_atomic(&page_mark.rel_to);
     let explicit_portions: Vec<&CanonicalAttrs> =
         portions.iter().filter(|p| !p.rel_to.is_empty()).collect();
     if explicit_portions.is_empty() {
@@ -4584,8 +4603,7 @@ fn check_collapse_uniform_rel_portions(
     }
     // Gate: EVERY explicit-REL-TO portion must match the banner list.
     let all_match = explicit_portions.iter().all(|p| {
-        let portion_set: std::collections::BTreeSet<&str> =
-            p.rel_to.iter().map(|c| c.as_str()).collect();
+        let portion_set = expand_rel_to_atomic(&p.rel_to);
         portion_set == banner_set
     });
     if !all_match {
@@ -4694,15 +4712,13 @@ fn check_bare_rel_portion_divergence(
     if !has_bare_rel {
         return Vec::new();
     }
-    let banner_set: std::collections::BTreeSet<&str> =
-        page_mark.rel_to.iter().map(|c| c.as_str()).collect();
+    let banner_set = expand_rel_to_atomic(&page_mark.rel_to);
     let mut diagnostics = Vec::new();
     for portion in portions {
         if portion.rel_to.is_empty() {
             continue;
         }
-        let portion_set: std::collections::BTreeSet<&str> =
-            portion.rel_to.iter().map(|c| c.as_str()).collect();
+        let portion_set = expand_rel_to_atomic(&portion.rel_to);
         if portion_set == banner_set {
             continue;
         }

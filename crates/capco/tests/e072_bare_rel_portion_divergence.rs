@@ -211,8 +211,7 @@ fn e072_no_fire_when_only_bare_rel_portions() {
     let engine = engine_default();
     // All portions are bare REL — no explicit REL TO list to form an
     // intersection against, so page_mark.rel_to is empty and the rule bails.
-    let result =
-        engine.lint(b"SECRET//REL TO USA, GBR\n(S//REL) first\n(S//REL) second");
+    let result = engine.lint(b"SECRET//REL TO USA, GBR\n(S//REL) first\n(S//REL) second");
     let diags = e072_diags(&result);
     assert!(
         diags.is_empty(),

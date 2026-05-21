@@ -85,7 +85,11 @@ fn s009_collapses_fvey_members_in_portion() {
     let engine = engine_with_s009();
     let result = engine.lint(b"(S//REL TO USA, AUS, CAN, GBR, NZL)");
     let diags = s009_diags(&result);
-    assert_eq!(diags.len(), 1, "expected exactly one S009 diagnostic; got {diags:?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly one S009 diagnostic; got {diags:?}"
+    );
     let d = &diags[0];
     assert_eq!(d.severity, Severity::Suggest);
     // Replacement should be the compact FVEY form.
@@ -106,7 +110,11 @@ fn s009_collapses_fvey_members_in_banner() {
     let engine = engine_with_s009();
     let result = engine.lint(b"SECRET//REL TO USA, AUS, CAN, GBR, NZL");
     let diags = s009_diags(&result);
-    assert_eq!(diags.len(), 1, "expected one S009 for banner; got {diags:?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected one S009 for banner; got {diags:?}"
+    );
     let tc = diags[0]
         .text_correction
         .as_ref()

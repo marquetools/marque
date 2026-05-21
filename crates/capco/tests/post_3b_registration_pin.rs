@@ -41,7 +41,7 @@
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 25` (post-issue-#261 + post-PR-5;
+//! `rule_set.rules().len() == 28` (post-issue-#261 + post-PR-5;
 //! the count rolls forward in lock-step with this test as rules land
 //! or retire — see the running-count derivation comment in
 //! `corpus_parity.rs::rule_count_reflects_registration_changes`).
