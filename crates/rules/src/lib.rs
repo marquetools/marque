@@ -1145,36 +1145,68 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
 
     /// Authoritative-source citations this rule relies on and/or may emit.
     ///
+    /// Covers two disjoint categories:
+    ///
+    /// - **Emitted citations** — every `Citation` the rule constructs
+    ///   on `Diagnostic.citation` from its `check()` body. These
+    ///   surface in `Engine::lint()` output and are harvestable from
+    ///   the corpus.
+    /// - **Non-emitted cross-reference pins** — §-citations the
+    ///   rule's logic depends on but never surfaces as a
+    ///   `Diagnostic.citation` (e.g. E005's `§D.1 p27` entry, which
+    ///   authorizes the rule's class-floor predicate without being
+    ///   emitted). These are load-bearing for Constitution VIII
+    ///   audit traceability: a future maintainer reading the rule's
+    ///   `cited_authorities()` MUST see every authoritative passage
+    ///   the rule's correctness rests on, not only the ones the
+    ///   diagnostic emits.
+    ///
     /// Used by the PR 10.A.2 F.1 corpus-fidelity gate
     /// (`crates/capco/tests/citation_fidelity.rs`) to cross-check the
-    /// declared catalog against what the engine actually emits over the
-    /// corpus:
+    /// declared catalog against what the engine actually emits over
+    /// the corpus. The gate runs in both directions:
     ///
-    /// 1. The harvested set (`union(Diagnostic.citation)` across every
-    ///    fixture's `Engine::lint()` output) MUST be a subset of the
-    ///    declared set (catalog rows ∪ rule declarations). Catches rules
-    ///    that emit citations they didn't declare.
-    /// 2. The declared set MUST be a subset of the harvested set (modulo
-    ///    a documented `EXPECTED_UNCOVERED` whitelist). Catches rules
-    ///    whose declared citations are dead — no fixture exercises them.
+    /// 1. **Harvested ⊆ declared ∪ engine_emitted.** The harvested
+    ///    set (`union(Diagnostic.citation)` across every fixture's
+    ///    `Engine::lint()` output) MUST be a subset of the declared
+    ///    set (catalog rows ∪ rule declarations), modulo a small
+    ///    closed allow-list of engine-internal citations (R001 / R002).
+    ///    Catches rules that emit citations they didn't declare.
+    /// 2. **Declared ⊆ harvested ∪ whitelist.** The declared set
+    ///    MUST be a subset of the harvested set, modulo a documented
+    ///    `EXPECTED_UNCOVERED` whitelist
+    ///    (`docs/refactor-006/citation-coverage-report.md`). The
+    ///    whitelist exists *because* non-emitted cross-reference pins
+    ///    are legitimate — each whitelist entry is anchor-tagged with
+    ///    the reason the declared citation does not surface
+    ///    (intentional cross-reference, advisory suppression, etc.).
+    ///    A whitelist entry is not a bug; an *un-whitelisted* missing
+    ///    citation IS.
     ///
-    /// The default `&[]` is forward-compatible: rules that emit at most
-    /// one `Diagnostic.citation` value matching their primary catalog
-    /// row don't need to override, because their citation flows through
-    /// the `Constraint`/`PageRewrite`/`ClosureRule` catalog declaration
-    /// the bridge synthesizes. Override on every rule whose `check()`
-    /// constructs a `Citation` value directly (the typical hand-written
-    /// rule shape under `crates/capco/src/rules.rs`).
+    /// The default `&[]` is forward-compatible: rules that emit at
+    /// most one `Diagnostic.citation` value matching their primary
+    /// catalog row don't need to override, because their citation
+    /// flows through the `Constraint`/`PageRewrite`/`ClosureRule`
+    /// catalog declaration the bridge synthesizes.
     ///
-    /// Walker-style rules (e.g. `BannerMatchesProjectedRule`) MUST list
-    /// the union of per-row citations emitted under any per-row
+    /// Override on every rule that:
+    /// - constructs a `Citation` value directly inside `check()`
+    ///   (the typical hand-written rule shape under
+    ///   `crates/capco/src/rules.rs`), **or**
+    /// - depends on a §-citation that authorizes its logic but is
+    ///   never surfaced in any diagnostic (declare it here so the
+    ///   audit chain is complete).
+    ///
+    /// Walker-style rules (e.g. `BannerMatchesProjectedRule`) MUST
+    /// list the union of per-row citations emitted under any per-row
     /// `rule_id`, because the F.1 gate harvests by
     /// `Diagnostic.citation` not by `Rule::id()`.
     ///
-    /// Constitution VIII (Authoritative Source Fidelity): every entry
-    /// MUST trace to a real CAPCO-2016 passage (or the appropriate
-    /// authoritative source for the rule's scheme) re-verified against
-    /// the primary source at the point of declaration.
+    /// Constitution VIII (Authoritative Source Fidelity): every
+    /// entry — emitted or non-emitted cross-reference — MUST trace
+    /// to a real CAPCO-2016 passage (or the appropriate
+    /// authoritative source for the rule's scheme) re-verified
+    /// against the primary source at the point of declaration.
     fn cited_authorities(&self) -> &'static [marque_scheme::Citation] {
         &[]
     }
