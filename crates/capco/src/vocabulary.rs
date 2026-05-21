@@ -22,10 +22,12 @@
 //! `CapcoScheme::Token = TokenId` — opaque numeric ids assigned
 //! per-sentinel in `crate::scheme`. The active sentinel set today
 //! is the small hand-curated list of TokenIds the catalog actually
-//! references (15 ids post-#407; see [`SENTINEL_TO_CANONICAL`] below
-//! for the authoritative count — the doc reflects the table). Each
-//! is mapped to its canonical CVE value
-//! by [`SENTINEL_TO_CANONICAL`]. Aggregate sentinels (`TOK_*` that
+//! references — see [`SENTINEL_TO_CANONICAL`] below for the
+//! authoritative table. Use [`active_sentinel_count()`] when a
+//! count is needed at runtime; hardcoded counts in doc-comments
+//! drift silently as the table grows. Each TokenId is mapped to
+//! its canonical CVE value by [`SENTINEL_TO_CANONICAL`].
+//! Aggregate sentinels (`TOK_*` that
 //! span multiple tokens — `TOK_US_CLASSIFIED`,
 //! `TOK_NON_US_CLASSIFICATION`), trigraph sentinels (`TOK_USA` —
 //! trigraphs come from XSD, not the JSON-derived `TOKEN_METADATA`),
@@ -34,6 +36,15 @@
 //! per-term metadata to. The trait's accessors panic if asked about
 //! one of those, surfacing the misuse loudly rather than returning
 //! a placeholder that would silently muddy the audit trail.
+//!
+//! NATO program markings (ATOMAL/BALK/BOHEMIA, issue #660) sit on a
+//! divergence: ODNI publishes them with a `NATO-` prefix in
+//! `CVE_NON_US_CONTROLS` (`"NATO-ATOMAL"`, etc.) while CAPCO §G.1
+//! Table 4 p37 registers the bare display form (`"ATOMAL"`). The
+//! `SENTINEL_TO_CANONICAL` entries use the prefixed CVE canonical so
+//! `entry_for` resolves cleanly via `lookup_token_metadata`; the
+//! bare display form is re-projected at `forms()` time by
+//! [`nato_program_form_set`].
 //!
 //! Phase C extends both the sentinel set (auto-generated TokenIds
 //! per CVE term) and this mapping. Today's hand-mapped subset is
@@ -53,9 +64,10 @@
 use crate::scheme::{
     CAT_AEA, CAT_CLASSIFICATION, CAT_DISSEM, CAT_FGI_MARKER, CAT_JOINT_CLASSIFICATION,
     CAT_NON_US_CLASSIFICATION, CAT_REL_TO, CAT_SAR, CAT_SCI, CapcoScheme, FDR_DOMINATORS,
-    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_HCS_O, TOK_HCS_P, TOK_NNPI,
-    TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SI_G, TOK_SSI, TOK_TFNI,
-    TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI, capco_token_category,
+    TOK_ATOMAL, TOK_BALK, TOK_BOHEMIA, TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS,
+    TOK_HCS_O, TOK_HCS_P, TOK_NNPI, TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED,
+    TOK_SI_G, TOK_SSI, TOK_TFNI, TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI,
+    capco_token_category,
 };
 use marque_ism::Classification;
 use marque_ism::generated::migrations::find_migration;
@@ -155,14 +167,42 @@ const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
     (TOK_NNPI, "NNPI"),
     // CAT_AEA:
     (TOK_DCNI, "DCNI"), // DOD UCNI — §H.6 p116
+    // Issue #660: NATO program markings — §G.1 Table 4 p37 registers
+    // ATOMAL/BALK/BOHEMIA with no banner abbreviation; portion/banner
+    // title columns both carry the bare display form. ODNI publishes
+    // the CVE canonicals as `NATO-ATOMAL`/`NATO-BALK`/`NATO-BOHEMIA`
+    // in `CVE_NON_US_CONTROLS` (verified at build time against the
+    // generated `TOKEN_METADATA` — entries
+    // `value: "NATO-ATOMAL"|"NATO-BALK"|"NATO-BOHEMIA"`,
+    // `cve_file: &CVE_NON_US_CONTROLS`). The bare display form is
+    // re-projected at `forms()` time via [`nato_program_form_set`]
+    // (mirrors [`classification_form_set`]'s role for `R`/`U`/`C`/`S`/`TS`).
+    //
+    // - ATOMAL: AEA axis, §H.7 p122 worked example
+    //   `SECRET//RD/ATOMAL//FGI NATO//NOFORN`. Resolved via
+    //   `capco_token_category(TOK_ATOMAL) == Some(CAT_AEA)`.
+    // - BALK / BOHEMIA: SCI axis, §G.2 p40 (Table 5 ARH registration) +
+    //   §H.7 p127 worked example
+    //   `(//CTS//BOHEMIA//REL TO USA, NATO)`. Resolved via
+    //   `capco_token_category(TOK_BALK|TOK_BOHEMIA) == Some(CAT_SCI)`.
+    //
+    // Pre-#660 these sentinels were registered in `scheme/mod.rs` and
+    // consumed by E066 (`LegacyNatoCompoundRemarkRule`) but missing
+    // from this table — any future caller invoking `canonical_for` /
+    // `entry_for` / `forms` / `metadata` on the three sentinels would
+    // panic in `canonical_for` ("TokenId has no canonical CVE value").
+    (TOK_ATOMAL, "NATO-ATOMAL"),
+    (TOK_BALK, "NATO-BALK"),
+    (TOK_BOHEMIA, "NATO-BOHEMIA"),
 ];
 
 /// Resolve a sentinel TokenId to its canonical CVE value, or panic
 /// with a clear message if the id is outside the supported set.
 ///
 /// **Phase C scaling note (L1 in `docs/reviews/phase5-review.md`).**
-/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` (15
-/// entries post-#407) on every accessor call. At this size the linear
+/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` on
+/// every accessor call. At the active sentinel-set size (see
+/// [`active_sentinel_count()`] for the live count) the linear
 /// scan is dominated by accessor-call overhead and is not a real
 /// concern — Constitution I (perceptual instantaneity) is not
 /// observably violated. Phase C extends the sentinel set to the full
@@ -477,6 +517,58 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
     })
 }
 
+/// Synthesize a NATO program token's `FormSet` from the §G.1 Table 4
+/// p37 registration.
+///
+/// ODNI publishes ATOMAL/BALK/BOHEMIA in `CVE_NON_US_CONTROLS` with a
+/// `NATO-` prefix (`NATO-ATOMAL`, `NATO-BALK`, `NATO-BOHEMIA`) to
+/// namespace them against other NATO controls in the same CVE file.
+/// CAPCO §G.1 Table 4 p37 registers them bare:
+///
+/// ```text
+/// | ATOMAL  | None | ATOMAL  |
+/// | BALK    | None | BALK    |
+/// | BOHEMIA | None | BOHEMIA |
+/// ```
+///
+/// (column 1 = banner title, column 2 = banner abbreviation, column 3
+/// = portion mark). `None` in col 2 means no distinct abbreviation —
+/// `banner_abbreviation` is `None`. Same-form means portion =
+/// banner_title.
+///
+/// This helper mirrors [`classification_form_set`]'s role for US
+/// classifications: a token where the ODNI CVE canonical and the
+/// user-visible §G.1 Table 4 form diverge gets a hand-built `FormSet`
+/// rather than routing through the `MARKING_FORMS` lookup (which is
+/// keyed by the bare display form and would miss the `NATO-`-prefixed
+/// canonical, falling through to the canonical-collapse arm and
+/// emitting `portion="NATO-ATOMAL"` — wrong per §G.1 Table 4 p37).
+///
+/// `crates/ism/src/marking_forms.rs` already carries bare rows
+/// (`portion=banner=title="ATOMAL"` etc.) in the "NATO programs"
+/// section of `MARKING_FORMS` per §G.1 Table 4 p37; this helper
+/// is the bridge that lets a `NATO-`-prefixed canonical reach the
+/// authorized bare display form without depending on those rows
+/// (decoupling: a future MARKING_FORMS reorganization that removes the
+/// bare same-form rows must not silently break the FormSet here).
+///
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (registration with no banner
+/// abbreviation, bare display form across all three columns).
+fn nato_program_form_set(canonical: &'static str) -> Option<FormSet> {
+    let bare = match canonical {
+        "NATO-ATOMAL" => "ATOMAL",
+        "NATO-BALK" => "BALK",
+        "NATO-BOHEMIA" => "BOHEMIA",
+        _ => return None,
+    };
+    Some(FormSet {
+        portion: bare,
+        banner_title: bare,
+        banner_abbreviation: None,
+        recognized_aliases: &[],
+    })
+}
+
 /// Build the aggregated `FormSet` for a sentinel token's canonical
 /// CVE value (PR 3d, FR-053).
 ///
@@ -543,8 +635,8 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
 ///
 /// ## Active sentinel coverage
 ///
-/// `SENTINEL_TO_CANONICAL` (15 entries post-#407) intersects the
-/// divergent `MARKING_FORMS` rows at six canonicals: `"UCNI"` (DOE),
+/// `SENTINEL_TO_CANONICAL` intersects the divergent
+/// `MARKING_FORMS` rows at six canonicals: `"UCNI"` (DOE),
 /// `"DCNI"` (DOD UCNI), `"OC-USGOV"` (ORCON-USGOV), `"FISA"`, `"SSI"`,
 /// `"NNPI"`. `TOK_CNWDI` maps to canonical `"RD-CNWDI"`, not the bare
 /// `"CNWDI"` that the MARKING_FORMS row keys on — so its description
@@ -555,6 +647,12 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
 /// surface); the divergence remains visible via direct iteration of
 /// `MARKING_FORMS.description_title` (exercised by
 /// `crates/ism/tests/description_title_divergence.rs`).
+///
+/// The NATO program sentinels (TOK_ATOMAL/TOK_BALK/TOK_BOHEMIA,
+/// #660) route through [`nato_program_form_set`] before the
+/// `MARKING_FORMS` scan — their CVE canonicals (`"NATO-ATOMAL"`,
+/// etc.) have no MARKING_FORMS row by design; the bare display form
+/// is hand-built per §G.1 Table 4 p37.
 const ALIASES_UCNI: &[(FormKind, &str)] = &[(
     FormKind::IsmDescriptionTitle,
     "DoE CONTROLLED NUCLEAR INFORMATION",
@@ -640,8 +738,34 @@ fn recognized_aliases_for_canonical(
 /// `Some(ism_title)` AND the canonical is an active sentinel — see
 /// [`recognized_aliases_for_canonical`] for the coverage notes.
 fn build_form_set(canonical: &'static str) -> FormSet {
+    // Dispatch order:
+    // 1. `classification_form_set` — US classifications (TS/S/C/U).
+    //    LOAD-BEARING ORDER: these canonicals (`"S"`, `"TS"`, etc.)
+    //    would collide with `MARKING_FORMS` rows if the scan ran
+    //    first; the classification arm must precede the scan to
+    //    return the `Classification::banner_str` / `portion_str`
+    //    projection rather than the row's `(title, banner, portion)`.
+    // 2. `nato_program_form_set` — issue #660 ATOMAL/BALK/BOHEMIA
+    //    where the CVE canonical (`NATO-`-prefixed in
+    //    `CVE_NON_US_CONTROLS`) diverges from the §G.1 Table 4 p37
+    //    bare display form. This arm is NOT order-sensitive against
+    //    arm 3 — the `NATO-` prefix guarantees no `MARKING_FORMS`
+    //    row matches (rows carry the bare `"ATOMAL"` etc. — see
+    //    `crates/ism/src/marking_forms.rs`); without this arm the
+    //    canonical-collapse fallback (arm 4) would emit
+    //    `portion="NATO-ATOMAL"` etc., which is wrong per §G.1
+    //    Table 4 p37.
+    // 3. `MARKING_FORMS` scan — every other CVE canonical whose
+    //    portion or banner column matches `canonical` literally.
+    // 4. Canonical-collapse fallback — `portion = banner = title =
+    //    canonical`, `banner_abbreviation = None` (e.g., HCS,
+    //    RD-CNWDI, R; see `same_form_sentinels` in
+    //    `crates/capco/tests/vocabulary.rs`).
     if let Some(class_form_set) = classification_form_set(canonical) {
         return class_form_set;
+    }
+    if let Some(nato_form_set) = nato_program_form_set(canonical) {
+        return nato_form_set;
     }
 
     // Look up the MARKING_FORMS row keyed off either the portion or
