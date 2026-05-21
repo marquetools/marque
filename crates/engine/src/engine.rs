@@ -1393,15 +1393,17 @@ impl Engine {
             //
             // PR 9b (T133): lazy/cached construction for the
             // page-marking projection. Built from
-            // `project_page_marking(&self.scheme, &page_portions)`
+            // `project_page_marking(&self.scheme, &page_join_acc)`
             // (post-PR-4b-D.2 hot-path flip — the helper invokes
             // `CapcoScheme::project_from_attrs_slice` which drives
             // the lattice + closure + page-rewrite pipeline) so
             // banner-validation rules see the rolled-up shape
             // (classification / SCI / SAR / AEA / dissem_us /
-            // dissem_nato / REL TO). Sharing the Arc across
-            // consecutive banner/CAB candidates on the same page
-            // mirrors the `page_portions_arc` discipline.
+            // dissem_nato / REL TO). `page_join_acc` is the
+            // incremental lattice join over all portions seen so far
+            // on this page (issue #306, PR #674); the Arc is shared
+            // across consecutive banner/CAB candidates on the same
+            // page and invalidated on page break.
             let ctx_page_marking =
                 if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
                     Some(

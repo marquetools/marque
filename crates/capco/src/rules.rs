@@ -4489,7 +4489,7 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
             Severity::Suggest,
             block.span,
             Message::new(
-                MessageTemplate::NonCanonicalOrder,
+                MessageTemplate::NonCanonicalForm,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_REL_TO),
                     ..Default::default()
@@ -4557,16 +4557,19 @@ impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
 /// set and per-portion sets to a common representation before comparison, so
 /// `(S//REL TO USA, FVEY)` and `(S//REL TO USA, AUS, CAN, GBR, NZL)` are
 /// treated as equivalent.
-fn expand_rel_to_atomic(codes: &[marque_ism::CountryCode]) -> std::collections::BTreeSet<String> {
+fn expand_rel_to_atomic(
+    codes: &[marque_ism::CountryCode],
+) -> std::collections::BTreeSet<marque_ism::CountryCode> {
     let mut out = std::collections::BTreeSet::new();
     for code in codes {
-        let s = code.as_str();
-        if let Some(members) = crate::vocab::expand_tetragraph(s) {
+        if let Some(members) = crate::vocab::expand_tetragraph(code.as_str()) {
             for m in members {
-                out.insert((*m).to_owned());
+                if let Some(cc) = marque_ism::CountryCode::try_new(m.as_bytes()) {
+                    out.insert(cc);
+                }
             }
         } else {
-            out.insert(s.to_owned());
+            out.insert(*code);
         }
     }
     out
@@ -4623,7 +4626,7 @@ fn check_collapse_uniform_rel_portions(
             Severity::Suggest,
             block.span,
             Message::new(
-                MessageTemplate::NonCanonicalOrder,
+                MessageTemplate::NonCanonicalForm,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_REL_TO),
                     ..Default::default()
