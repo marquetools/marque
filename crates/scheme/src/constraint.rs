@@ -218,10 +218,7 @@ pub enum Constraint {
     ///
     /// Keeping the predicate out of the variant lets `Constraint` stay
     /// `'static` and returnable as `&[Constraint]`.
-    Custom {
-        name: &'static str,
-        label: Citation,
-    },
+    Custom { name: &'static str, label: Citation },
 }
 
 impl Constraint {
