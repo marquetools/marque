@@ -6054,10 +6054,11 @@ fn e071_rel_to_containment(countries: &[CountryCode], rel_to: &[CountryCode]) ->
     }
 }
 
-/// Drop the `"FGI "` prefix: `"FGI DEU R"` → `"DEU R"`.
-/// Caller guarantees `tok_text.starts_with("FGI ")`.
+/// Drop the `"FGI"` token and any following whitespace.
+/// `"FGI DEU R"` → `"DEU R"`, `"FGI  DEU R"` → `"DEU R"`.
+/// Caller guarantees `tok_text` starts with `"FGI"` followed by whitespace.
 fn e071_strip_fgi_prefix(tok_text: &str) -> String {
-    tok_text[4..].to_owned()
+    tok_text["FGI".len()..].trim_start().to_owned()
 }
 
 /// Canonical concealed form: `"FGI {level}"` e.g. `"FGI R"`.
@@ -6067,10 +6068,7 @@ fn e071_concealed_form(level: marque_ism::Classification) -> String {
 
 /// Canonical acknowledged form: `"{trigraphs} {level}"` e.g. `"DEU GBR R"`.
 /// Sorts trigraphs alphabetically (canonical per §H.7 p124 / renderer).
-fn e071_acknowledged_form(
-    countries: &[CountryCode],
-    level: marque_ism::Classification,
-) -> String {
+fn e071_acknowledged_form(countries: &[CountryCode], level: marque_ism::Classification) -> String {
     let mut parts: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
     parts.sort_unstable();
     format!("{} {}", parts.join(" "), level.portion_str())
@@ -6128,9 +6126,15 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
             return vec![];
         };
 
-        // Gate 4: raw text must start with "FGI " (trigraph(s) follow).
-        // Bare `"FGI S"` is Case B — canonical unacknowledged form — no diag.
-        if !cls_tok.text.as_str().starts_with("FGI ") {
+        let tok_text = cls_tok.text.as_str();
+
+        // Gate 4: raw text must lead with the "FGI" token. The parser uses
+        // `split_whitespace`, so any ASCII whitespace between "FGI" and the
+        // first trigraph is admitted — match the same surface here rather than
+        // a literal `starts_with("FGI ")` that silently misses tab/multi-space.
+        // Bare `"FGI S"` is Case B — canonical unacknowledged form — handled
+        // by Gate 5 (countries empty).
+        if tok_text.split_whitespace().next() != Some("FGI") {
             return vec![];
         }
 
@@ -6144,16 +6148,14 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
         let citation = capco(SectionLetter::H, 7, 124);
         let mut out = Vec::new();
 
-        let noforn_present = attrs
-            .dissem_iter()
-            .any(|d| matches!(d, DissemControl::Nf));
+        let noforn_present = attrs.dissem_iter().any(|d| matches!(d, DissemControl::Nf));
 
         match e071_rel_to_containment(&fgi.countries, &attrs.rel_to) {
             E071Containment::Full => {
                 // Case A: acknowledged source confirmed by REL TO.
                 // FGI + trigraph + REL TO(trigraph) is contradictory.
                 // Fix: drop "FGI " prefix from the classification token.
-                let replacement = e071_strip_fgi_prefix(cls_tok.text.as_str());
+                let replacement = e071_strip_fgi_prefix(tok_text);
                 out.push(Diagnostic::text_correction(
                     self.id(),
                     Severity::Error,

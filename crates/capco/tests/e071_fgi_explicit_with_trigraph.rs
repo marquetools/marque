@@ -41,9 +41,7 @@ fn engine() -> Engine {
     .expect("default CAPCO scheme must construct without rewrite cycles")
 }
 
-fn lint_e071(
-    source: &[u8],
-) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoScheme>> {
+fn lint_e071(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoScheme>> {
     engine()
         .lint(source)
         .diagnostics
@@ -369,8 +367,7 @@ fn gate1_silent_on_banner_marking() {
         })
         .count();
     assert_eq!(
-        e071_on_banner,
-        0,
+        e071_on_banner, 0,
         "Gate 1: E071 must not fire on the banner line; \
          got {e071_on_banner} E071 diagnostics with span in banner range",
     );
