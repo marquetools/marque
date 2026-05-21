@@ -4553,7 +4553,7 @@ impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
 ///
 /// Tetragraph codes in `rel_to` (e.g. `FVEY`, `NATO`) are replaced by their
 /// member trigraphs. Opaque tetragraphs with no published membership (e.g.
-/// `EU`) pass through unchanged. This normalises both the banner-projected
+/// `EU`) pass through unchanged. This normalizes both the banner-projected
 /// set and per-portion sets to a common representation before comparison, so
 /// `(S//REL TO USA, FVEY)` and `(S//REL TO USA, AUS, CAN, GBR, NZL)` are
 /// treated as equivalent.
