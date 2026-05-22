@@ -71,10 +71,41 @@ pub fn prose_fixtures() -> Vec<PathBuf> {
     fixtures_in("prose")
 }
 
+/// Expected rule identifier from a `.expected.json` sidecar file.
+///
+/// T044 (post-PR-10 FR-049 unfreeze) reshaped `RuleId` from the
+/// legacy 1-tuple `&'static str` form into the canonical
+/// `(scheme, predicate_id)` 2-tuple. The structured JSON shape
+/// (object form, never a flattened string) makes the rule identity
+/// human-readable in audit-record fixtures: a 2030 auditor reading
+/// a 2026 sidecar can see `{"scheme": "capco", "predicate_id":
+/// "portion.dissem.noforn-conflicts-rel-to"}` directly and trace it
+/// to the CAPCO §-citation without consulting a glossary.
+///
+/// Owned `String` storage (rather than `&'static str`) because the
+/// values come from runtime JSON deserialization — corpus fixtures
+/// are read at test-execution time. The audit-record contract at
+/// `specs/006-engine-rule-refactor/contracts/audit-record.md`
+/// carries the same `(scheme, predicate_id)` JSON shape; this type
+/// is the fixture-side mirror used by the corpus regression
+/// harness.
+///
+/// Refs: T044, FR-026, FR-044, OD-2, OD-3
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ExpectedRuleId {
+    pub scheme: String,
+    pub predicate_id: String,
+}
+
 /// Expected diagnostic from a `.expected.json` sidecar file.
+///
+/// The `rule` field carries the structured 2-tuple shape after T044
+/// (was a flat `String` pre-T044). Sidecars rewrite in Wave 2 of the
+/// T044 migration; see `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
+/// §2.10 for the mechanical rewrite.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExpectedDiagnostic {
-    pub rule: String,
+    pub rule: ExpectedRuleId,
     pub span: ExpectedSpan,
     #[serde(default)]
     pub severity: Option<String>,
@@ -196,6 +227,70 @@ pub fn marked_document_fixtures() -> Vec<PathBuf> {
         .collect();
     paths.sort();
     paths
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expected_rule_id_round_trips_through_json() {
+        // T044 §2.10: the corpus-fixture JSON shape carries the
+        // structured `(scheme, predicate_id)` form. Verify that
+        // `serde_json` deserializes the canonical shape without
+        // re-introducing the legacy flat-string form by accident.
+        let json = r#"{
+            "scheme": "capco",
+            "predicate_id": "portion.dissem.noforn-conflicts-rel-to"
+        }"#;
+        let parsed: ExpectedRuleId =
+            serde_json::from_str(json).expect("structured rule id must deserialize");
+        assert_eq!(parsed.scheme, "capco");
+        assert_eq!(parsed.predicate_id, "portion.dissem.noforn-conflicts-rel-to");
+    }
+
+    #[test]
+    fn expected_diagnostic_carries_structured_rule_id() {
+        // T044: the legacy flat-string `"rule": "E007"` shape is
+        // structurally rejected — JSON consumers that haven't been
+        // updated to the 2-tuple shape get a parse error at the
+        // boundary, not a silent string mismatch later. This pin
+        // makes Wave 2's corpus-fixture rewrite a hard build-break
+        // until every sidecar moves to the structured shape.
+        let json = r#"{
+            "rule": {
+                "scheme": "capco",
+                "predicate_id": "banner.classification.usa-trigraph"
+            },
+            "span": {"start": 8, "end": 13}
+        }"#;
+        let parsed: ExpectedDiagnostic =
+            serde_json::from_str(json).expect("structured shape must deserialize");
+        assert_eq!(parsed.rule.scheme, "capco");
+        assert_eq!(parsed.rule.predicate_id, "banner.classification.usa-trigraph");
+        assert_eq!(parsed.span.start, 8);
+        assert_eq!(parsed.span.end, 13);
+        assert!(parsed.severity.is_none());
+    }
+
+    #[test]
+    fn expected_diagnostic_rejects_legacy_flat_string_rule() {
+        // The legacy `"rule": "E007"` shape MUST NOT deserialize
+        // through the new structured field. If a stray sidecar
+        // survives Wave 2's rewrite, the corpus runner fails fast
+        // at fixture-load time with a parse error rather than
+        // continuing with a partially-migrated fixture set.
+        let json = r#"{
+            "rule": "E007",
+            "span": {"start": 8, "end": 13}
+        }"#;
+        assert!(
+            serde_json::from_str::<ExpectedDiagnostic>(json).is_err(),
+            "legacy flat-string rule id must not deserialize into the \
+             post-T044 ExpectedDiagnostic shape",
+        );
+    }
 }
 
 /// Load the per-document ground-truth fixture (`<stem>.expected.json`)
