@@ -1,11 +1,25 @@
 #![cfg(any())]
-// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+// PR 3c.B Commit 10: file gated on the legacy `FixProposal` /
+// `Message::contains` / `ReplacementIntent::as_ref` shapes that no
+// longer exist post-PR-3c.B. The predicate-ID filters in the body
+// have been T044-migrated (HIGH-2 reviewer finding, 2026-05-22) so
+// when this file is re-enabled it will exercise the post-T044
+// 2-tuple shape correctly — but the remaining API drift (Message
+// type, FixIntent shape) is out of scope for the T044 PR. Re-enable
+// once the FixIntent/Message accessors are rewritten end-to-end.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3b.E (T026e) — SCI per-system catalog walker (E059) behavior tests.
+//! PR 3b.E (T026e) — SCI per-system catalog walker behavior tests.
+//!
+//! Post-T044: each catalog row's `name` IS its predicate ID
+//! (`marking.sci.<row>`); there is no walker-level `"E059"` rule ID.
+//! Severity-override is per-row via `[rules] "capco:marking.sci.<row>" =
+//! "..."`. Tests filter by `predicate_id().starts_with("marking.sci.")`
+//! to capture all 5 catalog rows or by the specific row's predicate ID
+//! when testing per-row behavior.
 //!
 //! The 5 catalog rows declared in `crate::scheme::SCI_PER_SYSTEM_CATALOG`
 //! are exercised by:
@@ -55,24 +69,51 @@ fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
-/// Filter the diagnostic stream to E059 emissions whose message contains
-/// `marker_text` (substring match). The catalog uses one rule ID `E059`
-/// for all 5 rows; per-row identification flows via the diagnostic
-/// message text. The marker_text is typically the marking label
-/// (e.g., `"HCS-O"`, `"SI-G"`, `"TK-{BLFH"`).
-fn e059_diags_for<'a>(
+/// Filter the diagnostic stream to SCI per-system catalog emissions
+/// whose message contains `marker_text` (substring match). Post-T044
+/// each of the 5 catalog rows has its own predicate ID
+/// (`marking.sci.<row>`); the `starts_with("marking.sci.")` prefix
+/// match captures every row. Per-row identification flows via either
+/// the diagnostic message text (this helper) or the row's predicate
+/// ID directly (use `sci_diags_with_predicate` for that).
+fn sci_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
     diags
         .iter()
-        .filter(|d| d.rule.predicate_id() == "E059" && d.message.contains(marker_text))
+        .filter(|d| {
+            d.rule.scheme() == "capco"
+                && d.rule.predicate_id().starts_with("marking.sci.")
+                && d.message.contains(marker_text)
+        })
         .collect()
 }
 
-/// All E059 diagnostics in `diags`, regardless of message content.
-fn e059_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.predicate_id() == "E059").collect()
+/// All SCI per-system catalog diagnostics in `diags`, regardless of
+/// row or message content. Captures every row via the `marking.sci.`
+/// predicate-ID prefix.
+fn sci_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
+    diags
+        .iter()
+        .filter(|d| {
+            d.rule.scheme() == "capco" && d.rule.predicate_id().starts_with("marking.sci.")
+        })
+        .collect()
+}
+
+/// Filter the diagnostic stream to a specific catalog row by its
+/// exact predicate ID (post-T044 form, e.g.,
+/// `"marking.sci.hcs-o-companions"`). Use for tests that need
+/// row-level granularity (e.g., per-row severity override tests).
+fn sci_diags_with_predicate<'a>(
+    diags: &'a [Diagnostic<CapcoScheme>],
+    predicate_id: &str,
+) -> Vec<&'a Diagnostic<CapcoScheme>> {
+    diags
+        .iter()
+        .filter(|d| d.rule.scheme() == "capco" && d.rule.predicate_id() == predicate_id)
+        .collect()
 }
 
 // ===========================================================================
@@ -165,26 +206,22 @@ fn sci_per_system_catalog_citations() {
 }
 
 #[test]
-fn sci_per_system_diagnostics_flow_through_engine_bridge_at_e059() {
+fn sci_per_system_diagnostics_flow_through_engine_bridge_per_row() {
     // PR 3c.B Commit 7.4: `DeclarativeSciPerSystemRule` retired from
     // `CapcoRuleSet`. The 5 catalog rows still emit diagnostics —
     // they flow through the engine's constraint-catalog bridge via
     // the direct path (`CapcoScheme::bridge_sci_per_system_diagnostics`)
-    // with `Diagnostic.rule = "E059"` and full `FixProposal`
-    // payloads intact. This test pins the post-deletion external
-    // surface:
-    //   1. No registered `Rule::id() == "E059"` (walker is gone);
-    //   2. The 10 PR-3b.E-retired legacy rules (E042–E051) remain
+    // with each row carrying its own predicate ID
+    // (`marking.sci.<row>`) post-T044, and full `FixProposal`
+    // payloads intact. This test pins the post-deletion + post-T044
+    // external surface:
+    //   1. The 10 PR-3b.E-retired legacy rules (E042–E051) remain
     //      unregistered (regression guard from PR 3b.E preserved);
-    //   3. `engine.lint` still emits E059 with a fix for a
-    //      known-firing fixture (TS//HCS-O//NF missing ORCON).
+    //   2. `engine.lint` still emits the row's predicate ID with a
+    //      fix for a known-firing fixture (TS//HCS-O//NF missing
+    //      ORCON → `marking.sci.hcs-o-companions`).
     let set = capco_rules();
     let ids: Vec<&str> = set.rules().iter().map(|r| r.id().predicate_id()).collect();
-    assert!(
-        !ids.contains(&"E059"),
-        "post-7.4: `DeclarativeSciPerSystemRule` retired; no rule with id `E059` should be \
-         registered. The bridge emits E059 via the direct path. Registered IDs: {ids:?}"
-    );
     for retired in [
         "E042", "E043", "E044", "E045", "E046", "E047", "E048", "E049", "E050", "E051",
     ] {
@@ -197,25 +234,30 @@ fn sci_per_system_diagnostics_flow_through_engine_bridge_at_e059() {
     // Bridge-emission anchor: confirm the deleted walker's external
     // surface — and the fix payload — is preserved end-to-end
     // through `engine.lint`. `(TS//HCS-O//NF)` is a portion with
-    // HCS-O and NOFORN; row #1 (HCS-O companions) must fire the
-    // ORCON-missing diagnostic with a `FixProposal` that inserts
-    // ORCON into the dissem block.
+    // HCS-O and NOFORN; row #1 (HCS-O companions, predicate
+    // `marking.sci.hcs-o-companions`) must fire the ORCON-missing
+    // diagnostic with a `FixProposal` that inserts ORCON into the
+    // dissem block.
     let diags = lint("(TS//HCS-O//NF)");
-    let e059: Vec<&Diagnostic<CapcoScheme>> = diags
+    let hcs_o: Vec<&Diagnostic<CapcoScheme>> = diags
         .iter()
-        .filter(|d| d.rule.predicate_id() == "E059" && d.message.contains("HCS-O requires ORCON"))
+        .filter(|d| {
+            d.rule.scheme() == "capco"
+                && d.rule.predicate_id() == "marking.sci.hcs-o-companions"
+                && d.message.contains("HCS-O requires ORCON")
+        })
         .collect();
     assert_eq!(
-        e059.len(),
+        hcs_o.len(),
         1,
-        "post-7.4: bridge must emit E059 for (TS//HCS-O//NF) (HCS-O missing ORCON \
-         per §H.4 p64): {diags:?}"
+        "post-T044: bridge must emit `marking.sci.hcs-o-companions` for (TS//HCS-O//NF) \
+         (HCS-O missing ORCON per §H.4 p64): {diags:?}"
     );
     assert!(
-        e059[0].fix.is_some(),
-        "post-7.4: SCI per-system bridge MUST preserve the walker's fix payload \
+        hcs_o[0].fix.is_some(),
+        "post-T044: SCI per-system bridge MUST preserve the walker's fix payload \
          (companion-insertion); got: {:?}",
-        e059[0]
+        hcs_o[0]
     );
 }
 
@@ -228,7 +270,7 @@ fn hcs_o_companions_fires_when_orcon_missing() {
     // (S//HCS-O//NF) — NOFORN present, ORCON missing. Expect one
     // ORCON-insertion diagnostic.
     let diags = lint("(S//HCS-O//NF)");
-    let hits = e059_diags_for(&diags, "HCS-O requires ORCON");
+    let hits = sci_diags_for(&diags, "HCS-O requires ORCON");
     assert_eq!(
         hits.len(),
         1,
@@ -242,7 +284,7 @@ fn hcs_o_companions_fires_when_orcon_missing() {
 fn hcs_o_companions_fires_when_noforn_missing() {
     // (S//HCS-O//OC) — ORCON present, NOFORN missing.
     let diags = lint("(S//HCS-O//OC)");
-    let hits = e059_diags_for(&diags, "HCS-O requires NOFORN");
+    let hits = sci_diags_for(&diags, "HCS-O requires NOFORN");
     assert_eq!(
         hits.len(),
         1,
@@ -256,7 +298,7 @@ fn hcs_o_companions_fires_when_noforn_missing() {
 fn hcs_o_companions_replaces_oc_usgov() {
     // (S//HCS-O//OC-USGOV/NF) — OC-USGOV present, must be replaced.
     let diags = lint("(S//HCS-O//OC-USGOV/NF)");
-    let hits = e059_diags_for(&diags, "HCS-O forbids ORCON-USGOV");
+    let hits = sci_diags_for(&diags, "HCS-O forbids ORCON-USGOV");
     assert_eq!(hits.len(), 1, "exactly one forbid diagnostic: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "OC");
@@ -267,7 +309,7 @@ fn hcs_o_companions_oc_usgov_satisfies_orcon_presence() {
     // OC-USGOV satisfies ORCON-presence post-fix, so the rule must NOT
     // emit an additional ORCON-insertion (would produce duplicate ORCON).
     let diags = lint("(S//HCS-O//OC-USGOV/NF)");
-    let hits = e059_diags(&diags);
+    let hits = sci_diags(&diags);
     let hcs_o_hits: Vec<_> = hits
         .iter()
         .filter(|d| d.message.contains("HCS-O"))
@@ -288,14 +330,14 @@ fn hcs_o_companions_oc_usgov_satisfies_orcon_presence() {
 #[test]
 fn hcs_o_companions_does_not_fire_when_satisfied() {
     let diags = lint("(S//HCS-O//OC/NF)");
-    let hits = e059_diags_for(&diags, "HCS-O");
+    let hits = sci_diags_for(&diags, "HCS-O");
     assert!(hits.is_empty(), "compliant HCS-O: {diags:?}");
 }
 
 #[test]
 fn hcs_o_companions_does_not_fire_when_marking_absent() {
     let diags = lint("(S)");
-    let hits = e059_diags_for(&diags, "HCS-O");
+    let hits = sci_diags_for(&diags, "HCS-O");
     assert!(hits.is_empty(), "no HCS-O present: {diags:?}");
 }
 
@@ -305,7 +347,7 @@ fn hcs_o_companions_no_dissem_block_escalates_to_error_no_fix() {
     // Verbatim port of `e042_no_dissem_block_escalates_to_error_no_fix`
     // from the retired rules_sci_per_system.rs.
     let diags = lint("(S//HCS-O)");
-    let hits: Vec<_> = e059_diags(&diags)
+    let hits: Vec<_> = sci_diags(&diags)
         .into_iter()
         .filter(|d| d.message.contains("HCS-O"))
         .collect();
@@ -327,7 +369,7 @@ fn hcs_o_companions_diagnostic_points_at_sci_not_dissem() {
     // `e042_companion_insert_diagnostic_points_at_sci_not_dissem`.
     let src = "(S//HCS-O//NF)";
     let diags = lint(src);
-    let hits = e059_diags_for(&diags, "HCS-O requires ORCON");
+    let hits = sci_diags_for(&diags, "HCS-O requires ORCON");
     assert_eq!(hits.len(), 1, "only missing-ORCON diagnostic: {hits:?}");
     let diag = hits[0];
     let fix = diag.fix.as_ref().expect("fix attached");
@@ -363,7 +405,7 @@ fn hcs_o_companions_diagnostic_points_at_sci_not_dissem() {
 #[test]
 fn hcs_p_noforn_fires_when_missing() {
     let diags = lint("(S//HCS-P//OC)");
-    let hits = e059_diags_for(&diags, "HCS-P requires NOFORN");
+    let hits = sci_diags_for(&diags, "HCS-P requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "/NF");
@@ -372,7 +414,7 @@ fn hcs_p_noforn_fires_when_missing() {
 #[test]
 fn hcs_p_noforn_does_not_fire_when_present() {
     let diags = lint("(S//HCS-P//OC/NF)");
-    let hits = e059_diags_for(&diags, "HCS-P requires NOFORN");
+    let hits = sci_diags_for(&diags, "HCS-P requires NOFORN");
     assert!(hits.is_empty(), "compliant HCS-P: {diags:?}");
 }
 
@@ -381,12 +423,12 @@ fn hcs_p_noforn_does_not_fire_on_bare_hcs_or_hcs_o() {
     // Only HCS-P triggers this row.
     let d1 = lint("(S//HCS)");
     assert!(
-        e059_diags_for(&d1, "HCS-P requires NOFORN").is_empty(),
+        sci_diags_for(&d1, "HCS-P requires NOFORN").is_empty(),
         "bare HCS must not fire HCS-P NOFORN row: {d1:?}"
     );
     let d2 = lint("(S//HCS-O//OC/NF)");
     assert!(
-        e059_diags_for(&d2, "HCS-P requires NOFORN").is_empty(),
+        sci_diags_for(&d2, "HCS-P requires NOFORN").is_empty(),
         "HCS-O must not fire HCS-P NOFORN row: {d2:?}"
     );
 }
@@ -394,7 +436,7 @@ fn hcs_p_noforn_does_not_fire_on_bare_hcs_or_hcs_o() {
 #[test]
 fn hcs_p_noforn_no_dissem_block_escalates_to_error_no_fix() {
     let diags = lint("(S//HCS-P)");
-    let hits = e059_diags_for(&diags, "HCS-P requires NOFORN");
+    let hits = sci_diags_for(&diags, "HCS-P requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
     assert!(hits[0].fix.is_none(), "no dissem → no-fix: {:?}", hits[0]);
     assert_eq!(hits[0].severity, Severity::Error);
@@ -408,7 +450,7 @@ fn hcs_p_noforn_no_dissem_block_escalates_to_error_no_fix() {
 fn hcs_p_sub_companions_fires_when_orcon_missing() {
     // (TS//HCS-P JJJ//NF) — already at TS, NF present, ORCON missing.
     let diags = lint("(TS//HCS-P JJJ//NF)");
-    let hits = e059_diags_for(&diags, "HCS-P sub-compartment requires ORCON");
+    let hits = sci_diags_for(&diags, "HCS-P sub-compartment requires ORCON");
     assert_eq!(hits.len(), 1, "exactly one ORCON-missing: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "/OC");
@@ -417,7 +459,7 @@ fn hcs_p_sub_companions_fires_when_orcon_missing() {
 #[test]
 fn hcs_p_sub_companions_replaces_oc_usgov() {
     let diags = lint("(TS//HCS-P JJJ//OC-USGOV/NF)");
-    let hits = e059_diags_for(&diags, "HCS-P sub-compartment forbids ORCON-USGOV");
+    let hits = sci_diags_for(&diags, "HCS-P sub-compartment forbids ORCON-USGOV");
     assert_eq!(hits.len(), 1, "exactly one forbid: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "OC");
@@ -426,7 +468,7 @@ fn hcs_p_sub_companions_replaces_oc_usgov() {
 #[test]
 fn hcs_p_sub_companions_does_not_fire_when_satisfied() {
     let diags = lint("(TS//HCS-P JJJ//OC/NF)");
-    let hits = e059_diags_for(&diags, "HCS-P sub-compartment");
+    let hits = sci_diags_for(&diags, "HCS-P sub-compartment");
     assert!(hits.is_empty(), "compliant HCS-P sub: {diags:?}");
 }
 
@@ -434,7 +476,7 @@ fn hcs_p_sub_companions_does_not_fire_when_satisfied() {
 fn hcs_p_sub_companions_does_not_fire_on_bare_hcs_p() {
     // Bare HCS-P (no sub-compartment) — different row (HCS-P NOFORN).
     let diags = lint("(TS//HCS-P//OC/NF)");
-    let hits = e059_diags_for(&diags, "HCS-P sub-compartment");
+    let hits = sci_diags_for(&diags, "HCS-P sub-compartment");
     assert!(hits.is_empty(), "no sub-compartment present: {diags:?}");
 }
 
@@ -444,7 +486,7 @@ fn hcs_p_sub_companions_oc_usgov_only_replaces_no_duplicate_orcon() {
     // OC-USGOV satisfies ORCON-presence post-fix; only the replacement
     // should fire (not the insertion).
     let diags = lint("(TS//HCS-P JJJ//OC-USGOV)");
-    let hits: Vec<_> = e059_diags(&diags)
+    let hits: Vec<_> = sci_diags(&diags)
         .into_iter()
         .filter(|d| d.message.contains("HCS-P sub-compartment"))
         .collect();
@@ -464,7 +506,7 @@ fn hcs_p_sub_companions_oc_usgov_only_replaces_no_duplicate_orcon() {
 fn si_g_companions_fires_on_missing_orcon() {
     // (TS//SI-G) — no dissem block; ORCON-missing escalates to Error.
     let diags = lint("(TS//SI-G)");
-    let hits = e059_diags_for(&diags, "SI-G requires ORCON");
+    let hits = sci_diags_for(&diags, "SI-G requires ORCON");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
     assert!(hits[0].fix.is_none(), "no dissem → no-fix: {:?}", hits[0]);
     assert_eq!(hits[0].severity, Severity::Error);
@@ -473,7 +515,7 @@ fn si_g_companions_fires_on_missing_orcon() {
 #[test]
 fn si_g_companions_inserts_orcon_when_dissem_block_present() {
     let diags = lint("(TS//SI-G//NF)");
-    let hits = e059_diags_for(&diags, "SI-G requires ORCON");
+    let hits = sci_diags_for(&diags, "SI-G requires ORCON");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "/OC");
@@ -482,7 +524,7 @@ fn si_g_companions_inserts_orcon_when_dissem_block_present() {
 #[test]
 fn si_g_companions_replaces_oc_usgov() {
     let diags = lint("(TS//SI-G//OC-USGOV)");
-    let hits = e059_diags_for(&diags, "SI-G forbids ORCON-USGOV");
+    let hits = sci_diags_for(&diags, "SI-G forbids ORCON-USGOV");
     assert_eq!(hits.len(), 1, "exactly one forbid: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "OC");
@@ -493,7 +535,7 @@ fn si_g_companions_oc_usgov_only_no_duplicate_orcon() {
     // (TS//SI-G//OC-USGOV) — OC-USGOV satisfies ORCON-presence
     // post-fix; no insertion should fire.
     let diags = lint("(TS//SI-G//OC-USGOV)");
-    let hits: Vec<_> = e059_diags(&diags)
+    let hits: Vec<_> = sci_diags(&diags)
         .into_iter()
         .filter(|d| d.message.contains("SI-G"))
         .collect();
@@ -508,7 +550,7 @@ fn si_g_companions_oc_usgov_only_no_duplicate_orcon() {
 #[test]
 fn si_g_companions_does_not_fire_when_satisfied() {
     let diags = lint("(TS//SI-G//OC)");
-    let hits = e059_diags_for(&diags, "SI-G");
+    let hits = sci_diags_for(&diags, "SI-G");
     assert!(hits.is_empty(), "compliant SI-G: {diags:?}");
 }
 
@@ -519,7 +561,7 @@ fn si_g_companions_does_not_fire_when_satisfied() {
 #[test]
 fn tk_compartment_noforn_fires_on_blfh_without_noforn() {
     let diags = lint("(TS//TK-BLFH//OC)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
+    let hits = sci_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "/NF");
@@ -528,14 +570,14 @@ fn tk_compartment_noforn_fires_on_blfh_without_noforn() {
 #[test]
 fn tk_compartment_noforn_fires_on_idit_without_noforn() {
     let diags = lint("(TS//TK-IDIT//OC)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
+    let hits = sci_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
 }
 
 #[test]
 fn tk_compartment_noforn_fires_on_kand_without_noforn() {
     let diags = lint("(TS//TK-KAND//OC)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
+    let hits = sci_diags_for(&diags, "TK-{BLFH|IDIT|KAND} requires NOFORN");
     assert_eq!(hits.len(), 1, "exactly one diag: {diags:?}");
 }
 
@@ -544,14 +586,14 @@ fn tk_compartment_noforn_does_not_fire_on_bare_tk() {
     // Bare TK doesn't require NOFORN (§H.4 p85 — only the compartments
     // do).
     let diags = lint("(TS//TK)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND}");
+    let hits = sci_diags_for(&diags, "TK-{BLFH|IDIT|KAND}");
     assert!(hits.is_empty(), "bare TK must not fire: {diags:?}");
 }
 
 #[test]
 fn tk_compartment_noforn_does_not_fire_when_present() {
     let diags = lint("(TS//TK-BLFH//NF)");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND}");
+    let hits = sci_diags_for(&diags, "TK-{BLFH|IDIT|KAND}");
     assert!(hits.is_empty(), "compliant TK-BLFH: {diags:?}");
 }
 
@@ -565,7 +607,7 @@ fn e059_skips_joint_classifications() {
     // None for JOINT, so all 5 rows must short-circuit.
     let src = "//JOINT S USA GBR//HCS-O HCS-P JJJ//SI-G//TK-BLFH//REL TO USA, GBR";
     let diags = lint(src);
-    let hits = e059_diags(&diags);
+    let hits = sci_diags(&diags);
     assert!(
         hits.is_empty(),
         "E059 must not fire on JOINT (non-US) classification; \
@@ -578,11 +620,11 @@ fn e059_still_fires_on_us_classifications() {
     // Sanity: scope guard must not mask US-side violations.
     let diags = lint("(S//HCS-O HCS-P)");
     assert!(
-        e059_diags_for(&diags, "HCS-O").iter().any(|_| true),
+        sci_diags_for(&diags, "HCS-O").iter().any(|_| true),
         "E059 must fire on US-classified HCS-O without companions: {diags:?}"
     );
     assert!(
-        e059_diags_for(&diags, "HCS-P").iter().any(|_| true),
+        sci_diags_for(&diags, "HCS-P").iter().any(|_| true),
         "E059 must fire on US-classified HCS-P without NOFORN: {diags:?}"
     );
 }
@@ -591,22 +633,41 @@ fn e059_still_fires_on_us_classifications() {
 // PR-D × PR-E overlap — class-floor + companion fire side-by-side
 // ===========================================================================
 
+/// Filter the diagnostic stream to class-floor catalog emissions.
+/// Post-T044 class-floor rows carry per-row predicate IDs like
+/// `banner.classification.floor-hcs-comp` and `banner.aea.floor-rd`;
+/// the `banner.*.floor-` / `banner.*.ceiling-` prefix match captures
+/// every row regardless of axis.
+fn class_floor_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
+    diags
+        .iter()
+        .filter(|d| {
+            let pid = d.rule.predicate_id();
+            d.rule.scheme() == "capco"
+                && (pid.starts_with("banner.classification.floor-")
+                    || pid.starts_with("banner.aea.floor-")
+                    || pid.starts_with("banner.aea.ceiling-")
+                    || pid.starts_with("banner.dissem.floor-"))
+        })
+        .collect()
+}
+
 #[test]
 fn pr_d_class_floor_and_pr_e_companion_both_fire_distinctly() {
     // (S//HCS-O) — HCS-O on SECRET (S satisfies the S-floor for
-    // class-floor/HCS-comp), missing ORCON + NOFORN.
+    // `banner.classification.floor-hcs-comp`), missing ORCON + NOFORN.
     //
     // Expected:
-    //  - PR D class-floor/HCS-comp does NOT fire (S meets the S-floor).
+    //  - PR D class-floor (any axis) does NOT fire (S meets S-floor).
     //  - PR E HCS-O companions fires (Error no-fix because no IC
     //    dissem block exists).
     let diags = lint("(S//HCS-O)");
-    let class_floor: Vec<_> = diags.iter().filter(|d| d.rule.predicate_id() == "E058").collect();
+    let class_floor = class_floor_diags(&diags);
     assert!(
         class_floor.is_empty(),
         "class-floor must not fire on S//HCS-O (S meets floor): {class_floor:?}"
     );
-    let companion: Vec<_> = e059_diags_for(&diags, "HCS-O");
+    let companion: Vec<_> = sci_diags_for(&diags, "HCS-O");
     assert_eq!(
         companion.len(),
         2,
@@ -620,19 +681,20 @@ fn pr_d_class_floor_only_fires_when_companion_satisfied() {
     // companions correct.
     //
     // Expected:
-    //  - PR D class-floor/HCS-comp fires (C below S-floor).
+    //  - PR D `banner.classification.floor-hcs-comp` fires (C below
+    //    S-floor).
     //  - PR E HCS-P NOFORN does NOT fire (NOFORN present).
     let diags = lint("(C//HCS-P//OC/NF)");
-    let class_floor: Vec<_> = diags
-        .iter()
-        .filter(|d| d.rule.predicate_id() == "E058" && d.message.contains("HCS-O / HCS-P"))
-        .collect();
+    let class_floor: Vec<_> = sci_diags_with_predicate(
+        &diags,
+        "banner.classification.floor-hcs-comp",
+    );
     assert_eq!(
         class_floor.len(),
         1,
-        "class-floor/HCS-comp must fire for C//HCS-P: {diags:?}"
+        "banner.classification.floor-hcs-comp must fire for C//HCS-P: {diags:?}"
     );
-    let companion = e059_diags_for(&diags, "HCS-P");
+    let companion = sci_diags_for(&diags, "HCS-P");
     assert!(
         companion.is_empty(),
         "PR E HCS-P NOFORN must not fire when NOFORN present: {companion:?}"
@@ -645,16 +707,17 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_when_both_violated() {
     // companions and no IC dissem block.
     //
     // Expected:
-    //  - PR D class-floor/HCS-comp fires (C below S-floor).
+    //  - PR D class-floor (banner.classification.floor-hcs-comp)
+    //    fires (C below S-floor).
     //  - PR E HCS-O companions fires for both ORCON and NOFORN
     //    (escalated to Error no-fix because no IC dissem block).
     let diags = lint("(C//HCS-O)");
-    let class_floor: Vec<_> = diags.iter().filter(|d| d.rule.predicate_id() == "E058").collect();
+    let class_floor = class_floor_diags(&diags);
     assert!(
         !class_floor.is_empty(),
         "class-floor must fire on C//HCS-O: {diags:?}"
     );
-    let companion: Vec<_> = e059_diags_for(&diags, "HCS-O");
+    let companion: Vec<_> = sci_diags_for(&diags, "HCS-O");
     assert_eq!(
         companion.len(),
         2,
@@ -675,34 +738,112 @@ fn rules_use_full_form_in_banner_when_dissem_is_full() {
     // Banner with full-form ORCON; missing NOFORN should insert
     // /NOFORN, not /NF.
     let diags = lint("SECRET//TK-BLFH//ORCON");
-    let hits = e059_diags_for(&diags, "TK-{BLFH|IDIT|KAND}");
+    let hits = sci_diags_for(&diags, "TK-{BLFH|IDIT|KAND}");
     assert_eq!(hits.len(), 1, "exactly one TK-NOFORN diag: {diags:?}");
     let fix = hits[0].fix.as_ref().expect("fix attached");
     assert_eq!(fix.replacement.as_ref(), "/NOFORN");
 }
 
 // ===========================================================================
-// Severity::Off override — FR-008 invariant
+// Severity::Off override — FR-008 invariant + T044 per-row dispatch
 // ===========================================================================
 
 #[test]
-fn e059_off_severity_skips_walker() {
+fn sci_per_system_off_severity_suppresses_specific_row() {
+    // Post-T044: each catalog row is independently overridable via its
+    // own wire-string key. Setting
+    // `[rules] "capco:marking.sci.hcs-o-companions" = "off"` MUST
+    // suppress only HCS-O diagnostics — the other 4 rows are
+    // untouched. The pre-T044 walker-level "E059" key no longer
+    // exists.
     let mut config = Config::default();
     config
         .rules
         .overrides
-        .insert("E059".to_owned(), "off".to_owned());
+        .insert(
+            "capco:marking.sci.hcs-o-companions".to_owned(),
+            "off".to_owned(),
+        );
     let engine = Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
     )
     .expect("engine constructs");
+    // (S//HCS-O//OC) → only HCS-O companion violations would fire
+    // (NOFORN missing). With HCS-O row off, no diagnostic should
+    // surface from `marking.sci.hcs-o-companions`.
+    let diags = engine.lint(b"(S//HCS-O//OC)").diagnostics;
+    let hcs_o_hits = sci_diags_with_predicate(&diags, "marking.sci.hcs-o-companions");
+    assert!(
+        hcs_o_hits.is_empty(),
+        "capco:marking.sci.hcs-o-companions = off must suppress that row \
+         (FR-008): {hcs_o_hits:?}"
+    );
+}
+
+#[test]
+fn sci_per_system_off_does_not_leak_to_other_rows() {
+    // Severity-override scoping check: setting one row to `off` MUST
+    // NOT suppress the other 4 rows. Verifies the per-row dispatch
+    // shape correctness — under the pre-T044 walker-level hoist
+    // (always-None post-T044), every row's diagnostics would have
+    // leaked through unchanged regardless of any override.
+    let mut config = Config::default();
+    config
+        .rules
+        .overrides
+        .insert(
+            "capco:marking.sci.hcs-o-companions".to_owned(),
+            "off".to_owned(),
+        );
+    let engine = Engine::new(
+        config,
+        vec![Box::new(CapcoRuleSet::new())],
+        CapcoScheme::new(),
+    )
+    .expect("engine constructs");
+    // (TS//SI-G//NF) → only SI-G row fires (ORCON missing). Setting
+    // HCS-O off must not silence SI-G.
+    let diags = engine.lint(b"(TS//SI-G//NF)").diagnostics;
+    let si_g_hits = sci_diags_with_predicate(&diags, "marking.sci.si-g-companions");
+    assert!(
+        !si_g_hits.is_empty(),
+        "capco:marking.sci.hcs-o-companions = off must NOT suppress \
+         the SI-G row: {diags:?}"
+    );
+}
+
+#[test]
+fn sci_per_system_off_all_five_rows_independently() {
+    // Belt-and-suspenders: override all 5 rows to `off` simultaneously
+    // and assert every catalog row is suppressed. This is the closest
+    // analog to the retired walker-level `E059 = off` semantic, now
+    // expressed as per-row keys per the T044 OD-8.A design intent.
+    let mut config = Config::default();
+    for row in [
+        "capco:marking.sci.hcs-o-companions",
+        "capco:marking.sci.hcs-p-noforn-required",
+        "capco:marking.sci.hcs-p-sub-companions",
+        "capco:marking.sci.si-g-companions",
+        "capco:marking.sci.tk-compartment-noforn-required",
+    ] {
+        config.rules.overrides.insert(row.to_owned(), "off".to_owned());
+    }
+    let engine = Engine::new(
+        config,
+        vec![Box::new(CapcoRuleSet::new())],
+        CapcoScheme::new(),
+    )
+    .expect("engine constructs");
+    // (S//HCS-O) would fire 2 HCS-O diagnostics by default; with all
+    // 5 rows off, no SCI per-system diagnostic should surface.
     let diags = engine.lint(b"(S//HCS-O)").diagnostics;
-    let hits: Vec<_> = diags.iter().filter(|d| d.rule.predicate_id() == "E059").collect();
+    let hits = sci_diags(&diags);
     assert!(
         hits.is_empty(),
-        "E059 = off must suppress all PR-E diagnostics (FR-008): {hits:?}"
+        "all 5 SCI per-system rows off must suppress every catalog diagnostic \
+         (FR-008): {hits:?}"
     );
 }
 
@@ -711,32 +852,45 @@ fn e059_off_severity_skips_walker() {
 // ===========================================================================
 
 #[test]
-fn e059_diagnostic_stream_per_row_identifiable() {
+fn sci_per_system_diagnostic_stream_per_row_identifiable() {
     // Lint a fixture exercising all 5 row violations; assert each
-    // emitted message contains its row's marking label.
+    // emitted message contains its row's marking label AND carries
+    // the row's predicate ID post-T044.
     //
     // Row #1 HCS-O: (S//HCS-O) — missing ORCON + NOFORN
     // Row #2 HCS-P: (S//HCS-P) — missing NOFORN
     // Row #3 HCS-P-sub: (TS//HCS-P JJJ//NF) — missing ORCON
     // Row #4 SI-G: (TS//SI-G//NF) — missing ORCON
     // Row #5 TK: (TS//TK-BLFH//OC) — missing NOFORN
-    let cases: &[(&str, &str)] = &[
-        ("(S//HCS-O)", "HCS-O"),
-        ("(S//HCS-P)", "HCS-P"),
-        ("(TS//HCS-P JJJ//NF)", "HCS-P sub-compartment"),
-        ("(TS//SI-G//NF)", "SI-G"),
-        ("(TS//TK-BLFH//OC)", "TK-{BLFH|IDIT|KAND}"),
+    let cases: &[(&str, &str, &str)] = &[
+        ("(S//HCS-O)", "HCS-O", "marking.sci.hcs-o-companions"),
+        ("(S//HCS-P)", "HCS-P", "marking.sci.hcs-p-noforn-required"),
+        (
+            "(TS//HCS-P JJJ//NF)",
+            "HCS-P sub-compartment",
+            "marking.sci.hcs-p-sub-companions",
+        ),
+        ("(TS//SI-G//NF)", "SI-G", "marking.sci.si-g-companions"),
+        (
+            "(TS//TK-BLFH//OC)",
+            "TK-{BLFH|IDIT|KAND}",
+            "marking.sci.tk-compartment-noforn-required",
+        ),
     ];
-    for (src, label) in cases {
+    for (src, label, predicate) in cases {
         let diags = lint(src);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule.predicate_id() == "E059" && d.message.contains(label))
+            .filter(|d| {
+                d.rule.scheme() == "capco"
+                    && d.rule.predicate_id() == *predicate
+                    && d.message.contains(label)
+            })
             .collect();
         assert!(
             !hits.is_empty(),
-            "E059 must emit per-row identifiable diagnostic for {src:?} \
-             (label {label:?}): {diags:?}"
+            "SCI per-system must emit per-row identifiable diagnostic for {src:?} \
+             (predicate {predicate:?}, label {label:?}): {diags:?}"
         );
     }
 }
