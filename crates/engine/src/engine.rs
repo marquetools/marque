@@ -989,6 +989,22 @@ impl Engine {
         // page reset — issue #306).
         let mut page_join_acc: marque_ism::CanonicalAttrs = marque_ism::CanonicalAttrs::default();
 
+        // Issue #663 — most recent banner candidate's full byte span on
+        // the current page. Captured when a `MarkingType::Banner`
+        // candidate clears the decoder confidence gate; reset to `None`
+        // alongside `page_portions` at every scanner-emitted
+        // `MarkingType::PageBreak` (form-feed `\f`, `\n\n\n+` heuristic)
+        // and exposed to `Phase::PageFinalization` rules via
+        // `RuleContext::page_banner_span`. The main candidate-loop
+        // dispatch passes `None` for the field per the visibility
+        // contract documented on the rules-side field — main-loop rules
+        // already see the in-flight banner candidate via
+        // `candidate_span`, so there is no consumer in that phase. See
+        // the `RuleContext::page_banner_span` doc for the full
+        // contract and motivating consumer (S010/E072 RELIDO
+        // resolution path per CAPCO §H.8 pp150-156).
+        let mut page_banner_span: Option<Span> = None;
+
         // FR-011: per-page strict classification floor. Tracks the
         // highest classification rank produced by the strict path on
         // the current page (`marque_ism::Classification as u8`,
@@ -1104,6 +1120,7 @@ impl Engine {
                         &mut page_portions_arc,
                         &mut page_marking_arc,
                         &page_join_acc,
+                        page_banner_span,
                         &corrections_arc,
                         candidate.span.start,
                         opts.deadline,
@@ -1126,6 +1143,11 @@ impl Engine {
                 page_portions = fresh_page_portions_accumulator();
                 page_join_acc = marque_ism::CanonicalAttrs::default();
                 page_portions_arc = None;
+                // Issue #663: clear the banner-span accumulator alongside
+                // every other per-page state. The dispatch above already
+                // consumed the closing page's banner span; the new page
+                // starts with `None` until its own banner is observed.
+                page_banner_span = None;
                 // PR 9b (T133): the page-marking cache resets on the
                 // same boundary as the per-page accumulator
                 // (Constitution VI invariant — page-rollup state is
@@ -1432,6 +1454,18 @@ impl Engine {
             // marking, apply intents via `MarkingScheme::apply_intent`,
             // and render the result via `MarkingScheme::render_canonical`.
             //
+            // Issue #663: capture this candidate's span when it is the
+            // banner. The capture runs AFTER the decoder confidence
+            // gate above so a sub-threshold banner recognition does
+            // not poison the page's banner-span accumulator (mirrors
+            // the gate's discipline for `page_portions`). Persists
+            // across non-Portion candidates until the next PageBreak
+            // resets it (pathological multi-banner pages keep the
+            // most-recent banner span, per the field's documented
+            // contract).
+            if candidate.kind == MarkingType::Banner {
+                page_banner_span = Some(candidate.span);
+            }
             // PR 4b-B 9th-pass follow-up: `RuleContext` is now
             // `#[non_exhaustive]`; cross-crate construction must go
             // through `RuleContext::new` + `with_*` setters because
@@ -1441,9 +1475,20 @@ impl Engine {
             // `RuleContext::new` as `None` defaults and gain a
             // `with_*` setter; the engine's hot-path call site
             // chains the setters here once per candidate dispatch.
+            //
+            // Issue #663 visibility contract: `page_banner_span` is
+            // populated only on `Phase::PageFinalization` dispatches
+            // (see `dispatch_page_finalization` below). The main loop
+            // passes `None` because per-portion / per-banner rules
+            // already see the relevant banner via `candidate_span`
+            // when the candidate IS the banner; the retroactive reach
+            // back to "the banner on this page" only makes sense from
+            // the page-fixpoint synthesis point. Same shape as
+            // `ctx_page_portions = None;` above (issue #306).
             let ctx = RuleContext::new(candidate.kind, candidate.span)
                 .with_page_portions(ctx_page_portions)
                 .with_page_marking(ctx_page_marking)
+                .with_page_banner_span(None)
                 .with_corrections(corrections_arc.clone())
                 .with_pre_pass_1_attrs(pre_pass_1_attrs);
             for (set_idx, rule_set) in self.rule_sets.iter().enumerate() {
@@ -1871,6 +1916,7 @@ impl Engine {
                 &mut page_portions_arc,
                 &mut page_marking_arc,
                 &page_join_acc,
+                page_banner_span,
                 &corrections_arc,
                 source.len(),
                 opts.deadline,
@@ -4668,6 +4714,14 @@ fn dispatch_page_finalization(
     page_portions_arc: &mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
     page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
     page_join_acc: &marque_ism::CanonicalAttrs,
+    // Issue #663: byte span of the closing page's most recent banner
+    // candidate, or `None` if the page had no banner. Plumbed through
+    // to `RuleContext::page_banner_span` so PageFinalization rules can
+    // target a banner-scope fix from the synthetic page-boundary
+    // anchor. The caller (`lint_inner`) clears its accumulator AFTER
+    // this dispatch returns; we read by value so the boundary copy is
+    // independent of the caller's reset.
+    page_banner_span: Option<Span>,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     boundary_offset: usize,
     deadline: Option<Instant>,
@@ -4763,6 +4817,13 @@ fn dispatch_page_finalization(
     let ctx = RuleContext::new(MarkingType::PageFinalization, boundary_span)
         .with_page_portions(Some(page_portions_arc.clone()))
         .with_page_marking(Some(page_mark_arc))
+        // Issue #663: thread the closing page's most-recent banner span
+        // into the PageFinalization dispatch. `None` when the page had
+        // no banner (a portion-only page fragment); `Some(_)` when a
+        // banner candidate cleared the decoder gate before the page
+        // boundary. PageFinalization rules MAY rely on `None` meaning
+        // "no banner to fix" — they MUST NOT unwrap unconditionally.
+        .with_page_banner_span(page_banner_span)
         .with_corrections(corrections_arc.clone())
         .with_pre_pass_1_attrs(None);
 
@@ -6055,13 +6116,23 @@ mod tests {
     // F.1: per-page accumulator reset semantics are observable.
     //
     // ContextRecorderRule captures the live `ctx.page_portions` length
-    // every time it's invoked. By running the engine over a multi-page
-    // document and inspecting the captured counts at each banner candidate,
-    // we prove that the engine resets the accumulator at the page break
-    // instead of accumulating across pages.
+    // and (issue #663) the `ctx.page_banner_span` every time it's
+    // invoked. By running the engine over a multi-page document and
+    // inspecting the captured triples at each PageFinalization fire,
+    // we prove that the engine resets the per-page accumulators at the
+    // page break instead of accumulating across pages.
+    //
+    // The triple is `(marking_type, page_portions.len(),
+    // page_banner_span)` — one row per rule invocation. The shape lives
+    // in a type alias because the nested `Arc<Mutex<Vec<(...)>>>`
+    // surface trips `clippy::type_complexity` and the recorder is
+    // shared across four test fixtures.
+    type RecorderObservation = (marque_ism::MarkingType, usize, Option<marque_scheme::Span>);
+    type RecorderObservations = std::sync::Arc<std::sync::Mutex<Vec<RecorderObservation>>>;
+
     #[derive(Clone)]
     struct ContextRecorderRule {
-        observations: std::sync::Arc<std::sync::Mutex<Vec<(marque_ism::MarkingType, usize)>>>,
+        observations: RecorderObservations,
     }
 
     impl Rule<CapcoScheme> for ContextRecorderRule {
@@ -6080,7 +6151,8 @@ mod tests {
         // recorder MUST declare PageFinalization so it fires from
         // `dispatch_page_finalization` at scanner-emitted page-break
         // boundaries and EOD, where the accumulator is force-populated
-        // and observable.
+        // and observable. Issue #663 added `ctx.page_banner_span` under
+        // the same visibility contract.
         fn phase(&self) -> marque_rules::Phase {
             marque_rules::Phase::PageFinalization
         }
@@ -6097,7 +6169,7 @@ mod tests {
             self.observations
                 .lock()
                 .unwrap()
-                .push((ctx.marking_type, count));
+                .push((ctx.marking_type, count, ctx.page_banner_span));
             vec![]
         }
     }
@@ -6152,8 +6224,8 @@ mod tests {
         // each boundary.
         let page_final_counts: Vec<usize> = obs
             .iter()
-            .filter(|(kind, _)| *kind == MarkingType::PageFinalization)
-            .map(|(_, count)| *count)
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .map(|(_, count, _)| *count)
             .collect();
         assert_eq!(
             page_final_counts.len(),
@@ -6204,8 +6276,8 @@ mod tests {
         // accumulator, the second PageFinalization count would be 2.
         let page_final_counts: Vec<usize> = obs
             .iter()
-            .filter(|(kind, _)| *kind == MarkingType::PageFinalization)
-            .map(|(_, count)| *count)
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .map(|(_, count, _)| *count)
             .collect();
         assert_eq!(
             page_final_counts.len(),
@@ -6213,6 +6285,177 @@ mod tests {
             "two lint calls should produce two PageFinalization observations"
         );
         assert_eq!(page_final_counts, vec![1, 1]);
+    }
+
+    // Issue #663: `ctx.page_banner_span` exposes the most recent banner
+    // candidate's span to `Phase::PageFinalization` rules and resets at
+    // every scanner-emitted page-break boundary. The three properties
+    // verified here are the load-bearing contract for downstream
+    // S010/E072 RELIDO resolution wire-up (CAPCO §H.8 pp150-156):
+    //
+    //   1. `Some(span)` at PageFinalization when the page had a banner.
+    //   2. The captured span points at the banner candidate's full
+    //      byte range (start matches the banner's "SECRET" prefix
+    //      offset; end matches the banner-line terminator).
+    //   3. The accumulator resets on `\f` (the captured span on a
+    //      banner-less subsequent page is `None`, NOT the previous
+    //      page's banner span).
+    //
+    // The recorder declares `Phase::PageFinalization` so it fires from
+    // `dispatch_page_finalization` per the visibility contract on the
+    // `RuleContext::page_banner_span` field.
+    #[test]
+    fn page_banner_span_populated_at_page_finalization() {
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        // Single page: one portion + one banner + EOD.
+        // The banner candidate's span starts at the "SECRET" prefix and
+        // ends at the trailing newline; the assertion below pins both
+        // endpoints to the byte offsets in this fixture.
+        let src: &[u8] = b"(SECRET//NF) body text\nSECRET//NOFORN\n";
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        let page_final_obs: Vec<&RecorderObservation> = obs
+            .iter()
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .collect();
+        assert_eq!(
+            page_final_obs.len(),
+            1,
+            "expected 1 PageFinalization observation at EOD, got: {obs:?}"
+        );
+        let banner_span = page_final_obs[0]
+            .2
+            .expect("page_banner_span MUST be Some when the page had a banner");
+        // Banner candidate covers `SECRET//NOFORN` starting at offset
+        // 23 (just after the `\n` at byte 22) and ending at offset 37
+        // (the `\n` after the banner is the candidate terminator).
+        // The scanner's banner-candidate detection includes the
+        // trailing newline as part of the candidate; if a future
+        // scanner pass tightens the span, this assertion is the
+        // canary.
+        assert_eq!(
+            banner_span.start,
+            23,
+            "banner span should start at the banner's first byte; got span={banner_span:?} \
+             from source: {:?}",
+            std::str::from_utf8(src).unwrap_or("<non-utf8>")
+        );
+        assert!(
+            banner_span.end > banner_span.start,
+            "banner span must be non-empty; got {banner_span:?}"
+        );
+        assert!(
+            banner_span.end <= src.len(),
+            "banner span must be within source bounds; got {banner_span:?} for src.len()={}",
+            src.len()
+        );
+    }
+
+    #[test]
+    fn page_banner_span_is_none_when_page_has_no_banner() {
+        // A page fragment with only a portion (no banner line) at EOD.
+        // The PageFinalization fire MUST see `page_banner_span = None`.
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        let src: &[u8] = b"(SECRET//NF) just a portion, no banner.\n";
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        let page_final_obs: Vec<&RecorderObservation> = obs
+            .iter()
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .collect();
+        assert_eq!(
+            page_final_obs.len(),
+            1,
+            "expected 1 PageFinalization observation at EOD"
+        );
+        assert!(
+            page_final_obs[0].2.is_none(),
+            "page_banner_span MUST be None when the page had no banner; got: {:?}",
+            page_final_obs[0].2
+        );
+    }
+
+    #[test]
+    fn page_banner_span_resets_across_form_feed() {
+        // Two pages: page-1 has a banner; page-2 has only a portion.
+        // Verifies the banner-span accumulator resets at the `\f`
+        // boundary — page-2's PageFinalization MUST see `None`, NOT
+        // page-1's leftover banner span. This is the F.1 reset-
+        // semantics gate for issue #663.
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        let src: &[u8] =
+            b"(SECRET//NF) p1\nSECRET//NOFORN\n\x0c(CONFIDENTIAL//NF) p2, no banner.\n";
+        let _ = engine.lint(src);
+
+        let obs = observations.lock().unwrap();
+        let page_final_spans: Vec<Option<marque_scheme::Span>> = obs
+            .iter()
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .map(|(_, _, span)| *span)
+            .collect();
+        assert_eq!(
+            page_final_spans.len(),
+            2,
+            "expected 2 PageFinalization fires (page-1 \\f boundary + EOD), got: {obs:?}"
+        );
+        assert!(
+            page_final_spans[0].is_some(),
+            "page-1 finalization should carry the banner span: {:?}",
+            page_final_spans[0]
+        );
+        assert!(
+            page_final_spans[1].is_none(),
+            "page-2 finalization MUST see None — the form feed must clear the banner accumulator. \
+             Got: {:?}",
+            page_final_spans[1]
+        );
     }
 
     #[test]

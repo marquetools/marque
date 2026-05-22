@@ -522,6 +522,60 @@ pub struct RuleContext<'a> {
     /// }
     /// ```
     pub page_marking: Option<std::sync::Arc<marque_ism::ProjectedMarking>>,
+    /// Byte span of the most recent banner candidate observed on the
+    /// current page (issue #663). `Some(span)` once a
+    /// [`marque_ism::MarkingType::Banner`] candidate has been processed
+    /// on the page; `None` until then and after the per-page reset at
+    /// every [`marque_ism::MarkingType::PageBreak`].
+    ///
+    /// **Visibility contract** (mirrors [`Self::page_portions`] post-PR
+    /// #674): for `Phase::PageFinalization` dispatches the engine
+    /// populates this field with the closing page's banner span (when
+    /// the page had one); the main candidate dispatch loop passes
+    /// `None` unconditionally. Per-portion / per-banner rules in the
+    /// main loop already see the relevant banner via
+    /// [`Self::candidate_span`] when the candidate IS the banner —
+    /// they have no need for a separate retroactive reach back to
+    /// "the banner on this page". This field exists specifically so a
+    /// `Phase::PageFinalization` rule (the only phase that fires AFTER
+    /// every candidate on the page is processed) can target a fix at
+    /// the banner-scope bytes from a position where the candidate-scope
+    /// is just the synthetic boundary anchor at the page break or EOD.
+    ///
+    /// **Sub-span discipline**: this is the FULL banner candidate span
+    /// (the bytes the scanner identified as the banner line). Rules
+    /// that need to target a sub-block (e.g., the REL TO token group
+    /// alone) parse the source bytes themselves or consume the
+    /// engine's intent-application path
+    /// ([`MarkingScheme::apply_intent`] +
+    /// [`MarkingScheme::render_canonical`]) so the engine re-renders
+    /// the whole banner from the page-level lattice projection
+    /// ([`Self::page_marking`]). The single-span shape matches the
+    /// existing [`crate::FixProposal`] contract (one `span`, one
+    /// `replacement`) and avoids storing per-category sub-spans the
+    /// engine doesn't already track on the page accumulator.
+    ///
+    /// **Multi-banner pages.** A page MAY contain more than one banner
+    /// in pathological inputs (e.g., a header banner + a footer banner
+    /// without an intervening `\f`). This field carries the MOST
+    /// RECENT banner span observed on the page. Constitution VI's
+    /// "page resets at scanner-emitted page-break candidates" invariant
+    /// is what keeps the field bounded to a single page; rules that
+    /// need to disambiguate header vs footer banners can read
+    /// [`Self::zone`] once it becomes populated (Phase 3 has it as
+    /// `None`).
+    ///
+    /// **Motivating consumer**: S010 (`collapse-uniform-rel-portions`)
+    /// and E072 (`bare-rel-portion-divergence`) resolution paths per
+    /// CAPCO-2016 §H.8 pp150-156 — both need to atomically rewrite
+    /// per-portion REL TO blocks AND the banner's dissem block. Issue
+    /// #663 closes the engine gap; the rule wire-up is a follow-up PR
+    /// against the corpus regression harness once this plumbing is in
+    /// place.
+    ///
+    /// [`MarkingScheme::apply_intent`]: marque_scheme::MarkingScheme::apply_intent
+    /// [`MarkingScheme::render_canonical`]: marque_scheme::MarkingScheme::render_canonical
+    pub page_banner_span: Option<Span>,
     /// Organization-specific corrections map from config `[corrections]`.
     /// `None` when no corrections are configured.
     pub corrections: Option<Arc<HashMap<String, String>>>,
@@ -593,6 +647,7 @@ impl<'a> RuleContext<'a> {
             candidate_span,
             page_portions: None,
             page_marking: None,
+            page_banner_span: None,
             corrections: None,
             pre_pass_1_attrs: None,
         }
@@ -623,6 +678,15 @@ impl<'a> RuleContext<'a> {
         page_marking: Option<Arc<marque_ism::ProjectedMarking>>,
     ) -> Self {
         self.page_marking = page_marking;
+        self
+    }
+
+    /// Set [`Self::page_banner_span`] (issue #663 — most recent banner
+    /// candidate span on the current page; populated only for
+    /// `Phase::PageFinalization` dispatches per the visibility contract
+    /// documented on the field).
+    pub fn with_page_banner_span(mut self, page_banner_span: Option<Span>) -> Self {
+        self.page_banner_span = page_banner_span;
         self
     }
 
