@@ -77,15 +77,15 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
 
 /// Compare two `&CountryCode` references with trigraphs (length 3)
 /// before tetragraphs and any opaque longer codes, alphabetical within
-/// each bucket — the CAPCO-2016 §H.8 p164 DISPLAY ONLY LIST ordering
-/// (also §A.6 p17 separator alphabet).
+/// each bucket — the CAPCO-2016 §H.8 p163 DISPLAY ONLY LIST ordering
+/// (also §A.6 p16 separator alphabet).
 ///
-/// Used by [`DisplayOnlyBlock::to_vec`]. Single callsite at present;
-/// extracted to a named `fn`-item to (a) make the sort semantic
-/// reviewable separately from the cross-axis lattice machinery, and
-/// (b) match the closure-axis-collapse pattern of the other R1
-/// helpers (issue #689 / PR #585 precedent). The single-site mono
-/// "collapse" is from 1 → 1 here; the win is consistency of pattern.
+/// Single callsite at present (`DisplayOnlyBlock::to_vec`): the
+/// closure-axis mono "collapse" here is from 1 → 1, **so this
+/// extraction does NOT save WASM bytes** — it is justified by
+/// reviewability (sort semantic reviewable separately from the
+/// cross-axis lattice machinery) and pattern consistency with the
+/// other R1 helpers (issue #689 / PR #585 precedent).
 fn cmp_country_code_trigraph_first(a: &CountryCode, b: &CountryCode) -> std::cmp::Ordering {
     let a_is_trigraph = a.as_str().len() == 3;
     let b_is_trigraph = b.as_str().len() == 3;
@@ -3870,7 +3870,7 @@ impl DeclassExemptionAccumulator {
 /// 7. **USA subtraction.** USA is the implicit originator (per §H.8 p163
 ///    worked examples, USA never appears in the DO axis).
 /// 8. **Ordering.** Trigraphs (length 3) first, then tetragraphs and other
-///    opaque codes; alphabetical within each bucket per §H.8 p164.
+///    opaque codes; alphabetical within each bucket per §H.8 p163.
 ///
 /// # Variants
 ///
@@ -3900,10 +3900,10 @@ pub enum DisplayOnlyBlock {
     Bottom,
 
     /// Post-intersection set of country codes for the banner DO block.
-    /// Sorted trigraphs-first then alphabetical per §H.8 p164.
+    /// Sorted trigraphs-first then alphabetical per §H.8 p163.
     Lattice {
         /// BTreeSet for deterministic ordering; render via
-        /// `into_boxed_slice` for the §H.8 p164 sort.
+        /// `into_boxed_slice` for the §H.8 p163 sort.
         countries: BTreeSet<CountryCode>,
     },
 
@@ -4028,7 +4028,7 @@ impl DisplayOnlyBlock {
 
     /// Render to a `Box<[CountryCode]>` with trigraphs first (length 3)
     /// then tetragraphs and other opaque codes, alphabetical within
-    /// each bucket per §H.8 p164.
+    /// each bucket per §H.8 p163.
     pub fn into_boxed_slice(self) -> Box<[CountryCode]> {
         self.to_vec().into_boxed_slice()
     }
@@ -4043,7 +4043,7 @@ impl DisplayOnlyBlock {
                 // Named `fn`-item comparator (`cmp_country_code_trigraph_first`)
                 // for closure-axis monomorphization collapse — R1 WASM-cut per
                 // issue #689 and the PR #585 precedent at
-                // [`sort_smolstrs_by_sar`]. §H.8 p164 + §A.6 p17 ordering
+                // [`sort_smolstrs_by_sar`]. §H.8 p163 + §A.6 p16 ordering
                 // (trigraphs first, tetragraphs after, alpha within bucket).
                 codes.sort_by(cmp_country_code_trigraph_first);
                 codes
@@ -5448,7 +5448,7 @@ mod tests {
 
     #[test]
     fn display_only_block_trigraphs_sort_before_tetragraphs() {
-        // §H.8 p164: trigraphs before tetragraphs, alphabetical within
+        // §H.8 p163: trigraphs before tetragraphs, alphabetical within
         // each bucket.
         let portions = [
             portion_with_display_only(Classification::Secret, &["GBR", "NATO"]),

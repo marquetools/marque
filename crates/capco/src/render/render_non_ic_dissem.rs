@@ -115,7 +115,7 @@ fn register_rank(n: &NonIcDissem) -> u8 {
 /// invokes its key fn with `&&NonIcDissem`; [`register_rank`] takes
 /// `&NonIcDissem`. Named `fn`-item (not closure) for closure-axis
 /// monomorphization collapse per R1 / issue #689. The `&&NonIcDissem
-/// → &NonIcDissem` reduction is auto-deref'd at the call site.
+/// → &NonIcDissem` reduction is auto-deref'd inside the adapter body.
 fn rank_non_ic(n: &&NonIcDissem) -> u8 {
     register_rank(n)
 }

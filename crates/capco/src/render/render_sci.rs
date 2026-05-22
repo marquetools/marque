@@ -150,7 +150,8 @@ fn system_text(system: &SciControlSystem) -> &str {
 // R1 mono-collapse rationale (issue #689; extends PR #585's
 // `sort_smolstrs_by_sar`).
 //
-// `numeric_then_alpha_cmp` is re-imported for use by the file-local
-// `cmp_sci_marking_system` above (which needs it under a `&str` slot,
-// not a `&&str` slot the cross-file comparator provides).
+// `numeric_then_alpha_cmp` is accessed via the `super::` path inside
+// the file-local `cmp_sci_marking_system` above (which needs it under
+// a `&str` slot, not a `&&str` slot the cross-file comparator provides);
+// only the comparators that ARE re-exported are listed in the `use` below.
 use super::{cmp_sci_compartment_ident, cmp_str_numeric_then_alpha};

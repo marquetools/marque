@@ -174,7 +174,7 @@ fn portion_str(d: &DissemControl) -> &'static str {
 /// invokes its key fn with `&&DissemControl`; [`register_rank`] takes
 /// `&DissemControl`. Named `fn`-item (not closure) for closure-axis
 /// monomorphization collapse per R1 / issue #689. The `&&DissemControl
-/// → &DissemControl` reduction is auto-deref'd at the call site.
+/// → &DissemControl` reduction is auto-deref'd inside the adapter body.
 fn rank_dissem(d: &&DissemControl) -> u8 {
     register_rank(d)
 }

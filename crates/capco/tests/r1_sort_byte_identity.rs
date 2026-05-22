@@ -22,9 +22,9 @@
 //!
 //! - **`DisplayOnlyBlock::to_vec` (`crates/capco/src/lattice.rs:3989`)**
 //!   sorts country codes trigraphs-first then tetragraphs, alpha within
-//!   each bucket, per CAPCO-2016 §H.8 p164 ("the LIST is a comma-and-
+//!   each bucket, per CAPCO-2016 §H.8 p163 ("the LIST is a comma-and-
 //!   space separated list of trigraphs and tetragraphs in alphabetical
-//!   order, trigraphs first") + §A.6 p17 (separator alphabet).
+//!   order, trigraphs first") + §A.6 p16 (separator alphabet).
 //!   `r1_display_only_block_to_vec_mixed_trigraph_tetragraph` exercises
 //!   that ordering with a mixed `{GBR, NATO, CAN, FVEY}` set (two
 //!   trigraphs, two tetragraphs).
@@ -47,9 +47,9 @@
 //! # Authority (re-verified at authorship 2026-05-22 against
 //! `crates/capco/docs/CAPCO-2016.md` per Constitution VIII)
 //!
-//! - §H.8 p164 (DISPLAY ONLY LIST ordering — trigraphs first, alpha
+//! - §H.8 p163 (DISPLAY ONLY LIST ordering — trigraphs first, alpha
 //!   within bucket).
-//! - §A.6 p17 (separator alphabet — comma+space between country codes).
+//! - §A.6 p16 (separator alphabet — comma+space between country codes).
 //! - §H.5 p99 (SAR program ascending sort, numeric-first then alpha).
 //! - §A.6 p15-16 (numeric-first ordering rule shared by SCI / SAR / AEA
 //!   sub-compartment lists).
@@ -61,7 +61,7 @@ use marque_ism::{CountryCode, SarCompartment, SarIndicator, SarMarking, SarProgr
 
 /// `DisplayOnlyBlock::to_vec` returns the country list with trigraphs
 /// (length 3) ordered before tetragraphs (length 4+), with alphabetical
-/// ordering within each bucket, per CAPCO-2016 §H.8 p164 + §A.6 p17.
+/// ordering within each bucket, per CAPCO-2016 §H.8 p163 + §A.6 p16.
 ///
 /// Mixed input `{GBR, NATO, CAN, FVEY}` (two trigraphs + two
 /// tetragraphs) exercises the comparator's primary key (length==3 vs
@@ -87,14 +87,14 @@ fn r1_display_only_block_to_vec_mixed_trigraph_tetragraph() {
     let out = block.to_vec();
     let texts: Vec<&str> = out.iter().map(|c| c.as_str()).collect();
 
-    // §H.8 p164: trigraphs first (alpha), then tetragraphs (alpha).
+    // §H.8 p163: trigraphs first (alpha), then tetragraphs (alpha).
     // CAN before GBR within the trigraph bucket; FVEY before NATO within
     // the tetragraph bucket.
     assert_eq!(
         texts,
         vec!["CAN", "GBR", "FVEY", "NATO"],
         "DisplayOnlyBlock::to_vec must order trigraphs first then \
-         tetragraphs, alpha within each bucket (CAPCO-2016 §H.8 p164)"
+         tetragraphs, alpha within each bucket (CAPCO-2016 §H.8 p163)"
     );
 }
 

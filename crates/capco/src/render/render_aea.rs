@@ -154,7 +154,7 @@ fn write_aea(aea: &AeaMarking, portion: bool, out: &mut dyn fmt::Write) -> fmt::
 /// invokes its key fn with `&&AeaMarking`; [`register_rank`] takes
 /// `&AeaMarking`. Named `fn`-item (not closure) for closure-axis
 /// monomorphization collapse per R1 / issue #689. The `&&AeaMarking
-/// → &AeaMarking` reduction is auto-deref'd at the call site.
+/// → &AeaMarking` reduction is auto-deref'd inside the adapter body.
 fn rank_aea(a: &&AeaMarking) -> u8 {
     register_rank(a)
 }
