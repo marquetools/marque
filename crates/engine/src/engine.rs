@@ -6356,28 +6356,32 @@ mod tests {
         let banner_span = page_final_obs[0]
             .2
             .expect("page_banner_span MUST be Some when the page had a banner");
-        // Banner candidate covers `SECRET//NOFORN` starting at offset
-        // 23 (just after the `\n` at byte 22) and ending at offset 37
-        // (the `\n` after the banner is the candidate terminator).
-        // The scanner's banner-candidate detection includes the
-        // trailing newline as part of the candidate; if a future
-        // scanner pass tightens the span, this assertion is the
-        // canary.
+        // Source layout (byte offsets):
+        //   0-21: "(SECRET//NF) body text"   (22 bytes — the portion + body)
+        //     22: "\n"                       (portion-terminator)
+        //  23-36: "SECRET//NOFORN"           (14 bytes — the banner content)
+        //     37: "\n"                       (banner-terminator; EXCLUDED
+        //                                     from the banner span — the
+        //                                     scanner ends the candidate
+        //                                     one-past the last printable
+        //                                     byte, NOT one-past the `\n`)
+        //     38: end of source              (src.len() == 38)
+        //
+        // The banner candidate's `Span` is the half-open range
+        // `start..end` covering the banner's printable bytes only.
+        // Empirically: `start = 23` (first byte of "SECRET"),
+        // `end = 37` (the `\n` at byte 37 is the terminator that ends
+        // the candidate but is not itself part of the span). If a
+        // future scanner pass changes the trailing-newline behavior
+        // (either including the `\n` so `end = 38`, or tightening to
+        // exclude trailing whitespace), this assertion is the canary
+        // — update both halves intentionally.
         assert_eq!(
-            banner_span.start,
-            23,
-            "banner span should start at the banner's first byte; got span={banner_span:?} \
-             from source: {:?}",
+            (banner_span.start, banner_span.end),
+            (23, 37),
+            "banner span MUST cover bytes 23..37 (SECRET//NOFORN, excluding the trailing \
+             `\\n` at byte 37); got span={banner_span:?} from source: {:?}",
             std::str::from_utf8(src).unwrap_or("<non-utf8>")
-        );
-        assert!(
-            banner_span.end > banner_span.start,
-            "banner span must be non-empty; got {banner_span:?}"
-        );
-        assert!(
-            banner_span.end <= src.len(),
-            "banner span must be within source bounds; got {banner_span:?} for src.len()={}",
-            src.len()
         );
     }
 
@@ -6454,8 +6458,12 @@ mod tests {
         .expect("default CAPCO scheme has no rewrite cycles");
 
         // Header banner at offset 0, portion in the middle, footer
-        // banner at offset 32. The footer banner's start offset is the
-        // assertion target.
+        // banner at offset `header.len() + portion.len()` (= 33 with
+        // the current literals: 15-byte header + 18-byte portion). The
+        // footer banner's start offset is the assertion target; the
+        // computation is parameterized off the actual literal lengths
+        // so a future fixture edit doesn't desync the comment from the
+        // arithmetic.
         let header: &[u8] = b"SECRET//NOFORN\n";
         let portion: &[u8] = b"(SECRET//NF) body\n";
         let footer: &[u8] = b"SECRET//NOFORN\n";
@@ -6479,10 +6487,19 @@ mod tests {
         let banner_span = page_final_obs[0]
             .2
             .expect("page_banner_span MUST be Some on a multi-banner page");
+        // Footer banner content is "SECRET//NOFORN" (14 bytes); the
+        // span excludes the trailing `\n` per the scanner contract
+        // pinned in `page_banner_span_populated_at_page_finalization`.
+        // So `end = footer_start + 14`.
+        let footer_content_len: usize =
+            footer.len() - 1 /* trailing \n excluded from span */;
         assert_eq!(
-            banner_span.start, footer_start,
-            "page_banner_span MUST hold the MOST RECENT banner span (footer at offset {footer_start}), \
-             NOT the header banner at offset 0; got span={banner_span:?}"
+            (banner_span.start, banner_span.end),
+            (footer_start, footer_start + footer_content_len),
+            "page_banner_span MUST hold the MOST RECENT banner span (footer at \
+             {footer_start}..{}, NOT the header at 0..{header_end}); got span={banner_span:?}",
+            footer_start + footer_content_len,
+            header_end = header.len() - 1
         );
     }
 
