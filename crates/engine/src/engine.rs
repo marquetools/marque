@@ -253,29 +253,21 @@ pub struct Engine {
     /// # Bridge diagnostic population
     ///
     /// The engine bridge (Commit 7.3+) uses row names from the
-    /// `Constraint` catalog to populate `Diagnostic.rule`. For CAPCO,
-    /// the bridge applies the following mappings to ensure audit-stream
-    /// continuity with retired hand-written rules:
+    /// `Constraint` catalog to populate `Diagnostic.rule`. As of T044
+    /// (FR-049 unfreeze, post-PR-10) the bridge is a **no-op
+    /// pass-through**: the catalog row's `constraint_label` IS the
+    /// predicate id; the bridge constructs `RuleId::new("capco",
+    /// constraint_label)` with no string manipulation. Per OD-8.A in
+    /// `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md` and
+    /// the per-row rename table in §1.5, the pre-T044 special-case
+    /// table (15 `capco/...` → `E0xx` literals + `class-floor/...` →
+    /// `E058` + `sci-per-system/...` → `E059` aggregations) is
+    /// eliminated — every former target gets its own predicate id at
+    /// the catalog-row level, and `docs/refactor-006/legacy-rule-id-map.md`
+    /// records the legacy → predicate-id correspondence for archaeology.
     ///
-    /// - `class-floor/<marking>` and `E058/<purpose>` → `RuleId("E058")`
-    /// - `sci-per-system/<row>` → `RuleId("E059")`
-    /// - `E010/HCS-system-constraints` → `RuleId("E010")`
-    /// - `E012/dual-classification` → `RuleId("E012")`
-    /// - `E014/joint-requires-rel-to-coverage` → `RuleId("E014")`
-    /// - `E015/non-us-requires-dissem` → `RuleId("E015")`
-    /// - `E016/joint-conflicts-restricted` → `RuleId("E016")`
-    /// - `E036/joint-conflicts-hcs` → `RuleId("E036")`
-    /// - `E021/rd-frd-requires-noforn` → `RuleId("E021")`
-    /// - `E024/rd-precedence` → `RuleId("E024")`
-    /// - `capco/noforn-conflicts-rel-to` → `RuleId("E053")`
-    /// - `E037/nodis-conflicts-exdis` → `RuleId("E037")`
-    /// - `E038/nodis-or-exdis-requires-noforn` → `RuleId("E038")`
-    /// - `E054/relido-conflicts-noforn` → `RuleId("E054")`
-    /// - `E055/relido-conflicts-display-only` → `RuleId("E055")`
-    /// - `E056/orcon-conflicts-relido` → `RuleId("E056")`
-    /// - `E057/orcon-usgov-conflicts-relido` → `RuleId("E057")`
-    ///
-    /// The bridge logic for these mappings lives in `crates/engine/src/engine.rs`.
+    /// The bridge code (now ~3 lines) lives in
+    /// [`Engine::bridge_constraint_diagnostic`].
     scheme: CapcoScheme,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
@@ -2358,12 +2350,13 @@ impl Engine {
     ///
     /// For qualifying violations the bridge:
     ///
-    /// 1. Folds the catalog row's `constraint_label` into a stable
-    ///    `RuleId` (e.g. `class-floor/...` / `E058/...` → `E058`,
-    ///    `sci-per-system/...` → `E059`, `E054/...` → `E054`,
-    ///    `capco/noforn-conflicts-rel-to` → `E053`).
+    /// 1. Constructs the `RuleId` 2-tuple `("capco",
+    ///    constraint_label)` — the catalog row's `constraint_label`
+    ///    IS the predicate id (T044 OD-8.A, no string folding, no
+    ///    legacy-id lookup table).
     /// 2. Applies the user-configured severity override
-    ///    (`emitted_id_overrides`) keyed on the resolved `RuleId`.
+    ///    (`emitted_id_overrides`) keyed on the resolved RuleId's
+    ///    predicate id.
     /// 3. Synthesizes the optional [`FixIntent`] via
     ///    [`CapcoScheme::fix_intent_by_name`] from the row name +
     ///    `attrs` + candidate `MarkingType`.
@@ -2412,43 +2405,30 @@ impl Engine {
             }
         };
 
-        let rule_id = if v.constraint_label.starts_with("class-floor/")
-            || v.constraint_label.starts_with("E058/")
-        {
-            RuleId::new("E058")
-        } else if v.constraint_label.starts_with("sci-per-system/") {
-            RuleId::new("E059")
-        } else if let Some(id_part) = v.constraint_label.split('/').next() {
-            // PR for #388 (W005 rel-to-not-in-joint-coverage): extend the
-            // bridge's structural ID prefix recognition from `E` only to
-            // `E | W`. The bridge previously routed every Warn-class
-            // constraint-catalog row to the `E008` fallback, which both
-            // misattributed the diagnostic and prevented severity-config
-            // resolution via the rule's own ID.
-            //
-            // Constitution VII precedent (engine-crate edit in a scheme-
-            // adoption PR): structural bridge gap revealed by the W005
-            // adoption — analogous to the PR 4b-B Commit 2 PageContext
-            // bugfixes (OC-USGOV / RELIDO supersession). Bugfix-class
-            // change confined to the bridge's ID-recognition predicate;
-            // the engine's rule-execution semantics are unchanged.
-            if matches!(
-                id_part.as_bytes(),
-                [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9']
-            ) {
-                RuleId::new(id_part)
-            } else if v.constraint_label == "capco/noforn-conflicts-rel-to" {
-                RuleId::new("E053")
-            } else {
-                RuleId::new("E008") // Fallback to Unrecognized (should be rare)
-            }
-        } else {
-            RuleId::new("E008")
-        };
+        // T044 (OD-8.A) — the bridge is a no-op pass-through. The
+        // catalog row's `constraint_label` IS the predicate id
+        // post-T044, so we construct `RuleId::new("capco",
+        // constraint_label)` directly — no prefix recovery, no
+        // legacy-id lookup table.
+        //
+        // Pre-T044 the bridge parsed
+        // `constraint_label.split('/').next()` to recover a flat
+        // `E### / W###` legacy id and applied a 15-row special-case
+        // table to remap `capco/...` rows to specific `E0xx`. That
+        // translation layer was the source of a class of "label says
+        // one thing, rule id says another" drift bugs (CLAUDE.md "PR
+        // 3b umbrella closeout" entry). Eliminating the translation
+        // table eliminates the drift surface. See
+        // `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
+        // §2.2 + OD-8.A + the rename table in §1.5; the
+        // `docs/refactor-006/legacy-rule-id-map.md` records each
+        // pre-T044 catalog label's predicate-id successor for
+        // archaeology.
+        let rule_id = RuleId::new("capco", v.constraint_label);
 
         let final_severity = self
             .emitted_id_overrides
-            .get(rule_id.as_str())
+            .get(rule_id.predicate_id())
             .copied()
             .unwrap_or(severity);
 

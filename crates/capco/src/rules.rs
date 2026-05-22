@@ -506,7 +506,7 @@ const E002_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
 impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E002")
+        RuleId::new("capco", "portion.dissem.rel-to-missing-usa")
     }
     fn name(&self) -> &'static str {
         "missing-usa-trigraph"
@@ -848,7 +848,7 @@ const E005_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E005")
+        RuleId::new("capco", "portion.declassification.declassify-on-misplaced")
     }
     fn name(&self) -> &'static str {
         "declassify-misplaced"
@@ -936,7 +936,7 @@ const E006_AUTHORITIES: &[Citation] = &[capco_section(SectionLetter::F, 35)];
 
 impl Rule<CapcoScheme> for DeprecatedDissemRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E006")
+        RuleId::new("capco", "marking.deprecation.deprecated-dissem-control")
     }
     fn name(&self) -> &'static str {
         "deprecated-dissem"
@@ -1082,7 +1082,7 @@ const E007_AUTHORITIES: &[Citation] = &[capco(SectionLetter::E, 6, 33)];
 
 impl Rule<CapcoScheme> for XShorthandDateRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E007")
+        RuleId::new("capco", "portion.metadata.x-shorthand-date-pattern")
     }
     fn name(&self) -> &'static str {
         "x-shorthand-date"
@@ -1323,7 +1323,7 @@ const E008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::G, 1, 36)];
 
 impl Rule<CapcoScheme> for UnknownTokenRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E008")
+        RuleId::new("capco", "marking.metadata.unrecognized-token")
     }
     fn name(&self) -> &'static str {
         "unrecognized-token"
@@ -1471,7 +1471,7 @@ const C001_AUTHORITIES: &[Citation] = &[marque_rules::CORRECTIONS_MAP_CITATION];
 
 impl Rule<CapcoScheme> for CorrectionsMapRule {
     fn id(&self) -> RuleId {
-        RuleId::new("C001")
+        RuleId::new("capco", "marking.correction.token-typo")
     }
     fn name(&self) -> &'static str {
         "corrections-map"
@@ -1666,7 +1666,7 @@ const S003_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for JointUsaFirstRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S003")
+        RuleId::new("capco", "portion.classification.joint-usa-first-style")
     }
     fn name(&self) -> &'static str {
         "joint-usa-first"
@@ -2025,7 +2025,7 @@ const S004_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
 impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S004")
+        RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest")
     }
     fn name(&self) -> &'static str {
         "rel-to-trigraph-suggest"
@@ -2237,7 +2237,7 @@ const W003_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 9, 169)];
 
 impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     fn id(&self) -> RuleId {
-        RuleId::new("W003")
+        RuleId::new("capco", "page.dissem.non-ic-dissem-in-classified-banner")
     }
     fn name(&self) -> &'static str {
         "non-ic-dissem-in-classified-banner"
@@ -2875,7 +2875,7 @@ fn analyze_uncertain_reduction(
         // conscious deferred-migration decision per the same
         // pattern E016/E036 used pre-PR-3c.B (matching PR #349).
         diagnostics.push(Diagnostic::with_fix(
-            RuleId::new("S005"),
+            RuleId::new("capco", "page.dissem.rel-to-uncertain-reduction"),
             Severity::Suggest,
             span,
             message,
@@ -2906,7 +2906,7 @@ const S005_AUTHORITIES: &[Citation] = &[S005_CITATION];
 
 impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S005")
+        RuleId::new("capco", "page.dissem.rel-to-uncertain-reduction")
     }
     fn name(&self) -> &'static str {
         "rel-to-opaque-uncertain-reduction"
@@ -3032,7 +3032,7 @@ const W034_AUTHORITIES: &[Citation] = &[capco(SectionLetter::A, 6, 16)];
 
 impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     fn id(&self) -> RuleId {
-        RuleId::new("W034")
+        RuleId::new("capco", "portion.sci.unpublished-custom-control")
     }
     fn name(&self) -> &'static str {
         "sci-custom-control-info"
@@ -3137,7 +3137,7 @@ const E061_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
 impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E061")
+        RuleId::new("capco", "portion.sci.hcs-bare-at-confidential-legacy-remark")
     }
     fn name(&self) -> &'static str {
         "hcs-bare-at-confidential-legacy-remark"
@@ -3236,7 +3236,7 @@ const E062_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
 impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E062")
+        RuleId::new("capco", "portion.sci.hcs-bare-suggest-subcompartment")
     }
     fn name(&self) -> &'static str {
         "hcs-bare-suggest-subcompartment"
@@ -3360,7 +3360,7 @@ const E063_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 70)];
 
 impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E063")
+        RuleId::new("capco", "portion.sci.rsv-bare-requires-compartment")
     }
     fn name(&self) -> &'static str {
         "rsv-bare-requires-compartment"
@@ -3467,7 +3467,7 @@ const E064_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 157)];
 
 impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E064")
+        RuleId::new("capco", "portion.dissem.eyes-only-convert-to-rel-to")
     }
     fn name(&self) -> &'static str {
         "eyes-only-convert-to-rel-to"
@@ -3895,7 +3895,7 @@ const S007_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 127)];
 
 impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S007")
+        RuleId::new("capco", "portion.nato.bare-nato-requires-rel-to-usa-nato")
     }
     fn name(&self) -> &'static str {
         "bare-nato-requires-rel-to-usa-nato"
@@ -4202,7 +4202,7 @@ const S008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 154)];
 
 impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S008")
+        RuleId::new("capco", "portion.dissem.relido-implied-by-closure")
     }
     fn name(&self) -> &'static str {
         "relido-implied-by-closure"
@@ -4345,7 +4345,7 @@ struct PreferTetragraphCollapseRule;
 
 impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S009")
+        RuleId::new("capco", "page.dissem.prefer-tetragraph-collapse")
     }
     fn name(&self) -> &'static str {
         "prefer-tetragraph-collapse"
@@ -4530,7 +4530,7 @@ struct CollapseUniformRelPortionsRule;
 
 impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
     fn id(&self) -> RuleId {
-        RuleId::new("S010")
+        RuleId::new("capco", "page.dissem.collapse-uniform-rel-portions")
     }
     fn name(&self) -> &'static str {
         "collapse-uniform-rel-portions"
@@ -4622,7 +4622,7 @@ fn check_collapse_uniform_rel_portions(
             continue;
         };
         diagnostics.push(Diagnostic::text_correction(
-            RuleId::new("S010"),
+            RuleId::new("capco", "page.dissem.collapse-uniform-rel-portions"),
             Severity::Suggest,
             block.span,
             Message::new(
@@ -4664,7 +4664,7 @@ struct BareRelPortionDivergenceRule;
 
 impl Rule<CapcoScheme> for BareRelPortionDivergenceRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E072")
+        RuleId::new("capco", "page.dissem.bare-rel-portion-divergence")
     }
     fn name(&self) -> &'static str {
         "bare-rel-portion-divergence"
@@ -4733,7 +4733,7 @@ fn check_bare_rel_portion_divergence(
             .map(|t| t.span)
             .unwrap_or(ctx.candidate_span);
         diagnostics.push(Diagnostic::new(
-            RuleId::new("E072"),
+            RuleId::new("capco", "page.dissem.bare-rel-portion-divergence"),
             Severity::Warn,
             span,
             Message::new(
@@ -5018,7 +5018,7 @@ const E039_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E039")
+        RuleId::new("capco", "page.dissem.nodis-exdis-clears-banner-rel-to")
     }
     fn name(&self) -> &'static str {
         "nodis-exdis-clears-banner-rel-to"
@@ -5162,8 +5162,9 @@ const BANNER_MATCHES_PROJECTED_AUTHORITIES: &[Citation] = &[
 impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn id(&self) -> RuleId {
         // Bookkeeping ID. Per-row IDs travel on emitted diagnostics for
-        // audit traceability.
-        RuleId::new("E031")
+        // audit traceability. The walker's registered tuple IS the SAR
+        // roll-up tuple per the T044 legacy-rule-id-map §5.
+        RuleId::new("capco", "banner.banner-rollup.sar-portions-roll-up")
     }
 
     fn name(&self) -> &'static str {
@@ -5234,18 +5235,38 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     /// values so existing configs that used the name form keep working
     /// across the T026a refactor.
     fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
+        // Post-T044: the first column is the canonical wire-string form
+        // (`<scheme>:<predicate_id>`); the second column is the
+        // descriptive `name()` alias users may also type in
+        // `.marque.toml`.
         &[
-            ("E031", "sar-banner-rollup"),
-            ("E035", "sci-banner-rollup"),
-            ("E040", "nodis-exdis-banner-rollup"),
+            (
+                "capco:banner.banner-rollup.sar-portions-roll-up",
+                "sar-banner-rollup",
+            ),
+            (
+                "capco:banner.banner-rollup.sci-portions-roll-up",
+                "sci-banner-rollup",
+            ),
+            (
+                "capco:banner.banner-rollup.non-ic-dissem-roll-up",
+                "nodis-exdis-banner-rollup",
+            ),
             // PR 5 (006 T059a, closes #276): foreign-banner mismatch
             // rows on the same walker. Per-row IDs travel on emitted
             // diagnostics for audit traceability; the additional-
             // emitted-ids list lets `.marque.toml` configure
-            // `E068 = "warn"` / `E069 = "warn"` even though the
-            // walker's `id()` is `E031`.
-            ("E068", "banner-classification-mismatch"),
-            ("E069", "banner-fgi-marker-mismatch"),
+            // `capco:banner.classification.mismatch-vs-projected = "warn"`
+            // / `capco:banner.fgi.marker-mismatch-vs-projected = "warn"`
+            // even though the walker's `id()` is the SAR roll-up tuple.
+            (
+                "capco:banner.classification.mismatch-vs-projected",
+                "banner-classification-mismatch",
+            ),
+            (
+                "capco:banner.fgi.marker-mismatch-vs-projected",
+                "banner-fgi-marker-mismatch",
+            ),
         ]
     }
 }
@@ -5289,7 +5310,7 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
     // evaluator (banner-positioning a new SAR block from rule context
     // alone is unsafe).
     BannerCategoryRow {
-        rule_id: RuleId::new("E031"),
+        rule_id: RuleId::new("capco", "banner.banner-rollup.sar-portions-roll-up"),
         severity: Severity::Fix,
         evaluate: evaluate_sar_banner_rollup,
     },
@@ -5300,7 +5321,7 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
     // contains no hierarchy-optional carve-out, so compartments and
     // sub-compartments are also rolled up.
     BannerCategoryRow {
-        rule_id: RuleId::new("E035"),
+        rule_id: RuleId::new("capco", "banner.banner-rollup.sci-portions-roll-up"),
         severity: Severity::Error,
         evaluate: evaluate_sci_banner_rollup,
     },
@@ -5309,7 +5330,7 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
     // portion, must roll up to the banner. Both passages are the
     // operative supersession-and-roll-up rule for this category.
     BannerCategoryRow {
-        rule_id: RuleId::new("E040"),
+        rule_id: RuleId::new("capco", "banner.banner-rollup.non-ic-dissem-roll-up"),
         severity: Severity::Error,
         evaluate: evaluate_non_ic_dissem_banner_rollup,
     },
@@ -5330,7 +5351,7 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
     // worked examples on pp126-129 anchor the cross-axis
     // composition).
     BannerCategoryRow {
-        rule_id: RuleId::new("E068"),
+        rule_id: RuleId::new("capco", "banner.classification.mismatch-vs-projected"),
         severity: Severity::Error,
         evaluate: evaluate_classification_banner_rollup,
     },
@@ -5354,7 +5375,7 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
     // NOFORN`) and §H.7 p129 worked example (`TOP SECRET//FGI CAN
     // DEU//NOFORN`) anchor the projection.
     BannerCategoryRow {
-        rule_id: RuleId::new("E069"),
+        rule_id: RuleId::new("capco", "banner.fgi.marker-mismatch-vs-projected"),
         severity: Severity::Error,
         evaluate: evaluate_fgi_marker_banner_rollup,
     },
@@ -6101,7 +6122,7 @@ const E041_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E041")
+        RuleId::new("capco", "portion.dissem.nodis-supersedes-exdis-in-portion")
     }
     fn name(&self) -> &'static str {
         "nodis-supersedes-exdis-in-portion"
@@ -6298,7 +6319,7 @@ const E066_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E066")
+        RuleId::new("capco", "marking.recanonicalize.legacy-nato-compound")
     }
     fn name(&self) -> &'static str {
         "legacy-nato-compound-remark"
@@ -6554,7 +6575,7 @@ const W004_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 3, 57)];
 
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn id(&self) -> RuleId {
-        RuleId::new("W004")
+        RuleId::new("capco", "page.fgi.joint-disunity-collapses-to-fgi")
     }
     fn name(&self) -> &'static str {
         "joint-disunity-collapse"
@@ -6797,7 +6818,7 @@ struct FgiExplicitWithTrigraphRule;
 
 impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E071")
+        RuleId::new("capco", "portion.fgi.fgi-explicit-with-trigraph")
     }
     fn name(&self) -> &'static str {
         "fgi-explicit-with-trigraph"
