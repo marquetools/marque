@@ -427,8 +427,10 @@ mod tests {
         ];
         let b = DisplayOnlyBlock::from_attrs_iter(&portions, &RelToBlock::empty(), false);
         let codes = b.to_vec();
-        let usa = CountryCode::try_new(b"USA").unwrap();
-        assert!(!codes.contains(&usa), "USA must NOT appear in DO");
+        assert!(
+            !codes.contains(&CountryCode::USA),
+            "USA must NOT appear in DO"
+        );
     }
 
     #[test]

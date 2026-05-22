@@ -174,7 +174,7 @@ impl JointSet {
         // Authority: §H.3 p56 (JOINT grammar requires non-empty
         // `[LIST]` AND USA in the producer list). Verified
         // 2026-05-16 against CAPCO-2016.md.
-        let has_usa = |j: &JointClassification| j.countries.iter().any(|c| c.as_str() == "USA");
+        let has_usa = |j: &JointClassification| j.countries.contains(&CountryCode::USA);
         // Inline-4 covers the typical JOINT portion count per page;
         // deeply collaborative documents with 5+ JOINT portions spill
         // to heap cleanly (LA-4).
@@ -247,7 +247,7 @@ impl JointSet {
             let mut union_non_us: BTreeSet<CountryCode> = BTreeSet::new();
             for j in &joint_portions {
                 for c in j.countries.iter() {
-                    if c.as_str() != "USA" {
+                    if *c != CountryCode::USA {
                         union_non_us.insert(*c);
                     }
                 }
@@ -370,7 +370,7 @@ impl JoinSemilattice for JointSet {
                 } else {
                     let mut non_us: BTreeSet<CountryCode> = BTreeSet::new();
                     for c in p1.iter().chain(p2.iter()) {
-                        if c.as_str() != "USA" {
+                        if *c != CountryCode::USA {
                             non_us.insert(*c);
                         }
                     }
@@ -402,7 +402,7 @@ impl JoinSemilattice for JointSet {
             ) => {
                 let mut non_us = nd.clone();
                 for c in pu.iter() {
-                    if c.as_str() != "USA" {
+                    if *c != CountryCode::USA {
                         non_us.insert(*c);
                     }
                 }

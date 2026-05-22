@@ -339,9 +339,8 @@ impl FgiSet {
                 }
                 Some(MarkingClassification::Joint(j)) => {
                     has_any_fgi = true;
-                    let usa = CountryCode::try_new(b"USA");
                     for c in j.countries.iter() {
-                        if Some(*c) != usa {
+                        if *c != CountryCode::USA {
                             countries.insert(*c);
                         }
                     }
@@ -707,10 +706,7 @@ mod tests {
         joint_portion.classification = Some(MarkingClassification::Joint(
             marque_ism::JointClassification {
                 level: Classification::Secret,
-                countries: Box::new([
-                    CountryCode::try_new(b"USA").unwrap(),
-                    CountryCode::try_new(b"GBR").unwrap(),
-                ]),
+                countries: Box::new([CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]),
             },
         ));
         let result = FgiSet::from_attrs_iter(&[joint_portion]);
@@ -719,9 +715,11 @@ mod tests {
                 concealed: false,
                 countries,
             } => {
-                let usa = CountryCode::try_new(b"USA").unwrap();
                 let gbr = CountryCode::try_new(b"GBR").unwrap();
-                assert!(!countries.contains(&usa), "USA must NOT appear");
+                assert!(
+                    !countries.contains(&CountryCode::USA),
+                    "USA must NOT appear"
+                );
                 assert!(countries.contains(&gbr), "GBR must appear");
             }
             other => panic!("expected Present {{concealed: false}}, got {other:?}"),
