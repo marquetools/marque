@@ -400,7 +400,7 @@ pub struct Engine {
     /// candidate `Severity::parse_config` parse.
     ///
     /// **Population.** For each registered rule, the entry is
-    /// `overrides.get(rule.id().as_str()).and_then(parse_config)
+    /// `overrides.get(rule.id().predicate_id()).and_then(parse_config)
     /// .unwrap_or(rule.default_severity())` — preserving the pre-hoist
     /// semantics exactly. Walker rules (those with non-empty
     /// `additional_emitted_ids()`) get an entry too; Site A's
@@ -1643,7 +1643,7 @@ impl Engine {
                                 let msg = panic_payload_to_string(&payload);
                                 tracing::warn!(
                                     target: "marque_engine::rule_panic",
-                                    rule = rule_id.as_str(),
+                                    rule = %rule_id,
                                     error = %msg,
                                     "rule check panicked; skipping this rule for the current candidate"
                                 );
@@ -1689,7 +1689,7 @@ impl Engine {
                     // walker rules carries the per-row catalog
                     // severity).
                     diags.retain_mut(|d| {
-                        match self.emitted_id_overrides.get(d.rule.as_str()).copied() {
+                        match self.emitted_id_overrides.get(d.rule.predicate_id()).copied() {
                             Some(Severity::Off) => false,
                             Some(override_severity) => {
                                 d.severity = override_severity;
@@ -1963,15 +1963,18 @@ impl Engine {
         if let Some(cached) = &self.corrections_ac {
             let c001_severity = self
                 .emitted_id_overrides
-                .get("C001")
+                .get("marking.correction.token-typo")
                 .copied()
                 .unwrap_or(Severity::Fix);
 
             if c001_severity != Severity::Off {
                 // Collect spans already covered by rule-pipeline C001.
+                // T044: C001's new predicate id is
+                // `marking.correction.token-typo`; the legacy `"C001"`
+                // string lives only in `legacy-rule-id-map.md` §1.
                 let existing_c001_spans: std::collections::HashSet<Span> = diagnostics
                     .iter()
-                    .filter(|d| d.rule.as_str() == "C001")
+                    .filter(|d| d.rule.predicate_id() == "marking.correction.token-typo")
                     .map(|d| d.span)
                     .collect();
 
@@ -1994,7 +1997,7 @@ impl Engine {
                         // discarded here.
                         let _ = key;
                         diagnostics.push(Diagnostic::text_correction(
-                            RuleId::new("C001"),
+                            RuleId::new("capco", "marking.correction.token-typo"),
                             c001_severity,
                             span,
                             marque_rules::Message::new(
@@ -3405,8 +3408,8 @@ impl<'engine> TwoPassFixer<'engine> {
         Ok((post_buffer, applied_keys, audit_lines))
     }
 
-    /// Build the set of `RuleId.as_str()` values that belong to
-    /// [`Phase::Localized`], including IDs reported via
+    /// Build the set of `RuleId.predicate_id()` values that belong
+    /// to [`Phase::Localized`], including IDs reported via
     /// [`Rule::additional_emitted_ids`]. Walker rules that register
     /// under one bookkeeping ID but emit diagnostics under per-row
     /// catalog IDs (e.g. `BannerMatchesProjectedRule`) propagate
@@ -3415,7 +3418,7 @@ impl<'engine> TwoPassFixer<'engine> {
         let mut out: HashSet<&'static str> = HashSet::new();
         for &(set_idx, rule_idx) in self.engine.pass1_rule_indices.iter() {
             let rule = &self.engine.rule_sets[set_idx].rules()[rule_idx];
-            out.insert(rule.id().as_str());
+            out.insert(rule.id().predicate_id());
             for &(emitted_id, _) in rule.additional_emitted_ids() {
                 out.insert(emitted_id);
             }
@@ -3665,7 +3668,7 @@ fn partition_diags_by_phase<'a>(
         if d.text_correction.is_some() && d.fix.is_none() {
             continue;
         }
-        if localized_ids.contains(d.rule.as_str()) {
+        if localized_ids.contains(d.rule.predicate_id()) {
             pass1_diags.push(d);
         } else {
             pass2_diags.push(d);
@@ -4583,10 +4586,20 @@ type PassFinalizationIndices = SmallVec<[(usize, usize); 4]>;
 type FastPathSeverities = Box<[Box<[Severity]>]>;
 
 /// Pre-resolved per-emitted-ID severity overrides. Keyed by `&'static
-/// str` because [`RuleId::as_str()`] returns `&'static str`, so the
-/// lookup `map.get(d.rule.as_str())` works without an owned
-/// allocation. See [`Engine::emitted_id_overrides`] for the full
-/// invariant.
+/// str` matching [`RuleId::predicate_id()`] — the predicate-id half of
+/// the 2-tuple. Lookups use `map.get(d.rule.predicate_id())` with no
+/// owned allocation (both sides are `&'static str`). See
+/// [`Engine::emitted_id_overrides`] for the full invariant.
+///
+/// **Single-scheme assumption.** Today every registered rule lives in
+/// the `"capco"` scheme; predicate ids are unique within the scheme by
+/// construction (`crates/capco/tests/post_3b_registration_pin.rs`).
+/// If a future scheme is added (CUI, NATO, …), this key shape MUST
+/// widen to `(scheme, predicate_id)` — e.g., `HashMap<RuleId, _>` —
+/// to disambiguate cross-scheme collisions. The T044 PM decision
+/// addendum (OD-7) lets users type wire-string keys
+/// (`"capco:predicate"`) in `.marque.toml`; canonicalization resolves
+/// those to the same `&'static str` predicate intern.
 type EmittedIdOverrides = HashMap<&'static str, Severity>;
 
 /// Partition the registered rules by their declared [`Phase`] (FR-021).
@@ -4642,10 +4655,10 @@ fn partition_rules_by_phase(
                 // explicit — never silently bucket a new phase
                 // into an existing pass.
                 _ => panic!(
-                    "partition_rules_by_phase: unknown Phase variant for rule {:?}; \
+                    "partition_rules_by_phase: unknown Phase variant for rule {}; \
                      `Phase` is #[non_exhaustive] and a new variant requires explicit \
                      engine plumbing before it can be registered",
-                    rule.id().as_str()
+                    rule.id()
                 ),
             }
         }
@@ -4914,7 +4927,7 @@ fn dispatch_page_finalization(
                     let msg = panic_payload_to_string(&payload);
                     tracing::warn!(
                         target: "marque_engine::rule_panic",
-                        rule = rule_id.as_str(),
+                        rule = %rule_id,
                         error = %msg,
                         "PageFinalization rule check panicked; skipping this rule for the current page boundary"
                     );
@@ -4929,7 +4942,7 @@ fn dispatch_page_finalization(
         // config silences the rule the same way it would in the
         // main candidate loop.
         diags.retain_mut(
-            |d| match emitted_id_overrides.get(d.rule.as_str()).copied() {
+            |d| match emitted_id_overrides.get(d.rule.predicate_id()).copied() {
                 Some(Severity::Off) => false,
                 Some(override_severity) => {
                     d.severity = override_severity;
@@ -5112,9 +5125,12 @@ pub(crate) fn check_portions_unchanged(
 /// and on every emitted diagnostic (Site B), both inside the hot loop;
 /// this hoist replaces them with one indexed slice load and one
 /// `HashMap::get(&'static str)` lookup respectively. Lookup keys are
-/// `&'static str` — `RuleId::as_str()` returns `&'static str` — so
-/// `HashMap<&'static str, Severity>::get(rule_id.as_str())` works
-/// directly without an owned allocation.
+/// `&'static str` — [`RuleId::predicate_id()`] returns `&'static str` —
+/// so `HashMap<&'static str, Severity>::get(rule_id.predicate_id())`
+/// works directly without an owned allocation. T044 reshaped the
+/// `RuleId` 1-tuple into a 2-tuple; the `EmittedIdOverrides` keys
+/// remain the predicate id half (single-scheme assumption — see
+/// `EmittedIdOverrides` type docs).
 ///
 /// **`bridge_rule_ids` parameter.** The caller MUST pass the same
 /// bridge IDs slice it handed to `canonicalize_rule_overrides`
@@ -5135,15 +5151,15 @@ fn build_severity_tables(
     bridge_rule_ids: &'static [(&'static str, &'static str)],
 ) -> (FastPathSeverities, EmittedIdOverrides) {
     // Pass 1: collect every canonical `&'static str` rule ID emitted
-    // by the rule set — both registered IDs (`rule.id().as_str()`) and
-    // per-row catalog IDs from dispatcher walkers
+    // by the rule set — both registered IDs (`rule.id().predicate_id()`)
+    // and per-row catalog IDs from dispatcher walkers
     // (`rule.additional_emitted_ids()`). The override map's keys
     // canonicalize against this superset; everything not in it would
     // have been rejected by `canonicalize_rule_overrides`.
     let mut known_ids: HashSet<&'static str> = HashSet::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
-            known_ids.insert(rule.id().as_str());
+            known_ids.insert(rule.id().predicate_id());
             for (catalog_id, _catalog_name) in rule.additional_emitted_ids() {
                 known_ids.insert(catalog_id);
             }
@@ -5208,7 +5224,7 @@ fn build_severity_tables(
                 .iter()
                 .map(|rule| {
                     emitted_id_overrides
-                        .get(rule.id().as_str())
+                        .get(rule.id().predicate_id())
                         .copied()
                         .unwrap_or(rule.default_severity())
                 })
@@ -5271,7 +5287,7 @@ fn canonicalize_rule_overrides(
     let mut known: HashMap<&'static str, &'static str> = HashMap::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
-            let id_str = rule.id().as_str();
+            let id_str = rule.id().predicate_id();
             let name = rule.name();
             known.insert(id_str, id_str);
             known.insert(name, id_str);
@@ -5642,7 +5658,11 @@ mod tests {
 
     impl Rule<CapcoScheme> for StubRule {
         fn id(&self) -> RuleId {
-            RuleId::new(self.id)
+            // T044 test helper: every stub rule uses the reserved
+            // `"test"` scheme. The `self.id` field carries the
+            // predicate id (the per-test discriminant) so call sites
+            // like `proposal("E001", ...)` continue to read naturally.
+            RuleId::new("test", self.id)
         }
         fn name(&self) -> &'static str {
             "stub"
@@ -5722,7 +5742,9 @@ mod tests {
         confidence: f32,
     ) -> StubProposal {
         StubProposal {
-            rule: RuleId::new(rule),
+            // T044 test helper: every stub proposal uses the reserved
+            // `"test"` scheme; the `rule` arg is the predicate id.
+            rule: RuleId::new("test", rule),
             span: Span::new(start, end),
             replacement: replacement.into(),
             confidence: marque_rules::Confidence::strict(confidence),
@@ -5943,7 +5965,7 @@ mod tests {
         struct FixWithoutProposalRule;
         impl Rule<CapcoScheme> for FixWithoutProposalRule {
             fn id(&self) -> RuleId {
-                RuleId::new("E997")
+                RuleId::new("test", "synthetic.e997-fixture")
             }
             fn name(&self) -> &'static str {
                 "stub-fix-no-proposal"
@@ -5957,7 +5979,7 @@ mod tests {
                 _ctx: &RuleContext,
             ) -> Vec<Diagnostic<CapcoScheme>> {
                 vec![Diagnostic::info(
-                    RuleId::new("E997"),
+                    RuleId::new("test", "synthetic.e997-fixture"),
                     Severity::Fix,
                     Span::new(0, 6),
                     stub_message(),
@@ -6000,7 +6022,7 @@ mod tests {
         struct SuggestRule;
         impl Rule<CapcoScheme> for SuggestRule {
             fn id(&self) -> RuleId {
-                RuleId::new("S999")
+                RuleId::new("test", "synthetic.s999-fixture")
             }
             fn name(&self) -> &'static str {
                 "stub-suggest"
@@ -6027,7 +6049,7 @@ mod tests {
                     migration_ref: None,
                 };
                 vec![Diagnostic::with_fix(
-                    RuleId::new("S999"),
+                    RuleId::new("test", "synthetic.s999-fixture"),
                     Severity::Suggest,
                     Span::new(0, 6),
                     stub_message(),
@@ -6101,7 +6123,10 @@ mod tests {
         // Only the 0.6 fix is applied. StubRule emits text-corrections.
         let text_corrections = applied_text_corrections(&result);
         assert_eq!(text_corrections.len(), 1);
-        assert_eq!(text_corrections[0].rule.as_str(), "E002");
+        // Stub rule emits via `proposal("E002", ...)` which constructs
+        // `RuleId::new("test", "E002")`; the predicate_id is the raw
+        // input string.
+        assert_eq!(text_corrections[0].rule.predicate_id(), "E002");
         // The 0.4 fix surfaces as a remaining diagnostic.
         assert_eq!(result.remaining_diagnostics.len(), 1);
     }
@@ -6145,7 +6170,7 @@ mod tests {
 
     impl Rule<CapcoScheme> for ContextRecorderRule {
         fn id(&self) -> RuleId {
-            RuleId::new("RECORD")
+            RuleId::new("test", "synthetic.record-fixture")
         }
         fn name(&self) -> &'static str {
             "page-portions-recorder"
@@ -6614,7 +6639,7 @@ mod tests {
         struct ParsedCacheIntentRule;
         impl Rule<CapcoScheme> for ParsedCacheIntentRule {
             fn id(&self) -> RuleId {
-                RuleId::new("PARSED_CACHE_TEST")
+                RuleId::new("test", "synthetic.parsed-cache-test")
             }
             fn name(&self) -> &'static str {
                 "parsed-cache-test"
@@ -6703,7 +6728,9 @@ mod tests {
         // post-cutover.
         let text_corrections = applied_text_corrections(&result);
         assert_eq!(text_corrections.len(), 1);
-        assert_eq!(text_corrections[0].rule.as_str(), "C001");
+        // Stub rule: `proposal("C001", ...)` →
+        // `RuleId::new("test", "C001")`; predicate_id is the raw input.
+        assert_eq!(text_corrections[0].rule.predicate_id(), "C001");
         assert_eq!(text_corrections[0].replacement.as_str(), "AA");
     }
 
@@ -6785,25 +6812,31 @@ mod tests {
         // silently apply the walker's `default_severity()` to E035 /
         // E040 — both of which are the failure modes this test exists
         // to prevent.
-        let engine = capco_engine_with_overrides(&[("E031", "warn")]);
+        // T044: legacy `"E031"` config key → wire-string form
+        // `"capco:banner.banner-rollup.sar-portions-roll-up"` per
+        // OD-7. The diagnostic's predicate id is the SAR roll-up tuple.
+        let engine = capco_engine_with_overrides(&[(
+            "capco:banner.banner-rollup.sar-portions-roll-up",
+            "warn",
+        )]);
         let diagnostics = engine.lint(SAR_BANNER_MISSING_PROGRAM).diagnostics;
 
         let e031: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
-            .filter(|d| d.rule.as_str() == "E031")
+            .filter(|d| d.rule.predicate_id() == "banner.banner-rollup.sar-portions-roll-up")
             .collect();
         assert_eq!(
             e031.len(),
             1,
-            "exactly one E031 diagnostic; got {} from full diag list: \
+            "exactly one SAR-roll-up diagnostic; got {} from full diag list: \
              {diagnostics:?}",
             e031.len(),
         );
         assert_eq!(
             e031[0].severity,
             Severity::Warn,
-            "config `E031 = \"warn\"` must propagate to the walker-\
-             emitted E031 diagnostic; got severity {:?}",
+            "config `capco:banner.banner-rollup.sar-portions-roll-up = \"warn\"` must propagate to the walker-\
+             emitted SAR-roll-up diagnostic; got severity {:?}",
             e031[0].severity,
         );
     }
@@ -6825,12 +6858,17 @@ mod tests {
         // This is the strongest end-to-end pin available for the
         // per-emitted-id override path: there is no way for the test
         // to pass under the pre-change semantics.
-        let engine = capco_engine_with_overrides(&[("E035", "warn")]);
+        // T044: legacy `"E035"` config key → wire-string form
+        // `"capco:banner.banner-rollup.sci-portions-roll-up"`.
+        let engine = capco_engine_with_overrides(&[(
+            "capco:banner.banner-rollup.sci-portions-roll-up",
+            "warn",
+        )]);
         let diagnostics = engine.lint(SCI_BANNER_MISSING_COMPARTMENT).diagnostics;
 
         let e035: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
-            .filter(|d| d.rule.as_str() == "E035")
+            .filter(|d| d.rule.predicate_id() == "banner.banner-rollup.sci-portions-roll-up")
             .collect();
         assert_eq!(
             e035.len(),
@@ -6865,11 +6903,16 @@ mod tests {
         // `SECRET//REL TO GBR`. The contract is identical: with
         // `E002 = "off"` configured, the engine must produce zero
         // E002 diagnostics via the fast-path skip.
-        let engine = capco_engine_with_overrides(&[("E002", "off")]);
+        // T044: legacy `"E002"` config key → wire-string form
+        // `"capco:portion.dissem.rel-to-missing-usa"`.
+        let engine = capco_engine_with_overrides(&[(
+            "capco:portion.dissem.rel-to-missing-usa",
+            "off",
+        )]);
         let diagnostics = engine.lint(b"SECRET//REL TO GBR").diagnostics;
         let e002: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
-            .filter(|d| d.rule.as_str() == "E002")
+            .filter(|d| d.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
             .collect();
         assert!(
             e002.is_empty(),
@@ -6884,7 +6927,7 @@ mod tests {
         let baseline = engine_default.lint(b"SECRET//REL TO GBR").diagnostics;
         let baseline_e002: Vec<&Diagnostic<CapcoScheme>> = baseline
             .iter()
-            .filter(|d| d.rule.as_str() == "E002")
+            .filter(|d| d.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
             .collect();
         assert!(
             !baseline_e002.is_empty(),
@@ -6941,10 +6984,10 @@ mod tests {
                 assert_eq!(
                     set_table[rule_idx],
                     rule.default_severity(),
-                    "fast_path_severities[{set_idx}][{rule_idx}] for rule {:?} \
+                    "fast_path_severities[{set_idx}][{rule_idx}] for rule {} \
                      must equal default_severity with no override; got {:?} \
                      vs default {:?}",
-                    rule.id().as_str(),
+                    rule.id(),
                     set_table[rule_idx],
                     rule.default_severity(),
                 );
@@ -6959,14 +7002,18 @@ mod tests {
         // in `CapcoRuleSet::new()`. The fast-path table entry for
         // E002 must become `Off`; every other rule's entry must
         // stay at its default; `emitted_id_overrides` must contain
-        // exactly `{"E002": Off}`.
-        let engine = capco_engine_with_overrides(&[("E002", "off")]);
+        // exactly `{"portion.dissem.rel-to-missing-usa": Off}`.
+        let engine = capco_engine_with_overrides(&[(
+            "capco:portion.dissem.rel-to-missing-usa",
+            "off",
+        )]);
 
-        // Find the (set_idx, rule_idx) for E002.
+        // Find the (set_idx, rule_idx) for E002 (predicate id
+        // `portion.dissem.rel-to-missing-usa`).
         let mut e002_loc: Option<(usize, usize)> = None;
         for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
             for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
-                if rule.id().as_str() == "E002" {
+                if rule.id().predicate_id() == "portion.dissem.rel-to-missing-usa" {
                     e002_loc = Some((set_idx, rule_idx));
                     break;
                 }
@@ -6989,9 +7036,9 @@ mod tests {
                 assert_eq!(
                     engine.fast_path_severities[s][r],
                     rule.default_severity(),
-                    "fast_path_severities[{s}][{r}] for rule {:?} must \
+                    "fast_path_severities[{s}][{r}] for rule {} must \
                      stay at default when only E002 is overridden",
-                    rule.id().as_str(),
+                    rule.id(),
                 );
             }
         }
@@ -7004,9 +7051,12 @@ mod tests {
             engine.emitted_id_overrides,
         );
         assert_eq!(
-            engine.emitted_id_overrides.get("E002").copied(),
+            engine
+                .emitted_id_overrides
+                .get("portion.dissem.rel-to-missing-usa")
+                .copied(),
             Some(Severity::Off),
-            "emitted_id_overrides[\"E002\"] must be Off",
+            "emitted_id_overrides[portion.dissem.rel-to-missing-usa] must be Off",
         );
     }
 
@@ -7027,20 +7077,26 @@ mod tests {
         //      but pinning it here also catches an inverted
         //      population (a future bug that conflated registered
         //      and catalog ID lookups).
-        let engine = capco_engine_with_overrides(&[("E035", "warn")]);
+        // T044: legacy `"E035"` config → wire-string form
+        // `"capco:banner.banner-rollup.sci-portions-roll-up"`.
+        let engine = capco_engine_with_overrides(&[(
+            "capco:banner.banner-rollup.sci-portions-roll-up",
+            "warn",
+        )]);
 
-        // Find the walker rule (registered ID E031).
+        // Find the walker rule (registered with the SAR roll-up
+        // predicate id — the first `BannerCategoryRow.rule_id`).
         let mut walker_loc: Option<(usize, usize, Severity)> = None;
         for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
             for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
-                if rule.id().as_str() == "E031" {
+                if rule.id().predicate_id() == "banner.banner-rollup.sar-portions-roll-up" {
                     walker_loc = Some((set_idx, rule_idx, rule.default_severity()));
                     break;
                 }
             }
         }
         let (set_idx, rule_idx, walker_default) =
-            walker_loc.expect("BannerMatchesProjectedRule (E031) must be registered");
+            walker_loc.expect("BannerMatchesProjectedRule must be registered");
 
         assert_eq!(
             engine.fast_path_severities[set_idx][rule_idx], walker_default,
@@ -7050,16 +7106,21 @@ mod tests {
              path, not the registered-ID fast-path table",
         );
 
-        // E035 (NOT E031) must be in `emitted_id_overrides`.
+        // SCI-roll-up predicate (NOT SAR-roll-up) must be in
+        // `emitted_id_overrides`.
         assert_eq!(
-            engine.emitted_id_overrides.get("E035").copied(),
+            engine
+                .emitted_id_overrides
+                .get("banner.banner-rollup.sci-portions-roll-up")
+                .copied(),
             Some(Severity::Warn),
-            "emitted_id_overrides[\"E035\"] must be Warn",
+            "emitted_id_overrides[banner.banner-rollup.sci-portions-roll-up] must be Warn",
         );
         assert!(
-            !engine.emitted_id_overrides.contains_key("E031"),
-            "the override targets E035; E031 must NOT appear in \
-             emitted_id_overrides",
+            !engine
+                .emitted_id_overrides
+                .contains_key("banner.banner-rollup.sar-portions-roll-up"),
+            "the override targets the SCI roll-up; the SAR roll-up (walker's registered id) must NOT appear in emitted_id_overrides",
         );
         assert_eq!(
             engine.emitted_id_overrides.len(),
@@ -7080,13 +7141,17 @@ mod tests {
         // `unwrap_or(default_severity)`. Preserve that exactly: the
         // E002 rule's fast-path entry stays at its default and
         // `emitted_id_overrides` does NOT contain `"E002"`.
-        let engine = capco_engine_with_overrides(&[("E002", "borked")]);
+        // T044: legacy `"E002"` config → wire-string form.
+        let engine = capco_engine_with_overrides(&[(
+            "capco:portion.dissem.rel-to-missing-usa",
+            "borked",
+        )]);
 
         // Find E002's location.
         let mut e002_loc: Option<(usize, usize, Severity)> = None;
         for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
             for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
-                if rule.id().as_str() == "E002" {
+                if rule.id().predicate_id() == "portion.dissem.rel-to-missing-usa" {
                     e002_loc = Some((set_idx, rule_idx, rule.default_severity()));
                     break;
                 }
@@ -7102,7 +7167,9 @@ mod tests {
             e002_default, engine.fast_path_severities[set_idx][rule_idx],
         );
         assert!(
-            !engine.emitted_id_overrides.contains_key("E002"),
+            !engine
+                .emitted_id_overrides
+                .contains_key("portion.dissem.rel-to-missing-usa"),
             "unparseable severity must NOT populate \
              emitted_id_overrides; got: {:?}",
             engine.emitted_id_overrides,
@@ -7124,7 +7191,9 @@ mod tests {
 
     impl Rule<CapcoScheme> for NamedStub {
         fn id(&self) -> RuleId {
-            RuleId::new(self.id)
+            // T044: stub rules use the reserved `"test"` scheme; the
+            // `self.id` field carries the predicate id.
+            RuleId::new("test", self.id)
         }
         fn name(&self) -> &'static str {
             self.name
@@ -7475,8 +7544,10 @@ mod tests {
     fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
         use smallvec::smallvec;
 
-        let contributing: SmallVec<[RuleId; 4]> =
-            smallvec![RuleId::new("C001"), RuleId::new("E006")];
+        let contributing: SmallVec<[RuleId; 4]> = smallvec![
+            RuleId::new("capco", "marking.correction.token-typo"),
+            RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
+        ];
         let failure_span = Span::new(0, 64);
         let diag = super::build_r002_diagnostic(contributing, failure_span);
 
@@ -7501,8 +7572,16 @@ mod tests {
         // type rather than a string substring.
         assert_eq!(diag.message.template(), MessageTemplate::ReparseFailed);
         let contributors = &diag.message.args().contributing_rule_ids;
-        assert!(contributors.iter().any(|id| id.as_str() == "C001"));
-        assert!(contributors.iter().any(|id| id.as_str() == "E006"));
+        assert!(
+            contributors
+                .iter()
+                .any(|id| id.predicate_id() == "marking.correction.token-typo")
+        );
+        assert!(
+            contributors
+                .iter()
+                .any(|id| id.predicate_id() == "marking.deprecation.deprecated-dissem-control")
+        );
     }
 
     #[test]
@@ -7538,10 +7617,13 @@ mod tests {
         // The partition predicate: rule IDs in `localized_ids` go to
         // pass-1; everything else goes to pass-2. text_correction
         // diagnostics with no `fix` are excluded from BOTH partitions.
-        let localized: HashSet<&'static str> = ["E006", "E007", "C001"].into_iter().collect();
+        //
+        // T044: synthetic test ids in the `"test"` reserved scheme;
+        // `localized_ids` keys on the predicate-id half.
+        let localized: HashSet<&'static str> = ["e006", "e007", "c001"].into_iter().collect();
 
         let pass1_id = Diagnostic::<CapcoScheme>::new(
-            RuleId::new("E006"),
+            RuleId::new("test", "e006"),
             Severity::Error,
             Span::new(0, 4),
             stub_message(),
@@ -7549,7 +7631,7 @@ mod tests {
             None,
         );
         let pass2_id = Diagnostic::<CapcoScheme>::new(
-            RuleId::new("E022"),
+            RuleId::new("test", "e022"),
             Severity::Error,
             Span::new(4, 8),
             stub_message(),
@@ -7557,7 +7639,7 @@ mod tests {
             None,
         );
         let unknown_id = Diagnostic::<CapcoScheme>::new(
-            RuleId::new("E999"),
+            RuleId::new("test", "e999"),
             Severity::Error,
             Span::new(8, 12),
             stub_message(),
@@ -7565,7 +7647,7 @@ mod tests {
             None,
         );
         let text_corr_no_fix = Diagnostic::text_correction(
-            RuleId::new("C001"),
+            RuleId::new("test", "c001"),
             Severity::Fix,
             Span::new(12, 16),
             stub_message(),
@@ -7584,22 +7666,22 @@ mod tests {
         ];
         let (p1, p2) = super::partition_diags_by_phase(&diags, &localized);
 
-        // Pass-1: E006 only (C001's text-correction with no fix is
+        // Pass-1: e006 only (c001's text-correction with no fix is
         // excluded; pass-0 already promoted it or marked it as a sub-
         // threshold suggestion the remaining-diagnostics filter handles).
         assert_eq!(p1.len(), 1);
-        assert_eq!(p1[0].rule.as_str(), "E006");
+        assert_eq!(p1[0].rule.predicate_id(), "e006");
 
-        // Pass-2: E022 (declared) + E999 (unknown id ⇒ default to pass-2).
+        // Pass-2: e022 (declared) + e999 (unknown id ⇒ default to pass-2).
         assert_eq!(p2.len(), 2);
-        let p2_ids: Vec<&str> = p2.iter().map(|d| d.rule.as_str()).collect();
-        assert!(p2_ids.contains(&"E022"));
-        assert!(p2_ids.contains(&"E999"));
+        let p2_ids: Vec<&str> = p2.iter().map(|d| d.rule.predicate_id()).collect();
+        assert!(p2_ids.contains(&"e022"));
+        assert!(p2_ids.contains(&"e999"));
         // text_correction-no-fix excluded from both:
         for d in p1.iter().chain(p2.iter()) {
             assert_ne!(
-                d.rule.as_str(),
-                "C001",
+                d.rule.predicate_id(),
+                "c001",
                 "text_correction-no-fix must be excluded from both partitions"
             );
         }
@@ -7620,11 +7702,11 @@ mod tests {
         // identity is the load-bearing assertion — a clone-based
         // partition would produce structurally-equal but
         // pointer-distinct Diagnostics, failing the test.
-        let localized: HashSet<&'static str> = ["E006"].into_iter().collect();
+        let localized: HashSet<&'static str> = ["e006"].into_iter().collect();
 
         let diags = vec![
             Diagnostic::<CapcoScheme>::new(
-                RuleId::new("E006"),
+                RuleId::new("test", "e006"),
                 Severity::Error,
                 Span::new(0, 4),
                 stub_message(),
@@ -7632,7 +7714,7 @@ mod tests {
                 None,
             ),
             Diagnostic::<CapcoScheme>::new(
-                RuleId::new("E022"),
+                RuleId::new("test", "e022"),
                 Severity::Error,
                 Span::new(4, 8),
                 stub_message(),
@@ -7659,10 +7741,10 @@ mod tests {
         // sub-threshold suggestion — it stays in the partition routed by
         // its rule id's phase (so the engine's remaining-diagnostics
         // filter can re-surface it as a Suggest).
-        let localized: HashSet<&'static str> = ["C001"].into_iter().collect();
+        let localized: HashSet<&'static str> = ["c001"].into_iter().collect();
 
         let mut tc = Diagnostic::text_correction(
-            RuleId::new("C001"),
+            RuleId::new("test", "c001"),
             Severity::Fix,
             Span::new(0, 6),
             stub_message(),
@@ -7692,7 +7774,7 @@ mod tests {
         // vectors, so the source `[Diagnostic]` must remain live.
         let diags = [tc];
         let (p1, p2) = super::partition_diags_by_phase(&diags, &localized);
-        assert_eq!(p1.len(), 1, "text_correction WITH fix → pass-1 (C001)");
+        assert_eq!(p1.len(), 1, "text_correction WITH fix → pass-1 (c001)");
         assert_eq!(p2.len(), 0);
     }
 
@@ -7722,7 +7804,8 @@ mod tests {
         struct LocalizedFixIntentStub;
         impl Rule<CapcoScheme> for LocalizedFixIntentStub {
             fn id(&self) -> RuleId {
-                RuleId::new("E899")
+                // T044: test-fixture synthetic id in `"test"` scheme.
+                RuleId::new("test", "synthetic.e899-fixture")
             }
             fn name(&self) -> &'static str {
                 "stub-localized-fixintent"
@@ -7760,7 +7843,7 @@ mod tests {
                     migration_ref: None,
                 };
                 vec![Diagnostic::with_fix_at_span(
-                    RuleId::new("E899"),
+                    RuleId::new("test", "synthetic.e899-fixture"),
                     Severity::Fix,
                     Span::new(8, 14),
                     ctx.candidate_span,
@@ -7800,14 +7883,16 @@ mod tests {
         // Pass-1's fix was applied — at least one `AppliedFix`
         // carries the stub rule's ID.
         let applied_view = applied_fixes(&result);
-        let saw_stub_fix = applied_view.iter().any(|f| f.rule.as_str() == "E899");
+        let saw_stub_fix = applied_view
+            .iter()
+            .any(|f| f.rule.predicate_id() == "synthetic.e899-fixture");
         assert!(
             saw_stub_fix,
             "stub localized FixIntent rule's fix must be promoted into AppliedFix; \
              applied: {:?}",
             applied_view
                 .iter()
-                .map(|f| f.rule.as_str())
+                .map(|f| f.rule.predicate_id())
                 .collect::<Vec<_>>(),
         );
     }
@@ -7824,7 +7909,8 @@ mod tests {
         struct LocalizedFixIntentStub;
         impl Rule<CapcoScheme> for LocalizedFixIntentStub {
             fn id(&self) -> RuleId {
-                RuleId::new("E898")
+                // T044: test-fixture synthetic id in `"test"` scheme.
+                RuleId::new("test", "synthetic.e898-fixture")
             }
             fn name(&self) -> &'static str {
                 "stub-localized-fixintent-dryrun"
@@ -7854,7 +7940,7 @@ mod tests {
                     migration_ref: None,
                 };
                 vec![Diagnostic::with_fix_at_span(
-                    RuleId::new("E898"),
+                    RuleId::new("test", "synthetic.e898-fixture"),
                     Severity::Fix,
                     Span::new(8, 14),
                     ctx.candidate_span,
@@ -7887,7 +7973,7 @@ mod tests {
         let applied_view = applied_fixes(&result);
         let stub_fix = applied_view
             .iter()
-            .find(|f| f.rule.as_str() == "E898")
+            .find(|f| f.rule.predicate_id() == "synthetic.e898-fixture")
             .expect("stub fix should appear in applied list");
         assert!(
             stub_fix.dry_run,
@@ -8040,7 +8126,10 @@ mod tests {
         replacement: &str,
     ) -> SynthesizedFix {
         SynthesizedFix {
-            rule: RuleId::new(rule),
+            // T044: synthesized-fix helper uses the reserved `"test"`
+            // scheme; the `rule` arg is the predicate id (caller picks
+            // a unique discriminant per fix).
+            rule: RuleId::new("test", rule),
             severity: Severity::Fix,
             span: Span::new(start, end),
             replacement: replacement.into(),
@@ -8108,7 +8197,7 @@ mod tests {
         // (lex-min winner). With same span across all three, the
         // first to enter the kept set is the FR-016 sort head.
         assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].rule.as_str(), "E001");
+        assert_eq!(kept[0].rule.predicate_id(), "E001");
     }
 
     #[test]
@@ -8328,7 +8417,9 @@ mod tests {
         // tests; the fabricated record is never commingled with engine
         // output.
         let applied = AppliedFix::__engine_promote(
-            RuleId::new(rule),
+            // T044: synthetic test fixture uses `"test"` scheme; the
+            // `rule` arg is the predicate-id discriminant.
+            RuleId::new("test", rule),
             Severity::Fix,
             span,
             intent,
@@ -8361,7 +8452,7 @@ mod tests {
             synth_audit_line("E006", 8, 12),
         ];
         let out = fixer.contributing_pass1_rule_ids(&applied);
-        let ids: Vec<&str> = out.iter().map(|id| id.as_str()).collect();
+        let ids: Vec<&str> = out.iter().map(|id| id.predicate_id()).collect();
         assert_eq!(ids, vec!["C001", "E006"]);
     }
 
@@ -8385,7 +8476,7 @@ mod tests {
             synth_audit_line("C001", 16, 20),
         ];
         let out = fixer.contributing_pass1_rule_ids(&applied);
-        let ids: Vec<&str> = out.iter().map(|id| id.as_str()).collect();
+        let ids: Vec<&str> = out.iter().map(|id| id.predicate_id()).collect();
         // ASC-sorted, then take(4) → C001, E006, E007, E008.
         assert_eq!(ids, vec!["C001", "E006", "E007", "E008"]);
     }
@@ -8433,7 +8524,10 @@ mod tests {
             recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(
-            smallvec::smallvec![RuleId::new("E006")],
+            smallvec::smallvec![RuleId::new(
+                "capco",
+                "marking.deprecation.deprecated-dissem-control"
+            )],
             Span::new(0, 18),
         );
         let result =
@@ -8444,13 +8538,13 @@ mod tests {
         // test-fixture path doesn't route by rule).
         assert_eq!(result.audit_lines.len(), 2);
         let first_rule = match &result.audit_lines[0] {
-            AuditLine::AppliedFix(f) => f.rule.as_str(),
-            AuditLine::TextCorrection(tc) => tc.rule.as_str(),
+            AuditLine::AppliedFix(f) => f.rule.predicate_id(),
+            AuditLine::TextCorrection(tc) => tc.rule.predicate_id(),
             _ => "unknown",
         };
         let second_rule = match &result.audit_lines[1] {
-            AuditLine::AppliedFix(f) => f.rule.as_str(),
-            AuditLine::TextCorrection(tc) => tc.rule.as_str(),
+            AuditLine::AppliedFix(f) => f.rule.predicate_id(),
+            AuditLine::TextCorrection(tc) => tc.rule.predicate_id(),
             _ => "unknown",
         };
         assert_eq!(first_rule, "C001");
@@ -8514,7 +8608,9 @@ mod tests {
         };
 
         let dropped = vec![Diagnostic::<CapcoScheme>::new(
-            RuleId::new("C001"),
+            // T044: legacy C001 → predicate id
+            // `marking.correction.token-typo`.
+            RuleId::new("capco", "marking.correction.token-typo"),
             Severity::Fix,
             Span::new(20, 24),
             stub_message(),
@@ -8538,7 +8634,10 @@ mod tests {
         // Dropped diagnostic + R002 = 2 entries; the dropped one
         // appears before the R002 entry (R002 pushed last).
         assert_eq!(result.remaining_diagnostics.len(), 2);
-        assert_eq!(result.remaining_diagnostics[0].rule.as_str(), "C001");
+        assert_eq!(
+            result.remaining_diagnostics[0].rule.predicate_id(),
+            "marking.correction.token-typo"
+        );
         assert_eq!(result.remaining_diagnostics[1].rule, super::R002_RULE_ID);
     }
 
@@ -8571,7 +8670,9 @@ mod tests {
             migration_ref: None,
         };
         let diag_with_fix = Diagnostic::with_fix(
-            RuleId::new("E006"),
+            // T044: legacy E006 → predicate id
+            // `marking.deprecation.deprecated-dissem-control`.
+            RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
             Severity::Error,
             Span::new(8, 14),
             stub_message(),
