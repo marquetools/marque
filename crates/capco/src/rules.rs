@@ -502,7 +502,12 @@ struct MissingUsaTrigraphRule;
 /// Citations E002 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E002_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+///
+/// §H.8 p151 is the precise authority for "USA always appears first"
+/// in the REL TO list. §H.8 p150 is the section anchor (REL TO marking
+/// template) but the verbatim USA-first rule sits in the
+/// "Additional Marking Instructions" block on p151.
+const E002_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 151)];
 
 impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn id(&self) -> RuleId {

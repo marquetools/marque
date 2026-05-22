@@ -364,7 +364,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_rd_sigma,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: capco(SectionLetter::H, 6, 113),
+        // RD-SIGMA marking template lives on §H.6 p108; FRD-SIGMA on
+        // p113 (the latter retains p113 below). Pre-T044 the row drifted
+        // to the FRD page; corrected at T044 per Constitution VIII
+        // citation-propagation discipline.
+        citation: capco(SectionLetter::H, 6, 108),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_RD (bit 22): coarse gate. Fires when any RD marking is

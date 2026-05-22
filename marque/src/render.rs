@@ -426,15 +426,16 @@ pub fn render_human_result(
 }
 
 // ---------------------------------------------------------------------------
-// Audit record NDJSON (marque-1.0)
+// Audit record NDJSON (marque-2.0)
 //
 // The `schema` field is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`,
 // which `crates/engine/build.rs` validates against the closed accept-list
-// `["marque-1.0"]`. PR 3c.2.D retired the pre-cutover `mvp-1` / `mvp-2` /
-// `mvp-3` shapes atomically with the v2 `AppliedFix` reshape, BLAKE3
-// digesting, closed `MessageTemplate` JSON serialization, and
-// `Canonical<S>` provenance wiring, to close the G13 audit-content-
-// ignorance channel structurally.
+// `["marque-2.0"]` (was `["marque-1.0"]` pre-T044). PR 3c.2.D retired the
+// pre-cutover `mvp-1` / `mvp-2` / `mvp-3` shapes atomically with the v2
+// `AppliedFix` reshape, BLAKE3 digesting, closed `MessageTemplate` JSON
+// serialization, and `Canonical<S>` provenance wiring, to close the G13
+// audit-content-ignorance channel structurally. T044 then bumped to
+// `marque-2.0` alongside the `RuleId` 2-tuple migration.
 //
 // FR-014 (single-schema-per-build) is upheld at two layers:
 //   1. `crates/engine/build.rs` panics on unknown values — only the
@@ -896,7 +897,7 @@ pub fn text_correction_to_audit_json_v1_0<'a>(
 }
 
 /// Serialize a single [`AuditLine<CapcoScheme>`] to a `serde_json::Value`
-/// in the `marque-1.0` shape (dispatcher).
+/// in the `marque-2.0` shape (dispatcher; was `marque-1.0` pre-T044).
 ///
 /// Two arms project to disjoint NDJSON record types:
 /// - [`AuditLine::AppliedFix`] → `{"type": "applied_fix", ...}` per
@@ -999,7 +1000,7 @@ pub fn render_audit_line(
 /// Shape: `{"schema":"<AUDIT_SCHEMA_VERSION>","error":"<code>","rule":"<id>"}`
 ///
 /// where `<AUDIT_SCHEMA_VERSION>` is the build-time value of the
-/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-1.0`; see
+/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-2.0`; see
 /// `crates/engine/build.rs`). The schema string is emitted dynamically
 /// so an audit consumer can dispatch on the schema version without
 /// the renderer's docs going stale on a schema bump.

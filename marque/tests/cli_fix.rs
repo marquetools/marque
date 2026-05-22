@@ -145,7 +145,7 @@ fn fix_quiet_does_not_suppress_audit() {
         "-q must not suppress audit NDJSON, got: {stderr}"
     );
     // Narration line should be absent. PR 3c.2.D / D4: the
-    // marque-1.0 audit record carries `"type": "applied_fix"` so a
+    // marque-2.0 audit record carries `"type": "applied_fix"` so a
     // bare `contains("applied")` would false-positive on the audit
     // record itself. Match the narration prefix (`<label>: applied N
     // fix(es)`) instead.
@@ -457,7 +457,7 @@ fn fix_explain_config_mutual_exclusion() {
 // schema for the lifetime of the build — never a mix of pre-cutover
 // and post-cutover records on the same stream. The build-layer half
 // is enforced in `crates/engine/build.rs`, which validates
-// `MARQUE_AUDIT_SCHEMA` to the closed accept-list `["marque-1.0"]`
+// `MARQUE_AUDIT_SCHEMA` to the closed accept-list `["marque-2.0"]`
 // and panics on anything else. This test pins the runtime-emitter
 // half: every audit record on stderr must declare the matching
 // `schema` string, and any pre-cutover label (`marque-mvp-3`, etc.)
