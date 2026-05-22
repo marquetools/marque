@@ -6,14 +6,21 @@
 //! 2026-05-19: E024 covers RD>FRD AND RD>TFNI; this row carries the
 //! FRD>TFNI leg as a distinct catalog entry.
 //!
-//! Predicate-level pinning. The helper currently emits an advisory
-//! `ConstraintViolation` (span: None, severity: None) matching the
-//! shape of the other E0xx dyadic helpers (E012/E014/E021/E024/E038).
-//! End-user-visible diagnostic emission flips on as part of the
-//! engine-bridge generalization at
-//! `specs/006-engine-rule-refactor/` (issue #578 et al.); these tests
-//! exercise the predicate independently of that surfacing path so
-//! they remain stable through the bridge transition.
+//! Predicate-level + bridge-emission pinning. Post-#661 the helper
+//! populates both `span` (anchored on TFNI via an inline
+//! `text == "TFNI"` walk over `token_spans`, falling back to the
+//! shared `token_span_attrs(TokenRef::Token(TOK_TFNI))` arm) and
+//! `severity: Some(Severity::Fix)`, producing a user-visible
+//! Diagnostic through `bridge_constraint_diagnostic`. The
+//! pre-#661 advisory `(None, None)` shape was structurally
+//! suppressed by the bridge's both-fields-required guard at
+//! `crates/engine/src/engine.rs` and never surfaced to consumers.
+//!
+//! These tests exercise the predicate independently of the engine
+//! bridge — see `crates/capco/src/scheme/predicates/tier1_mask.rs`
+//! unit tests for the in-helper span/severity shape pinning, and
+//! `tests/corpus/invalid/e070_frd_tfni_precedence.{txt,expected.json}`
+//! for the end-to-end engine emission contract.
 //!
 //! Authority: CAPCO-2016 §H.6 p120 (TFNI subsection precedence rules
 //! plus commingling rules). Verified against

@@ -215,7 +215,7 @@ impl CapcoScheme {
         attrs: &CanonicalAttrs,
         marking_type: MarkingType,
     ) -> Option<marque_rules::FixIntent<CapcoScheme>> {
-        use crate::scheme::{TOK_NOFORN, TOK_REL_TO, TOK_RELIDO};
+        use crate::scheme::{TOK_NOFORN, TOK_REL_TO, TOK_RELIDO, TOK_TFNI};
 
         match name {
             // #559 close-out (2026-05-19): renamed from
@@ -314,6 +314,28 @@ impl CapcoScheme {
                 confidence: Confidence::strict(0.95),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
+            }),
+            // #661 — E070's predicate emits Severity::Fix; without a
+            // matching FixIntent the engine surfaces a Fix-severity
+            // diagnostic that cannot auto-apply (engine.rs:5825
+            // `fix_without_proposal_rule_keeps_fix_severity` documents
+            // the legal shape but the contradiction confuses
+            // consumers — see #661 review for the rationale). Wiring
+            // FactRemove(TFNI) at the portion scope per §H.6 p120's
+            // precedence rule ("FRD takes precedence over TFNI; TFNI
+            // should not appear alongside FRD") makes Severity::Fix
+            // truthful: the canonical resolution drops TFNI.
+            //
+            // E024 (`rd-precedence`) has the same Severity::Fix +
+            // missing-FixIntent shape and remains out of scope for
+            // this PR — tracked separately for parallel wiring.
+            "E070/frd-tfni-precedence" => Some(FixIntent {
+                replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_TFNI), Scope::Portion),
+                confidence: Confidence::strict(1.0),
+                feature_ids: Default::default(),
+                message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                 source: FixSource::BuiltinRule,
                 migration_ref: None,
             }),
@@ -613,6 +635,13 @@ impl CapcoScheme {
             ("E036", "joint-conflicts-hcs"),
             ("E021", "rd-frd-requires-noforn"),
             ("E024", "rd-precedence"),
+            // #661 — E070 now emits user-visible diagnostics (mirror of
+            // E024; FRD>TFNI leg of the §H.6 p120 precedence rule).
+            // Listed here so `.marque.toml [rules] E070 = "off"` (and
+            // the descriptive `frd-tfni-precedence` alias) resolve
+            // through `canonicalize_rule_overrides` without an
+            // `UnknownRuleOverride` failure.
+            ("E070", "frd-tfni-precedence"),
             ("E037", "nodis-conflicts-exdis"),
             ("E038", "nodis-or-exdis-requires-noforn"),
             ("E053", "noforn-conflicts-rel-to"),

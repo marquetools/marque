@@ -6074,6 +6074,16 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Warn
         }
+        // Issue #306 / PR #674 made `ctx.page_portions` only populated
+        // for `Phase::PageFinalization` rules — the main candidate loop
+        // now passes `None` unconditionally (see `engine.rs:1378`). The
+        // recorder MUST declare PageFinalization so it fires from
+        // `dispatch_page_finalization` at scanner-emitted page-break
+        // boundaries and EOD, where the accumulator is force-populated
+        // and observable.
+        fn phase(&self) -> marque_rules::Phase {
+            marque_rules::Phase::PageFinalization
+        }
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
@@ -6125,34 +6135,40 @@ mod tests {
         //   Page break (\f)
         //   Page 2: one portion + one banner
         //
-        // The recorder fires on every candidate that reaches the rule loop.
-        // For the page-1 banner we expect to see 1 accumulated portion.
-        // For the page-2 banner we expect to see 1 accumulated portion
-        // (NOT 2) — the form feed must have reset the accumulator.
+        // The recorder declares `Phase::PageFinalization`, so it
+        // fires from `dispatch_page_finalization` — once at the
+        // scanner-emitted page-break boundary (\f) and once at EOD.
+        // Each fire observes the accumulated `ctx.page_portions` for
+        // the just-completed page; if the form feed correctly resets
+        // the accumulator, both fires see exactly 1 portion (NOT 2).
         let src: &[u8] = b"(SECRET//NF) p1 text\nSECRET//NOFORN\n\x0c(CONFIDENTIAL//NF) p2\nCONFIDENTIAL//NOFORN\n";
         let _ = engine.lint(src);
 
         let obs = observations.lock().unwrap();
-        // The recorder ran once per non-PageBreak candidate. Filter to
-        // banners and check the per-page portion count each banner saw.
-        let banner_counts: Vec<usize> = obs
+        // PageFinalization fires carry `MarkingType::PageFinalization`
+        // (set by `dispatch_page_finalization`'s synthetic
+        // RuleContext at the boundary anchor — see `engine.rs:4763`).
+        // Filter to those and check the per-page accumulator size at
+        // each boundary.
+        let page_final_counts: Vec<usize> = obs
             .iter()
-            .filter(|(kind, _)| *kind == MarkingType::Banner)
+            .filter(|(kind, _)| *kind == MarkingType::PageFinalization)
             .map(|(_, count)| *count)
             .collect();
         assert_eq!(
-            banner_counts.len(),
+            page_final_counts.len(),
             2,
-            "expected 2 banner observations, got: {obs:?}"
+            "expected 2 PageFinalization observations \
+             (page-1 form-feed boundary + EOD), got: {obs:?}"
         );
         assert_eq!(
-            banner_counts[0], 1,
-            "page-1 banner should see 1 accumulated portion"
+            page_final_counts[0], 1,
+            "page-1 finalization should see 1 accumulated portion"
         );
         assert_eq!(
-            banner_counts[1], 1,
-            "page-2 banner should see 1 accumulated portion (the page-1 \
-             portion must be cleared by the form feed)"
+            page_final_counts[1], 1,
+            "page-2 finalization (EOD) should see 1 accumulated portion \
+             (the page-1 portion must be cleared by the form feed)"
         );
     }
 
@@ -6181,20 +6197,22 @@ mod tests {
         let _ = engine.lint(src);
 
         let obs = observations.lock().unwrap();
-        // Both calls should see identical observations — if the second
-        // call leaked state from the first, the page-2 banner_count would
-        // double.
-        let banner_counts: Vec<usize> = obs
+        // Each `engine.lint()` call fires `dispatch_page_finalization`
+        // once (at EOD — no `\f` in this source, so no mid-doc
+        // boundary). Both calls should see identical observations; if
+        // the second call leaked the first call's portion into its
+        // accumulator, the second PageFinalization count would be 2.
+        let page_final_counts: Vec<usize> = obs
             .iter()
-            .filter(|(kind, _)| *kind == MarkingType::Banner)
+            .filter(|(kind, _)| *kind == MarkingType::PageFinalization)
             .map(|(_, count)| *count)
             .collect();
         assert_eq!(
-            banner_counts.len(),
+            page_final_counts.len(),
             2,
-            "two lint calls should produce two banner observations"
+            "two lint calls should produce two PageFinalization observations"
         );
-        assert_eq!(banner_counts, vec![1, 1]);
+        assert_eq!(page_final_counts, vec![1, 1]);
     }
 
     #[test]

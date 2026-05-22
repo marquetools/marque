@@ -97,17 +97,22 @@ use marque_scheme::{
 /// "fixture missing"). Removing an entry is automatic when a fixture
 /// covers it (assertion 3 fires).
 ///
-/// **Current entries** (11): the structurally-unreachable carve-outs
+/// **Current entries** (10): the structurally-unreachable carve-outs
 /// documented in `docs/refactor-006/citation-coverage-report.md`.
 /// Two synthetic sentinels (`[config]` / `[engine-internal]`), one
 /// cross-reference pin (`§D.1 p27`), one data-dependent rule trigger
-/// gap (`§F p35` — no dissem entries in MIGRATIONS), one engine-
-/// bridge structural suppression (`§H.6 p120` — E070 emits a
-/// `ConstraintViolation` with `span: None, severity: None`, which
-/// the bridge silently drops; tracked at
-/// [issue #661](https://github.com/marquetools/marque/issues/661)),
-/// and six PageRewrite citations whose enforcement is projection-
-/// time only with no `Diagnostic` emission.
+/// gap (`§F p35` — no dissem entries in MIGRATIONS), and six
+/// PageRewrite citations whose enforcement is projection-time only
+/// with no `Diagnostic` emission.
+///
+/// Issue #661 closed (PR fix/661-e070-frd-tfni-bridge): E070 (§H.6
+/// p120 — FRD precedence over TFNI) was previously suppressed by
+/// the engine bridge because its `ConstraintViolation` carried
+/// `span: None, severity: None`. The fix wired both fields through
+/// (anchoring on the dominated TFNI token, severity `Fix` mirroring
+/// `e024_rd_precedence`) and added the corpus fixture
+/// `tests/corpus/invalid/e070_frd_tfni_precedence.txt`, so the
+/// citation is now harvested.
 const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
     // Synthetic non-CAPCO sentinels.
     (marque_rules::CORRECTIONS_MAP_CITATION, "config-sentinel"),
@@ -119,7 +124,6 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
         capco_section(SectionLetter::F, 35),
         "f-p35-deprecated-dissem",
     ),
-    (capco(SectionLetter::H, 6, 120), "h6-p120-frd-tfni"),
     // PageRewrite citations — projection-time mutation, no Diagnostic.
     (capco(SectionLetter::H, 8, 134), "h8-p134-fouo-eviction"),
     (
