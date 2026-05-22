@@ -28,7 +28,7 @@ use marque_capco::scheme::CapcoMarking;
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_core::{Parser, Scanner};
 use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingType};
-use marque_rules::{RuleContext, RuleSet};
+use marque_rules::{RuleContext, RuleSet, Severity};
 use marque_scheme::MarkingScheme;
 use marque_test_utils::{
     ExpectedFixture, invalid_fixtures, load_expected, load_fixture, valid_fixtures,
@@ -104,6 +104,18 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         // or equivalent) and attach via `with_page_marking`.
         let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_portions(ctx_page);
         for rule in rule_set.rules() {
+            // Issue #672 — mirror the engine's `Severity::Off` gate.
+            // Without this filter, opt-in rules (S009/S010 from
+            // PR #670; any future Severity::Off Suggest rule) fire
+            // here even though the production engine skips them by
+            // default, producing diagnostic-count mismatches against
+            // fixtures authored before the opt-in rule landed.
+            // Constitution V Principle V — `Severity::Off` is a
+            // non-firing state, NOT a suppression; the engine skips
+            // the rule loop body entirely, and this test must match.
+            if rule.default_severity() == Severity::Off {
+                continue;
+            }
             for d in rule.check(&attrs, &ctx) {
                 out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));
             }

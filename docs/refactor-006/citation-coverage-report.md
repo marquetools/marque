@@ -21,8 +21,8 @@ corresponding `EXPECTED_UNCOVERED` row (and vice versa).
 | `CapcoScheme::closure_rules()` (residual fn-pointer catalog) | 1 declared |
 | Hand-written `Rule::cited_authorities()` overrides | 24 rules |
 | **Declared citations (unique)** | **55** |
-| **Harvested citations (over full corpus)** | **45** |
-| **`EXPECTED_UNCOVERED` whitelist** | **11** |
+| **Harvested citations (over full corpus)** | **46** |
+| **`EXPECTED_UNCOVERED` whitelist** | **10** |
 
 > The 10-row bitmask `CLOSURE_TABLE` (see `crates/capco/src/scheme/closure_table.rs`) is iterated by `scheme.closure_inventory()` for tooling discovery, NOT by `scheme.closure_rules()`. The F.1 gate iterates `closure_rules()` (the residual fn-pointer catalog, 1 row); closure citations enter the declared set primarily through their bytewise-twin Rule `cited_authorities()` overrides (e.g., `S007`, `S008`).
 
@@ -45,8 +45,12 @@ following structural properties holds:
      `engine.rs::bridge_constraint_diagnostic` requires both to
      be `Some` before producing a user-visible diagnostic;
      advisory `ConstraintViolation`s are logged via
-     `tracing::trace!` only. E070 (`§H.6 p120`) is the
-     representative case today.
+     `tracing::trace!` only. E070 (`§H.6 p120`) was the
+     representative case (closed by #661 — the predicate now
+     populates both fields). No surviving whitelist entries
+     exercise this sub-shape today, but the taxonomy is retained
+     so a future helper adding an advisory-only violation has a
+     documented carve-out path.
 
    Both sub-shapes share the structural invariant: no fixture
    can harvest the citation regardless of input, because the
@@ -199,44 +203,34 @@ relative to PR 10.A.2.
 
 <a id="h6-p120-frd-tfni"></a>
 
-### `§H.6 p120` — E070 FRD/TFNI precedence
+### `§H.6 p120` — E070 FRD/TFNI precedence (closed by #661)
 
-Property: (1) — Engine-bridge-suppressed sub-shape (no
-`Diagnostic` emission for advisory `ConstraintViolation`s; see
-the property (1) taxonomy header above).
+Closed by PR `fix/661-e070-frd-tfni-bridge`. Retained here so the
+prior whitelist anchor resolves for git-history readers; the
+corresponding row was removed from `EXPECTED_UNCOVERED` in the
+same PR (assertion (c) of the F.1 gate would have fired
+otherwise — fixture coverage now matches the declared catalog).
 
-Root cause re-verified at PR 10.A.2 reviewer fix-pass: the
-predicate **does** fire correctly when both `AEA_FRD` and
-`AEA_TFNI` bits are present, but its emitted
-`ConstraintViolation` carries `span: None, severity: None` (see
-`crates/capco/src/scheme/predicates/tier1_mask.rs:215-234`). The
-engine bridge at `crates/engine/src/engine.rs:1640-1663` (entry
-point) and `engine.rs:2290-2312` (guard logic) requires both
-`span` and `severity` to be `Some` before producing a user-
-visible `Diagnostic`. Advisory violations are logged via
-`tracing::trace!` but never surface on the diagnostic stream —
-so no fixture can harvest §H.6 p120 today, by construction of
-the bridge.
+Resolution (Path A from the original issue body): `e070_frd_tfni_precedence`
+at `crates/capco/src/scheme/predicates/tier1_mask.rs` was
+updated to populate both `span` and `severity` on the emitted
+`ConstraintViolation`. `severity` is `Severity::Fix` mirroring
+`e024_rd_precedence` (the resolution — drop TFNI when FRD is
+present in the same portion — is unambiguous). `span` anchors on
+the dominated TFNI token per §H.6 p120's "the 'TFNI' marking
+does not appear in the banner line" wording; the inline walk
+filters `attrs.token_spans` on `TokenKind::AeaMarking ∧ text ==
+"TFNI"` so the span lands on TFNI rather than the first AEA
+marking in source order (which would be FRD when both are
+present). Fixture
+`tests/corpus/invalid/e070_frd_tfni_precedence.txt` (portion
+form `(S//FRD/TFNI//NOFORN)`) exercises the now-harvested path.
 
-The earlier hypothesis (parser routing gap) was incorrect; the
-predicate is structurally complete and the suppression is on
-the bridge side.
-
-To remove this whitelist entry, two paths exist:
-
-- **Path A (narrow):** populate `span` + `severity` on E070's
-  `ConstraintViolation` (lift the `token_span_attrs(...,
-  TokenRef::Token(...))` shape from sibling helpers like
-  `e024_rd_precedence`), then add a fixture exercising
-  `SECRET//FRD/TFNI` or `(S//FRD/TFNI//NOFORN)`.
-- **Path B (broad):** generalize the engine bridge to surface
-  advisory `(None span, None severity)` diagnostics as
-  informational entries — a behavior change with ripple impact
-  across every dyadic helper in `tier1_mask.rs`.
-
-Tracked in [issue #661](https://github.com/marquetools/marque/issues/661)
-(filed PR 10.A.2 reviewer fix-pass; supersedes the earlier
-closed-and-unrelated #578 pointer in `tier1_mask.rs:211-214`).
+Path B (generalize the engine bridge to surface advisory
+`(None, None)` violations) remains a deferred follow-on if a
+future dyadic helper genuinely needs the advisory channel
+without populated span/severity. Today every helper in
+`tier1_mask.rs` populates both fields.
 
 <a id="h8-p134-fouo-eviction"></a>
 

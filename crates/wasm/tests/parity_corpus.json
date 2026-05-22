@@ -122,6 +122,36 @@
       "expected_lint": "{\"rule\":\"E012\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p55\",\"fix\":null}\n"
     },
     {
+      "name": "e066_legacy_atomal_banner.txt",
+      "category": "invalid",
+      "input": "//COSMIC TOP SECRET ATOMAL\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":2,\"end\":26},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p122\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":2,\"end\":26},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e066_legacy_atomal_portion.txt",
+      "category": "invalid",
+      "input": "(//CTSA)\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":7},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p122\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":7},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"CTS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":7},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e066_legacy_balk_portion.txt",
+      "category": "invalid",
+      "input": "(//CTS-BALK)\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":11},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":11},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"CTS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":11},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e066_legacy_bohemia_portion.txt",
+      "category": "invalid",
+      "input": "(//CTS-B)\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":8},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":8},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"CTS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":8},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e070_frd_tfni_precedence.txt",
+      "category": "invalid",
+      "input": "(S//FRD/TFNI//NOFORN)\n",
+      "expected_lint": "{\"rule\":\"E070\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p120\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
       "name": "joint_conflicts_hcs.txt",
       "category": "invalid",
       "input": "(//JOINT TOP SECRET USA GBR//HCS//REL TO USA, GBR)\n",
@@ -314,6 +344,12 @@
       "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":22},\"message\":{\"template\":\"UnrecognizedToken\"},\"citation\":\"§G.1 p36\",\"fix\":null}\n"
     },
     {
+      "name": "w005_rel_to_not_in_joint.txt",
+      "category": "invalid",
+      "input": "(//JOINT S AUS CAN USA//REL TO USA, AUS, CAN, GBR)\n",
+      "expected_lint": "{\"rule\":\"W005\",\"severity\":\"warn\",\"span\":{\"start\":3,\"end\":22},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p57\",\"fix\":null}\n"
+    },
+    {
       "name": "x_shorthand_date.txt",
       "category": "invalid",
       "input": "SECRET//25X1-//NOFORN\n",
@@ -430,7 +466,7 @@
     {
       "name": "clean_banner_with_rel_to.txt",
       "category": "valid",
-      "input": "SECRET//REL TO USA, AUS, GBR\n",
+      "input": "SECRET//REL TO USA, DEU, GBR\n",
       "expected_lint": ""
     },
     {
