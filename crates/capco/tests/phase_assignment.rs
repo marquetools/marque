@@ -93,10 +93,7 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // shape as S004). Stays a registered walker for the same reason
     // — candidate replacement is corpus-derived during evaluation.
     // Authority: CAPCO-2016 §H.7 p122 + §A.6 p16.
-    (
-        "portion.fgi.ownership-trigraph-suggest",
-        Phase::Localized,
-    ),
+    ("portion.fgi.ownership-trigraph-suggest", Phase::Localized),
     // ----- Phase::WholeMarking ---------------------------------------
     // Banner roll-up walkers, cross-axis decisions, intent-only
     // FactAdd / FactRemove / Recanonicalize emissions, and no-fix

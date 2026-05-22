@@ -2369,10 +2369,34 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
         // `parse_fgi_marker_with_spans` emits one span per
         // shape-admitted country in source order, matching the order
         // `FgiMarker::Acknowledged.countries` populates.
+        // Scope the per-country `FgiOwnershipTrigraph` set to the byte
+        // range of the chosen `FgiMarker` block-span before positional
+        // indexing against `marker.countries()`. Per CAPCO §H.7 p122 a
+        // marking carries at most one FGI category, and the parser's
+        // overwrite semantics make `attrs.fgi_marker` correspond to the
+        // LAST `FgiMarker` span pushed into `attrs.token_spans` — so
+        // searching from the end with `rev().find(...)` locates the
+        // block-span matching `attrs.fgi_marker`. Without this scoping,
+        // if a future parser change or malformed input emitted multiple
+        // FGI blocks in a single marking, positional indexing could
+        // mis-anchor diagnostics onto spans from an earlier block whose
+        // `FgiMarker` value was overwritten and is no longer reachable
+        // through `attrs.fgi_marker`.
+        let fgi_block_span = attrs
+            .token_spans
+            .iter()
+            .rev()
+            .find(|t| t.kind == TokenKind::FgiMarker)
+            .map(|t| t.span);
         let ownership_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
             .filter(|t| t.kind == TokenKind::FgiOwnershipTrigraph)
+            .filter(|t| {
+                fgi_block_span
+                    .map(|block| t.span.start >= block.start && t.span.end <= block.end)
+                    .unwrap_or(false)
+            })
             .collect();
 
         let token_set = CapcoTokenSet;

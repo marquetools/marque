@@ -122,7 +122,11 @@ fn fires_on_xx_ownership_token() {
             .collect::<Vec<_>>(),
     );
     let d = hits[0];
-    assert_eq!(d.severity, Severity::Suggest, "default severity must be Suggest");
+    assert_eq!(
+        d.severity,
+        Severity::Suggest,
+        "default severity must be Suggest"
+    );
     assert!(
         citation_contains(d, "§H.7 p122"),
         "rule must cite §H.7 p122; got {:?}",
@@ -320,7 +324,8 @@ fn diagnostic_span_anchors_on_unregistered_token_bytes() {
     // changes shift candidate-extraction offsets.
     let span_bytes = &source[d.span.start..d.span.end];
     assert_eq!(
-        span_bytes, b"XX",
+        span_bytes,
+        b"XX",
         "span bytes must equal `XX`; got {:?}",
         std::str::from_utf8(span_bytes).unwrap_or("<non-utf8>"),
     );

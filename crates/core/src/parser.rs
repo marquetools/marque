@@ -701,7 +701,9 @@ impl<'t> Parser<'t> {
                 // `RelToBlock` + `RelToTrigraph`; per-country spans
                 // are needed by the FGI ownership-trigraph-suggest
                 // rule (issue #545).
-                if let Some(marker) = parse_fgi_marker_with_spans(trimmed, abs_start, &mut token_spans) {
+                if let Some(marker) =
+                    parse_fgi_marker_with_spans(trimmed, abs_start, &mut token_spans)
+                {
                     fgi_marker = Some(ParsedFgiMarker::new(marker, trimmed, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::FgiMarker,
@@ -2506,17 +2508,17 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// Quick gate for "does this block start with an FGI marker, in either
 /// the abbreviation or long-form?".
 ///
-/// Mirrors the prefix-check that gates [`parse_fgi_marker`] dispatch in
-/// the block-walking parser. Centralizing it here keeps the
-/// abbreviation/long-form set in lock-step between the gate and the
-/// parser. Long-form authority: CAPCO-2016 §H.7 p123 (Authorized
-/// Banner Line Marking Title: `FOREIGN GOVERNMENT INFORMATION [LIST]`
-/// for the acknowledged form / `FOREIGN GOVERNMENT INFORMATION` for
-/// the concealed form). Pair with the
-/// `fgi_gate_lock_steps_with_parser` integration test in
+/// Mirrors the prefix-check that gates
+/// [`parse_fgi_marker_with_spans`] dispatch in the block-walking
+/// parser. Centralizing it here keeps the abbreviation/long-form set
+/// in lock-step between the gate and the parser. Long-form authority:
+/// CAPCO-2016 §H.7 p123 (Authorized Banner Line Marking Title:
+/// `FOREIGN GOVERNMENT INFORMATION [LIST]` for the acknowledged form
+/// / `FOREIGN GOVERNMENT INFORMATION` for the concealed form). Pair
+/// with the `fgi_gate_lock_steps_with_parser` integration test in
 /// `crates/core/tests/banner_long_forms.rs`, which exercises the
-/// end-to-end contract every input that should reach `parse_fgi_marker`
-/// must first pass this gate.
+/// end-to-end contract: every input that should reach
+/// [`parse_fgi_marker_with_spans`] must first pass this gate.
 fn starts_with_fgi_prefix(s: &str) -> bool {
     s == "FGI"
         || s.starts_with("FGI ")
@@ -2794,8 +2796,11 @@ fn parse_fgi_marker_with_spans(
 }
 
 /// Test-only thin wrapper that delegates to
-/// [`parse_fgi_marker_with_spans`] with a discarded `Vec<TokenSpan>`
-/// and zero base offset. The production call site is
+/// [`parse_fgi_marker_with_spans`] with a discarded
+/// `SmallVec<[TokenSpan; 16]>` and zero base offset. The
+/// `SmallVec` capacity matches the production call site, keeping the
+/// wrapper heap-free for the typical FGI block (≤ 16 countries). The
+/// production call site is
 /// [`Parser::parse_marking_string`] (around `parser.rs:704`, inside
 /// the block-walker's FGI-marker arm) and uses
 /// [`parse_fgi_marker_with_spans`] directly so per-country
