@@ -155,15 +155,18 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 let rule_id: String = v.constraint_label.to_owned();
                 out.push((rule_id, span.start, span.end));
             }
-            // PR 3c.2.C C5: bridge signature now requires
-            // `(attrs, candidate_span, fix_scope, severity_override)`.
+            // PR 3c.2.C C5 + T044: bridge signature now requires
+            // `(attrs, candidate_span, fix_scope, &emitted_id_overrides)`.
             // The candidate's outer span and a per-portion fix scope
-            // mirror what the engine's lint loop passes.
+            // mirror what the engine's lint loop passes. Empty overrides
+            // map = no severity overrides for any row.
+            let empty_overrides: std::collections::HashMap<&'static str, marque_rules::Severity> =
+                std::collections::HashMap::new();
             for diag in scheme.bridge_sci_per_system_diagnostics(
                 &attrs,
                 candidate.span,
                 marque_scheme::Scope::Portion,
-                None,
+                &empty_overrides,
             ) {
                 out.push((
                     // T044: match the predicate-id-without-scheme

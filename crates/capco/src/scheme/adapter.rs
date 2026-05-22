@@ -873,24 +873,27 @@ impl CapcoScheme {
     ///
     /// # Severity override handling
     ///
-    /// The caller passes the resolved `Severity` for `E059`
-    /// (`severity_override` = the `[rules] E059 = ...` config, or
-    /// `None` to use each diagnostic's authoring severity). When
-    /// `severity_override = Some(Severity::Off)` the method returns
-    /// an empty `Vec` (FR-008: an `Off`-severity diagnostic is
-    /// unrepresentable). A non-`Off` override replaces the per-
-    /// diagnostic severity uniformly.
+    /// Per-row severity override resolution: the caller passes the
+    /// engine's pre-resolved `emitted_id_overrides` table
+    /// (`&'static str → Severity`), and this method looks up each
+    /// row's `name` (the row's predicate ID post-T044) independently.
+    /// Each catalog row is independently overridable through its own
+    /// `.marque.toml [rules]` wire-string key (e.g.,
+    /// `"capco:marking.sci.hcs-o-companions" = "off"`), matching the
+    /// T044 OD-8.A design intent — the catalog row's `name` IS the
+    /// predicate ID, with no walker-level "E059" key behind it.
+    ///
+    /// `Severity::Off` on a row suppresses every diagnostic that row
+    /// would otherwise emit (FR-008: an `Off`-severity diagnostic is
+    /// unrepresentable). A non-`Off` override replaces each emitted
+    /// diagnostic's severity uniformly for that row.
     pub fn bridge_sci_per_system_diagnostics(
         &self,
         attrs: &CanonicalAttrs,
         candidate_span: marque_scheme::Span,
         fix_scope: marque_scheme::Scope,
-        severity_override: Option<marque_rules::Severity>,
+        emitted_id_overrides: &std::collections::HashMap<&'static str, marque_rules::Severity>,
     ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
-        // FR-008 early-out — `Off` suppresses the entire catalog.
-        if matches!(severity_override, Some(marque_rules::Severity::Off)) {
-            return Vec::new();
-        }
         // Hot-path early-out — every SCI per-system row is SCI-axis-
         // only. If no SCI markings are present, no row can fire and
         // the catalog walk costs effectively nothing. Mirrors the
@@ -900,11 +903,25 @@ impl CapcoScheme {
         }
         let mut out = Vec::new();
         for row in SCI_PER_SYSTEM_CATALOG {
+            // T044 OD-8.A: each row is independently severity-
+            // overridable via its `name` (= the row's predicate ID
+            // post-T044). Resolve per-row so the user can
+            // `[rules] "capco:marking.sci.hcs-o-companions" = "off"`
+            // without suppressing the other 4 rows. Drops the stale
+            // walker-level "E059" hoist that always returned None
+            // post-T044 (`emitted_id_overrides` is keyed by predicate
+            // ID; "E059" was never a key).
+            let row_override = emitted_id_overrides.get(row.name).copied();
+            // FR-008 per-row early-out — `Off` suppresses just this
+            // row's diagnostics.
+            if matches!(row_override, Some(marque_rules::Severity::Off)) {
+                continue;
+            }
             if !(row.presence)(attrs) {
                 continue;
             }
             for mut diag in sci_per_system_emit(attrs, candidate_span, fix_scope, row) {
-                if let Some(sev) = severity_override {
+                if let Some(sev) = row_override {
                     diag.severity = sev;
                 }
                 out.push(diag);
