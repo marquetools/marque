@@ -37,12 +37,13 @@
 //! diagnostics carry the respective predicate IDs for audit-stream
 //! traceability without inflating the registered count.
 //!
-//! Asserts the **exact set** of 29 registered `Rule::id()` values.
+//! Asserts the **exact set** of 30 registered `Rule::id()` values
+//! (29 → 30 after issue #545 added `FgiOwnershipTrigraphSuggestRule`).
 //!
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 29` (post-issue-#501 + post-PR-5;
+//! `rule_set.rules().len() == 30` (post-issue-#545 + post-PR-5;
 //! the count rolls forward in lock-step with this test as rules land
 //! or retire — see the running-count derivation comment in
 //! `corpus_parity.rs::rule_count_reflects_registration_changes`).
@@ -68,7 +69,7 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 29 registered `Rule::id()` strings post-issue-#501.
+/// The closed set of 30 registered `Rule::id()` strings post-issue-#545.
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
@@ -119,9 +120,19 @@ use std::collections::BTreeSet;
 /// diagnostic for FGI ownership tokens that fail the strict-parser
 /// shape gate (`FVEY`, `DEUX`, `ACGU`, `ISAF`, etc.); replaces the
 /// generic E008 surface via the existing suppression chain. Authority:
-/// CAPCO-2016 §H.7 p123 (28 → 29).
+/// CAPCO-2016 §H.7 p123 (28 → 29). Issue #545 adds
+/// `FgiOwnershipTrigraphSuggestRule` — shape-admitted-but-unregistered
+/// FGI ownership tokens (e.g., `(S//FGI XX)` / `(S//FGI ZZZ)`)
+/// trigger a `Severity::Suggest` text_correction at the precise
+/// `TokenKind::FgiOwnershipTrigraph` byte span. Architecturally
+/// the FGI-ownership twin of S004 `RelToTrigraphSuggestRule` (same
+/// corpus-prior + edit-distance machinery, different axis). Stays a
+/// registered walker for the same reason as S004 — the candidate
+/// replacement is corpus-derived during evaluation and cannot be
+/// reproduced from `(name, attrs)` via the bridge. Authority:
+/// CAPCO-2016 §H.7 p122 + §A.6 p16 (29 → 30).
 ///
-/// The 29 registered rule IDs in wire-string form
+/// The 30 registered rule IDs in wire-string form
 /// (`"<scheme>:<predicate_id>"`).
 ///
 /// Post-T044 the legacy E### / W### / C### / S### / R### flat-string IDs
@@ -216,17 +227,24 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // (`FVEY`, `DEUX`, `ACGU`, `ISAF`, …). The E008 emission path
     // suppresses co-firing via `is_fgi_invalid_ownership_token`.
     "capco:marking.fgi.invalid-ownership-token", // E073
+    // Issue #545: FGI ownership-trigraph-suggest. Architectural twin
+    // of S004 — shape-admitted-but-unregistered FGI ownership tokens
+    // (`XX`, `ZZZ`, etc.) trigger a corpus-prior + edit-distance
+    // suggestion at the precise `TokenKind::FgiOwnershipTrigraph`
+    // byte span. Suggest channel (engine never auto-applies).
+    // Authority: CAPCO-2016 §H.7 p122 + §A.6 p16.
+    "capco:portion.fgi.ownership-trigraph-suggest",
 ];
 
 #[test]
-fn post_pr_578_registers_exact_29_rule_ids() {
+fn post_issue_545_registers_exact_30_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "29 unique IDs from 29
-    // registrations" from "29 unique IDs from 30 registrations
+    // assertion below cannot distinguish "30 unique IDs from 30
+    // registrations" from "30 unique IDs from 31 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
@@ -245,10 +263,13 @@ fn post_pr_578_registers_exact_29_rule_ids() {
     // (24 → 25). Issue #250: added S009 `PreferTetragraphCollapseRule`
     // (25 → 26). Issue #251: added S010 + E072 (26 → 28).
     // Issue #501: added E073 `FgiInvalidOwnershipTokenRule` (28 → 29).
+    // Issue #545: added `FgiOwnershipTrigraphSuggestRule` —
+    // architectural twin of S004 covering the FGI ownership axis
+    // (29 → 30).
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 29,
-        "post-#501 raw rule slice length drifted from 29 \
+        raw_len, 30,
+        "post-#545 raw rule slice length drifted from 30 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -272,16 +293,16 @@ fn post_pr_578_registers_exact_29_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        29,
-        "EXPECTED_RULE_IDS does not contain 29 unique entries: {expected:?}",
+        30,
+        "EXPECTED_RULE_IDS does not contain 30 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        29,
-        "post-#501 registered rule count drifted from 29: actual={actual:?}",
+        30,
+        "post-#545 registered rule count drifted from 30: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -297,7 +318,7 @@ fn post_pr_578_registers_exact_29_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-issue-#501 registered rule-ID set drifted. \
+        "post-issue-#545 registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \
