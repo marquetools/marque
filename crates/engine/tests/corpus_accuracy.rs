@@ -84,16 +84,23 @@ fn lint_accuracy_invalid_fixtures() {
             // the engine correctly skips it in the rule loop, so it cannot
             // fire here. The rules_us1 harness exercises W034 directly by
             // bypassing severity gating. Skip it from the engine harness.
-            if exp.rule == "W034" {
+            // T044: `exp.rule` is the structured `ExpectedRuleId`;
+            // W034's new predicate id is
+            // `portion.sci.unpublished-custom-control` per the
+            // legacy-rule-id-map §1.
+            if exp.rule.predicate_id == "portion.sci.unpublished-custom-control" {
                 continue;
             }
             total_expected += 1;
-            let entry = per_rule.entry(exp.rule.clone()).or_insert((0, 0));
+            let entry = per_rule
+                .entry(exp.rule.predicate_id.clone())
+                .or_insert((0, 0));
             entry.1 += 1;
 
             // Match: same rule ID AND same span
             let matched = result.diagnostics.iter().any(|d| {
-                d.rule.as_str() == exp.rule
+                d.rule.scheme() == exp.rule.scheme
+                    && d.rule.predicate_id() == exp.rule.predicate_id
                     && d.span.start == exp.span.start
                     && d.span.end == exp.span.end
             });
@@ -194,7 +201,7 @@ fn fix_accuracy_invalid_fixtures() {
                     .as_ref()
                     .is_some_and(|f| f.confidence.combined() >= threshold)
             })
-            .map(|d| d.rule.as_str().to_owned())
+            .map(|d| d.rule.predicate_id().to_owned())
             .collect();
 
         if fixable_rules.is_empty() {
@@ -211,7 +218,7 @@ fn fix_accuracy_invalid_fixtures() {
 
         // Check which fixable rules still have violations
         let remaining_rules: std::collections::HashSet<&str> =
-            relint.diagnostics.iter().map(|d| d.rule.as_str()).collect();
+            relint.diagnostics.iter().map(|d| d.rule.predicate_id()).collect();
 
         // A fixture counts as "fixed clean" if no fixable rules remain
         let all_fixable_resolved = fixable_rules
@@ -368,7 +375,7 @@ fn precision_prose_zero_diagnostics() {
                 .iter()
                 .map(|d| format!(
                     "  {} {:?} at {}..{}: {:?}",
-                    d.rule.as_str(),
+                    d.rule.predicate_id(),
                     d.severity,
                     d.span.start,
                     d.span.end,
@@ -434,12 +441,14 @@ fn c001_corrections_map_accuracy() {
         let result = engine.lint(&source);
 
         for exp in &expected.diagnostics {
-            if exp.rule != "C001" {
+            // T044: legacy `C001` → predicate id
+            // `marking.correction.token-typo`.
+            if exp.rule.predicate_id != "marking.correction.token-typo" {
                 continue;
             }
             total += 1;
             let found = result.diagnostics.iter().any(|d| {
-                d.rule.as_str() == "C001"
+                d.rule.predicate_id() == "marking.correction.token-typo"
                     && d.span.start == exp.span.start
                     && d.span.end == exp.span.end
             });
@@ -507,7 +516,7 @@ fn valid_fixtures_zero_diagnostics() {
                 .iter()
                 .map(|d| format!(
                     "  {} {:?} at {}..{}: {:?}",
-                    d.rule.as_str(),
+                    d.rule.predicate_id(),
                     d.severity,
                     d.span.start,
                     d.span.end,
@@ -743,7 +752,7 @@ fn document_fixtures_lint_against_expected() {
             if d.severity == Severity::Suggest {
                 continue;
             }
-            *observed.entry(d.rule.as_str()).or_insert(0) += 1;
+            *observed.entry(d.rule.predicate_id()).or_insert(0) += 1;
         }
 
         let expected = lookup_expected_diagnostics(&stem);

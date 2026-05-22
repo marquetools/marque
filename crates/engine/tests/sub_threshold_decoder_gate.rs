@@ -109,7 +109,7 @@ fn prose_parenthetical_cts_emits_no_diagnostics() {
     let rules: Vec<_> = result
         .diagnostics
         .iter()
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect();
 
     assert!(
@@ -130,7 +130,7 @@ fn prose_parenthetical_cms_emits_no_diagnostics() {
     let rules: Vec<_> = result
         .diagnostics
         .iter()
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect();
     assert!(
         result.diagnostics.is_empty(),
@@ -159,12 +159,12 @@ fn strict_path_aea_rd_drives_e021() {
     let rules: Vec<_> = result
         .diagnostics
         .iter()
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect();
     let e021 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E021");
+        .find(|d| d.rule.predicate_id() == "E021");
     let e021 = e021.unwrap_or_else(|| {
         panic!(
             "E021 (RD requires NOFORN) must fire on strict-path \
@@ -196,7 +196,7 @@ fn cia_rdp96_fixture_emits_no_e015() {
     let e015: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "E015")
+        .filter(|d| d.rule.predicate_id() == "E015")
         .collect();
     assert_eq!(
         e015.len(),
@@ -271,7 +271,7 @@ fn bare_class_whitelist_relies_on_no_op_rewrite_filter() {
         .diagnostics
         .iter()
         .filter(|d| d.severity != Severity::Suggest)
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect();
 
     assert!(
@@ -330,7 +330,7 @@ fn us_axis_bare_class_whitelist_end_to_end_zero_diagnostics() {
             .diagnostics
             .iter()
             .filter(|d| d.severity != marque_rules::Severity::Suggest)
-            .map(|d| (d.rule.as_str().to_owned(), d.severity))
+            .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
             .collect();
         assert!(
             hard_diagnostics.is_empty(),
@@ -404,7 +404,7 @@ fn us_axis_lowercase_bare_class_mid_prose_zero_diagnostics() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str().to_owned(), d.severity))
+                .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
                 .collect::<Vec<_>>(),
         );
     }

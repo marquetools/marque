@@ -137,12 +137,12 @@ fn default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input() {
     let strict_ids: Vec<&str> = strict_result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id())
         .collect();
     let default_ids: Vec<&str> = default_result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id())
         .collect();
     assert!(
         strict_ids != default_ids
@@ -181,7 +181,7 @@ fn default_engine_suppresses_prose_glue_single_letter_portions() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str(), d.message.template().as_str()))
+                .map(|d| (d.rule.predicate_id(), d.message.template().as_str()))
                 .collect::<Vec<_>>(),
         );
     }
@@ -201,7 +201,7 @@ fn default_engine_recovers_single_letter_portion_after_whitespace() {
     let saw_marking = result
         .diagnostics
         .iter()
-        .any(|d| d.fix.is_some() || d.rule.as_str().starts_with('E'));
+        .any(|d| d.fix.is_some() || d.rule.predicate_id().starts_with('E'));
     let _ = saw_marking; // diagnostic set is rule-dependent; the load-bearing
     // assertion is "no panic, marking surfaces normally" — recognizer
     // proves it via the `(s)` lower-case canonicalization in
@@ -240,7 +240,7 @@ fn default_engine_rejects_bare_restricted_portion() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str(), d.message.template().as_str()))
+                .map(|d| (d.rule.predicate_id(), d.message.template().as_str()))
                 .collect::<Vec<_>>(),
         );
     }
@@ -264,12 +264,12 @@ fn default_engine_does_not_change_canonical_input_diagnostics() {
     let strict_ids: Vec<_> = strict_diag
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect();
     let default_ids: Vec<_> = default_diag
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect();
     assert_eq!(
         strict_ids, default_ids,

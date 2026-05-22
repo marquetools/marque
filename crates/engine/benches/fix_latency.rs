@@ -99,15 +99,15 @@ fn assert_bench_invariants(engine: &Engine) {
          got {}. Applied rules: {:?}",
         std::str::from_utf8(SINGLE_FIX_INPUT).unwrap_or("<non-utf8>"),
         applied.len(),
-        applied.iter().map(|f| f.rule.as_str()).collect::<Vec<_>>(),
+        applied.iter().map(|f| f.rule.predicate_id()).collect::<Vec<_>>(),
     );
 
     let e054_fix = applied[0];
     assert_eq!(
-        e054_fix.rule.as_str(),
+        e054_fix.rule.predicate_id(),
         "E054",
         "fix_latency invariant: expected the sole applied fix to be E054, got {:?}",
-        e054_fix.rule.as_str(),
+        e054_fix.rule.predicate_id(),
     );
 
     // Combined confidence must be exactly 0.95 (Confidence::strict(0.95):
@@ -130,19 +130,21 @@ fn assert_bench_invariants(engine: &Engine) {
     );
 
     let lint_result = engine.lint(SINGLE_FIX_INPUT);
+    // T044: legacy `E054` → predicate id
+    // `portion.dissem.relido-conflicts-noforn` per legacy-rule-id-map §2.
     let has_e054_diag = lint_result
         .diagnostics
         .iter()
-        .any(|d| d.rule.as_str() == "E054");
+        .any(|d| d.rule.predicate_id() == "portion.dissem.relido-conflicts-noforn");
     assert!(
         has_e054_diag,
-        "fix_latency invariant: E054 diagnostic not found in lint output for input {:?}. \
-         Diagnostics: {:?}",
+        "fix_latency invariant: relido-conflicts-noforn diagnostic not found in lint \
+         output for input {:?}. Diagnostics: {:?}",
         std::str::from_utf8(SINGLE_FIX_INPUT).unwrap_or("<non-utf8>"),
         lint_result
             .diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 }

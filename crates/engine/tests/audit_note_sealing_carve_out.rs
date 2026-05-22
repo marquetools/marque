@@ -91,7 +91,17 @@ fn audit_note_engine_promote_sealing_pattern() {
     // AuditNote construction exercising the __engine_promote seal;
     // verifies sealing pattern compiles + round-trips via Debug.
     let note = AuditNote::<CapcoScheme>::__engine_promote(
-        RuleId::new("capco/noforn-if-no-fdr"),
+        // T044 (Wave 2 Agent B decision): the pre-T044
+        // `"capco/noforn-if-no-fdr"` string looked like a
+        // closure-rule key but never matched a real closure row in
+        // `closure_table.rs::CLOSURE_TABLE` (the test fabricates the
+        // AuditNote for the sealing carve-out — the row name is
+        // synthetic). Reclassified to the reserved `"test"` scheme
+        // so it is unambiguously a test fixture per the
+        // `legacy-rule-id-map.md` §10 entry for this site. The
+        // structural `row_name` field below preserves the legacy
+        // slash form (separate identifier surface from `RuleId`).
+        RuleId::new("test", "synthetic.audit-note-sealing-capco-fixture"),
         capco(SectionLetter::H, 8, 145),
         AuditNoteKind::InferredFact,
         timestamp,
@@ -142,7 +152,10 @@ fn audit_note_clone_does_not_require_scheme_clone() {
     // Test-fixture carve-out per Constitution V Principle V — synthetic
     // AuditNote construction for the Clone-surface test below.
     let note: AuditNote<CapcoScheme> = AuditNote::__engine_promote(
-        RuleId::new("test/clone"),
+        // T044: legacy `"test/clone"` → `"test"` scheme + synthetic
+        // predicate id. The `row_name` field below stays unchanged
+        // (separate identifier surface).
+        RuleId::new("test", "synthetic.audit-note-sealing-clone-fixture"),
         capco(SectionLetter::A, 1, 1),
         AuditNoteKind::InferredFact,
         SystemTime::UNIX_EPOCH,

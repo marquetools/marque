@@ -65,14 +65,14 @@ fn banner_with_e002_fires() {
     // USA) as the canonical "this rule fires on a simple banner"
     // fixture.
     let result = engine().lint(b"SECRET//REL TO GBR\n");
-    assert!(result.diagnostics.iter().any(|d| d.rule.as_str() == "E002"));
+    assert!(result.diagnostics.iter().any(|d| d.rule.predicate_id() == "E002"));
 }
 
 #[test]
 fn unknown_token_inside_marking_fires_e008() {
     let result = engine().lint(b"SECRET//XYZZY//NOFORN\n");
     assert!(
-        result.diagnostics.iter().any(|d| d.rule.as_str() == "E008"),
+        result.diagnostics.iter().any(|d| d.rule.predicate_id() == "E008"),
         "expected E008, got: {:?}",
         result.diagnostics
     );
@@ -104,13 +104,13 @@ fn mid_sentence_single_letter_paren_does_not_fire() {
 #[test]
 fn declass_in_banner_fires_e005() {
     let result = engine().lint(b"SECRET//25X1//NOFORN\n");
-    assert!(result.diagnostics.iter().any(|d| d.rule.as_str() == "E005"));
+    assert!(result.diagnostics.iter().any(|d| d.rule.predicate_id() == "E005"));
 }
 
 #[test]
 fn missing_usa_in_rel_to_fires_e002() {
     let result = engine().lint(b"SECRET//REL TO GBR, AUS\n");
-    assert!(result.diagnostics.iter().any(|d| d.rule.as_str() == "E002"));
+    assert!(result.diagnostics.iter().any(|d| d.rule.predicate_id() == "E002"));
 }
 
 // Note: a previous test asserted that `SECRET//FOUO` fires E006 because
@@ -132,7 +132,7 @@ fn missing_usa_in_rel_to_fires_e002() {
 #[test]
 fn unclassified_fouo_does_not_fire_e006() {
     let result = engine().lint(b"UNCLASSIFIED//FOUO");
-    assert!(result.diagnostics.iter().all(|d| d.rule.as_str() != "E006"));
+    assert!(result.diagnostics.iter().all(|d| d.rule.predicate_id() != "E006"));
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn x_shorthand_declass_fires_e007() {
     // and E007 walks Unknown tokens for migration-table hits.
     let result = engine().lint(b"SECRET//25X1-//NOFORN\n");
     assert!(
-        result.diagnostics.iter().any(|d| d.rule.as_str() == "E007"),
+        result.diagnostics.iter().any(|d| d.rule.predicate_id() == "E007"),
         "expected E007 on 25X1-, got: {:?}",
         result.diagnostics
     );
@@ -153,7 +153,7 @@ fn diagnostic_carries_citation() {
     let e002 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E002")
+        .find(|d| d.rule.predicate_id() == "E002")
         .expect("E002 must fire");
     // PR 10.A.1: typed Citation — assert the authoritative source is
     // CAPCO-2016 (the structural equivalent of the previous
@@ -182,7 +182,7 @@ fn diagnostic_span_is_byte_precise() {
     let e002 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E002")
+        .find(|d| d.rule.predicate_id() == "E002")
         .expect("E002 must fire");
     assert!(e002.span.start > 0, "span must not be a placeholder");
     assert!(e002.span.end > e002.span.start);
@@ -214,7 +214,7 @@ fn diagnostic_to_contract_json(
         })
     });
     serde_json::json!({
-        "rule": d.rule.as_str(),
+        "rule": d.rule.predicate_id(),
         "severity": d.severity.as_str(),
         "span": {
             "start": d.span.start,

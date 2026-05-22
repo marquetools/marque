@@ -96,6 +96,14 @@ const MIN_LEAK_LEN: usize = 4;
 /// separately.
 const PERMITTED_STRING_KEYS: &[&str] = &[
     "rule",
+    // T044: the `rule` field renders as a structured 2-tuple
+    // `{"scheme": ..., "predicate_id": ...}`; both string-valued
+    // leaves are permitted identifier types (the scheme name is
+    // a closed enum, the predicate id is a closed-set surface +
+    // category + descriptive English path per the predicate-ID
+    // convention in the T044 plan §1.3).
+    "scheme",
+    "predicate_id",
     "severity",
     "template",
     "discriminant",
@@ -161,11 +169,22 @@ fn render_audit_line_to_json(
     // drift between the inline projection and the CLI emit would
     // surface as a separate test failure in `audit_v1_0_parity.rs`.
     use serde_json::json;
+    // T044: the `"rule"` field renders as the structured 2-tuple
+    // `{"scheme": ..., "predicate_id": ...}` per `contracts/audit-record.md`
+    // and OD-2. The canary's `PERMITTED_STRING_KEYS` includes both
+    // `"scheme"` and `"predicate_id"` so the structured value bytes
+    // are permitted-identifier types.
+    let rule_id_json = |r: &marque_rules::RuleId| {
+        json!({
+            "scheme": r.scheme(),
+            "predicate_id": r.predicate_id(),
+        })
+    };
     let v = match line {
         AuditLine::AppliedFix(f) => json!({
             "type": "applied_fix",
             "schema": marque_engine::AUDIT_SCHEMA_VERSION,
-            "rule": f.rule.as_str(),
+            "rule": rule_id_json(&f.rule),
             "severity": f.severity.as_str(),
             "span": {"start": f.span.start, "end": f.span.end},
             "fix": {
@@ -199,7 +218,7 @@ fn render_audit_line_to_json(
         AuditLine::TextCorrection(tc) => json!({
             "type": "text_correction",
             "schema": marque_engine::AUDIT_SCHEMA_VERSION,
-            "rule": tc.rule.as_str(),
+            "rule": rule_id_json(&tc.rule),
             "severity": tc.severity.as_str(),
             "span": {"start": tc.span.start, "end": tc.span.end},
             "original_digest": format!("blake3:{}", tc.original_digest.to_hex()),
@@ -458,8 +477,11 @@ fn canary_fires_on_synthetic_regression() {
     // regression. The renderer doesn't expose a custom-template
     // path, so we synthesize the NDJSON directly here to exercise
     // the canary's check function in isolation.
+    // T044: `"rule"` renders as the structured `{scheme, predicate_id}`
+    // 2-tuple post-cutover. The fixture below carries the same
+    // shape that the canary's `rule_id_json` helper produces.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-2.0","rule":"R999",
+        r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":10}},
           "leak_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",
@@ -526,7 +548,12 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
     // fabricated record is engine-promotion-shaped but never flows
     // into an Engine::fix audit stream.
     AppliedTextCorrection::__engine_promote_text_correction(
-        RuleId::new("R999"),
+        // T044: synthetic test fixture for the G13 canary self-test.
+        // Reserved `"test"` scheme per the legacy-rule-id-map §10
+        // entry for `R999`. The NDJSON literals at lines 462 and 591
+        // below are kept in lockstep so the canary tests the
+        // structured `{scheme, predicate_id}` shape end-to-end.
+        RuleId::new("test", "synthetic.r999-fixture"),
         Severity::Info,
         Span::new(0, leak.len()),
         Blake3Hash::from_bytes([0u8; 32]),
@@ -587,8 +614,10 @@ fn canary_fires_on_synthetic_text_correction_regression() {
     // Part 2: synthetic TextCorrection-shape NDJSON with a leak in a
     // non-permitted field. Mirrors `canary_fires_on_synthetic_regression`
     // for the `applied_fix` shape.
+    //
+    // T044: `"rule"` is the structured 2-tuple shape post-cutover.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-2.0","rule":"R999",
+        r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":43}},
           "bogus_text_corr_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",

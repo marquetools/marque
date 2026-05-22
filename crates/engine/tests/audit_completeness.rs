@@ -51,13 +51,18 @@ fn applied_fix_has_all_required_fields() {
             _ => continue,
         };
 
-        // rule: non-empty string matching E/W/C + 3 digits
-        let rule_s = rule.as_str();
-        assert!(!rule_s.is_empty(), "rule ID must not be empty");
+        // T044: rule is the 2-tuple `(scheme, predicate_id)`. The
+        // engine emits only known schemes (`"capco"` for CAPCO rules,
+        // `"engine"` for R001/R002 sentinels) — there is no `"test"`
+        // emission in a real engine audit stream. Predicate ids are
+        // non-empty by the `RuleId::new` contract.
+        let scheme = rule.scheme();
+        let predicate = rule.predicate_id();
+        assert!(!scheme.is_empty(), "rule scheme must not be empty");
+        assert!(!predicate.is_empty(), "rule predicate_id must not be empty");
         assert!(
-            rule_s.len() == 4
-                && (rule_s.starts_with('E') || rule_s.starts_with('W') || rule_s.starts_with('C')),
-            "rule ID must match [EWC]NNN pattern, got: {rule_s}"
+            scheme == "capco" || scheme == "engine",
+            "engine emits only `capco` (registered rules + bridge) and `engine` (R001/R002 sentinels); got scheme {scheme} (predicate {predicate})"
         );
 
         // source: valid FixSource variant (always passes by type system, but
@@ -170,7 +175,7 @@ fn sub_threshold_proposals_never_in_applied() {
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.as_str() == "E002"),
+            .any(|d| d.rule.predicate_id() == "E002"),
         "E002 should remain as a suggestion in remaining_diagnostics"
     );
 }
