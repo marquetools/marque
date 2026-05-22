@@ -121,7 +121,7 @@ pub(crate) fn e021_rd_frd_requires_noforn(
         return Vec::new();
     }
     vec![ConstraintViolation {
-        constraint_label: "E021/rd-frd-requires-noforn",
+        constraint_label: "portion.aea.rd-frd-requires-noforn",
         message: "RD/FRD typically requires NOFORN unless a §123/§144 \
                   sharing agreement has been established under the \
                   Atomic Energy Act"
@@ -151,7 +151,7 @@ pub(crate) fn e024_rd_precedence(
         return Vec::new();
     }
     vec![ConstraintViolation {
-        constraint_label: "E024/rd-precedence",
+        constraint_label: "portion.aea.rd-precedence",
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
         citation: capco(SectionLetter::H, 6, 104),
@@ -197,7 +197,7 @@ pub(crate) fn e038_dos_dissem_requires_noforn(
         .unwrap_or(TOK_NODIS);
 
     vec![ConstraintViolation {
-        constraint_label: "E038/nodis-or-exdis-requires-noforn",
+        constraint_label: "portion.dissem.nodis-or-exdis-requires-noforn",
         message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
         citation: capco(SectionLetter::H, 9, 172),
         span: token_span_attrs(attrs, &TokenRef::Token(trigger_token)),
@@ -267,7 +267,7 @@ pub(crate) fn e070_frd_tfni_precedence(
         .map(|t| t.span)
         .or_else(|| token_span_attrs(attrs, &TokenRef::Token(TOK_TFNI)));
     vec![ConstraintViolation {
-        constraint_label: "E070/frd-tfni-precedence",
+        constraint_label: "portion.aea.frd-tfni-precedence",
         message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD".to_owned(),
         citation: capco(SectionLetter::H, 6, 120),
         span,
@@ -308,7 +308,7 @@ mod tests {
         attrs.aea_markings = vec![AeaMarking::Rd(Default::default())].into_boxed_slice();
         let out = e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].constraint_label, "E021/rd-frd-requires-noforn");
+        assert_eq!(out[0].constraint_label, "portion.aea.rd-frd-requires-noforn");
     }
 
     #[test]
@@ -380,7 +380,7 @@ mod tests {
         .into_boxed_slice();
         let out = e024_rd_precedence(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].constraint_label, "E024/rd-precedence");
+        assert_eq!(out[0].constraint_label, "portion.aea.rd-precedence");
     }
 
     #[test]
@@ -415,7 +415,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(
             out[0].constraint_label,
-            "E038/nodis-or-exdis-requires-noforn"
+            "portion.dissem.nodis-or-exdis-requires-noforn"
         );
     }
 
@@ -480,7 +480,7 @@ mod tests {
             vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
         let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].constraint_label, "E070/frd-tfni-precedence");
+        assert_eq!(out[0].constraint_label, "portion.aea.frd-tfni-precedence");
     }
 
     #[test]

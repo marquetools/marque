@@ -4951,7 +4951,7 @@ struct NodisExdisClearsBannerRelToRule;
 /// single `capco(SectionLetter::H, 9, 172)` value on the diagnostic
 /// emitted by the declarative `Conflicts` row at
 /// `crates/capco/src/scheme/constraints/core_catalog.rs::core_constraints()`
-/// (search for `"E037/nodis-conflicts-exdis"`). The cross-reference
+/// (search for `"portion.dissem.nodis-conflicts-exdis"`). The cross-reference
 /// to p174 (NODIS authority — the mutual-exclusion rule is stated
 /// verbatim on both sides) survived in the catalog row's doc-comment
 /// but was un-checked.
@@ -4970,7 +4970,7 @@ pub(crate) const E037_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174
 ///
 /// PR 10.A.1 Commit 4: identical mechanism to [`E037_CROSS_REFS`] —
 /// the declarative `Custom` row at
-/// `core_constraints()::"E038/nodis-or-exdis-requires-noforn"` carries
+/// `core_constraints()::"portion.dissem.nodis-or-exdis-requires-noforn"` carries
 /// only the primary §H.9 p172 anchor. The cross-reference to p174
 /// (NODIS "Requires NOFORN") survived in the catalog row's
 /// doc-comment but was un-checked.
