@@ -75,27 +75,6 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
     slice.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
 }
 
-/// Compare two `&str` references by `marque_ism::sar_sort_key`, with a
-/// lexicographic tiebreaker on the raw text for stable total ordering
-/// when two distinct strings produce the same `(bool, u64, &str)` triple
-/// (e.g., two numeric identifiers that both overflow `u64::MAX` via
-/// `unwrap_or(u64::MAX)` in `sar_sort_key`).
-///
-/// Used by [`HierarchicalTreeSet::sorted_entries`] for both `K =
-/// SystemKey` (SCI rendering) and `K = SmolStr` (SAR rendering) — the
-/// closure body collapses into one named `fn`-item so the
-/// `sort_by` callsite still monomorphizes per-K but the comparator
-/// body is shared. R1 WASM-cut per issue #689; extends the PR #585
-/// precedent at [`sort_smolstrs_by_sar`].
-///
-/// Deliberately NOT `#[inline]` — see the [`sort_smolstrs_by_sar`]
-/// doc-comment for the rationale (inlining defeats the consolidation).
-fn cmp_sar_key_with_lex_tiebreak(a: &str, b: &str) -> std::cmp::Ordering {
-    marque_ism::sar_sort_key(a)
-        .cmp(&marque_ism::sar_sort_key(b))
-        .then_with(|| a.cmp(b))
-}
-
 /// Compare two `&CountryCode` references with trigraphs (length 3)
 /// before tetragraphs and any opaque longer codes, alphabetical within
 /// each bucket — the CAPCO-2016 §H.8 p164 DISPLAY ONLY LIST ordering
@@ -267,12 +246,31 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
         key_text: impl Fn(&K) -> &str,
     ) -> SmallVec<[(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>); 4]> {
         let mut entries: SmallVec<[_; 4]> = self.inner.iter().collect();
-        // The closure still exists (it captures `key_text` which is
-        // generic-per-K), but the comparator body is delegated to the
-        // named `fn`-item `cmp_sar_key_with_lex_tiebreak` so the body
-        // is code-gen'd once across all `K` instantiations — R1 WASM-
-        // cut per issue #689; extends PR #585's `sort_smolstrs_by_sar`.
-        entries.sort_by(|a, b| cmp_sar_key_with_lex_tiebreak(key_text(a.0), key_text(b.0)));
+        // R1 (issue #689) NB: an earlier in-scope extraction of this
+        // closure body to a named `fn`-item `cmp_sar_key_with_lex_tiebreak`
+        // **regressed** the WASM bundle by ~6.2 KB on the
+        // `release-web` profile. Pre-refactor, LTO + ICF folded the
+        // two `K`-instantiations of this closure (`K = SystemKey` for
+        // `SciSet::to_markings`, `K = SmolStr` for `SarSet::to_marking`)
+        // into one code-gen via byte-identity merging of the inline
+        // closure bodies — the SystemKey instance's quicksort row
+        // came in at ~2.8 KB pre-refactor vs ~9 KB post-refactor in
+        // twiggy. Extracting the body to a named fn replaced byte-
+        // identical inlined sequences with an external call site;
+        // LLVM ICF can't fold across the call boundary, and the
+        // SystemKey instance went from heavily-shared to fully-resident.
+        // The closure stays inline here. Mono-collapse is achievable for
+        // the closure-axis at sites where the slice element type appears
+        // at multiple callsites (the `&str` collapse in `render/mod.rs`
+        // worked exactly as predicted, -6 KB), but per-`K` generic sites
+        // are best left to LTO.
+        entries.sort_by(|a, b| {
+            let ta = key_text(a.0);
+            let tb = key_text(b.0);
+            marque_ism::sar_sort_key(ta)
+                .cmp(&marque_ism::sar_sort_key(tb))
+                .then_with(|| ta.cmp(tb))
+        });
         entries
     }
 }
