@@ -2,6 +2,72 @@
   "schema": "marque-wasm-parity-1",
   "entries": [
     {
+      "name": "677_banner_classification_abbrev.txt",
+      "category": "invalid",
+      "input": "S//NOFORN\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":1},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_banner_with_dsen.txt",
+      "category": "invalid",
+      "input": "SECRET//DSEN\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_banner_with_imc.txt",
+      "category": "invalid",
+      "input": "SECRET//IMC\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":11},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_banner_with_nf.txt",
+      "category": "invalid",
+      "input": "SECRET//NF\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_banner_with_oc.txt",
+      "category": "invalid",
+      "input": "SECRET//OC\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_banner_with_pr.txt",
+      "category": "invalid",
+      "input": "SECRET//PR\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_portion_with_dea_sensitive.txt",
+      "category": "invalid",
+      "input": "(S//DEA SENSITIVE)\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.uses-banner-form\"},\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":17},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§C.1 p25\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_portion_with_imcon.txt",
+      "category": "invalid",
+      "input": "(S//IMCON)\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.uses-banner-form\"},\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":9},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§C.1 p25\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_portion_with_noforn.txt",
+      "category": "invalid",
+      "input": "(S//NOFORN)\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.uses-banner-form\"},\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":10},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§C.1 p25\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_portion_with_orcon.txt",
+      "category": "invalid",
+      "input": "(S//ORCON)\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.uses-banner-form\"},\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":9},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§C.1 p25\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_portion_with_propin.txt",
+      "category": "invalid",
+      "input": "(S//PROPIN)\n",
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.uses-banner-form\"},\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":10},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§C.1 p25\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
       "name": "aea_atomal_below_classified_floor.txt",
       "category": "invalid",
       "input": "(U//ATOMAL)\n",
@@ -47,7 +113,7 @@
       "name": "banner_abbrev_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//IMC\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.dissem.floor-imcon\"},\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.8 p144\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":17},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.dissem.floor-imcon\"},\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.8 p144\",\"fix\":null}\n"
     },
     {
       "name": "classified_banner_limdis.txt",
@@ -119,7 +185,7 @@
       "name": "dual_classification_secret_ns.txt",
       "category": "invalid",
       "input": "SECRET//NS\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.classification.dual-classification\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p55\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"banner.metadata.uses-portion-form\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§D.1 p27\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.classification.dual-classification\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p55\",\"fix\":null}\n"
     },
     {
       "name": "e066_legacy_atomal_banner.txt",
@@ -149,7 +215,7 @@
       "name": "e070_frd_tfni_precedence.txt",
       "category": "invalid",
       "input": "(S//FRD/TFNI//NOFORN)\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.aea.frd-tfni-precedence\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p120\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.uses-banner-form\"},\"severity\":\"fix\",\"span\":{\"start\":14,\"end\":20},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§C.1 p25\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.aea.frd-tfni-precedence\"},\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p120\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
     },
     {
       "name": "joint_conflicts_hcs.txt",
@@ -372,6 +438,42 @@
       "category": "invalid",
       "input": "SECRET//25X2-//NOFORN\n",
       "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.metadata.x-shorthand-date-pattern\"},\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§E.6 p33\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X2\",\"confidence\":0.95,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "677_canonical_banner_dea_sensitive.txt",
+      "category": "valid",
+      "input": "SECRET//DEA SENSITIVE\n",
+      "expected_lint": ""
+    },
+    {
+      "name": "677_canonical_banner_noforn.txt",
+      "category": "valid",
+      "input": "SECRET//NOFORN\n",
+      "expected_lint": ""
+    },
+    {
+      "name": "677_canonical_banner_orcon.txt",
+      "category": "valid",
+      "input": "SECRET//ORCON\n",
+      "expected_lint": ""
+    },
+    {
+      "name": "677_canonical_banner_tk.txt",
+      "category": "valid",
+      "input": "TOP SECRET//TK\n",
+      "expected_lint": ""
+    },
+    {
+      "name": "677_canonical_portion_nf.txt",
+      "category": "valid",
+      "input": "(S//NF)\n",
+      "expected_lint": ""
+    },
+    {
+      "name": "677_canonical_portion_oc.txt",
+      "category": "valid",
+      "input": "(S//OC)\n",
+      "expected_lint": ""
     },
     {
       "name": "classified_banner_atomal_as_aea.txt",
