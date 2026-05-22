@@ -45,8 +45,7 @@ fn form_mismatch_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<Cap
         .iter()
         .filter(|d| {
             let pid = d.rule.predicate_id();
-            pid == "banner.metadata.uses-portion-form"
-                || pid == "portion.metadata.uses-banner-form"
+            pid == "banner.metadata.uses-portion-form" || pid == "portion.metadata.uses-banner-form"
         })
         .collect()
 }
@@ -190,4 +189,76 @@ fn canonical_banner_with_relido() {
 #[test]
 fn canonical_portion_with_relido() {
     assert_no_form_mismatch("(S//RELIDO)");
+}
+
+// ---------------------------------------------------------------------------
+// Non-IC dissem canonical companions for the broad-scope coverage tests
+// in `r677_form_mismatch_pre.rs`. Authority: CAPCO-2016 §H.9 p170 +
+// §G.1 Table 4 p36 (LIMDIS banner, DS portion).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn canonical_banner_with_limdis() {
+    // LIMDIS is the §H.9 p170 banner form for LIMITED DISTRIBUTION.
+    assert_no_form_mismatch("UNCLASSIFIED//LIMDIS");
+}
+
+#[test]
+fn canonical_portion_with_ds() {
+    // DS is the §H.9 p170 portion form for LIMITED DISTRIBUTION.
+    assert_no_form_mismatch("(U//DS)");
+}
+
+// ---------------------------------------------------------------------------
+// NATO classification canonical companions for the broad-scope coverage
+// tests in `r677_form_mismatch_pre.rs`. Authority: CAPCO-2016 §G.1 Table
+// 4 p36 + §H.7 p123. A NATO banner line is `//<NATO class>` per §D.1 p27
+// line 552-554, so the canonical banner uses a bare `//NATO SECRET`
+// shape rather than the US-class-prefixed form.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn canonical_banner_with_nato_secret() {
+    // NATO SECRET is the §G.1 Table 4 p36 banner form.
+    assert_no_form_mismatch("//NATO SECRET");
+}
+
+#[test]
+fn canonical_portion_with_ns() {
+    // NS is the §G.1 Table 4 p36 NATO SECRET portion form.
+    assert_no_form_mismatch("(//NS)");
+}
+
+// ---------------------------------------------------------------------------
+// EYES suppression negative test — banner direction.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn eyes_only_in_banner_silent_e064_owns_this_axis() {
+    // E064 (EyesOnlyConvertToRelToRule) owns the §H.8 p157 + p158
+    // cross-axis conversion of `EYES ONLY` in banner position to
+    // `REL TO USA, AUS, CAN, GBR, NZL` (FVEY) on derivative use.
+    // PortionFormInBannerRule suppresses bare `EYES` / `EYES ONLY`
+    // in banner position to keep E064's richer cross-axis intent
+    // reachable for the engine's C-1 overlap guard.
+    //
+    // Negative-test contract: these inputs must remain 0
+    // form-mismatch diagnostics even though `portion_to_banner("EYES")`
+    // returns `Some("EYES ONLY")` — the suppression is architecturally
+    // load-bearing. A future code change that removes the EYES guard
+    // at the `PortionFormInBannerRule` token walker would silently
+    // regress without this assertion.
+    let diags = lint("SECRET//EYES ONLY");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        hits.is_empty(),
+        "SECRET//EYES ONLY must NOT fire form-mismatch (E064 owns this axis); got {hits:?}",
+    );
+
+    let diags = lint("SECRET//EYES");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        hits.is_empty(),
+        "SECRET//EYES must NOT fire form-mismatch (E064 owns this axis); got {hits:?}",
+    );
 }

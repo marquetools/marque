@@ -48,8 +48,7 @@ fn form_mismatch_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<Cap
         .iter()
         .filter(|d| {
             let pid = d.rule.predicate_id();
-            pid == "banner.metadata.uses-portion-form"
-                || pid == "portion.metadata.uses-banner-form"
+            pid == "banner.metadata.uses-portion-form" || pid == "portion.metadata.uses-banner-form"
         })
         .collect()
 }
@@ -168,38 +167,85 @@ fn portion_with_propin_fires_form_mismatch() {
 // (e.g., TALENT KEYHOLE) AND the Authorized Abbreviation (e.g., TK) in
 // the banner line. So `SECRET//TALENT KEYHOLE` is VALID, not a defect —
 // the synthesis-brief's draft test for that case was incorrect under
-// re-reading of §D.1 p27. The broad-scope SCI test is the portion-
-// direction case: `(TS//TALENT KEYHOLE)`, where the long Marking Title
-// appears in a portion mark instead of the short portion form `TK`.
-// `banner_to_portion("TALENT KEYHOLE")` returns `None` because the
-// title-form lookup is owned by `title_to_portion`; we instead reach
-// SI-ECRU / SI-NONBOOK for broad-scope SCI coverage where the helpers
-// directly map. For TALENT KEYHOLE specifically, the portion-form
-// "TK" already equals its banner form (same-form row in
-// `MARKING_FORMS`), so it does not fire. We swap in SI-ECRU/SI-EU as
-// the SCI broad-scope case.
+// re-reading of §D.1 p27.
+//
+// SCI compartment broad-scope coverage (SI-EU / SI-NK) is deferred to
+// the follow-up that closes issue #701 (MARKING_FORMS SI-EU/SI-NK data
+// bug — `marque-ism` records the Marking Title in the `banner` field
+// instead of the Authorized Banner Abbreviation `SI-EU` / `SI-NK` per
+// §H.4 p78 / p83). Until #701 lands, SI-EU broad-scope canonical-no-fire
+// fixtures would assert behavior the data layer does not yet support.
+// Non-IC dissem and NATO classification form-pair tests below provide
+// the broad-scope authority verification in the meantime — both
+// categories have legitimate `banner != portion` rows in MARKING_FORMS
+// today.
+
+// ---------------------------------------------------------------------------
+// Non-IC dissem form pairs (LIMDIS↔DS, EXDIS↔XD, NODIS↔ND) — broad-scope
+// coverage that the rule reaches beyond IC dissem into §H.9. Verified
+// against `crates/ism/src/marking_forms.rs` rows at L488-503 (each row
+// has `banner != portion` so `portion_to_banner` / `banner_to_portion`
+// returns `Some`). Authority: CAPCO-2016 §H.9 pp170-174 + §G.1 Table 4
+// p38 (Register closed-set).
+// ---------------------------------------------------------------------------
 
 #[test]
-fn banner_with_si_eu_fires_form_mismatch() {
-    // SI-EU is the portion form; SI-ECRU is the banner Marking Title.
-    // CAPCO-2016 §H.4 p78. Banner appearing as `SI-EU` should flag.
-    let diags = lint("TOP SECRET//SI-EU");
+fn banner_with_ds_fires_form_mismatch() {
+    // DS is the §H.9 p170 portion form for LIMDIS; banner form is
+    // `LIMDIS`. A bare `DS` in a banner line is a form-mismatch.
+    let diags = lint("UNCLASSIFIED//DS");
     let hits = form_mismatch_diags(&diags);
     assert!(
         !hits.is_empty(),
-        "TOP SECRET//SI-EU must produce at least one form-mismatch diagnostic; got {diags:?}",
+        "UNCLASSIFIED//DS must produce at least one form-mismatch diagnostic; got {diags:?}",
     );
 }
 
 #[test]
-fn portion_with_si_ecru_fires_form_mismatch() {
-    // SI-ECRU is the banner Marking Title; SI-EU is the portion form.
-    // CAPCO-2016 §H.4 p78. Portion appearing as `SI-ECRU` should flag.
-    let diags = lint("(TS//SI-ECRU)");
+fn portion_with_limdis_fires_form_mismatch() {
+    // LIMDIS is the §H.9 p170 banner form; portion form is `DS`. A
+    // `LIMDIS` in a portion mark is a form-mismatch.
+    let diags = lint("(U//LIMDIS)");
     let hits = form_mismatch_diags(&diags);
     assert!(
         !hits.is_empty(),
-        "(TS//SI-ECRU) must produce at least one form-mismatch diagnostic; got {diags:?}",
+        "(U//LIMDIS) must produce at least one form-mismatch diagnostic; got {diags:?}",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// NATO classification form pairs — broad-scope coverage that the rule
+// reaches into §H.7. Verified against `crates/ism/src/marking_forms.rs`
+// L244-277 (each NATO classification row has `banner != portion`).
+// Authority: CAPCO-2016 §G.1 Table 4 p36 + §H.7 p123. Note: a NATO
+// banner line is `//<NATO class>` per §D.1 p27 line 552-554, so the
+// banner test uses a bare `//NS` shape rather than the US-class-prefixed
+// `SECRET//...` form.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn banner_with_nato_portion_form_fires_form_mismatch() {
+    // `NS` is the §G.1 Table 4 p36 NATO SECRET portion form; banner
+    // form is `NATO SECRET`. A bare `NS` in NATO banner position is
+    // a form-mismatch.
+    let diags = lint("//NS");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        !hits.is_empty(),
+        "//NS must produce at least one form-mismatch diagnostic; got {diags:?}",
+    );
+}
+
+#[test]
+fn portion_with_nato_secret_banner_form_fires_form_mismatch() {
+    // `NATO SECRET` is the §G.1 Table 4 p36 banner form; portion form
+    // is `NS`. A `NATO SECRET` in NATO portion position is a
+    // form-mismatch.
+    let diags = lint("(//NATO SECRET)");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        !hits.is_empty(),
+        "(//NATO SECRET) must produce at least one form-mismatch diagnostic; got {diags:?}",
     );
 }
 
@@ -217,5 +263,30 @@ fn banner_with_classification_abbrev_fires_form_mismatch() {
         !hits.is_empty(),
         "S//NOFORN must produce at least one form-mismatch diagnostic for the \
          classification abbreviation in banner position; got {diags:?}",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// One-diagnostic-per-marking regression guard — dual-defective banner.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dual_defective_banner_emits_exactly_one_diagnostic() {
+    // `S//NF` has BOTH a classification abbreviation (`S`) AND a
+    // portion-form dissem (`NF`) in banner position — two distinct
+    // defective tokens within one marking. The rule's classification
+    // branch short-circuits via `return Some(token.span)` after
+    // detecting `S` (`crates/capco/src/rules.rs`), so exactly ONE
+    // `Recanonicalize { Page }` diagnostic is emitted per marking —
+    // not one per defective token. Regression-protects the
+    // one-diagnostic-per-marking guarantee documented at the
+    // `PortionFormInBannerRule` module-header doc comment.
+    let diags = lint("S//NF");
+    let hits = form_mismatch_diags(&diags);
+    assert_eq!(
+        hits.len(),
+        1,
+        "S//NF has two defective tokens (S=classification-abbrev, NF=portion-form) \
+         but must emit exactly one form-mismatch diagnostic per marking; got {hits:?}",
     );
 }

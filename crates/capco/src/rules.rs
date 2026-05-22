@@ -6972,12 +6972,13 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 // ## EYES suppression — banner direction only
 //
 // Bare `EYES` / `EYES ONLY` in a banner is owned by E064
-// (`EyesOnlyConvertToRelToRule`), which performs the §H.8 p157 + p158
-// cross-axis conversion to `REL TO USA, AUS, CAN, GBR, NZL` (FVEY).
-// `PortionFormInBannerRule` suppresses these tokens so the engine's
-// C-1 overlap guard does not have to arbitrate between E064's richer
-// cross-axis fix and our `Recanonicalize` — E064 wins on §-grounded
-// richness and the suppression keeps that intent reachable.
+// (`EyesOnlyConvertToRelToRule`), whose §H.8 p157 + p158 authority
+// covers the cross-axis conversion to `REL TO USA, AUS, CAN, GBR, NZL`
+// (FVEY) on derivative use. `PortionFormInBannerRule` suppresses these
+// tokens so the engine's C-1 overlap guard does not have to arbitrate
+// between E064's richer cross-axis fix and our `Recanonicalize` — E064
+// wins on §-grounded richness and the suppression keeps that intent
+// reachable.
 //
 // E064 does NOT fire in portion context for bare `EYES` (§H.8 p158
 // says "carry forward the trigraph codes listed in the source document
