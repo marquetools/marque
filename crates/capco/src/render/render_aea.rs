@@ -65,7 +65,7 @@ pub(crate) fn render_aea(m: &CapcoMarking, scope: Scope, out: &mut dyn fmt::Writ
     //
     // Named `fn`-item key adapter (`rank_aea`) for closure-axis
     // monomorphization collapse — R1 WASM-cut per issue #689 and the
-    // PR #585 precedent at `crate::lattice::sort_smolstrs_by_sar`.
+    // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     let mut sorted: SmallVec<[&AeaMarking; 4]> = m.0.aea_markings.iter().collect();
     sorted.sort_by_key(rank_aea);
 

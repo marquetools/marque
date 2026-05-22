@@ -111,7 +111,7 @@ pub(crate) mod shared;
 mod tests;
 
 // Public-within-crate re-exports for items that other crate modules
-// (vocabulary.rs, rules_declarative.rs, lattice.rs, rules.rs) referenced
+// (vocabulary.rs, rules_declarative.rs, lattice/, rules.rs) referenced
 // at `crate::scheme::<name>` before the Stage-1 split. These re-exports
 // preserve the pre-split paths so no external file needs to learn about
 // the sibling-module layout.

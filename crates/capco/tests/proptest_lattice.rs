@@ -363,7 +363,7 @@ proptest! {
     // `SourceConcealed` IS a syntactic supersession-top for the join
     // operation, but `FgiSet` no longer implements `BoundedLattice` per
     // the open-vocab `CountryCode` precedent — see the doc comment on
-    // `FgiSet` in `crates/capco/src/lattice.rs`. The supersession
+    // `FgiSet` in `crates/capco/src/lattice/fgi.rs`. The supersession
     // semantic is still exercised by `fgi_concealment_monotone` below.
 
     // If join of two sets is concealed, meet of those same two sets must NOT
@@ -510,7 +510,7 @@ proptest! {
     // Absorption laws (both directions hold on the meet-bottom +
     // join-top setup: `Bottom` is meet-absorbing and join-identity;
     // `NofornSuperseded` is join-top per the doc comment + 11th-pass
-    // fix at lattice.rs:3095-3125).
+    // fix on `RelToBlock` in `crates/capco/src/lattice/rel_to.rs`).
     #[test]
     fn rel_to_join_over_meet_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
         prop_assert_eq!(a.join(&a.meet(&b)), a);
@@ -527,7 +527,8 @@ proptest! {
 // lattice-consultant L-5)
 //
 // `DisplayOnlyBlock` is a new `JoinSemilattice` implementor introduced
-// in PR 4b-E. The inline `#[cfg(test)]` suite in `lattice.rs` covers
+// in PR 4b-E. The inline `#[cfg(test)]` suite in
+// `crates/capco/src/lattice/display_only.rs` covers
 // associativity, identity-with-bottom, empty-absorbs, and
 // NofornSuperseded-absorbs at fixed samples; the proptest suite below
 // pins commutativity, idempotence, and associativity over arbitrary

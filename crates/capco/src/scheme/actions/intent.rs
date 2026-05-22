@@ -278,8 +278,9 @@ fn apply_fact_add(
         //
         // Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
         // RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
-        // The supersession table at `crates/capco/src/lattice.rs:2018-2032`
-        // enumerates these four dominated tokens.
+        // The `DISSEM_SUPERSESSION_TABLE` static in
+        // `crates/capco/src/lattice/dissem.rs` enumerates these four
+        // dominated tokens.
         if matches!(
             target,
             DissemControl::Rel
@@ -603,8 +604,8 @@ fn apply_fact_remove(
         // marking carries (SBU is admin protection; LES carries
         // independent legal-process discipline classification does
         // not subsume) — see `NonIcDissemSet`'s type-level
-        // doc-comment in `crates/capco/src/lattice.rs` for the
-        // full rationale.
+        // doc-comment in `crates/capco/src/lattice/non_ic_dissem.rs`
+        // for the full rationale.
         //
         // **LesNf remains UnknownToken** intentionally: there is no
         // §H.9 p185 strip row to drive a LES-NF removal — LES
