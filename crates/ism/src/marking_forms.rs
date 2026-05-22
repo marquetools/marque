@@ -196,15 +196,22 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         portion: "KAND",
         description_title: None,
     },
-    // §H.4 SCI compound forms with distinct banner titles. CAPCO §H.4
-    // explicitly publishes a compound (parent control + compartment) as
-    // the Authorized Banner Line Marking Title for these two — unlike
-    // GAMMA / BLUEFISH / IDITAROD / KANDIK whose §H.4 banner titles are
-    // bare compartment names. Distinct portion bytes from CVE Value
-    // (`SI-EU`, `SI-NK`).
+    // §H.4 SCI compound forms where the Authorized Banner Line Abbreviation
+    // equals the Authorized Portion Mark. CAPCO §D.1 p27 line 560 authorises
+    // EITHER the Marking Title OR the Authorized Abbreviation in the banner
+    // line — `banner` is set to the Authorized Abbreviation (== portion),
+    // not the longer Marking Title, so same-form semantics apply and rules
+    // do not fire a no-op substitution fix when the abbreviation appears in
+    // either position. The Marking Title (`title`) remains the long-form
+    // recognise-only string: `title_to_banner("SI-ECRU")` → `Some("SI-EU")`,
+    // enabling S001 to suggest the abbreviated form when the Title appears
+    // verbatim in a banner line.
     MarkingForm {
-        // CAPCO-2016 §H.4 p78: "Authorized Banner Line Marking Title:
-        // SI-ECRU", "Authorized Portion Mark: SI-EU".
+        // CAPCO-2016 §H.4 p78 line 1790: Marking Title "SI-ECRU".
+        // §H.4 p78 line 1792: Authorized Banner Line Abbreviation "SI-EU".
+        // §H.4 p78 line 1794: Authorized Portion Mark "SI-EU".
+        // §D.1 p27 line 560: banner may use either Marking Title or
+        // Authorized Abbreviation; Authorized Abbreviation chosen here.
         //
         // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-EU` is the
         // bare compartment `"ECRU"` — the CAPCO Register prepends the
@@ -212,19 +219,22 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // form is recognize-only on input via
         // `FormKind::IsmDescriptionTitle`.
         title: "SI-ECRU",
-        banner: "SI-ECRU",
+        banner: "SI-EU",
         portion: "SI-EU",
         description_title: Some("ECRU"),
     },
     MarkingForm {
-        // CAPCO-2016 §H.4 p83: "Authorized Banner Line Marking Title:
-        // SI-NONBOOK", "Authorized Portion Mark: SI-NK".
+        // CAPCO-2016 §H.4 p83 line 1940: Marking Title "SI-NONBOOK".
+        // §H.4 p83 line 1942: Authorized Banner Line Abbreviation "SI-NK".
+        // §H.4 p83 line 1944: Authorized Portion Mark "SI-NK".
+        // §D.1 p27 line 560: banner may use either Marking Title or
+        // Authorized Abbreviation; Authorized Abbreviation chosen here.
         //
         // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-NK` is the
         // bare compartment `"NONBOOK"`; CAPCO uses the compound
         // `SI-NONBOOK`. Recognize-only on input.
         title: "SI-NONBOOK",
-        banner: "SI-NONBOOK",
+        banner: "SI-NK",
         portion: "SI-NK",
         description_title: Some("NONBOOK"),
     },
@@ -673,9 +683,14 @@ mod tests {
         assert_eq!(banner_to_portion("NATO CONFIDENTIAL"), Some("NC"));
         assert_eq!(banner_to_portion("NATO RESTRICTED"), Some("NR"));
         assert_eq!(banner_to_portion("NATO UNCLASSIFIED"), Some("NU"));
-        // §H.4 SCI compounds — CAPCO-2016 §H.4 p78, p83.
-        assert_eq!(banner_to_portion("SI-ECRU"), Some("SI-EU"));
-        assert_eq!(banner_to_portion("SI-NONBOOK"), Some("SI-NK"));
+        // §H.4 SCI compounds — banner == portion (same-form) after the
+        // Authorized Abbreviation fix (§H.4 p78 line 1792, §H.4 p83 line 1942,
+        // §D.1 p27 line 560). The helpers return None for same-form entries.
+        assert_eq!(banner_to_portion("SI-EU"), None);
+        assert_eq!(banner_to_portion("SI-NK"), None);
+        // The old title form is no longer a `banner` field value.
+        assert_eq!(banner_to_portion("SI-ECRU"), None);
+        assert_eq!(banner_to_portion("SI-NONBOOK"), None);
         // §H.8 EYES ONLY — bare banner form maps to CVE portion `EYES`.
         // CAPCO-2016 §H.8 p157. Allows `SECRET//EYES ONLY` to parse as
         // `DissemControl::Eyes` instead of falling through to Unknown.
@@ -705,10 +720,10 @@ mod tests {
         assert_eq!(portion_to_banner("NC"), Some("NATO CONFIDENTIAL"));
         assert_eq!(portion_to_banner("NR"), Some("NATO RESTRICTED"));
         assert_eq!(portion_to_banner("NU"), Some("NATO UNCLASSIFIED"));
-        // §H.4 SCI compounds — inverse direction.
-        // CAPCO-2016 §H.4 p78, p83.
-        assert_eq!(portion_to_banner("SI-EU"), Some("SI-ECRU"));
-        assert_eq!(portion_to_banner("SI-NK"), Some("SI-NONBOOK"));
+        // §H.4 SCI compounds — banner == portion (same-form); helpers return None.
+        // CAPCO-2016 §H.4 p78 line 1792, §H.4 p83 line 1942, §D.1 p27 line 560.
+        assert_eq!(portion_to_banner("SI-EU"), None);
+        assert_eq!(portion_to_banner("SI-NK"), None);
         // §H.8 EYES ONLY — inverse direction. CVE portion `EYES` → bare
         // banner title `EYES ONLY`. CAPCO-2016 §H.8 p157.
         assert_eq!(portion_to_banner("EYES"), Some("EYES ONLY"));
@@ -755,6 +770,11 @@ mod tests {
             "NNPI",
             // §H.4 SCI control systems (same-form-with-distinct-title).
             "TK",
+            // §H.4 SCI compound abbreviations (same-form after Authorized
+            // Abbreviation fix: banner == portion == abbreviation).
+            // CAPCO-2016 §H.4 p78 line 1792, §H.4 p83 line 1942.
+            "SI-EU",
+            "SI-NK",
             // §H.6 AEA bare forms (same-form-with-distinct-title).
             "RD",
             "FRD",
@@ -934,10 +954,6 @@ mod tests {
             // so no substitution is possible). E001/E009 are retired.
             // CAPCO-2016 §H.8 p157; ODNI CVEnumISMDissem.xml.
             "EYES ONLY",
-            // §H.4 SCI compounds (banner == title, distinct portion).
-            // CAPCO-2016 §H.4 p78, p83.
-            "SI-ECRU",
-            "SI-NONBOOK",
             // §H.8 dissem with `None` abbreviation column.
             // CAPCO-2016 §G.1 Table 4 p36 (DEA SENSITIVE).
             "DEA SENSITIVE",
