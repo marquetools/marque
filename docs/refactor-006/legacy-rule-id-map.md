@@ -66,7 +66,7 @@ structured 2-tuple `{"scheme": "...", "predicate_id": "..."}` shape.
 
 ## Per-section index
 
-- §1 — Active CAPCO rules registered in `CapcoRuleSet` (28 rules at HEAD,
+- §1 — Active CAPCO rules registered in `CapcoRuleSet` (29 rules at HEAD,
   matches `EXPECTED_RULE_IDS` in `post_3b_registration_pin.rs`)
 - §2 — Retired declarative-wrapper rules (PR #578; 15 rules; bridge-routed)
 - §3 — Class-floor catalog rows (E058 walker; 27 rows in `class_floor.rs`)
@@ -82,7 +82,7 @@ structured 2-tuple `{"scheme": "...", "predicate_id": "..."}` shape.
 
 ## §1 Active CAPCO rules (registered in `CapcoRuleSet`)
 
-The 28-rule registered set matches `EXPECTED_RULE_IDS` in
+The 29-rule registered set matches `EXPECTED_RULE_IDS` in
 `crates/capco/tests/post_3b_registration_pin.rs:116-176`. Source-of-truth for
 each row: `crates/capco/src/rules.rs` (rule `impl Rule for *` block + `name()`
 + `cited_authorities()`) and `crates/capco/src/rules_declarative.rs` for the
@@ -108,6 +108,7 @@ two declarative walkers (E065 / E067).
 | `E067` | `("capco", "marking.recanonicalize.bare-canonical-compound")` | `capco:marking.recanonicalize.bare-canonical-compound` | §H.6 p106 + §H.4 p83 + §H.4 p78 | `bare-canonical-compound` | Bare legacy short-forms (CNWDI → RD-CNWDI; NK → SI-NK; EU → SI-EU). Declarative walker. |
 | `E071` | `("capco", "portion.fgi.fgi-explicit-with-trigraph")` | `capco:portion.fgi.fgi-explicit-with-trigraph` | §H.7 p124 | `fgi-explicit-with-trigraph` | `FGI [trigraph]` when concealment is intended (Case A) or acknowledgment contradicted (Case C/D). Four-case behavioral spec covering full/empty/partial REL TO overlap. |
 | `E072` | `("capco", "page.dissem.bare-rel-portion-divergence")` | `capco:page.dissem.bare-rel-portion-divergence` | §H.8 pp150-151 | `bare-rel-portion-divergence` | Bare-REL portions and explicit-REL-TO portions with divergent country lists coexist on the same page. `Phase::PageFinalization`. |
+| `E073` | `("capco", "marking.fgi.invalid-ownership-token")` | `capco:marking.fgi.invalid-ownership-token` | §H.7 p123 | `fgi-invalid-ownership-token` | Category-specific Error for FGI ownership tokens that fail the strict-parser shape gate (`FVEY`, `DEUX`, `ACGU`, `ISAF`, …). `Phase::WholeMarking`, no fix offered; replaces the generic E008 surface via the existing `is_fgi_invalid_ownership_token` suppression chain. Added in PR #687 in the legacy `RuleId::new("E073")` form and migrated to the 2-tuple shape in the same PR atop the T044 merge. |
 | `S003` | `("capco", "portion.classification.joint-usa-first-style")` | `capco:portion.classification.joint-usa-first-style` | §H.3 p56 + §H.8 pp150-151 | `joint-usa-first` | JOINT classification country-list — IC convention puts USA first even though §H.3 prescribes pure-alpha. Info severity. |
 | `S004` | `("capco", "portion.dissem.rel-to-trigraph-suggest")` | `capco:portion.dissem.rel-to-trigraph-suggest` | §H.8 | `rel-to-trigraph-suggest` | REL TO trigraph has a corpus-rare prior and a corpus-common 1- or 2-edit neighbor (e.g. `AUT` → `AUS?`). First consumer of the suggest-don't-fix channel. |
 | `S005` | `("capco", "page.dissem.rel-to-uncertain-reduction")` | `capco:page.dissem.rel-to-uncertain-reduction` | §H.8 + §D.2 Table 3 row 21 | `rel-to-opaque-uncertain-reduction` | REL TO membership-uncertain reduction at `Phase::PageFinalization`. PR #488 collapsed S005/S006 split into one Suggest. |
@@ -120,7 +121,7 @@ two declarative walkers (E065 / E067).
 | `W034` | `("capco", "portion.sci.unpublished-custom-control")` | `capco:portion.sci.unpublished-custom-control` | §A.6 p15 + §H.4 p61 | `sci-custom-control-info` | Unpublished (agency-allocated) SCI custom control identifier within typical CAPCO §A.6 p15 length bounds; Info severity. |
 
 **Cardinality check (sanity for Wave 2 Agent D):** the table above has
-**28 rows** — matches `EXPECTED_RULE_IDS.len() == 28` in
+**29 rows** — matches `EXPECTED_RULE_IDS.len() == 29` in
 `post_3b_registration_pin.rs`. Any future addition or retirement of a
 registered rule lands a new row here AND updates that test in lockstep.
 
