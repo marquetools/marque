@@ -156,26 +156,27 @@ parallel to the engine's deliberate fault-injection harnesses.
 
 <a id="d1-p27-cross-ref"></a>
 
-### `§D.1 p27` — E005 secondary cross-reference
+### `§D.1 p27` — RETIRED (issue #677, 2026-05-22)
 
-Property: (3) — Cross-reference pin not used as primary citation.
+Property: (3) was — Cross-reference pin not used as primary
+citation. This carve-out is **retired**.
 
-`crates/capco/src/rules.rs::E005_CROSS_REFS` pins the §D.1 p27
-cross-reference (banner-syntax categories exclude
+Pre-#677 state: `E005_CROSS_REFS` pinned the §D.1 p27 reference as
+a secondary cross-reference (banner-syntax categories exclude
 declassification — the negative-inference complement to §E.1 p31's
-positive "Declassify On is a CAB line" rule). E005's primary
-emitted `Diagnostic.citation` is `§E.1 p31`. The constant is
-included in `E005_AUTHORITIES` because the cross-reference is
-part of the rule's authoritative-source surface, and the F.1
-gate is the place that visibility lives. The
-`citation_cross_refs_tests` module at the end of `rules.rs` is
-the structural pin against drift.
+positive "Declassify On is a CAB line" rule), but E005's emitted
+`Diagnostic.citation` was `§E.1 p31`, so §D.1 p27 never reached
+the corpus harvester.
 
-To remove this whitelist entry: split E005 into two diagnostics
-with separate primary citations (one at §E.1 p31, one at §D.1
-p27), or extend the audit-record schema to carry secondary
-citations alongside the primary anchor. Both are larger
-architectural changes outside PR 10.A.2 scope.
+Post-#677 state: issue #677's `PortionFormInBannerRule` emits
+`§D.1 p27` as its **primary** citation — the "Any control markings
+in the banner line may be spelled out per the 'Marking Title' or
+abbreviated as per the 'Authorized Abbreviation'" passage at
+line 560 is the direct authority for the form-mismatch
+diagnostic. Corpus fixtures under `tests/corpus/invalid/677_*.txt`
+exercise the new rule, so the citation is now harvested by the
+F.1 gate. The `EXPECTED_UNCOVERED` entry was removed; the gate
+now treats the coverage as authoritative.
 
 <a id="f-p35-deprecated-dissem"></a>
 

@@ -1,6 +1,7 @@
 {
-  "_note": "PR 3c.B Commit 6: E001 (portion-mark-in-banner) retired into MarkingScheme::render_canonical. Only E058 (class-floor catalog walker) remains, firing on IMCON above its class floor.",
+  "_note": "PR 3c.B Commit 6: E001 (portion-mark-in-banner) retired into MarkingScheme::render_canonical. Issue #677 restored the surface: capco:banner.metadata.uses-portion-form fires on IMC (portion form) in banner. E058 (class-floor catalog walker) still fires on IMCON above its class floor. Two diagnostics expected.",
   "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "banner.metadata.uses-portion-form"}, "span": {"start": 14, "end": 17}},
     {"rule": {"scheme": "capco", "predicate_id": "banner.dissem.floor-imcon"}, "span": {"start": 14, "end": 17}}
   ]
 }

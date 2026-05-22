@@ -154,7 +154,17 @@ fn banner_str(d: &DissemControl) -> &'static str {
         DissemControl::Rel => "REL",
         DissemControl::Relido => "RELIDO",
         DissemControl::Eyes => "EYES ONLY",
-        DissemControl::Dsen => "DSEN",
+        // §H.8 p159 lists the Authorized Banner Line Marking Title as
+        // "DEA SENSITIVE" with the worked banner example
+        // `UNCLASSIFIED//DEA SENSITIVE`. The §G.1 Table 4 p36 row
+        // carries `None` under the "Authorized Abbreviation" column —
+        // `DSEN` is the portion mark, not the banner form. Pre-#677
+        // this renderer mis-emitted "DSEN" in banner position, which
+        // made issue #677's `Recanonicalize { Page }` fix a no-op on
+        // `SECRET//DSEN` inputs (the round-trip produced the same
+        // bytes). Citation re-verified at authorship against
+        // `crates/capco/docs/CAPCO-2016.md` per Constitution VIII.
+        DissemControl::Dsen => "DEA SENSITIVE",
         DissemControl::Rawfisa => "RAWFISA",
         DissemControl::Fisa => "FISA",
         DissemControl::Displayonly => "DISPLAY ONLY",
