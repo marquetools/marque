@@ -14,7 +14,7 @@
 //!     - Example Banner Line: `SECRET//DISPLAY ONLY IRQ`
 //!     - Example Portion Mark: `(S//DISPLAY ONLY IRQ)`
 //!     - Example with multiple countries: `CONFIDENTIAL//DISPLAY ONLY AFG, IRQ`
-//! - CAPCO-2016 §H.8 p164 — formatting: "`[LIST]` pertains to the
+//! - CAPCO-2016 §H.8 p163 — formatting: "`[LIST]` pertains to the
 //!   Annex B country trigraph code(s) or Annex A tetragraph code(s),
 //!   or Manual, Appendix B NATO/NAC markings used with the DISPLAY
 //!   ONLY marking. Country codes are listed alphabetically followed
@@ -38,7 +38,7 @@
 //!   ascending alpha. The 2-char `EU` and 15-char `AUSTRALIA_GROUP`
 //!   registered codes — admitted by `is_trigraph` per ODNI ISMCAT
 //!   `CVEnumISMCATRelTo.xsd` (340 entries) — bucket alongside
-//!   tetragraphs (>=4-char non-3-byte sort group). The §H.8 p164
+//!   tetragraphs (>=4-char non-3-byte sort group). The §H.8 p163
 //!   text says only "country codes ... then tetragraph codes" so the
 //!   exact placement of EU and AUSTRALIA_GROUP between the buckets
 //!   is mildly under-specified; matching the REL TO renderer's
@@ -75,7 +75,7 @@ pub(crate) fn render_display_only(
     out.write_str("DISPLAY ONLY ")?;
 
     // Bucket trigraphs (3-byte) vs tetragraphs and other-width codes
-    // (everything else). §H.8 p164: "Country codes are listed
+    // (everything else). §H.8 p163: "Country codes are listed
     // alphabetically followed by tetragraph codes in alphabetical
     // order." Inline-4 / inline-2 keeps the typical DISPLAY ONLY
     // list (1–3 country codes per the §H.8 p165 worked examples)

@@ -89,3 +89,80 @@ pub(crate) fn numeric_then_alpha_cmp(a: &str, b: &str) -> core::cmp::Ordering {
 pub(crate) fn is_numeric_first(s: &str) -> bool {
     s.bytes().next().is_some_and(|b| b.is_ascii_digit())
 }
+
+// ---------------------------------------------------------------------------
+// Named-fn-item comparators — WASM bundle-size collapse (R1 / issue #689)
+// ---------------------------------------------------------------------------
+//
+// These helpers extend the PR #585 precedent established by
+// `crate::lattice::sort_smolstrs_by_sar` (see the doc-comment on that
+// function for the original mono-collapse rationale). Each comparator is a
+// concrete-typed `fn`-item — not a closure, not generic — so every callsite
+// that passes the same `fn`-item to `slice::sort_by` (resp.
+// `slice::sort_by_key`) shares one closure-axis monomorphization with every
+// other callsite using the same `fn`-item.
+//
+// Two-axis Rust trap recap (per the R1 rust-feasibility preflight §3):
+//
+// 1. `slice::sort_by` passes `&T` to its comparator. When the slice element
+//    type is itself a borrow (`&SciMarking`, `&str`, …), the comparator
+//    receives `&&T`. Each comparator below declares the double-borrow shape
+//    explicitly so the `fn`-item-to-`fn`-pointer coercion at the call site
+//    succeeds.
+//
+// 2. Adding generics to these comparators (`T: Ord`) breaks the coercion.
+//    Each comparator stays concrete-typed — duplicate one per `T` rather
+//    than generalize.
+//
+// Deliberately NOT `#[inline]` per the PR #585 doc-comment: inlining a
+// wrapping `fn` re-monomorphizes its body at every inline site, defeating
+// the consolidation. Workspace `lto = "fat"` (`Cargo.toml`) handles
+// profitable inlining naturally if it would be a win.
+
+/// Compare two `&&str` references via [`numeric_then_alpha_cmp`].
+///
+/// Targets `slice::sort_by` over `&mut [&str]` (the
+/// `SmallVec<[&str; 4]>` shape used at SAR sub-compartment + SCI
+/// sub-compartment render sites). Per CAPCO-2016 §A.6 p15-16.
+pub(crate) fn cmp_str_numeric_then_alpha(a: &&str, b: &&str) -> core::cmp::Ordering {
+    numeric_then_alpha_cmp(a, b)
+}
+
+/// Compare two `&&SarProgram` references on `identifier` via
+/// [`numeric_then_alpha_cmp`].
+///
+/// Targets `slice::sort_by` over `&mut [&SarProgram]` (the
+/// `SmallVec<[&SarProgram; 4]>` programs scratch at SAR render). Per
+/// CAPCO-2016 §H.5 p99-100 (SAR program ascending sort).
+pub(crate) fn cmp_sar_program_ident(
+    a: &&marque_ism::SarProgram,
+    b: &&marque_ism::SarProgram,
+) -> core::cmp::Ordering {
+    numeric_then_alpha_cmp(&a.identifier, &b.identifier)
+}
+
+/// Compare two `&&SarCompartment` references on `identifier` via
+/// [`numeric_then_alpha_cmp`].
+///
+/// Targets `slice::sort_by` over `&mut [&SarCompartment]` (the
+/// `SmallVec<[&SarCompartment; 4]>` compartments scratch at SAR render).
+/// Per CAPCO-2016 §H.5 p99-100.
+pub(crate) fn cmp_sar_compartment_ident(
+    a: &&marque_ism::SarCompartment,
+    b: &&marque_ism::SarCompartment,
+) -> core::cmp::Ordering {
+    numeric_then_alpha_cmp(&a.identifier, &b.identifier)
+}
+
+/// Compare two `&&SciCompartment` references on `identifier` via
+/// [`numeric_then_alpha_cmp`].
+///
+/// Targets `slice::sort_by` over `&mut [&SciCompartment]` (the
+/// `SmallVec<[&SciCompartment; 4]>` compartments scratch at SCI
+/// render). Per CAPCO-2016 §A.6 p15-16 + §H.4 p61.
+pub(crate) fn cmp_sci_compartment_ident(
+    a: &&marque_ism::SciCompartment,
+    b: &&marque_ism::SciCompartment,
+) -> core::cmp::Ordering {
+    numeric_then_alpha_cmp(&a.identifier, &b.identifier)
+}

@@ -1401,7 +1401,7 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
             // byte-class shape predicate. CAT_FGI_MARKER does NOT
             // widen this way — §H.7 p122 admits trigraphs and
             // tetragraphs only.
-            // CAPCO-2016 §H.8 p150 + §A.6 p17 ("'USA' trigraph
+            // CAPCO-2016 §H.8 p150 + §A.6 p16 ("'USA' trigraph
             // code must be listed first, followed by trigraph
             // codes listed in ascending alphabetic sort order,
             // then tetragraph codes ...") + `TRIGRAPHS` registry
