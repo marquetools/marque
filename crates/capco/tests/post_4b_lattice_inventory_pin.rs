@@ -50,8 +50,9 @@
 //!   closures, zero new rules.
 //! - **4b-B #437** adds 7 lattice impls (ClassificationLattice +
 //!   NatoClassLattice with Bounded halves; DissemSet / JointSet
-//!   Join-only per PR #456; NatoDissemSet / RelToBlock / DeclassifyOn
-//!   with both halves) plus `W004` rule (registered count 38 → 39).
+//!   Join-only per the `Lattice` trait split (issue #456 / PR #502);
+//!   NatoDissemSet / RelToBlock / DeclassifyOn with both halves) plus
+//!   `W004` rule (registered count 38 → 39).
 //! - **4b-C #468** adds 9 declarative `PageRewrite` rows in two
 //!   patterns: Pattern B FOUO eviction (2 rows per §H.8 p134); Pattern
 //!   C classified-strip semantics (7 rows per §H.6 / §H.8 / §H.9 —

@@ -4,8 +4,9 @@
 
 //! Compile-gate tests for the `JoinSemilattice` + `MeetSemilattice` trait split.
 //!
-//! PR #456 split the monolithic `Lattice` trait into two halves with a
-//! blanket `impl<T: JoinSemilattice + MeetSemilattice> Lattice for T {}`.
+//! The `Lattice` trait split (issue #456 / PR #502) divided the
+//! monolithic `Lattice` trait into two halves with a blanket
+//! `impl<T: JoinSemilattice + MeetSemilattice> Lattice for T {}`.
 //! This file pins the invariants that must hold at the type-system level:
 //!
 //! 1. Types satisfying both halves automatically satisfy `Lattice`.

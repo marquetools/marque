@@ -36,8 +36,9 @@
 //!   contain both a dominated token and its dominator.
 //!
 //! These types implement [`JoinSemilattice`] only. The trait split was
-//! introduced in PR #456; see `docs/plans/2026-05-01-lattice-design.md`
-//! section 4.10 for the algebraic rationale.
+//! introduced in PR #502 (issue #456); see
+//! `docs/plans/2026-05-01-lattice-design.md` section 4.10 for the
+//! algebraic rationale.
 //!
 //! # Trait hierarchy
 //!

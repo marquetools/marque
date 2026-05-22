@@ -382,8 +382,8 @@ T026a–T026f in `tasks.md`):
   rules with W004 added and W002 retired). T143: compile-time
   pin at `crates/capco/tests/lattice_static_assertions.rs`
   locking 12 + 9 + 2 + 2 trait impls plus the Join-only invariant
-  for DissemSet / JointSet / DisplayOnlyBlock (PR #456 split +
-  PR #538 audit). T144: runtime triple-pin at
+  for DissemSet / JointSet / DisplayOnlyBlock (issue #456 / PR #502
+  split + PR #538 audit). T144: runtime triple-pin at
   `crates/capco/tests/post_4b_lattice_inventory_pin.rs` covering
   positional 27 `PageRewrite` names + positional 10 `ClosureRule`
   names + sorted-set 39 `Constraint::Custom` labels. T145:
