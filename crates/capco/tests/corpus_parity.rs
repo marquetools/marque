@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        29,
+        30,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -318,7 +318,16 @@ fn rule_count_reflects_registration_changes() {
          parser shape gate (`FVEY`, `DEUX`, `ACGU`, `ISAF`, …); \
          replaces the generic E008 surface via the existing \
          suppression chain. Authority: CAPCO-2016 §H.7 p123. Net \
-         delta: +1. Final: 29. \
+         delta: +1. Final: 29. Issue #545 adds \
+         `FgiOwnershipTrigraphSuggestRule` — architectural twin of \
+         S004 covering shape-admitted-but-unregistered FGI \
+         ownership tokens (`(S//FGI XX)` / `(S//FGI ZZZ)`). \
+         Reuses S004's corpus-prior + edit-distance machinery on \
+         the FGI ownership axis (`attrs.fgi_marker.countries()`, \
+         `TokenKind::FgiOwnershipTrigraph` spans). Stays a \
+         registered walker because the candidate replacement is \
+         corpus-derived during evaluation. Authority: CAPCO-2016 \
+         §H.7 p122 + §A.6 p16. Net delta: +1. Final: 30. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

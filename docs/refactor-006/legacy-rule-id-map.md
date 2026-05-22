@@ -22,6 +22,11 @@ to its 2-tuple successor `(scheme, predicate_id)` at the T044 cutover.
 **Post-cutover audit logs use the 2-tuple form exclusively.** No runtime
 translation table exists (clean break per Constitution V; FR-037).
 
+**Rules added after T044 (2026-05-22) have no pre-T044 wire string** and
+are not listed in this table — see `crates/capco/src/rules.rs` (and the
+`EXPECTED_RULE_IDS` pin in `crates/capco/tests/post_3b_registration_pin.rs`)
+for the canonical post-T044 registration.
+
 ## Discipline (binding for future renames)
 
 This document is **appended to, never silently rewritten**. A rename added
