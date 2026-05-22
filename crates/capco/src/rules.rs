@@ -407,6 +407,19 @@ impl CapcoRuleSet {
                 // contradicts the acknowledged REL TO countries.
                 // Authority: CAPCO-2016 §H.7 p124.
                 Box::new(FgiExplicitWithTrigraphRule),
+                // Issue #501: invalid FGI ownership tokens. Replaces the
+                // generic E008 "unrecognized token" Error on FGI-marker
+                // spans whose ownership-list tail contains a token that
+                // fails `CountryCode::admits_fgi_ownership_token` (e.g.,
+                // `(S//FGI FVEY)`, `(S//FGI DEUX)`, `(S//FGI ACGU)`). The
+                // E008 emission path suppresses co-firing on these spans
+                // via `is_fgi_invalid_ownership_token`, so the user sees
+                // only the category-specific E073 diagnostic. No fix is
+                // offered (no single right replacement). Authority:
+                // CAPCO-2016 §H.7 p123 (FGI Authorized Portion / Banner
+                // forms; `[LIST]` grammar = Register Annex B trigraphs +
+                // Annex A tetragraphs + Manual Appendix B NATO/NAC).
+                Box::new(FgiInvalidOwnershipTokenRule),
                 // Issue #250: S009 prefer-tetragraph-collapse. Default Off
                 // — tetragraph vs. explicit-member form is a classification-
                 // authority style choice. Enable via `[rules] S009 = "suggest"`.
@@ -1392,10 +1405,18 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                 // so the user sees only the actionable E067
                 // `text_correction` diagnostic, not a redundant
                 // "unrecognized token" Error.
+                //
+                // Issue #501: invalid FGI ownership tokens (e.g.,
+                // `"FGI FVEY"`, `"FGI DEUX"`, `"FOREIGN GOVERNMENT
+                // INFORMATION ACGU"`) are owned by E073
+                // (`FgiInvalidOwnershipTokenRule`); suppress E008 co-
+                // fire so the user sees only the actionable, category-
+                // specific E073 diagnostic.
                 find_migration(text).is_none()
                     && !looks_like_deprecated_x_shorthand(text)
                     && !is_repeated_sar_owned_by_e030(text, has_first_sar)
                     && !crate::rules_declarative::is_bare_canonical_compound_form(text)
+                    && !is_fgi_invalid_ownership_token(text)
             })
             .map(|t| {
                 Diagnostic::new(
@@ -7031,6 +7052,229 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                         nf_intent,
                     ));
                 }
+            }
+        }
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E073 — FGI invalid ownership token (category-specific diagnostic)
+// ---------------------------------------------------------------------------
+
+/// Predicate: does this `Unknown` text span carry the FGI-marker shape
+/// rejected by the strict parser?
+///
+/// True iff `text` starts with the FGI banner-abbreviation prefix
+/// (`"FGI "`) or the long-form prefix
+/// (`"FOREIGN GOVERNMENT INFORMATION "`) and at least one whitespace-
+/// separated token in the tail fails the FGI-ownership shape gate
+/// ([`CountryCode::admits_fgi_ownership_token`]).
+///
+/// Used by both the E073 walker (to emit one diagnostic per invalid
+/// token) and the E008 suppression chain (to avoid co-firing a generic
+/// "unrecognized token" Error on the same FGI-marker span — the user
+/// sees only the actionable E073 diagnostic instead).
+///
+/// Authority: CAPCO-2016 §H.7 p123. The FGI Authorized Portion / Banner
+/// forms define the ownership-token shape; this predicate is the
+/// rule-layer surface of the parser's `parse_fgi_marker` rejection
+/// path. Re-verified against `crates/capco/docs/CAPCO-2016.md` at
+/// authorship per Constitution VIII.
+pub(crate) fn is_fgi_invalid_ownership_token(text: &str) -> bool {
+    let Some(tail) = text
+        .strip_prefix("FGI ")
+        .or_else(|| text.strip_prefix("FOREIGN GOVERNMENT INFORMATION "))
+    else {
+        return false;
+    };
+    // Forward-compat: the empty-tail branch (`"FGI "` followed only by
+    // whitespace) is unreachable via the production parser path. The
+    // block-walker trims input with `raw.trim()` before dispatch, so
+    // `"FGI "` collapses to `"FGI"`, which `parse_fgi_marker` admits
+    // as `FgiMarker::SourceConcealed` (no `Unknown` span is produced).
+    // This branch covers synthetic `TokenKind::Unknown` spans (e.g.,
+    // test-harness injection or out-of-tree consumers that bypass the
+    // production parser) and any future parser change that allows an
+    // empty-tail FGI to reach the rule layer. Keeping it preserves the
+    // E073-owns-malformed-FGI invariant under those drift scenarios.
+    let mut saw_token = false;
+    for token in tail.split_whitespace() {
+        saw_token = true;
+        if !CountryCode::admits_fgi_ownership_token(token.as_bytes()) {
+            return true;
+        }
+    }
+    !saw_token
+}
+
+struct FgiInvalidOwnershipTokenRule;
+
+/// Citations E073 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E073_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 123)];
+
+impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("capco", "marking.fgi.invalid-ownership-token")
+    }
+    fn name(&self) -> &'static str {
+        "fgi-invalid-ownership-token"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+    /// Phase::WholeMarking: reads `attrs.token_spans` for `Unknown`
+    /// spans whose text leads with an `"FGI "` or long-form prefix.
+    /// The diagnostic spans a sub-range of the FGI-marker block (one
+    /// per invalid ownership token); WholeMarking is the conservative
+    /// dispatch shape per D-7.2.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E073_AUTHORITIES
+    }
+    /// Emits one `Severity::Error` diagnostic per token in the FGI
+    /// ownership slot that fails the
+    /// [`CountryCode::admits_fgi_ownership_token`] shape gate
+    /// (sovereign trigraphs + `EU` + literal `NATO`).
+    ///
+    /// # No fix
+    ///
+    /// No `text_correction` or `FixIntent` is offered. Invalid FGI
+    /// ownership tokens have no single right replacement: `FVEY` is a
+    /// 5-country coalition tetragraph (REL TO surface, not FGI
+    /// ownership), and `DEUX` is shape-wrong rather than a typo for
+    /// `DEU`. The category-specific diagnostic is itself the user-
+    /// actionable signal.
+    ///
+    /// # Span anchoring
+    ///
+    /// The diagnostic span anchors at the offending token's byte range
+    /// within the FGI-marker block. The parser packs the whole marker
+    /// (`"FGI FVEY"`, `"FOREIGN GOVERNMENT INFORMATION DEUX"`) into a
+    /// single `TokenKind::Unknown` `TokenSpan`; this rule splits the
+    /// tail on whitespace and computes per-token offsets so the
+    /// diagnostic points at the rejected token, not the whole marker.
+    /// Audit-content-ignorance (Constitution V G13) is preserved: the
+    /// span is a byte-offset locator into the source buffer, not a
+    /// content payload.
+    ///
+    /// # Authority
+    ///
+    /// CAPCO-2016 §H.7 p123. The FGI Authorized Portion / Banner forms
+    /// specify the ownership-token grammar: `[LIST]` is "one or more
+    /// Register, Annex B trigraph country codes or Register, Annex A
+    /// tetragraph code(s), or Manual, Appendix B NATO/NAC markings"
+    /// per §G.1 p38 (Table 4 footnote on the §G.1 Register of
+    /// Authorized Classification and Control Markings). The FGI
+    /// ownership slot specifically admits sovereign trigraphs, the
+    /// 2-byte `EU` exception, and the literal `NATO` tetragraph;
+    /// distribution-list tetragraphs (`FVEY`, `ACGU`, `ISAF`, `CFIUS`)
+    /// describe who may receive a marking, not who owns it (issue
+    /// #280). Re-verified against `crates/capco/docs/CAPCO-2016.md` at
+    /// authorship per Constitution VIII.
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        let mut out = Vec::new();
+        for tok in attrs.token_spans.iter() {
+            if tok.kind != TokenKind::Unknown {
+                continue;
+            }
+            let text = tok.text.as_str();
+            // Strip the same prefixes the parser dispatches on. If
+            // neither prefix is present this isn't an FGI marker — let
+            // E008 own the generic-unknown surface.
+            let (prefix_len, tail) = if let Some(rest) = text.strip_prefix("FGI ") {
+                (4_usize, rest)
+            } else if let Some(rest) = text.strip_prefix("FOREIGN GOVERNMENT INFORMATION ") {
+                (31_usize, rest)
+            } else {
+                continue;
+            };
+
+            // Walk the tail and emit one diagnostic per invalid token,
+            // anchored at the token's byte offset inside `tok.span`.
+            // `split_whitespace` collapses runs; we recover offsets via
+            // a manual byte cursor over `tail` to keep the span
+            // precise.
+            let span_start = tok.span.start;
+            let base = span_start + prefix_len;
+            let bytes = tail.as_bytes();
+            let mut idx = 0_usize;
+            let mut saw_token = false;
+            while idx < bytes.len() {
+                // Skip whitespace.
+                while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                    idx += 1;
+                }
+                if idx >= bytes.len() {
+                    break;
+                }
+                let tok_start = idx;
+                while idx < bytes.len() && !bytes[idx].is_ascii_whitespace() {
+                    idx += 1;
+                }
+                let tok_end = idx;
+                let candidate = &bytes[tok_start..tok_end];
+                saw_token = true;
+                if !CountryCode::admits_fgi_ownership_token(candidate) {
+                    let abs_start = base + tok_start;
+                    let abs_end = base + tok_end;
+                    out.push(Diagnostic::new(
+                        self.id(),
+                        self.default_severity(),
+                        Span::new(abs_start, abs_end),
+                        Message::new(
+                            MessageTemplate::UnrecognizedToken,
+                            MessageArgs {
+                                category: Some(crate::scheme::CAT_FGI_MARKER),
+                                ..MessageArgs::default()
+                            },
+                        ),
+                        capco(SectionLetter::H, 7, 123),
+                        None,
+                    ));
+                }
+            }
+            // Forward-compat companion to the matching branch in
+            // `is_fgi_invalid_ownership_token`: an empty tail (`"FGI "`
+            // with no trailing tokens) is unreachable via the production
+            // parser path because the block-walker trims input before
+            // dispatch — `"FGI "` collapses to `"FGI"`, which
+            // `parse_fgi_marker` admits as `SourceConcealed`. This
+            // branch handles synthetic `TokenKind::Unknown` spans
+            // (test-harness injection, out-of-tree consumers) and any
+            // future parser change that allows an empty-tail FGI to
+            // reach the rule layer. Anchor the diagnostic at the
+            // trailing separator region rather than a zero-byte span
+            // at end-of-token for a meaningful pointer.
+            if !saw_token {
+                let abs_start = span_start + prefix_len;
+                let abs_end = tok.span.end;
+                let span = if abs_end > abs_start {
+                    Span::new(abs_start, abs_end)
+                } else {
+                    tok.span
+                };
+                out.push(Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    Message::new(
+                        MessageTemplate::UnrecognizedToken,
+                        MessageArgs {
+                            category: Some(crate::scheme::CAT_FGI_MARKER),
+                            ..MessageArgs::default()
+                        },
+                    ),
+                    capco(SectionLetter::H, 7, 123),
+                    None,
+                ));
             }
         }
         out
