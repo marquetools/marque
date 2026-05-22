@@ -105,12 +105,20 @@ fn surrounding_lowercase_majority(source: &[u8], start: usize, end: usize) -> bo
 
 /// Synthetic rule identifier the engine attaches to decoder-path
 /// `FixSource::DecoderPosterior` diagnostics emitted from
-/// `Engine::lint`. Phase 4 PR-4b mints this identifier so the
+/// `Engine::lint`. Phase 4 PR-4b minted this identifier so the
 /// recognition-layer rewrite carries a real `RuleId` (rules and
 /// fixes share that requirement) without colliding with any CAPCO
-/// `E### / W### / C### / S###` namespace. A diagnostic stamped
-/// `R001` originates from the decoder, not from a CAPCO rule.
-const DECODER_RULE_ID: &str = "R001";
+/// rule.
+///
+/// T044 (post-PR-10 FR-049 unfreeze) reshaped this from the
+/// legacy flat-string `"R001"` form to the canonical
+/// `("engine", "recognition.decoder-recognized")` 2-tuple per
+/// FR-044 (`docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
+/// §1.4 + §2.6 + OD-4): the `"engine"` scheme is the reserved
+/// namespace for engine-minted diagnostics, and the predicate id
+/// describes the rewrite in plain English rather than the legacy
+/// opaque `R001` numeric.
+const DECODER_RULE_ID: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
 
 /// Citation attached to `R001 decoder-recognition` diagnostics. Points
 /// at CAPCO-2016 §A.6 — the canonical-marking-form section the decoder
@@ -128,23 +136,24 @@ const DECODER_RULE_ID: &str = "R001";
 const DECODER_CITATION_TYPED: marque_scheme::Citation =
     marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15);
 
-/// Synthetic rule identifier for `R002 reparse-failed` diagnostics
-/// (PR 7b, FR-024). Emitted when the post-pass-1 buffer fails to
-/// re-parse — pass-1 produced ≥1 applied fix that turned the source
-/// into an unparseable shape, so pass-2 is skipped and the engine
-/// returns the pass-1 buffer + an R002 diagnostic carrying the
-/// contributing pass-1 rule IDs.
+/// Synthetic rule identifier for the post-pass-1 re-parse-failure
+/// sentinel (PR 7b, FR-024). Emitted when the post-pass-1 buffer
+/// fails to re-parse — pass-1 produced ≥1 applied fix that turned
+/// the source into an unparseable shape, so pass-2 is skipped and
+/// the engine returns the pass-1 buffer + this diagnostic carrying
+/// the contributing pass-1 rule IDs.
 ///
-/// **Type note**: this lands as [`RuleId`], not `&'static str`.
-/// [`DECODER_RULE_ID`] above is `&'static str` for historical reasons
-/// (predates the `RuleId` newtype migration); R002 corrects that. When
-/// the (scheme, predicate-id) 2-tuple `RuleId` form lands
-/// (post-PR-10 FR-049 unfreeze), this becomes
-/// `RuleId::new("engine", "r002.reparse-failed")` per FR-044.
-/// `docs/refactor-006/legacy-rule-id-map.md` will record the rename.
-/// `DECODER_RULE_ID`'s migration to a real `RuleId` is intentionally
-/// deferred (D-7.4).
-pub const R002_RULE_ID: RuleId = RuleId::new("R002");
+/// T044 (post-PR-10 FR-049 unfreeze) reshaped this from the legacy
+/// flat-string `RuleId::new("R002")` form to the canonical
+/// `("engine", "fix.reparse-failed")` 2-tuple per FR-044
+/// (`docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
+/// §1.4 + §2.6 + OD-4). The numeric `r002.` placeholder from the
+/// freeze-window plan was dropped — the `"engine"` scheme already
+/// carries the cross-version anchor; the predicate id describes the
+/// failure mode in plain English. The pre-T044 legacy name survives
+/// only in `docs/refactor-006/legacy-rule-id-map.md` and git
+/// history.
+pub const R002_RULE_ID: RuleId = RuleId::new("engine", "fix.reparse-failed");
 
 /// Typed [`Citation`](marque_scheme::Citation) attached to `R002`
 /// diagnostics — the synthetic re-parse-failure sentinel has no CAPCO
@@ -4338,8 +4347,13 @@ fn build_decoder_diagnostic(
         runner_up_ratio: provenance.runner_up_ratio,
         features,
     };
-    let rule = RuleId::new(DECODER_RULE_ID);
-    // Audit-shape contract: the decoder-path R001 record carries no
+    // T044: DECODER_RULE_ID is now a `RuleId` (was a flat `&'static
+    // str` literal pre-T044), so the dispatcher hands it through
+    // directly — no `RuleId::new` wrapping needed. The `Copy` bound
+    // on the new 2-tuple `RuleId` makes the let-binding free.
+    let rule = DECODER_RULE_ID;
+    // Audit-shape contract: the decoder-path engine-minted record
+    // carries no
     // document bytes (Constitution V Principle V / G13). The span
     // identifies *where* the fix landed; the engine's synthesis path
     // re-renders the canonical form from a `Recanonicalize` intent at
