@@ -53,9 +53,16 @@ fn fix_applies_high_confidence_and_emits_audit() {
         )),
         "audit record should contain schema version, got: {stderr}"
     );
+    // T044 PM OD-2: the `rule` field on the wire is a structured
+    // 2-tuple object, alphabetically-ordered keys per serde_json's
+    // BTreeMap-backed Value serialization. Legacy `E002` →
+    // `("capco", "portion.dissem.rel-to-missing-usa")` per
+    // `docs/refactor-006/legacy-rule-id-map.md` §1.
+    let expected_rule_fragment =
+        r#""rule":{"predicate_id":"portion.dissem.rel-to-missing-usa","scheme":"capco"}"#;
     assert!(
-        stderr.contains("\"rule\":\"E002\""),
-        "audit record should contain rule E002, got: {stderr}"
+        stderr.contains(expected_rule_fragment),
+        "audit record should contain the rel-to-missing-usa rule (legacy E002), got: {stderr}"
     );
     assert!(
         stderr.contains("\"dry_run\":false"),

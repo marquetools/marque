@@ -94,13 +94,19 @@ fn fix_with_warning_only_exits_two() {
         .assert()
         .code(2);
     let stdout = String::from_utf8_lossy(&check.get_output().stdout).into_owned();
+    // T044 PM OD-2: `rule` field on the wire is a structured 2-tuple
+    // object. Legacy `W003` →
+    // `("capco", "page.dissem.non-ic-dissem-in-classified-banner")`
+    // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+    let expected_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"page.dissem.non-ic-dissem-in-classified-banner"}"#;
     assert!(
-        stdout.contains("\"rule\":\"W003\""),
-        "expected W003 in diagnostic stream; got: {stdout}"
+        stdout.contains(expected_rule_fragment),
+        "expected the non-ic-dissem-in-classified-banner rule (legacy W003) in diagnostic stream; got: {stdout}"
     );
     assert!(
         stdout.contains("\"severity\":\"warn\""),
-        "expected severity=warn for W003; got: {stdout}"
+        "expected severity=warn for the legacy-W003 rule; got: {stdout}"
     );
 }
 
