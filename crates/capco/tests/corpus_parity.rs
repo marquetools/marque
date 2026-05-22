@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        30,
+        32,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -328,6 +328,17 @@ fn rule_count_reflects_registration_changes() {
          registered walker because the candidate replacement is \
          corpus-derived during evaluation. Authority: CAPCO-2016 \
          §H.7 p122 + §A.6 p16. Net delta: +1. Final: 30. \
+         Issue #677 adds `PortionFormInBannerRule` + \
+         `BannerFormInPortionRule` — restores the form-mismatch \
+         detection PR 3c.B Commit 6 retired into \
+         `MarkingScheme::render_canonical`. Commit 6's premise was \
+         structurally correct (the renderer's fix path IS in place), \
+         but no rule emitted the `Recanonicalize` `FixIntent` that \
+         would trigger it; the two new rules close that gap broadly. \
+         Authority: CAPCO-2016 §D.1 p27 (banner-line syntax — Marking \
+         Title OR Authorized Abbreviation) + §C.1 p25 (portion-mark \
+         syntax — Register Portion Mark) + §G.1 Table 4 p38 (Register \
+         closed-set authority). Net delta: +2. Final: 32. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

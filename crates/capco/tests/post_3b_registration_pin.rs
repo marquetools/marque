@@ -37,8 +37,9 @@
 //! diagnostics carry the respective predicate IDs for audit-stream
 //! traceability without inflating the registered count.
 //!
-//! Asserts the **exact set** of 30 registered `Rule::id()` values
-//! (29 → 30 after issue #545 added `FgiOwnershipTrigraphSuggestRule`).
+//! Asserts the **exact set** of 32 registered `Rule::id()` values
+//! (30 → 32 after issue #677 added `PortionFormInBannerRule` +
+//! `BannerFormInPortionRule`).
 //!
 //! # Why a separate test from the count pin
 //!
@@ -130,9 +131,23 @@ use std::collections::BTreeSet;
 /// registered walker for the same reason as S004 — the candidate
 /// replacement is corpus-derived during evaluation and cannot be
 /// reproduced from `(name, attrs)` via the bridge. Authority:
-/// CAPCO-2016 §H.7 p122 + §A.6 p16 (29 → 30).
+/// CAPCO-2016 §H.7 p122 + §A.6 p16 (29 → 30). Issue #677 adds
+/// `PortionFormInBannerRule` + `BannerFormInPortionRule` — the form-
+/// mismatch detection retired in PR 3c.B Commit 6. Commit 6's premise
+/// that `MarkingScheme::render_canonical` would absorb E001 + E009
+/// was structurally correct (the renderer's fix path IS in place) but
+/// no rule emitted the `Recanonicalize` `FixIntent` that would
+/// trigger it, so the two new rules close the gap: one Banner-side
+/// walker (`capco:banner.metadata.uses-portion-form`), one Portion-
+/// side walker (`capco:portion.metadata.uses-banner-form`). Both
+/// dispatch through `MARKING_FORMS`'s built-in `banner != portion`
+/// filter and emit ONE diagnostic per offending marking with a
+/// `Recanonicalize { Page | Portion }` intent at confidence 1.0.
+/// Authority: CAPCO-2016 §D.1 p27 line 560 (banner permits Marking
+/// Title OR Authorized Abbreviation) + §C.1 p25 line 503 (portion
+/// uses Register Portion Mark) (30 → 32).
 ///
-/// The 30 registered rule IDs in wire-string form
+/// The 32 registered rule IDs in wire-string form
 /// (`"<scheme>:<predicate_id>"`).
 ///
 /// Post-T044 the legacy E### / W### / C### / S### / R### flat-string IDs
@@ -234,10 +249,19 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // byte span. Suggest channel (engine never auto-applies).
     // Authority: CAPCO-2016 §H.7 p122 + §A.6 p16.
     "capco:portion.fgi.ownership-trigraph-suggest",
+    // Issue #677: portion-form-in-banner / banner-form-in-portion form-
+    // mismatch detection — restores the surface PR 3c.B Commit 6
+    // retired into `MarkingScheme::render_canonical`. Walker dispatch
+    // through `MARKING_FORMS` (built-in `banner != portion` filter)
+    // plus a US-classification branch reading `attrs.classification`.
+    // Authority: CAPCO-2016 §D.1 p27 (banner-line syntax) + §C.1 p25
+    // (portion-mark syntax) + §G.1 Table 4 p38 (Register-closed-set).
+    "capco:banner.metadata.uses-portion-form",
+    "capco:portion.metadata.uses-banner-form",
 ];
 
 #[test]
-fn post_issue_545_registers_exact_30_rule_ids() {
+fn post_issue_677_registers_exact_32_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
@@ -265,11 +289,13 @@ fn post_issue_545_registers_exact_30_rule_ids() {
     // Issue #501: added E073 `FgiInvalidOwnershipTokenRule` (28 → 29).
     // Issue #545: added `FgiOwnershipTrigraphSuggestRule` —
     // architectural twin of S004 covering the FGI ownership axis
-    // (29 → 30).
+    // (29 → 30). Issue #677: added `PortionFormInBannerRule` +
+    // `BannerFormInPortionRule` — restores the form-mismatch
+    // detection PR 3c.B Commit 6 retired into the renderer (30 → 32).
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 30,
-        "post-#545 raw rule slice length drifted from 30 \
+        raw_len, 32,
+        "post-#677 raw rule slice length drifted from 32 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -293,16 +319,16 @@ fn post_issue_545_registers_exact_30_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        30,
-        "EXPECTED_RULE_IDS does not contain 30 unique entries: {expected:?}",
+        32,
+        "EXPECTED_RULE_IDS does not contain 32 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        30,
-        "post-#545 registered rule count drifted from 30: actual={actual:?}",
+        32,
+        "post-#677 registered rule count drifted from 32: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -318,7 +344,7 @@ fn post_issue_545_registers_exact_30_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-issue-#545 registered rule-ID set drifted. \
+        "post-issue-#677 registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \
