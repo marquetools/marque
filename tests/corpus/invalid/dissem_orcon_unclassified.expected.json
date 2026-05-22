@@ -1,6 +1,6 @@
 {
   "_note": "CAPCO-2016 §H.8 p136 — ORCON requires classified content. Fires E058 class-floor/ORCON.",
   "diagnostics": [
-    {"rule": "E058", "span": {"start": 14, "end": 19}}
+    {"rule": {"scheme": "capco", "predicate_id": "banner.dissem.floor-orcon"}, "span": {"start": 14, "end": 19}}
   ]
 }

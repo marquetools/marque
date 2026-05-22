@@ -81,7 +81,9 @@ fn e014_emits_one_diagnostic_per_missing_country_in_portion() {
     let e014: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "E014")
+        .filter(|d| {
+            d.rule.predicate_id() == "portion.classification.joint-requires-rel-to-coverage"
+        })
         .collect();
 
     // JOINT participants are {AUS, CAN, USA}; REL TO is empty; all
@@ -146,7 +148,9 @@ fn e014_emits_one_diagnostic_per_missing_country_in_portion() {
 fn e014_does_not_fire_when_all_participants_in_rel_to() {
     let result = engine().lint(b"(//JOINT S AUS CAN USA//REL TO USA, AUS, CAN)\n");
     assert!(
-        result.diagnostics.iter().all(|d| d.rule.as_str() != "E014"),
+        result.diagnostics.iter().all(|d| {
+            d.rule.predicate_id() != "portion.classification.joint-requires-rel-to-coverage"
+        }),
         "E014 must not fire when all JOINT participants present in \
          REL TO; diagnostics: {:?}",
         result.diagnostics,
@@ -165,7 +169,9 @@ fn e014_does_not_fire_when_all_participants_in_rel_to() {
 fn e014_does_not_fire_when_tetragraph_covers_participants() {
     let result = engine().lint(b"(//JOINT S AUS GBR USA//REL TO USA, FVEY)\n");
     assert!(
-        result.diagnostics.iter().all(|d| d.rule.as_str() != "E014"),
+        result.diagnostics.iter().all(|d| {
+            d.rule.predicate_id() != "portion.classification.joint-requires-rel-to-coverage"
+        }),
         "E014 must not fire when JOINT participants are covered by a \
          tetragraph in REL TO (FVEY covers AUS, GBR, USA); \
          diagnostics: {:?}",
@@ -183,7 +189,9 @@ fn e014_fires_only_for_actually_missing_country() {
     let e014: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "E014")
+        .filter(|d| {
+            d.rule.predicate_id() == "portion.classification.joint-requires-rel-to-coverage"
+        })
         .collect();
 
     assert_eq!(
@@ -244,7 +252,9 @@ fn e014_fix_apply_inserts_missing_countries_idempotently() {
     let e014_applied: Vec<_> = first
         .applied
         .iter()
-        .filter(|af| af.rule.as_str() == "E014")
+        .filter(|af| {
+            af.rule.predicate_id() == "portion.classification.joint-requires-rel-to-coverage"
+        })
         .collect();
     assert!(
         !e014_applied.is_empty(),
@@ -253,7 +263,7 @@ fn e014_fix_apply_inserts_missing_countries_idempotently() {
         first
             .applied
             .iter()
-            .map(|af| af.rule.as_str())
+            .map(|af| af.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 
@@ -304,13 +314,15 @@ fn e014_fix_apply_inserts_missing_countries_idempotently() {
     // has been added.
     let second = engine().fix(&first.source, FixMode::Apply);
     assert!(
-        second.applied.iter().all(|af| af.rule.as_str() != "E014"),
+        second.applied.iter().all(|af| {
+            af.rule.predicate_id() != "portion.classification.joint-requires-rel-to-coverage"
+        }),
         "second pass must not re-apply E014 (idempotence after all \
          co-owners added); applied: {:?}",
         second
             .applied
             .iter()
-            .map(|af| af.rule.as_str())
+            .map(|af| af.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 }
@@ -332,7 +344,9 @@ fn e014_fires_on_banner_form() {
     let e014: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "E014")
+        .filter(|d| {
+            d.rule.predicate_id() == "portion.classification.joint-requires-rel-to-coverage"
+        })
         .collect();
 
     // Empty banner-level REL TO → all three co-owners missing.

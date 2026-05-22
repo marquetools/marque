@@ -52,7 +52,7 @@ fn lint(rule: &str, source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco:
     result
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == rule)
+        .filter(|d| d.rule.predicate_id() == rule)
         .collect()
 }
 
@@ -63,7 +63,7 @@ fn lint(rule: &str, source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco:
 #[test]
 fn e061_fires_on_bare_hcs_at_confidential() {
     let source = b"(CONFIDENTIAL//HCS//NOFORN)";
-    let diags = lint("E061", source);
+    let diags = lint("portion.sci.hcs-bare-at-confidential-legacy-remark", source);
     assert_eq!(diags.len(), 1, "exactly one E061 diagnostic expected");
     assert_eq!(diags[0].severity, Severity::Warn);
     assert!(
@@ -91,14 +91,14 @@ fn e061_does_not_fire_at_secret() {
     // E061 is class-specific to CONFIDENTIAL; bare HCS at SECRET is
     // E062's domain.
     let source = b"(SECRET//HCS//NOFORN)";
-    let diags = lint("E061", source);
+    let diags = lint("portion.sci.hcs-bare-at-confidential-legacy-remark", source);
     assert!(diags.is_empty(), "E061 must not fire outside CONFIDENTIAL");
 }
 
 #[test]
 fn e061_does_not_fire_at_top_secret() {
     let source = b"(TOP SECRET//HCS//NOFORN)";
-    let diags = lint("E061", source);
+    let diags = lint("portion.sci.hcs-bare-at-confidential-legacy-remark", source);
     assert!(diags.is_empty());
 }
 
@@ -107,7 +107,7 @@ fn e061_does_not_fire_when_hcs_has_compartment() {
     // Bare HCS only — compound HCS-O / HCS-P / HCS-O-P forms are not
     // legacy.
     let source = b"(CONFIDENTIAL//HCS-O//NOFORN)";
-    let diags = lint("E061", source);
+    let diags = lint("portion.sci.hcs-bare-at-confidential-legacy-remark", source);
     assert!(
         diags.is_empty(),
         "E061 must not fire when HCS carries a compartment"
@@ -122,7 +122,7 @@ fn e061_does_not_fire_when_hcs_has_compartment() {
 fn e062_emits_three_candidates_at_secret() {
     // §H.4 p62 — re-mark to HCS-O / HCS-P / HCS-O-P templates.
     let source = b"(SECRET//HCS//NOFORN)";
-    let diags = lint("E062", source);
+    let diags = lint("portion.sci.hcs-bare-suggest-subcompartment", source);
     assert_eq!(
         diags.len(),
         3,
@@ -159,7 +159,7 @@ fn e062_emits_three_candidates_at_secret() {
 #[test]
 fn e062_emits_three_candidates_at_top_secret() {
     let source = b"(TOP SECRET//HCS//NOFORN)";
-    let diags = lint("E062", source);
+    let diags = lint("portion.sci.hcs-bare-suggest-subcompartment", source);
     assert_eq!(diags.len(), 3);
 }
 
@@ -167,14 +167,14 @@ fn e062_emits_three_candidates_at_top_secret() {
 fn e062_does_not_fire_at_confidential() {
     // E062 is class-specific to S/TS; bare HCS at C is E061's domain.
     let source = b"(CONFIDENTIAL//HCS//NOFORN)";
-    let diags = lint("E062", source);
+    let diags = lint("portion.sci.hcs-bare-suggest-subcompartment", source);
     assert!(diags.is_empty());
 }
 
 #[test]
 fn e062_does_not_fire_when_hcs_has_compartment() {
     let source = b"(SECRET//HCS-O//NOFORN)";
-    let diags = lint("E062", source);
+    let diags = lint("portion.sci.hcs-bare-suggest-subcompartment", source);
     assert!(diags.is_empty());
 }
 
@@ -195,7 +195,7 @@ fn e063_fires_on_bare_rsv() {
     // KLONDIKE / EL / ENDSEAL / ECI) which fire at Error because the
     // source control system itself is gone.
     let source = b"(TOP SECRET//RSV//NOFORN)";
-    let diags = lint("E063", source);
+    let diags = lint("portion.sci.rsv-bare-requires-compartment", source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Warn);
     assert!(
@@ -222,7 +222,7 @@ fn e063_fires_on_bare_rsv() {
 fn e063_does_not_fire_when_rsv_has_compartment() {
     // `RSV-XYZ` (compartment present) — E063 must not fire.
     let source = b"(TOP SECRET//RSV-XYZ//NOFORN)";
-    let diags = lint("E063", source);
+    let diags = lint("portion.sci.rsv-bare-requires-compartment", source);
     assert!(
         diags.is_empty(),
         "E063 must not fire when RSV carries a compartment"
@@ -232,7 +232,7 @@ fn e063_does_not_fire_when_rsv_has_compartment() {
 #[test]
 fn e063_does_not_fire_on_non_rsv_sci() {
     let source = b"(TOP SECRET//SI//NOFORN)";
-    let diags = lint("E063", source);
+    let diags = lint("portion.sci.rsv-bare-requires-compartment", source);
     assert!(diags.is_empty());
 }
 
@@ -262,7 +262,7 @@ fn e062_humint_long_form_diagnostics_have_non_zero_spans() {
     // covering bytes 9..15 (`HUMINT`), and every E062 diagnostic
     // anchors at that span.
     let source = b"(SECRET//HUMINT//NOFORN)";
-    let diags = lint("E062", source);
+    let diags = lint("portion.sci.hcs-bare-suggest-subcompartment", source);
     assert_eq!(diags.len(), 3, "E062 emits three Suggest candidates");
     for d in &diags {
         assert_ne!(
@@ -297,7 +297,7 @@ fn e062_comint_long_form_diagnostics_have_non_zero_spans() {
             marque_ism::span::Span::new(0, 0),
             "no diagnostic on COMINT long-form input may anchor at Span::new(0, 0); \
              got rule {:?}",
-            d.rule.as_str()
+            d.rule.predicate_id()
         );
     }
 }

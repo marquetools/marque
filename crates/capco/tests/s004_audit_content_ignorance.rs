@@ -158,7 +158,10 @@ fn s004_diagnostic_message_carries_only_closed_template() {
     // `MessageTemplate` enum, and the args carry only typed
     // identifiers (no raw bytes).
     let diags = lint(FIXTURE);
-    let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+    let s004: Vec<_> = diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "portion.dissem.rel-to-trigraph-suggest")
+        .collect();
     assert!(
         !s004.is_empty(),
         "S004 must fire on the ASM trigraph in the fixture"
@@ -196,7 +199,10 @@ fn s004_text_correction_replacement_contains_no_document_content() {
     // legacy `fix.original.contains` check is dropped — that channel
     // doesn't exist anymore.
     let diags = lint(FIXTURE);
-    let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+    let s004: Vec<_> = diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "portion.dissem.rel-to-trigraph-suggest")
+        .collect();
     assert!(!s004.is_empty(), "S004 must fire");
 
     for d in &s004 {
@@ -227,7 +233,10 @@ fn s004_citation_carries_only_typed_capco_anchor() {
     // for CAPCO sources (no free-form prose). The legacy substring
     // sweep is replaced by a structural check on the rendered form.
     let diags = lint(FIXTURE);
-    let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
+    let s004: Vec<_> = diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "portion.dissem.rel-to-trigraph-suggest")
+        .collect();
     assert!(!s004.is_empty(), "S004 must fire");
 
     for d in &s004 {

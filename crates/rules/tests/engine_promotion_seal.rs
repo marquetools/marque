@@ -156,7 +156,12 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V
     let applied: AuditAppliedFix<StubScheme> = AuditAppliedFix::__engine_promote(
-        RuleId::new("E001"),
+        // T044: legacy `E001` was retired (PR 3c.B Commit 6); this is a
+        // Constitution V Principle V test-fixture carve-out exercising
+        // the seal mechanism — the rule identity is incidental, so use
+        // the reserved `test` scheme per the
+        // `docs/refactor-006/legacy-rule-id-map.md` §10 convention.
+        RuleId::new("test", "synthetic.engine-promotion-seal-fixture"),
         Severity::Fix,
         Span::new(0, 4),
         intent,
@@ -168,6 +173,13 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         Some(Arc::<str>::from("-")),
         token,
     );
-    assert_eq!(applied.rule.as_str(), "E001");
+    // The wire-string form via `Display` is the user-facing identifier:
+    // `"<scheme>:<predicate_id>"`. Pre-T044 this assertion read
+    // `applied.rule.as_str()`; post-T044 `.as_str()` is removed and the
+    // `Display` impl produces the canonical wire string.
+    assert_eq!(
+        applied.rule.to_string(),
+        "test:synthetic.engine-promotion-seal-fixture"
+    );
     assert!(!applied.dry_run);
 }

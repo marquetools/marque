@@ -29,7 +29,7 @@ pub(crate) fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
         return Vec::new();
     }
     vec![ConstraintViolation {
-        constraint_label: "capco/joint-requires-usa",
+        constraint_label: "portion.classification.joint-requires-usa",
         message: "JOINT classifications must list USA in both the \
                   classification countries and REL TO"
             .to_owned(),

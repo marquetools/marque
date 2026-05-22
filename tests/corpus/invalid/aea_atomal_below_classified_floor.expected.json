@@ -1,6 +1,6 @@
 {
   "_note": "CAPCO-2016 §H.7 p122 — ATOMAL is an AEA-axis marking shared with NATO+UK under §123/§144 sharing agreements; requires CONFIDENTIAL minimum classification. Fires E058 class-floor/ATOMAL.",
   "diagnostics": [
-    {"rule": "E058", "span": {"start": 1, "end": 2}}
+    {"rule": {"scheme": "capco", "predicate_id": "banner.aea.floor-atomal"}, "span": {"start": 1, "end": 2}}
   ]
 }

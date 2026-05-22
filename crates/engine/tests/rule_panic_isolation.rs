@@ -40,10 +40,12 @@ struct AlwaysPanicsRule;
 
 impl Rule<CapcoScheme> for AlwaysPanicsRule {
     fn id(&self) -> RuleId {
-        // Reserved-for-tests prefix: real rules use `E### / W### /
-        // C### / S### / R001`. `Z` keeps this rule out of the rule-id
-        // allocation space the rest of the codebase tracks.
-        RuleId::new("Z001")
+        // T044: synthetic test sentinel in the reserved `"test"`
+        // scheme. The pre-T044 `"Z001"` flat-string lived only in
+        // tests; the `"test"` scheme keeps test fixtures out of any
+        // real marking scheme's namespace per the
+        // `marque_rules::RuleId` doc-comment.
+        RuleId::new("test", "synthetic.z001-rule-panic-isolation")
     }
 
     fn name(&self) -> &'static str {
@@ -91,7 +93,7 @@ fn stub_citation() -> Citation {
 
 impl Rule<CapcoScheme> for AlwaysFiresRule {
     fn id(&self) -> RuleId {
-        RuleId::new("Z002")
+        RuleId::new("test", "synthetic.z002-rule-panic-isolation")
     }
 
     fn name(&self) -> &'static str {
@@ -191,7 +193,7 @@ fn sibling_rules_continue_after_panic() {
     let z002_count = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "Z002")
+        .filter(|d| d.rule.predicate_id() == "synthetic.z002-rule-panic-isolation")
         .count();
     assert!(
         z002_count >= 1,
@@ -200,7 +202,7 @@ fn sibling_rules_continue_after_panic() {
         result
             .diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 
@@ -208,12 +210,12 @@ fn sibling_rules_continue_after_panic() {
     let z001_count = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "Z001")
+        .filter(|d| d.rule.predicate_id() == "synthetic.z001-rule-panic-isolation")
         .count();
     assert_eq!(
         z001_count, 0,
-        "AlwaysPanicsRule (Z001) must produce zero diagnostics; the \
-         panic should have been caught and the rule skipped"
+        "AlwaysPanicsRule (synthetic.z001-rule-panic-isolation) must produce zero \
+         diagnostics; the panic should have been caught and the rule skipped"
     );
 }
 
@@ -235,8 +237,8 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.as_str() == "Z002"),
-        "AlwaysFiresRule (Z002) diagnostic must surface in fix pipeline output"
+            .any(|d| d.rule.predicate_id() == "synthetic.z002-rule-panic-isolation"),
+        "AlwaysFiresRule must surface its diagnostic in fix pipeline output"
     );
     assert!(
         result.applied_fixes().next().is_none(),
@@ -261,7 +263,7 @@ struct InvalidConfidenceRule;
 
 impl Rule<CapcoScheme> for InvalidConfidenceRule {
     fn id(&self) -> RuleId {
-        RuleId::new("Z003")
+        RuleId::new("test", "synthetic.z003-rule-panic-isolation")
     }
     fn name(&self) -> &'static str {
         "invalid-confidence-test-rule"

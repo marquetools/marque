@@ -1,6 +1,6 @@
 {
   "_note": "CAPCO-2016 §H.3 p57 — JOINT requires REL TO USA, LIST covering every JOINT participant; GBR is a JOINT participant but missing from REL TO. Fires E014 joint-requires-rel-to-coverage.",
   "diagnostics": [
-    {"rule": "E014", "span": {"start": 3, "end": 18}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.classification.joint-requires-rel-to-coverage"}, "span": {"start": 3, "end": 18}}
   ]
 }

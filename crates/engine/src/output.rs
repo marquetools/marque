@@ -302,7 +302,8 @@ mod tests {
     fn is_clean_returns_false_when_has_diagnostics() {
         let dirty_result = LintResult {
             diagnostics: vec![Diagnostic::new(
-                RuleId::new("E001"),
+                // T044: synthetic test fixture in reserved `"test"` scheme.
+                RuleId::new("test", "synthetic.is-clean-fixture"),
                 Severity::Error,
                 Span::new(0, 0),
                 stub_message(),
@@ -328,7 +329,9 @@ mod tests {
         let result = LintResult {
             diagnostics: vec![
                 Diagnostic::new(
-                    RuleId::new("W034"),
+                    // T044: W034 → `portion.sci.unpublished-custom-control`
+                    // per legacy-rule-id-map.md §1.
+                    RuleId::new("capco", "portion.sci.unpublished-custom-control"),
                     Severity::Info,
                     Span::new(0, 0),
                     stub_message(),
@@ -336,7 +339,7 @@ mod tests {
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("W034"),
+                    RuleId::new("capco", "portion.sci.unpublished-custom-control"),
                     Severity::Info,
                     Span::new(0, 0),
                     stub_message(),
@@ -344,7 +347,8 @@ mod tests {
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("W003"),
+                    // T044: W003 → `page.dissem.non-ic-dissem-in-classified-banner`.
+                    RuleId::new("capco", "page.dissem.non-ic-dissem-in-classified-banner"),
                     Severity::Warn,
                     Span::new(0, 0),
                     stub_message(),
@@ -352,7 +356,9 @@ mod tests {
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("E001"),
+                    // T044: E001 was retired in PR 3c.B Commit 6;
+                    // synthetic test fixture to exercise error_count().
+                    RuleId::new("test", "synthetic.error-count-fixture"),
                     Severity::Error,
                     Span::new(0, 0),
                     stub_message(),

@@ -50,13 +50,14 @@ fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
 }
 
 /// Did `scheme.validate(marking)` produce a `ConstraintViolation`
-/// whose `constraint_label` matches `"E070/frd-tfni-precedence"`?
+/// whose `constraint_label` matches the FRD/TFNI precedence
+/// predicate (post-T044: `portion.aea.frd-tfni-precedence`)?
 fn fires_e070(scheme: &CapcoScheme, attrs: CanonicalAttrs) -> bool {
     let marking = CapcoMarking::new(attrs);
     scheme
         .validate(&marking)
         .iter()
-        .any(|v| v.constraint_label == "E070/frd-tfni-precedence")
+        .any(|v| v.constraint_label == "portion.aea.frd-tfni-precedence")
 }
 
 #[test]

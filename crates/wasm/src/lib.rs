@@ -139,7 +139,7 @@ compile_error!(
 use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
-use marque_rules::{Diagnostic, FixSource};
+use marque_rules::{Diagnostic, FixSource, RuleId};
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -283,12 +283,35 @@ fn current_year() -> u32 {
 /// Documented in PR 3c.2.C PR description.
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// 2-tuple `RuleId` shape per T044 PM OD-2. Mirrors
+    /// [`marque::render::DiagnosticJson`] for CLI/WASM NDJSON byte-
+    /// identity (SC-008). See [`RuleIdJson`].
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
     message: MessageJson<'a>,
     citation: String,
     fix: Option<FixJson<'a>>,
+}
+
+/// JSON projection of a [`RuleId`] as a `{scheme, predicate_id}` 2-tuple
+/// object (T044 PM OD-2). Mirrors `marque::render::RuleIdJson` for
+/// byte-identical NDJSON parity (SC-008). The two crates carry parallel
+/// type definitions per architect D-D-1 (shared `marque-audit-render`
+/// crate deferred to post-PR-10).
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
 }
 
 /// Structured JSON projection of a [`Message`].
@@ -334,7 +357,7 @@ fn fix_source_str(source: FixSource) -> &'static str {
 
 fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
@@ -385,7 +408,8 @@ struct AuditRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     kind: &'static str,
     schema: &'static str,
-    rule: &'a str,
+    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    rule: RuleIdJson<'a>,
     severity: &'static str,
     span: SpanJson,
     fix: AuditFixJsonV1_0<'a>,
@@ -452,7 +476,8 @@ struct TextCorrectionRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     kind: &'static str,
     schema: &'static str,
-    rule: &'a str,
+    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    rule: RuleIdJson<'a>,
     severity: &'static str,
     span: SpanJson,
     original_digest: String,
@@ -626,7 +651,11 @@ fn project_message_to_json_v1_0<'a>(
             serde_json::Value::Array(
                 m.contributing_rule_ids
                     .iter()
-                    .map(|r| serde_json::Value::String(r.as_str().to_owned()))
+                    // T044: `RuleId.as_str()` is removed; render via the
+                    // `Display` impl as the wire-string form
+                    // `"<scheme>:<predicate_id>"`. Matches the CLI
+                    // emitter for SC-008 NDJSON byte-identity.
+                    .map(|r| serde_json::Value::String(r.to_string()))
                     .collect(),
             ),
         );
@@ -663,7 +692,7 @@ fn applied_fix_to_audit_json_v1_0<'a>(
     AuditRecordJsonV1_0 {
         kind: "applied_fix",
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
-        rule: fix.rule.as_str(),
+        rule: (&fix.rule).into(),
         severity: fix.severity.as_str(),
         span: SpanJson {
             start: fix.span.start,
@@ -685,7 +714,7 @@ fn text_correction_to_audit_json_v1_0<'a>(
     TextCorrectionRecordJsonV1_0 {
         kind: "text_correction",
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
-        rule: tc.rule.as_str(),
+        rule: (&tc.rule).into(),
         severity: tc.severity.as_str(),
         span: SpanJson {
             start: tc.span.start,
@@ -751,10 +780,10 @@ fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    // Single accepted schema (`marque-1.0`) so dispatch is a no-op
+    // Single accepted schema (`marque-2.0`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V1_0;
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V2_0;
     let json =
         serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())

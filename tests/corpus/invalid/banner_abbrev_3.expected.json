@@ -1,6 +1,6 @@
 {
   "_note": "PR 3c.B Commit 6: E001 (portion-mark-in-banner) retired into MarkingScheme::render_canonical. Only E058 (class-floor catalog walker) remains, firing on IMCON above its class floor.",
   "diagnostics": [
-    {"rule": "E058", "span": {"start": 14, "end": 17}}
+    {"rule": {"scheme": "capco", "predicate_id": "banner.dissem.floor-imcon"}, "span": {"start": 14, "end": 17}}
   ]
 }

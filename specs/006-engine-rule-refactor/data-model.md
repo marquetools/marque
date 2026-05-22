@@ -327,7 +327,24 @@ pub struct AppliedReplacement<S: MarkingScheme> {
 /// in `discriminant_from_source` (PM-D-7). NOT stored on `AppliedReplacement`.
 pub enum Discriminant { Strict, Decoder }
 
-pub struct RuleId(pub &'static str /* predicate_id */);
+// `RuleId` post-T044 — the 2-tuple `(scheme, predicate_id)` form per
+// FR-026 / FR-044. Both fields are `&'static str`. The canonical wire
+// string is `"<scheme>:<predicate_id>"` via the `Display` impl, used
+// by `.marque.toml` `[rules]` keys, CLI text output, and grep targets;
+// JSON audit records serialize the structured 2-tuple shape, never
+// the wire string. See `crates/rules/src/lib.rs` for the live type.
+pub struct RuleId {
+    scheme: &'static str,
+    predicate_id: &'static str,
+}
+
+impl RuleId {
+    pub const fn new(scheme: &'static str, predicate_id: &'static str) -> Self {
+        Self { scheme, predicate_id }
+    }
+    pub const fn scheme(&self) -> &'static str { self.scheme }
+    pub const fn predicate_id(&self) -> &'static str { self.predicate_id }
+}
 ```
 
 **Validation rules**:
@@ -335,11 +352,11 @@ pub struct RuleId(pub &'static str /* predicate_id */);
 - The FR-040 lint's reserved-name list at HEAD: `__engine_promote`, `__engine_promote_text_correction` (PM-D-4 text-correction split; PR 3c.2.D fixup F-1 added the lint coverage), `__engine_construct`. Exact-equality match on the last path segment — back-compat names like `__engine_promote_legacy` are deliberately NOT covered.
 - `AppliedFix.fix.replacement` carries `Canonical<S>` post-PR-3c.2.D (per FR-035a). The `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed); `Discriminant::Strict | Decoder` (derived at emit time from `AppliedFix.source` via PM-D-7's 5-to-2 collapse) tracks the recognizer that produced the fix. The discriminant is NOT a struct field on `AppliedReplacement<S>` — it's projected at JSON emit time.
 - `AppliedFix.message` is `Message` (template + args) — FR-003 fully closed at PR 3c.2.D. The template carries the `MessageTemplate` variant name verbatim via `as_str()`; the args object holds the closed-set permitted-identifier types (`token`, `expected_token`, `actual_token`, `category`, `span`, `digest`, `confidence`, `feature_ids`).
-- `RuleId` is the 1-tuple `(&'static str)` form through `marque-1.0`; the 2-tuple `(scheme, predicate-id)` migration is post-PR-10 per FR-049 (the stability freeze begins at PR 10 merge; the 2-tuple change requires the freeze to be unfrozen).
-- Pre-cutover (`marque-mvp-3`) records are not interoperable with `marque-1.0` binaries (FR-037 — clean break, no `marque-audit-reader` crate scheduled); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034). (`marque-mvp-1` / `marque-mvp-2` retired in earlier PRs.)
+- `RuleId` is the 2-tuple `(scheme, predicate_id)` form as of T044 (2026-05-22) per FR-026. The migration unfroze FR-049 for a single atomic PR that landed the 2-tuple shape and bumped `marque-1.0 → marque-2.0` in lockstep; the freeze re-engaged at T044's merge. See `docs/refactor-006/legacy-rule-id-map.md` for the rename table from the prior 1-tuple `(&'static str)` form.
+- Pre-cutover (`marque-1.0` and earlier) records are not interoperable with `marque-2.0` binaries (FR-037 — clean break, no `marque-audit-reader` crate scheduled); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034). (`marque-mvp-1` / `marque-mvp-2` / `marque-mvp-3` / `marque-1.0` retired across the keystone and T044 cutovers.)
 - Non-marking text corrections (C001 corrections-map matches, the E006-shaped deprecation path) flow through a separate `AppliedTextCorrection` type carrying a corpus-derived `SmolStr` replacement (PM-D-4). The two types are disjoint by construction; G13 boundary is type-level checkable.
 
-**Serialization**: NDJSON. Schema field is `"schema": "marque-1.0"` per FR-035 / FR-035a. The exact JSON shape is documented in `contracts/audit-record.md` §"NDJSON record shape".
+**Serialization**: NDJSON. Schema field is `"schema": "marque-2.0"` per FR-035 / FR-035a / T044. The exact JSON shape — including the `"rule": {"scheme": "...", "predicate_id": "..."}` structured 2-tuple form — is documented in `contracts/audit-record.md` §"NDJSON record shape" and §"Rule ID encoding".
 
 ---
 
@@ -707,7 +724,11 @@ Engine-minted diagnostic class for two-pass re-parse failure.
 
 ```rust
 // In marque-engine (FR-041 — engine mints, not rule crate)
-pub const R002_RULE_ID: RuleId = RuleId("engine", "r002.reparse-failed");
+// Per T044 PM OD-4, the `r002.` numeric prefix from the pre-T044 spec
+// wording is dropped — `scheme = "engine"` already disambiguates,
+// and descriptive `<class>.<predicate>` reads better at audit-log
+// triage. The live constant in `crates/engine/src/engine.rs` is:
+pub const R002_RULE_ID: RuleId = RuleId::new("engine", "fix.reparse-failed");
 
 pub struct R002Diagnostic {
     pub contributing_pass1_fix_ids: SmallVec<[RuleId; 4]>,
@@ -748,9 +769,9 @@ Vec<Diagnostic { fix: Option<FixIntent<S>> }>       ◀── FR-025: rules emit
    │   - render FixIntent → Canonical<S> via S::render_canonical
    │   - construct AppliedFix via __engine_promote
 Vec<AuditLine>        ◀── FR-002: content-ignorant
-   │                     ◀── FR-026: rule-id surface (string form through marque-1.0;
-   │                     │           2-tuple post-PR-10 per FR-049)
-   │                     ◀── FR-035 / FR-035a: schema "marque-1.0" (active post PR 3c.2.D)
+   │                     ◀── FR-026: rule-id surface (2-tuple (scheme, predicate_id)
+   │                     │           landed at T044, active post marque-2.0)
+   │                     ◀── FR-035 / FR-035a / T044: schema "marque-2.0" (active post T044)
    ▼ NDJSON serializer
 Audit log                                      ◀── SC-001: canary scan finds zero input bytes
 

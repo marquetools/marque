@@ -1,6 +1,6 @@
 {
   "_note": "PR 3c.B Commit 6: E032 (SCI sort order) retired into MarkingScheme::render_canonical. Only W034 remains, firing on the custom control '123'.",
   "diagnostics": [
-    {"rule": "W034", "span": {"start": 15, "end": 18}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.sci.unpublished-custom-control"}, "span": {"start": 15, "end": 18}}
   ]
 }

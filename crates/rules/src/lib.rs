@@ -115,30 +115,104 @@ pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate, to_audit_st
 // RuleId
 // ---------------------------------------------------------------------------
 
-/// Unique rule identifier string (e.g., "E001", "capco/portion-mark-in-banner").
+/// Unique rule identifier — a `(scheme, predicate_id)` 2-tuple.
 ///
-/// The inner `&'static str` is private; construct via [`RuleId::new`] so that
-/// construction is explicit at every call site.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RuleId(&'static str);
+/// `scheme` names the marking-scheme namespace the rule belongs to
+/// (e.g., `"capco"` for CAPCO/ISM rules); `predicate_id` is a
+/// dot-separated `<surface>.<category>.<predicate>` path identifying
+/// the specific rule (e.g.,
+/// `"portion.dissem.noforn-conflicts-rel-to"`). The canonical
+/// wire-string form is `"<scheme>:<predicate_id>"` — produced by the
+/// `Display` impl, consumed by `.marque.toml` `[rules]` keys, CLI text
+/// output, and any caller that wants a single grep-friendly string.
+/// JSON audit records serialize the structured 2-tuple shape, never
+/// the wire string.
+///
+/// # Reserved schemes
+///
+/// Two `scheme` values are reserved by the engine itself and MUST NOT
+/// be used by a `MarkingScheme` registration:
+///
+/// - `"engine"` — synthetic engine-minted diagnostics. The engine
+///   uses `("engine", "recognition.decoder-recognized")` for the
+///   decoder-recognition rewrite and `("engine", "fix.reparse-failed")`
+///   for the post-pass-1 re-parse-failure sentinel. A future
+///   engine-level sentinel adds a new `predicate_id` under the same
+///   `"engine"` scheme — never a new scheme name. The
+///   `("engine", _)` tuple is the cross-version anchor for these
+///   diagnostics; consumers filter by `rule.scheme() == "engine"` to
+///   surface only engine-internal records.
+/// - `"test"` — test fixtures and synthetic identifiers for unit /
+///   integration tests of the audit-record machinery (renderers,
+///   sentinel checks, NDJSON serialization). Never reaches production
+///   audit output by Constitution V's permitted-identifier rule.
+///   Tests fabricate values like
+///   `("test", "synthetic.r999-fixture")`.
+///
+/// Neither reserved scheme is a valid [`MarkingScheme`] registration
+/// target. A scheme adapter (e.g., `CapcoScheme`) MUST pick a
+/// distinct scheme name (`"capco"` today; `"cui"`, `"nato"` for
+/// future schemes).
+///
+/// # Construction
+///
+/// Both fields are `&'static str` so construction is free and
+/// `Copy`-able. There is exactly one constructor — [`RuleId::new`]
+/// taking the two segments separately — by design (per the T044 PM
+/// decisions, OD-6): a single 2-arg form makes the misuse of
+/// confusing scheme with predicate unrepresentable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RuleId {
+    scheme: &'static str,
+    predicate_id: &'static str,
+}
 
 impl RuleId {
-    /// Construct a rule identifier from a static string slice.
+    /// Construct a rule identifier from a `(scheme, predicate_id)` pair.
+    ///
+    /// Both arguments are `&'static str`; the result is `Copy`. The
+    /// constructor performs no validation — callers are responsible for
+    /// picking a `scheme` distinct from the reserved `"engine"` and
+    /// `"test"` namespaces (see the type-level doc).
     #[inline]
-    pub const fn new(id: &'static str) -> Self {
-        Self(id)
+    pub const fn new(scheme: &'static str, predicate_id: &'static str) -> Self {
+        Self {
+            scheme,
+            predicate_id,
+        }
     }
 
-    /// Return the rule identifier as a string slice.
+    /// Return the scheme component of this rule identifier.
+    ///
+    /// For built-in CAPCO rules this is `"capco"`. For engine-minted
+    /// diagnostics it is `"engine"`. For test fixtures it is `"test"`.
     #[inline]
-    pub const fn as_str(&self) -> &'static str {
-        self.0
+    pub const fn scheme(&self) -> &'static str {
+        self.scheme
+    }
+
+    /// Return the predicate-id component of this rule identifier.
+    ///
+    /// The predicate id is the dot-separated
+    /// `<surface>.<category>.<predicate>` path identifying the
+    /// specific rule within its scheme — e.g.,
+    /// `"portion.dissem.noforn-conflicts-rel-to"` or
+    /// `"fix.reparse-failed"`.
+    #[inline]
+    pub const fn predicate_id(&self) -> &'static str {
+        self.predicate_id
     }
 }
 
 impl std::fmt::Display for RuleId {
+    /// Render the canonical wire string: `"<scheme>:<predicate_id>"`.
+    ///
+    /// The colon separator is deliberate: slash collides with the
+    /// existing `Constraint::Custom` catalog-row label convention; dot
+    /// collides with the dotted segments inside `predicate_id` itself
+    /// and would lose the scheme boundary at parse time.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.0)
+        write!(f, "{}:{}", self.scheme, self.predicate_id)
     }
 }
 
@@ -973,7 +1047,7 @@ pub struct TextCorrection {
 impl<S: MarkingScheme> Clone for Diagnostic<S> {
     fn clone(&self) -> Self {
         Self {
-            rule: self.rule.clone(),
+            rule: self.rule,
             severity: self.severity,
             span: self.span,
             candidate_span: self.candidate_span,
@@ -1316,9 +1390,58 @@ mod tests {
 
     #[test]
     fn rule_id_round_trip() {
-        let r = RuleId::new("E001");
-        assert_eq!(r.as_str(), "E001");
-        assert_eq!(r.to_string(), "E001");
+        // T044 / FR-026 / FR-044: RuleId is a (scheme, predicate_id)
+        // 2-tuple. Accessors round-trip and the Display impl renders
+        // the canonical wire string `"<scheme>:<predicate_id>"`.
+        let r = RuleId::new("capco", "banner.classification.usa-trigraph");
+        assert_eq!(r.scheme(), "capco");
+        assert_eq!(r.predicate_id(), "banner.classification.usa-trigraph");
+        assert_eq!(r.to_string(), "capco:banner.classification.usa-trigraph");
+    }
+
+    #[test]
+    fn rule_id_is_copy() {
+        // Both fields are `&'static str`, so `RuleId: Copy` is free
+        // — consumers can hand it around without `.clone()` calls.
+        // Compile-time check via Copy semantics: if this regresses to
+        // `Clone`-only, the use-after-move line below stops compiling.
+        let r = RuleId::new("engine", "fix.reparse-failed");
+        let copy = r;
+        assert_eq!(r.scheme(), "engine");
+        assert_eq!(copy.predicate_id(), "fix.reparse-failed");
+    }
+
+    #[test]
+    fn rule_id_display_wire_string_uses_colon_separator() {
+        // T044 OD-2 / OD-3: the wire-string form is reserved for text
+        // contexts (CLI human-readable output, log lines,
+        // `.marque.toml` config keys). Colon was picked over slash
+        // (slash collides with the catalog-row label convention) and
+        // over dot (dot collides with predicate-id internal segments).
+        assert_eq!(
+            RuleId::new("engine", "recognition.decoder-recognized").to_string(),
+            "engine:recognition.decoder-recognized",
+        );
+        assert_eq!(
+            RuleId::new("test", "synthetic.r999-fixture").to_string(),
+            "test:synthetic.r999-fixture",
+        );
+    }
+
+    #[test]
+    fn rule_id_engine_sentinels_use_reserved_scheme() {
+        // T044 §1.4 + OD-4 + PM-decisions table row OD-4:
+        // engine-minted diagnostics use the reserved "engine" scheme
+        // and DROP the historical "r001."/"r002." numeric prefix. The
+        // two concrete sentinels are documented on the RuleId type.
+        let r001 = RuleId::new("engine", "recognition.decoder-recognized");
+        let r002 = RuleId::new("engine", "fix.reparse-failed");
+        assert_eq!(r001.scheme(), "engine");
+        assert_eq!(r002.scheme(), "engine");
+        // The pair is distinct — the scheme alone is not the rule
+        // identity, the predicate-id segment carries the rest.
+        assert_ne!(r001.predicate_id(), r002.predicate_id());
+        assert_ne!(r001, r002);
     }
 
     #[test]

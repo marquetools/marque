@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use marque_rules::{Rule, RuleContext, RuleSet};
+use marque_rules::{Rule, RuleContext, RuleId, RuleSet};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
@@ -117,6 +117,13 @@ assert_impl_all!(Box<dyn Rule<StubScheme>>: Send, Sync);
 assert_impl_all!(Arc<dyn Rule<StubScheme>>: Send, Sync);
 assert_impl_all!(Box<dyn RuleSet<StubScheme>>: Send, Sync);
 assert_impl_all!(Arc<dyn RuleSet<StubScheme>>: Send, Sync);
+
+// T044 (rust-reviewer M3) — pin `RuleId: Send + Sync + Copy`. The
+// 2-tuple `RuleId { scheme, predicate_id }` has only `&'static str`
+// fields, so the property holds today by construction. The pin
+// makes the safety property machine-verifiable rather than assumed
+// from the derive list.
+assert_impl_all!(RuleId: Send, Sync, Copy);
 
 // PR 6c (T069) compile-time pin on `RuleContext: Send + Sync`.
 //

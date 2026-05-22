@@ -117,20 +117,23 @@ fn explain_config_mutually_exclusive_with_fix() {
 
 #[test]
 fn severity_override_downgrades_rule_to_warn() {
+    // T044: legacy `E002` TOML key → 2-tuple form. The config-key
+    // canonicalizer in `Engine::new` looks up overrides by predicate-id
+    // alone (`rule.id().predicate_id()`), so the active TOML key here
+    // is the descriptive form. Map: `("capco", "portion.dissem.rel-to-missing-usa")`
+    // per `docs/refactor-006/legacy-rule-id-map.md` §1.
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
     std::fs::write(
         &config_path,
-        format!("[rules]\nE002 = \"warn\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
+        format!(
+            "[rules]\n\"portion.dissem.rel-to-missing-usa\" = \"warn\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"
+        ),
     )
     .unwrap();
 
-    // SECRET//REL TO GBR triggers E002 (REL TO missing USA). With
-    // E002=warn, the exit code should be 2 (warnings only) instead
-    // of 1 (errors). E001 used to be the canonical fixture rule
-    // here, but PR 3c.B Commit 6 retired E001 — we now use E002 as
-    // a still-firing built-in rule that exercises the same
-    // severity-override channel.
+    // SECRET//REL TO GBR triggers the rule formerly known as E002
+    // (REL TO missing USA). With the warn override, exit code is 2.
     let assert = marque()
         .args(["check", "--format", "json", "--config"])
         .arg(&config_path)
@@ -139,9 +142,13 @@ fn severity_override_downgrades_rule_to_warn() {
         .code(2); // Warnings exit code
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // T044 PM OD-2: the `rule` field on the wire is the structured
+    // 2-tuple object.
+    let expected_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
     assert!(
-        stdout.contains("\"rule\":\"E002\""),
-        "E002 should be present in diagnostics, got: {stdout}"
+        stdout.contains(expected_rule_fragment),
+        "rel-to-missing-usa rule should be present in diagnostics, got: {stdout}"
     );
     assert!(
         stdout.contains("\"severity\":\"warn\""),
@@ -151,17 +158,19 @@ fn severity_override_downgrades_rule_to_warn() {
 
 #[test]
 fn severity_override_off_suppresses_rule() {
+    // T044: see canonical map row above for the predicate-id form.
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
     std::fs::write(
         &config_path,
-        format!("[rules]\nE002 = \"off\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
+        format!(
+            "[rules]\n\"portion.dissem.rel-to-missing-usa\" = \"off\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"
+        ),
     )
     .unwrap();
 
-    // SECRET//REL TO GBR normally triggers E002. With E002=off, it
-    // should not appear. (Post-PR-3c.B-Commit-6 replacement for the
-    // retired E001-based fixture; same severity-override channel.)
+    // SECRET//REL TO GBR normally triggers the rule. With the off
+    // override, it should not appear.
     let assert = marque()
         .args(["check", "--format", "json", "--config"])
         .arg(&config_path)
@@ -171,8 +180,8 @@ fn severity_override_off_suppresses_rule() {
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(
-        !stdout.contains("\"rule\":\"E002\""),
-        "E002 should not fire when configured to off, got: {stdout}"
+        !stdout.contains("portion.dissem.rel-to-missing-usa"),
+        "rel-to-missing-usa rule should not fire when configured to off, got: {stdout}"
     );
 }
 
@@ -273,10 +282,21 @@ fn corrections_map_fires_c001_in_fix() {
         .success();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    // The audit record should contain C001 as the winning rule (FR-009)
+    // The audit record should contain the C001 corrections-map
+    // predicate as the winning rule (FR-009). T044 PM OD-2: the
+    // `rule` field is a structured 2-tuple object on the wire, not
+    // a flat string. Legacy `C001` →
+    // `("capco", "marking.correction.token-typo")` per
+    // `docs/refactor-006/legacy-rule-id-map.md` §1. The serializer
+    // emits the object's keys in alphabetical order — `predicate_id`
+    // before `scheme` — so the literal fragment below matches the
+    // shape the wire actually produces (verified against the failing
+    // test's pre-fix output).
+    let expected_rule_fragment =
+        r#""rule":{"predicate_id":"marking.correction.token-typo","scheme":"capco"}"#;
     assert!(
-        stderr.contains("\"rule\":\"C001\""),
-        "corrections-map fix should produce C001 audit record, got: {stderr}"
+        stderr.contains(expected_rule_fragment),
+        "corrections-map fix should produce the C001 predicate-id in its audit record, got: {stderr}"
     );
     assert!(
         stderr.contains("\"source\":\"CorrectionsMap\""),

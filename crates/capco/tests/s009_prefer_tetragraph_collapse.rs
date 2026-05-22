@@ -27,10 +27,11 @@ use marque_rules::Severity;
 /// Build an engine with S009 enabled at `suggest` severity.
 fn engine_with_s009() -> Engine {
     let mut config = Config::default();
-    config
-        .rules
-        .overrides
-        .insert("S009".to_string(), "suggest".to_string());
+    config.rules.overrides.insert(
+        // T044: rule-override key uses the wire-string form per OD-7.
+        "capco:page.dissem.prefer-tetragraph-collapse".to_string(),
+        "suggest".to_string(),
+    );
     Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
@@ -56,7 +57,7 @@ fn s009_diags(
     result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S009")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.prefer-tetragraph-collapse")
         .collect()
 }
 

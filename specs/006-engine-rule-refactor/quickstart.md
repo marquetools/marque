@@ -41,12 +41,13 @@ changes per PR. Read this before opening a PR against the branch.
   `mvp-N` naming retires at the second step. Clean break post-`1.0`
   — no reader compat, no `mvp-N` shapes accepted by the build-time
   validator.
-- **Rule IDs stay single-field through 006**: `RuleId::new("E###")` is
-  the surface that ships at PR 10 stability-freeze (FR-049). The
-  originally-planned `(scheme, predicate-id)` 2-tuple defers to a
-  dedicated post-PR-10 PR per the PR 3c.2 carve-out — the freeze
-  begins at PR 10 merge, and the 2-tuple change requires the freeze
-  to be unfrozen for its own PR.
+- **Rule IDs are `(scheme, predicate_id)` 2-tuples (T044, 2026-05-22)**:
+  `RuleId::new("capco", "banner.classification.usa-trigraph")` is
+  the surface. T044 unfroze FR-049 for a single dedicated post-PR-10
+  PR that landed the 2-tuple form and bumped the audit schema
+  `marque-1.0 → marque-2.0`; the freeze re-engaged at T044's merge.
+  See `docs/refactor-006/legacy-rule-id-map.md` for the rename table
+  from the prior flat `E###`/`W###`/`S###`/`C###` strings.
 - **Three new CI lints**: citation (FR-018), masking-pin (FR-039),
   promote-callsite (FR-040). All AST-based, all `tools/`.
 
@@ -151,7 +152,10 @@ const MY_RULE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
 impl Rule<CapcoScheme> for MyDissemConflictRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E###")        // Single-field; see FR-049 freeze note above.
+        // 2-tuple (scheme, predicate_id) per T044 / FR-026. The predicate
+        // follows the `<surface>.<category>.<predicate>` convention pinned
+        // in `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md` §1.
+        RuleId::new("capco", "portion.dissem.my-dissem-conflict")
     }
 
     fn name(&self) -> &'static str {

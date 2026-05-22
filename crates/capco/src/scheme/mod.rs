@@ -159,11 +159,15 @@ pub(crate) use self::class_floor::{CLASS_FLOOR_CATALOG, ClassFloorPolicy, ClassF
 // for the parent module's `CompanionForm` enum, and the
 // `bridge_sci_per_system_diagnostics` body in `adapter.rs` references
 // `SCI_PER_SYSTEM_CATALOG` directly. Both the actions and predicates
-// leaves also reach `SciPerSystemRow` / `SciPerSystemKind` / `RULE_E059`
-// through the leaf-glob pattern, so the catalog surface needs to live
-// in the parent namespace.
+// leaves also reach `SciPerSystemRow` / `SciPerSystemKind` through the
+// leaf-glob pattern, so the catalog surface needs to live in the
+// parent namespace.
+//
+// T044: the walker-shared `RULE_E059` constant was deleted; per OD-8.A
+// each row's `name` IS the canonical predicate ID and emit functions
+// construct `RuleId::new("capco", row.name)` directly.
 pub(crate) use self::sci_per_system::{
-    CompanionForm, RULE_E059, SCI_PER_SYSTEM_CATALOG, SciPerSystemKind, SciPerSystemRow,
+    CompanionForm, SCI_PER_SYSTEM_CATALOG, SciPerSystemKind, SciPerSystemRow,
 };
 
 // Post-Stage-2 PR B (issue #466) — the hub's own implementation bodies
@@ -360,7 +364,7 @@ pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — ODNI `CVEnumISMDis
 // bridge phrase to a citation would constitute citation drift per
 // Constitution VIII. For the closure-rule wiring see
 // `crates/capco/src/scheme/closure.rs` — the row whose `name` field
-// is `"capco/noforn-if-caveated"` (NNPI is one of its triggers; see
+// is `"capco:closure.dissem.noforn-if-caveated"` (NNPI is one of its triggers; see
 // the per-trigger authority table on the row's doc-comment).
 // Closes issue #407. verified 2026-05-16.
 pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem

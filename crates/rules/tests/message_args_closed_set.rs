@@ -68,8 +68,13 @@ fn message_args_round_trips_each_permitted_field() {
     let mut feature_ids: SmallVec<[FeatureId; 4]> = SmallVec::new();
     feature_ids.push(FeatureId::EditDistance1);
     let mut contributing_rule_ids: SmallVec<[RuleId; 4]> = SmallVec::new();
-    contributing_rule_ids.push(RuleId::new("C001"));
-    contributing_rule_ids.push(RuleId::new("E006"));
+    // T044: legacy `C001`/`E006` → 2-tuple form per
+    // `docs/refactor-006/legacy-rule-id-map.md` §1.
+    contributing_rule_ids.push(RuleId::new("capco", "marking.correction.token-typo"));
+    contributing_rule_ids.push(RuleId::new(
+        "capco",
+        "marking.deprecation.deprecated-dissem-control",
+    ));
     let args = MessageArgs {
         token: Some(TokenId(1)),
         category: Some(CategoryId(2)),
@@ -88,6 +93,9 @@ fn message_args_round_trips_each_permitted_field() {
     assert_eq!(args.feature_ids.as_slice(), &[FeatureId::EditDistance1]);
     assert_eq!(
         args.contributing_rule_ids.as_slice(),
-        &[RuleId::new("C001"), RuleId::new("E006")]
+        &[
+            RuleId::new("capco", "marking.correction.token-typo"),
+            RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
+        ]
     );
 }
