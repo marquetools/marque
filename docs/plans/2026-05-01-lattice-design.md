@@ -2406,7 +2406,7 @@ core lattice law.
 
 ### 12.2 Resolution
 
-Issue #456 (PR #502) split `Lattice` into:
+PR #502 (issue #456) split `Lattice` into:
 
 - `JoinSemilattice` — supplies `fn join(&self, other: &Self) -> Self`
 - `MeetSemilattice` — supplies `fn meet(&self, other: &Self) -> Self`

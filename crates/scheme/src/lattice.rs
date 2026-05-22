@@ -36,7 +36,7 @@
 //!   contain both a dominated token and its dominator.
 //!
 //! These types implement [`JoinSemilattice`] only. The trait split was
-//! introduced in issue #456 (PR #502); see
+//! introduced in PR #502 (issue #456); see
 //! `docs/plans/2026-05-01-lattice-design.md` section 4.10 for the
 //! algebraic rationale.
 //!

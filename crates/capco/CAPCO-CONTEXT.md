@@ -210,7 +210,7 @@ installed per-category Lattice impls in `marque-capco::lattice`
 NatoDissemSet, RelToBlock, DeclassifyOnLattice) and fixed two
 PageContext bugs in lock-step:
 
-(Issue #456 / PR #502 subsequently split `Lattice` into
+(PR #502 (issue #456) subsequently split `Lattice` into
 `JoinSemilattice + MeetSemilattice` halves; `DissemSet` and `JointSet`
 implement only the join half — see
 `docs/plans/2026-05-01-lattice-design.md` section 12.)

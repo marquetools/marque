@@ -73,7 +73,7 @@ pub trait MarkingScheme {
     /// See `marque-applied.md` §3 (PR 3b stall walkthrough) for the
     /// "per-axis lattices are real; the cross-axis composition is
     /// structural folding, not a lattice operation" framing.
-    /// Issue #456 (PR #502) introduced the
+    /// PR #502 (issue #456) introduced the
     /// `JoinSemilattice`/`MeetSemilattice` split; PR 4b-D.2 D24 records
     /// this further relaxation. The systematic
     /// audit of per-axis lattices for structural-vs-lattice-`Eq`
