@@ -3114,3 +3114,391 @@ fn la3_single_rel_to_fvey_tetragraph_expands_via_body() {
         );
     }
 }
+
+// ===========================================================================
+// Issue #688 — §H.7 p124 mixed concealed + acknowledged FGI parity
+// ===========================================================================
+//
+// Authority (re-verified 2026-05-22 against
+// `crates/capco/docs/CAPCO-2016.md`):
+//
+// - §H.7 p124 (the precedence rule for banner-line guidance — "If any
+//   document contains portions of both source-concealed FGI, e.g.,
+//   '(//FGI S//REL TO USA, GBR)' and source-acknowledged FGI, e.g.,
+//   '(//GBR S//REL TO USA, GBR)', then only the 'FGI' marking without
+//   the source trigraph(s)/tetragraph(s) must appear in the banner
+//   line").
+// - §H.7 p128 (Notional Example Page 3 worked example — banner
+//   `SECRET//FGI//NOFORN` with mixed `(//DEU S//NF)` +
+//   `(//DEU C//REL TO USA, CAN, DEU)` + `(//FGI S//NF)`; the Note at
+//   the bottom of the page restates the precedence rule as "most
+//   restrictive form of the marking").
+//
+// Each fixture below exercises the precedence invariant — when the
+// per-portion mix contains BOTH source-concealed FGI AND
+// source-acknowledged FGI, the projection's `fgi_marker` MUST be
+// `Some(FgiMarker::SourceConcealed)` (concealed wins) regardless of
+// how many acknowledged sources are present. Both the per-axis
+// lattice path (`project_via_lattice`) and the full pipeline
+// (`project_via_scheme`) must agree on the FGI axis. Fixtures use
+// tighter assertions on the FGI axis specifically rather than
+// `assert_byte_identity` so that unrelated dissem-axis closure-rule
+// behavior (e.g., `CLOSURE_NOFORN_CAVEATED` / `CLOSURE_NOFORN_FGI`)
+// does not occlude the §H.7 p124 signal.
+
+fn fgi_marker_from_classification_fgi(level: Classification, countries: &[&str]) -> CanonicalAttrs {
+    // Build a portion shaped like `(//FGI [level])` (concealed when
+    // `countries` is empty) or `(//[LIST] [level])` (acknowledged when
+    // non-empty) — segregated foreign-classification axis, no US class.
+    let mut a = CanonicalAttrs::default();
+    let cs: Box<[CountryCode]> = countries
+        .iter()
+        .map(|s| cc(s))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    a.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level,
+        countries: cs,
+    }));
+    a
+}
+
+fn portion_us_with_fgi_marker(level: Classification, marker: FgiMarker) -> CanonicalAttrs {
+    // Build a commingled US+FGI portion shaped like `(S//FGI)` (when
+    // marker is `SourceConcealed`) or `(S//FGI DEU)` (when marker is
+    // `Acknowledged{...}`) — US classification axis plus a dissem-axis
+    // `fgi_marker`.
+    let mut a = portion_us(level);
+    a.fgi_marker = Some(marker);
+    a
+}
+
+/// Assert that both projection paths agree on the FGI axis and produce
+/// `Some(FgiMarker::SourceConcealed)`. Issue #688 §H.7 p124 invariant.
+fn assert_fgi_collapses_to_concealed(fixture_id: &str, portions: &[CanonicalAttrs]) {
+    let lat = project_via_lattice(portions);
+    let scheme_proj = project_via_scheme(portions);
+    assert_eq!(
+        lat.fgi_marker, scheme_proj.fgi_marker,
+        "{fixture_id}: lattice and scheme paths must agree on fgi_marker; \
+         lat={:?}, scheme={:?}",
+        lat.fgi_marker, scheme_proj.fgi_marker,
+    );
+    assert!(
+        matches!(lat.fgi_marker, Some(FgiMarker::SourceConcealed)),
+        "{fixture_id}: §H.7 p124 — mixed concealed + acknowledged must \
+         collapse to SourceConcealed; got fgi_marker={:?}",
+        lat.fgi_marker,
+    );
+}
+
+/// Assert that both projection paths agree on the FGI axis and produce
+/// `Some(FgiMarker::Acknowledged{ countries })` with the expected
+/// country set. Used by the pure-acknowledged baseline fixtures.
+fn assert_fgi_acknowledged_exact(
+    fixture_id: &str,
+    portions: &[CanonicalAttrs],
+    expected_countries: &[&str],
+) {
+    use std::collections::BTreeSet;
+    let lat = project_via_lattice(portions);
+    let scheme_proj = project_via_scheme(portions);
+    assert_eq!(
+        lat.fgi_marker, scheme_proj.fgi_marker,
+        "{fixture_id}: lattice and scheme paths must agree on fgi_marker; \
+         lat={:?}, scheme={:?}",
+        lat.fgi_marker, scheme_proj.fgi_marker,
+    );
+    let expected: BTreeSet<CountryCode> = expected_countries.iter().map(|s| cc(s)).collect();
+    match &lat.fgi_marker {
+        Some(FgiMarker::Acknowledged { countries, .. }) => {
+            let got: BTreeSet<CountryCode> = countries.iter().copied().collect();
+            assert_eq!(
+                got, expected,
+                "{fixture_id}: acknowledged FGI country set mismatch; \
+                 got={got:?}, expected={expected:?}",
+            );
+        }
+        other => panic!("{fixture_id}: expected Acknowledged FGI marker; got {other:?}"),
+    }
+}
+
+#[test]
+fn issue_688_fgi_pure_acknowledged_single_source_no_collapse() {
+    // §H.7 p124 baseline (the rule does NOT fire): two portions both
+    // acknowledge the SAME single source. Banner becomes
+    // `FGI DEU`, NOT bare `FGI`. Verifies the invariant doesn't
+    // over-fire on pure-acknowledged input.
+    let portions = [
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+        ),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+        ),
+    ];
+    assert_fgi_acknowledged_exact(
+        "issue_688_fgi_pure_acknowledged_single_source_no_collapse",
+        &portions,
+        &["DEU"],
+    );
+}
+
+#[test]
+fn issue_688_fgi_pure_acknowledged_multi_source_unions() {
+    // §H.7 p124 line 3091 (alphabetic single-space-separated LIST) +
+    // §D.2 p28 (union roll-up): two portions acknowledge DIFFERENT
+    // sources. Banner becomes `FGI DEU GBR` (union, alphabetic), not
+    // bare `FGI`. Both paths must union the producer sets identically.
+    let portions = [
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+        ),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("GBR")]).expect("non-empty"),
+        ),
+    ];
+    assert_fgi_acknowledged_exact(
+        "issue_688_fgi_pure_acknowledged_multi_source_unions",
+        &portions,
+        &["DEU", "GBR"],
+    );
+}
+
+#[test]
+fn issue_688_fgi_pure_concealed_stays_concealed() {
+    // §H.7 p123 (concealed grammar): two portions both concealed. The
+    // §H.7 p124 precedence rule does NOT need to fire — there is no
+    // acknowledged form to mix with — but the concealed form is the
+    // result regardless. Verifies the rule's idempotence on
+    // pure-concealed input.
+    let portions = [
+        portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed),
+        portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed),
+    ];
+    assert_fgi_collapses_to_concealed("issue_688_fgi_pure_concealed_stays_concealed", &portions);
+}
+
+#[test]
+fn issue_688_fgi_mixed_concealed_and_acknowledged_single_collapses_to_bare() {
+    // §H.7 p124 — the PRIMARY case. One concealed `(S//FGI)` + one
+    // acknowledged `(S//FGI DEU)`. The banner must collapse to bare
+    // `FGI` (no source trigraph). Both projection paths must agree on
+    // `fgi_marker = Some(SourceConcealed)`.
+    let portions = [
+        portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+        ),
+    ];
+    assert_fgi_collapses_to_concealed(
+        "issue_688_fgi_mixed_concealed_and_acknowledged_single_collapses_to_bare",
+        &portions,
+    );
+}
+
+#[test]
+fn issue_688_fgi_mixed_concealed_and_acknowledged_multi_collapses_to_bare() {
+    // §H.7 p124 stressed — one concealed `(S//FGI)` + two acknowledged
+    // `(S//FGI DEU)` + `(S//FGI GBR)`. The presence of MORE acknowledged
+    // sources MUST NOT change the §H.7 p124 outcome; banner remains bare
+    // `FGI`.
+    let portions = [
+        portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+        ),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("GBR")]).expect("non-empty"),
+        ),
+    ];
+    assert_fgi_collapses_to_concealed(
+        "issue_688_fgi_mixed_concealed_and_acknowledged_multi_collapses_to_bare",
+        &portions,
+    );
+}
+
+#[test]
+fn issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example() {
+    // §H.7 p124 verbatim worked example shape — the precedence rule
+    // fires on the FGI axis (concealed wins, no source trigraph)
+    // while REL TO still carries the common LIST [USA, GBR] per
+    // §H.8 p150-151 / §D.2 Table 3 row 21. The CAPCO source uses
+    // segregated portions `(//FGI S//REL TO USA, GBR)` and
+    // `(//GBR S//REL TO USA, GBR)`; this fixture uses the
+    // commingled US+FGI shape (same invariant; the segregation choice
+    // is orthogonal to the §H.7 p124 precedence rule).
+    let portions = [
+        {
+            let mut p =
+                portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed);
+            p.rel_to = vec![cc("USA"), cc("GBR")].into();
+            p
+        },
+        {
+            let mut p = portion_us_with_fgi_marker(
+                Classification::Secret,
+                FgiMarker::acknowledged([cc("GBR")]).expect("non-empty"),
+            );
+            p.rel_to = vec![cc("USA"), cc("GBR")].into();
+            p
+        },
+    ];
+    // FGI axis must collapse to concealed.
+    assert_fgi_collapses_to_concealed(
+        "issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example",
+        &portions,
+    );
+    // REL TO must still carry [USA, GBR] on both paths (intersection
+    // of identical lists is the same list per §D.2 Table 3 row 21).
+    let lat = project_via_lattice(&portions);
+    let scheme_proj = project_via_scheme(&portions);
+    let expected_rel_to: std::collections::BTreeSet<CountryCode> =
+        [cc("USA"), cc("GBR")].iter().copied().collect();
+    let lat_rel: std::collections::BTreeSet<CountryCode> = lat.rel_to.iter().copied().collect();
+    let scheme_rel: std::collections::BTreeSet<CountryCode> =
+        scheme_proj.rel_to.iter().copied().collect();
+    assert_eq!(
+        lat_rel, expected_rel_to,
+        "§D.2 Table 3 row 21: lattice rel_to must be [USA, GBR]; got {lat_rel:?}",
+    );
+    assert_eq!(
+        scheme_rel, expected_rel_to,
+        "§D.2 Table 3 row 21: scheme rel_to must be [USA, GBR]; got {scheme_rel:?}",
+    );
+}
+
+#[test]
+fn issue_688_fgi_mixed_with_noforn_p128_worked_example_byte_identity() {
+    // §H.7 p128 Notional Example Page 3 — banner
+    // `SECRET//FGI//NOFORN`. The CAPCO worked-example portions are:
+    //   (S//RELIDO)                        — US Secret + RELIDO
+    //   (//DEU S//NF)                       — acknowledged DEU FGI Secret + NF
+    //   (//DEU C//REL TO USA, CAN, DEU)     — acknowledged DEU FGI Confidential + REL
+    //   (//FGI S//NF)                       — concealed FGI Secret + NF
+    //
+    // Result: classification = Us(Secret) (max US-level across portions
+    // per the §H.7 pp123-125 reciprocal-classification rule —
+    // foreign-classification portions roll up as the equivalent US
+    // level), fgi_marker = Some(SourceConcealed) (concealed wins per
+    // §H.7 p124), and NF dominates the dissem axis (NOFORN supersession
+    // per §H.8 p145). This is a byte-identity-on-the-FGI-axis
+    // assertion; other axis behavior may differ between paths
+    // (closure-rule fires; the §H.7 p124 invariant is the load-bearing
+    // claim here).
+    let portions = [
+        {
+            // (S//RELIDO)
+            let mut p = portion_us(Classification::Secret);
+            p.dissem_us = vec![DissemControl::Relido].into();
+            p
+        },
+        {
+            // (//DEU S//NF)
+            let mut p = fgi_marker_from_classification_fgi(Classification::Secret, &["DEU"]);
+            p.dissem_us = vec![DissemControl::Nf].into();
+            p
+        },
+        {
+            // (//DEU C//REL TO USA, CAN, DEU)
+            let mut p = fgi_marker_from_classification_fgi(Classification::Confidential, &["DEU"]);
+            p.rel_to = vec![cc("USA"), cc("CAN"), cc("DEU")].into();
+            p
+        },
+        {
+            // (//FGI S//NF) — concealed FGI: classification = Fgi with
+            // empty countries.
+            let mut p = fgi_marker_from_classification_fgi(Classification::Secret, &[]);
+            p.dissem_us = vec![DissemControl::Nf].into();
+            p
+        },
+    ];
+    assert_fgi_collapses_to_concealed(
+        "issue_688_fgi_mixed_with_noforn_p128_worked_example_byte_identity",
+        &portions,
+    );
+}
+
+#[test]
+fn issue_688_fgi_mixed_with_nato_tetragraph_drops_both_forms() {
+    // §H.7 p124 line 3090 — the precedence rule governs both trigraph
+    // (DEU) and tetragraph (NATO) source markers. One concealed
+    // `(S//FGI)` + one acknowledged `(S//FGI NATO)` — both forms must
+    // collapse to bare `FGI` in the banner. The tetragraph is encoded
+    // as a CountryCode `NATO` in `FgiMarker::Acknowledged`.
+    let portions = [
+        portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("NATO")]).expect("non-empty"),
+        ),
+    ];
+    assert_fgi_collapses_to_concealed(
+        "issue_688_fgi_mixed_with_nato_tetragraph_drops_both_forms",
+        &portions,
+    );
+}
+
+#[test]
+fn issue_688_fgi_mixed_multi_source_acknowledged_plus_concealed() {
+    // §H.7 p124 cardinality stress — one concealed `(S//FGI)` + three
+    // acknowledged with different / multi-element LISTs. The
+    // §H.7 p124 precedence rule MUST fire regardless of how many
+    // distinct acknowledged sources are present or how large each
+    // acknowledged LIST is.
+    let portions = [
+        portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+        ),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("GBR"), cc("JPN")]).expect("non-empty"),
+        ),
+        portion_us_with_fgi_marker(
+            Classification::Secret,
+            FgiMarker::acknowledged([cc("NATO")]).expect("non-empty"),
+        ),
+    ];
+    assert_fgi_collapses_to_concealed(
+        "issue_688_fgi_mixed_multi_source_acknowledged_plus_concealed",
+        &portions,
+    );
+}
+
+#[test]
+fn issue_688_fgi_mixed_icd_206_commingled_portion() {
+    // §H.7 p124 (precedence rule) holds under ICD 206 commingling.
+    // §H.7 p125 prose permits commingling FGI with US in the same
+    // portion for documents marked in accordance with ICD 206. This
+    // fixture mixes a commingled US+acknowledged-FGI portion
+    // `(S//FGI DEU//NF)` with a commingled US+concealed-FGI portion
+    // `(S//FGI//NF)`. The precedence rule still collapses the FGI
+    // axis to concealed regardless of whether the source axis was
+    // segregated or commingled in the input.
+    let portions = [
+        {
+            let mut p = portion_us_with_fgi_marker(
+                Classification::Secret,
+                FgiMarker::acknowledged([cc("DEU")]).expect("non-empty"),
+            );
+            p.dissem_us = vec![DissemControl::Nf].into();
+            p
+        },
+        {
+            let mut p =
+                portion_us_with_fgi_marker(Classification::Secret, FgiMarker::SourceConcealed);
+            p.dissem_us = vec![DissemControl::Nf].into();
+            p
+        },
+    ];
+    assert_fgi_collapses_to_concealed("issue_688_fgi_mixed_icd_206_commingled_portion", &portions);
+}
