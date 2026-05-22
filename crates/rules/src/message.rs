@@ -277,6 +277,19 @@ pub enum MessageTemplate {
     /// Authority: CAPCO-2016 §H.5 (SAR program identifier
     /// invariants).
     SarInvariantViolated,
+
+    /// REL TO list contains entries that are not in the JOINT
+    /// participant list — the REL TO axis has expanded beyond the
+    /// JOINT co-owners. Per §H.3 p57 "[LIST]" superset semantics, a
+    /// classifier MAY expand REL TO beyond JOINT participants, so
+    /// the engine cannot distinguish intentional expansion from
+    /// authoring error — surfaces as Warn with no auto-fix. Reverse
+    /// of E014 (which flags JOINT participants missing from REL TO).
+    /// Args: `category` (CAT_REL_TO — the axis carrying the
+    /// expansion).
+    ///
+    /// Authority: CAPCO-2016 §H.3 p57 ("[LIST]" superset semantics).
+    RelToExpandsBeyondJoint,
 }
 
 impl MessageTemplate {
@@ -310,6 +323,7 @@ impl MessageTemplate {
             Self::CorrectionsApplied => "CorrectionsApplied",
             Self::OutOfRangeNumericToken => "OutOfRangeNumericToken",
             Self::SarInvariantViolated => "SarInvariantViolated",
+            Self::RelToExpandsBeyondJoint => "RelToExpandsBeyondJoint",
         }
     }
 }
@@ -623,6 +637,10 @@ mod tests {
         assert_eq!(
             MessageTemplate::SarInvariantViolated.as_str(),
             "SarInvariantViolated"
+        );
+        assert_eq!(
+            MessageTemplate::RelToExpandsBeyondJoint.as_str(),
+            "RelToExpandsBeyondJoint"
         );
     }
 

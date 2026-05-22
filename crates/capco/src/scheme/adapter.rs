@@ -494,6 +494,13 @@ impl CapcoScheme {
                     ..MessageArgs::default()
                 },
             )),
+            "W005/rel-to-not-in-joint-coverage" => Some(Message::new(
+                MessageTemplate::RelToExpandsBeyondJoint,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..MessageArgs::default()
+                },
+            )),
             _ => None,
         }
     }
@@ -623,12 +630,9 @@ impl CapcoScheme {
             ("E010", "HCS-system-constraints"),
             ("E012", "dual-classification"),
             ("E014", "joint-requires-rel-to-coverage"),
-            // W005: reverse of E014 (REL TO entries not in JOINT). Falls
-            // through to message_by_name's `_ => None` default so the bridge
-            // emits the generic `ConflictsWith` fallback template. A typed
-            // `MessageTemplate::RelToExpandsBeyondJoint` variant belongs in
-            // PR 3c.2 alongside the MARQUE_AUDIT_SCHEMA bump per the
-            // closed-template invariant in `crates/rules/src/message.rs`.
+            // W005: reverse of E014 (REL TO entries not in JOINT). Resolved
+            // by `message_by_name` to the typed
+            // `MessageTemplate::RelToExpandsBeyondJoint` (closing #666).
             ("W005", "rel-to-not-in-joint-coverage"),
             ("E015", "non-us-requires-dissem"),
             ("E016", "joint-conflicts-restricted"),
