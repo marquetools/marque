@@ -379,8 +379,9 @@ impl CapcoScheme {
     /// # Class-floor and SCI-per-system catalog rows (PR 3c.2.C C7)
     ///
     /// PR 3c.2.C C7 (reviewer R-C1) extended the dispatch to cover the
-    /// 27 `class-floor/*` + `E058/*` catalog rows and the 5
-    /// `sci-per-system/*` catalog rows. Both prefixes route through
+    /// 27 class-floor catalog rows (now `banner.<axis>.<floor|ceiling>-*`
+    /// predicate IDs post-T044) and the 5 SCI-per-system catalog rows
+    /// (now `marking.sci.*` predicate IDs). Both groups route through
     /// [`find_class_floor_row`](Self::find_class_floor_row) /
     /// [`find_sci_per_system_row`](Self::find_sci_per_system_row)
     /// label lookups so the per-row [`MessageTemplate`] +
@@ -413,7 +414,12 @@ impl CapcoScheme {
         // record carries the right category. Per-row §-citations
         // resolve via citation_by_name (kept in lockstep with this
         // function for the same label set).
-        if name.starts_with("class-floor/") || name.starts_with("E058/") {
+        //
+        // Post-T044: catalog row names migrated from the
+        // `class-floor/` / `E058/` slash-form to the predicate-ID
+        // `banner.<axis>.<floor|ceiling>-<marking>` form. The
+        // discriminator is the `.floor-` / `.ceiling-` substring.
+        if name.contains(".floor-") || name.contains(".ceiling-") {
             // Row lookup is O(27); cheap. Avoids re-encoding the
             // dispatch in two places.
             if let Some(row) = self.find_class_floor_row(name) {
@@ -441,7 +447,11 @@ impl CapcoScheme {
         // semantics (CompanionRequired forbids absence of a required
         // companion; Custom rows enforce companion presence + forbid
         // conflict). Audit category is CAT_SCI.
-        if name.starts_with("sci-per-system/") && self.find_sci_per_system_row(name).is_some() {
+        // Post-T044: SCI per-system catalog rows migrated from
+        // `sci-per-system/*` slash-form to `marking.sci.*` predicate-ID
+        // form (unique to this catalog; `portion.sci.*` is reserved for
+        // standalone SCI rules like E061/E062/E063/W034/E065).
+        if name.starts_with("marking.sci.") && self.find_sci_per_system_row(name).is_some() {
             return Some(Message::new(
                 MessageTemplate::RequiredByPresence,
                 MessageArgs {
