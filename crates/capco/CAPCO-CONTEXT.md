@@ -22,6 +22,22 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 > engine, not its identity. This helper is for marque-capco /
 > marque-ism work. Cross-domain engine work (marque-engine,
 > marque-scheme) does not need this loaded.
+>
+> **Rule-ID convention (post-T044, 2026-05-22).** Rule IDs and
+> catalog-row labels are 2-tuples / wire strings of the form
+> `<scheme>:<surface>.<category>.<predicate>` (e.g.,
+> `"capco:portion.dissem.noforn-conflicts-rel-to"`,
+> `"capco:banner.classification.floor-hcs-comp-sub"`). The
+> `capco/<slug>` / `class-floor/<slug>` / `sci-per-system/<slug>`
+> slash-form names referenced in the historical sections below
+> (PR 4b-B, PR 4b-C, the lattice-vs-scheme parity §3) are
+> **archaeological** — they describe the catalog-row labels as
+> they existed at each pre-T044 PR. The labels were renamed in
+> lockstep at T044; see
+> [`docs/refactor-006/legacy-rule-id-map.md`](../../docs/refactor-006/legacy-rule-id-map.md)
+> for the rename table. The slash-form descriptions stand as
+> written because rewriting them would erase load-bearing PR
+> history without clarifying the CAPCO content.
 
 ---
 
