@@ -4041,10 +4041,14 @@ impl DisplayOnlyBlock {
             Self::Lattice { countries } => {
                 let mut codes: Vec<CountryCode> = countries.iter().copied().collect();
                 // Named `fn`-item comparator (`cmp_country_code_trigraph_first`)
-                // for closure-axis monomorphization collapse — R1 WASM-cut per
-                // issue #689 and the PR #585 precedent at
-                // [`sort_smolstrs_by_sar`]. §H.8 p163 + §A.6 p16 ordering
-                // (trigraphs first, tetragraphs after, alpha within bucket).
+                // for reviewability + pattern consistency with the other R1
+                // helpers (issue #689 / PR #585 precedent at
+                // [`sort_smolstrs_by_sar`]) — see the function-level
+                // doc-comment for why this single-callsite extraction is
+                // 1 → 1 on monomorphizations (no WASM saving) and what
+                // the actual justification is. §H.8 p163 + §A.6 p16
+                // ordering (trigraphs first, tetragraphs after, alpha
+                // within bucket).
                 codes.sort_by(cmp_country_code_trigraph_first);
                 codes
             }
