@@ -840,6 +840,18 @@ struct BatchResultEntry<'a> {
 /// runtime-config surface relative to the derive (the closed
 /// accept-list is enumerated at the call site, not implied by the
 /// struct shape).
+///
+/// **Field-naming constraint (R2 / #689)**: `WasmConfig` field names
+/// MUST remain in alphabetical order relative to their
+/// [`build_cache_key`] insertion order. The cache-key emitter relies
+/// on the BTreeMap-backed `serde_json::Map` (no `preserve_order`
+/// feature in the workspace) to produce alphabetical iteration; that
+/// coincides with the present struct-declaration order purely because
+/// the field names happen to sort that way. Adding a new field whose
+/// name doesn't fit alphabetically between its insertion-order
+/// neighbors will break cache-key byte-identity. See the doc-comment
+/// on [`build_cache_key`] for the full mechanism + the byte-identity
+/// regression tests that catch the breakage at authorship.
 #[derive(Default)]
 struct WasmConfig {
     classifier_id: Option<String>,
@@ -1095,9 +1107,13 @@ fn build_cache_key(cfg: &WasmConfig) -> Result<Option<String>, String> {
             serde_json::from_str(&formatted).map_err(|e| e.to_string())?;
         map.insert("confidence_threshold".to_owned(), parsed);
     }
-    if corrections_present {
-        // Unwrap-safe: `corrections_present` proved Some + non-empty.
-        let corrections = cfg.corrections.as_ref().expect("corrections present");
+    if let Some(corrections) = cfg.corrections.as_ref().filter(|c| !c.is_empty()) {
+        // Structural Some-and-non-empty proof via `.filter()` — eliminates
+        // the prior `.expect("corrections present")` whose safety relied
+        // on a separately-computed `corrections_present` guard. Same
+        // semantic: only emit the `corrections` key when the map is
+        // present AND non-empty (matches the prior #[serde(skip_serializing_if)]
+        // shape).
         let mut corrections_map = serde_json::Map::new();
         for (k, v) in corrections {
             corrections_map.insert(k.clone(), serde_json::Value::String(v.clone()));
