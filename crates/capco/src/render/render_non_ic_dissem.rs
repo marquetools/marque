@@ -54,8 +54,12 @@ pub(crate) fn render_non_ic_dissem(
     // Sort by Register order (§H.9 Table 4 row 9 p36). Inline-4
     // covers FOUO/SBU/LIMDIS/UCNI / DCNI / LES — the practical
     // ceiling on simultaneous non-IC dissem tokens.
+    //
+    // Named `fn`-item key adapter (`rank_non_ic`) for closure-axis
+    // monomorphization collapse — R1 WASM-cut per issue #689 and the
+    // PR #585 precedent at `crate::lattice::sort_smolstrs_by_sar`.
     let mut sorted: SmallVec<[&NonIcDissem; 4]> = m.0.non_ic_dissem.iter().collect();
-    sorted.sort_by_key(|n| register_rank(n));
+    sorted.sort_by_key(rank_non_ic);
 
     let mut first = true;
     for n in sorted {
@@ -105,4 +109,13 @@ fn register_rank(n: &NonIcDissem) -> u8 {
         NonIcDissem::Nnpi => 8,
         _ => u8::MAX,
     }
+}
+
+/// `sort_by_key` adapter — `slice::sort_by_key` over `&[&NonIcDissem]`
+/// invokes its key fn with `&&NonIcDissem`; [`register_rank`] takes
+/// `&NonIcDissem`. Named `fn`-item (not closure) for closure-axis
+/// monomorphization collapse per R1 / issue #689. The `&&NonIcDissem
+/// → &NonIcDissem` reduction is auto-deref'd inside the adapter body.
+fn rank_non_ic(n: &&NonIcDissem) -> u8 {
+    register_rank(n)
 }

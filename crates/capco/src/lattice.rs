@@ -75,6 +75,26 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
     slice.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
 }
 
+/// Compare two `&CountryCode` references with trigraphs (length 3)
+/// before tetragraphs and any opaque longer codes, alphabetical within
+/// each bucket — the CAPCO-2016 §H.8 p163 DISPLAY ONLY LIST ordering
+/// (also §A.6 p16 separator alphabet).
+///
+/// Single callsite at present (`DisplayOnlyBlock::to_vec`): the
+/// closure-axis mono "collapse" here is from 1 → 1, **so this
+/// extraction does NOT save WASM bytes** — it is justified by
+/// reviewability (sort semantic reviewable separately from the
+/// cross-axis lattice machinery) and pattern consistency with the
+/// other R1 helpers (issue #689 / PR #585 precedent).
+fn cmp_country_code_trigraph_first(a: &CountryCode, b: &CountryCode) -> std::cmp::Ordering {
+    let a_is_trigraph = a.as_str().len() == 3;
+    let b_is_trigraph = b.as_str().len() == 3;
+    a_is_trigraph
+        .cmp(&b_is_trigraph)
+        .reverse()
+        .then_with(|| a.as_str().cmp(b.as_str()))
+}
+
 // ---------------------------------------------------------------------------
 // HierarchicalTreeSet — shared 3-level tree storage primitive
 // ---------------------------------------------------------------------------
@@ -226,6 +246,24 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
         key_text: impl Fn(&K) -> &str,
     ) -> SmallVec<[(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>); 4]> {
         let mut entries: SmallVec<[_; 4]> = self.inner.iter().collect();
+        // R1 (issue #689) NB: an earlier in-scope extraction of this
+        // closure body to a named `fn`-item `cmp_sar_key_with_lex_tiebreak`
+        // **regressed** the WASM bundle by ~6.2 KB on the
+        // `release-web` profile. Pre-refactor, LTO + ICF folded the
+        // two `K`-instantiations of this closure (`K = SystemKey` for
+        // `SciSet::to_markings`, `K = SmolStr` for `SarSet::to_marking`)
+        // into one code-gen via byte-identity merging of the inline
+        // closure bodies — the SystemKey instance's quicksort row
+        // came in at ~2.8 KB pre-refactor vs ~9 KB post-refactor in
+        // twiggy. Extracting the body to a named fn replaced byte-
+        // identical inlined sequences with an external call site;
+        // LLVM ICF can't fold across the call boundary, and the
+        // SystemKey instance went from heavily-shared to fully-resident.
+        // The closure stays inline here. Mono-collapse is achievable for
+        // the closure-axis at sites where the slice element type appears
+        // at multiple callsites (the `&str` collapse in `render/mod.rs`
+        // worked exactly as predicted, -6 KB), but per-`K` generic sites
+        // are best left to LTO.
         entries.sort_by(|a, b| {
             let ta = key_text(a.0);
             let tb = key_text(b.0);
@@ -3832,7 +3870,7 @@ impl DeclassExemptionAccumulator {
 /// 7. **USA subtraction.** USA is the implicit originator (per §H.8 p163
 ///    worked examples, USA never appears in the DO axis).
 /// 8. **Ordering.** Trigraphs (length 3) first, then tetragraphs and other
-///    opaque codes; alphabetical within each bucket per §H.8 p164.
+///    opaque codes; alphabetical within each bucket per §H.8 p163.
 ///
 /// # Variants
 ///
@@ -3862,10 +3900,10 @@ pub enum DisplayOnlyBlock {
     Bottom,
 
     /// Post-intersection set of country codes for the banner DO block.
-    /// Sorted trigraphs-first then alphabetical per §H.8 p164.
+    /// Sorted trigraphs-first then alphabetical per §H.8 p163.
     Lattice {
         /// BTreeSet for deterministic ordering; render via
-        /// `into_boxed_slice` for the §H.8 p164 sort.
+        /// `into_boxed_slice` for the §H.8 p163 sort.
         countries: BTreeSet<CountryCode>,
     },
 
@@ -3990,7 +4028,7 @@ impl DisplayOnlyBlock {
 
     /// Render to a `Box<[CountryCode]>` with trigraphs first (length 3)
     /// then tetragraphs and other opaque codes, alphabetical within
-    /// each bucket per §H.8 p164.
+    /// each bucket per §H.8 p163.
     pub fn into_boxed_slice(self) -> Box<[CountryCode]> {
         self.to_vec().into_boxed_slice()
     }
@@ -4002,14 +4040,16 @@ impl DisplayOnlyBlock {
             Self::Bottom | Self::Empty | Self::NofornSuperseded => Vec::new(),
             Self::Lattice { countries } => {
                 let mut codes: Vec<CountryCode> = countries.iter().copied().collect();
-                codes.sort_by(|a, b| {
-                    let a_is_trigraph = a.as_str().len() == 3;
-                    let b_is_trigraph = b.as_str().len() == 3;
-                    a_is_trigraph
-                        .cmp(&b_is_trigraph)
-                        .reverse()
-                        .then_with(|| a.as_str().cmp(b.as_str()))
-                });
+                // Named `fn`-item comparator (`cmp_country_code_trigraph_first`)
+                // for reviewability + pattern consistency with the other R1
+                // helpers (issue #689 / PR #585 precedent at
+                // [`sort_smolstrs_by_sar`]) — see the function-level
+                // doc-comment for why this single-callsite extraction is
+                // 1 → 1 on monomorphizations (no WASM saving) and what
+                // the actual justification is. §H.8 p163 + §A.6 p16
+                // ordering (trigraphs first, tetragraphs after, alpha
+                // within bucket).
+                codes.sort_by(cmp_country_code_trigraph_first);
                 codes
             }
         }
@@ -5412,7 +5452,7 @@ mod tests {
 
     #[test]
     fn display_only_block_trigraphs_sort_before_tetragraphs() {
-        // §H.8 p164: trigraphs before tetragraphs, alphabetical within
+        // §H.8 p163: trigraphs before tetragraphs, alphabetical within
         // each bucket.
         let portions = [
             portion_with_display_only(Classification::Secret, &["GBR", "NATO"]),

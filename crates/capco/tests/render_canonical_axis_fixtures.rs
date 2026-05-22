@@ -655,7 +655,7 @@ fn display_only_single_country_banner() {
 fn display_only_multi_country_banner() {
     // Authority: CAPCO-2016 §H.8 p163 Example Banner Line with
     // Multiple Countries: `CONFIDENTIAL//DISPLAY ONLY AFG, IRQ`.
-    // §H.8 p164: "Country codes are listed alphabetically followed
+    // §H.8 p163: "Country codes are listed alphabetically followed
     // by tetragraph codes in alphabetical order."
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Confidential));
@@ -665,7 +665,7 @@ fn display_only_multi_country_banner() {
 
 #[test]
 fn display_only_input_order_normalized_to_alpha() {
-    // Authority: §H.8 p164 alphabetical sort. Input order in
+    // Authority: §H.8 p163 alphabetical sort. Input order in
     // `display_only_to` must NOT leak into the rendered output;
     // the renderer sorts every render.
     let mut a = CanonicalAttrs::default();
@@ -692,7 +692,7 @@ fn display_only_no_usa_required() {
 
 #[test]
 fn display_only_trigraphs_before_tetragraphs() {
-    // Authority: §H.8 p164 "Country codes [trigraphs] are listed
+    // Authority: §H.8 p163 "Country codes [trigraphs] are listed
     // alphabetically followed by tetragraph codes in alphabetical
     // order." Mirrors REL TO bucket-sort.
     let mut a = CanonicalAttrs::default();
