@@ -36,7 +36,9 @@ fn applied_text_correction_promote_seal_constructs_through_token() {
 
     let original_digest: Blake3Hash = Blake3Hash::from([0u8; 32]);
     let correction = AppliedTextCorrection::__engine_promote_text_correction(
-        RuleId::new("C001"),
+        // T044: legacy `C001` → `("capco", "marking.correction.token-typo")`
+        // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+        RuleId::new("capco", "marking.correction.token-typo"),
         Severity::Fix,
         Span::new(0, 6),
         original_digest,
@@ -52,7 +54,10 @@ fn applied_text_correction_promote_seal_constructs_through_token() {
         token,
     );
 
-    assert_eq!(correction.rule, RuleId::new("C001"));
+    assert_eq!(
+        correction.rule,
+        RuleId::new("capco", "marking.correction.token-typo")
+    );
     assert_eq!(correction.severity, Severity::Fix);
     assert_eq!(correction.span, Span::new(0, 6));
     assert_eq!(correction.replacement.as_str(), "SECRET");
@@ -69,7 +74,9 @@ fn applied_text_correction_clone_preserves_fields() {
     let token = EnginePromotionToken::__engine_construct();
     let original_digest: Blake3Hash = Blake3Hash::from([1u8; 32]);
     let original = AppliedTextCorrection::__engine_promote_text_correction(
-        RuleId::new("E006"),
+        // T044: legacy `E006` → `("capco", "marking.deprecation.deprecated-dissem-control")`
+        // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+        RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
         Severity::Error,
         Span::new(10, 16),
         original_digest,

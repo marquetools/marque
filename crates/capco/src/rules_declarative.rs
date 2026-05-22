@@ -428,7 +428,7 @@ const E065_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E065")
+        RuleId::new("capco", "portion.sci.deprecated-long-form")
     }
 
     fn name(&self) -> &'static str {
@@ -438,9 +438,10 @@ impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
     fn default_severity(&self) -> Severity {
         // Per-row severities take precedence on emitted diagnostics; the
         // walker-level default severity is the strictest of the catalog
-        // rows so a `.marque.toml [rules] E065 = ...` override anchor
-        // cannot accidentally weaken any row below its authoring intent.
-        // Mirrors the precedent set by `BannerMatchesProjectedRule`.
+        // rows so a `.marque.toml [rules] "capco:portion.sci.deprecated-long-form" = ...`
+        // override anchor cannot accidentally weaken any row below its
+        // authoring intent. Mirrors the precedent set by
+        // `BannerMatchesProjectedRule`.
         Severity::Error
     }
 
@@ -738,7 +739,7 @@ const E067_AUTHORITIES: &[Citation] = &[
 
 impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
     fn id(&self) -> RuleId {
-        RuleId::new("E067")
+        RuleId::new("capco", "marking.recanonicalize.bare-canonical-compound")
     }
 
     fn name(&self) -> &'static str {
@@ -749,10 +750,11 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
         // Per-row severities take precedence on emitted diagnostics
         // (all rows emit `Severity::Fix`). The walker-level default is
         // the strictest of the catalog rows so a `.marque.toml [rules]
-        // E067 = ...` override anchor cannot accidentally weaken any
-        // row below its authoring intent — mirrors the precedent set
-        // by `BannerMatchesProjectedRule` (PR 3b.A) and
-        // `DeprecatedSciLongFormRule` (E065).
+        // "capco:marking.recanonicalize.bare-canonical-compound" = ...`
+        // override anchor cannot accidentally weaken any row below its
+        // authoring intent — mirrors the precedent set by
+        // `BannerMatchesProjectedRule` (PR 3b.A) and
+        // `DeprecatedSciLongFormRule`.
         Severity::Error
     }
 

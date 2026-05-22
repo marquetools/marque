@@ -398,7 +398,13 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 /// # use marque_rules::RuleId;
 /// # use marque_scheme::{Severity, Span};
 /// let _: AppliedFix<()> = AppliedFix {
-///     rule: RuleId::new("E001"),
+///     // T044: 2-tuple form; legacy `E001` is retired (PR 3c.B Commit
+///     // 6) — illustrative example uses the canonical
+///     // `("capco", "banner.classification.usa-trigraph")` shape from
+///     // the plan §2.1 doc surface. The doctest's purpose is the
+///     // `#[non_exhaustive]` brace-construct rejection; the rule
+///     // identity is incidental.
+///     rule: RuleId::new("capco", "banner.classification.usa-trigraph"),
 ///     severity: Severity::Error,
 ///     span: Span::new(0, 0),
 ///     // ... other fields omitted; #[non_exhaustive] rejects this
