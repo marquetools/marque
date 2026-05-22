@@ -692,7 +692,16 @@ impl<'t> Parser<'t> {
                 // SECRET//FGI DEU//NF or SECRET//FOREIGN GOVERNMENT
                 // INFORMATION DEU//NF per CAPCO-2016 §H.7 p123 +
                 // §D.1 p27).
-                if let Some(marker) = parse_fgi_marker(trimmed) {
+                //
+                // `parse_fgi_marker_with_spans` emits one
+                // `TokenKind::FgiOwnershipTrigraph` per shape-admitted
+                // country token into `token_spans`, alongside the
+                // block-level `TokenKind::FgiMarker` span the
+                // following `push` adds. Dual emission parallels
+                // `RelToBlock` + `RelToTrigraph`; per-country spans
+                // are needed by the FGI ownership-trigraph-suggest
+                // rule (issue #545).
+                if let Some(marker) = parse_fgi_marker_with_spans(trimmed, abs_start, &mut token_spans) {
                     fgi_marker = Some(ParsedFgiMarker::new(marker, trimmed, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::FgiMarker,
@@ -2494,12 +2503,64 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
     })
 }
 
+/// Quick gate for "does this block start with an FGI marker, in either
+/// the abbreviation or long-form?".
+///
+/// Mirrors the prefix-check that gates [`parse_fgi_marker`] dispatch in
+/// the block-walking parser. Centralizing it here keeps the
+/// abbreviation/long-form set in lock-step between the gate and the
+/// parser. Long-form authority: CAPCO-2016 §H.7 p123 (Authorized
+/// Banner Line Marking Title: `FOREIGN GOVERNMENT INFORMATION [LIST]`
+/// for the acknowledged form / `FOREIGN GOVERNMENT INFORMATION` for
+/// the concealed form). Pair with the
+/// `fgi_gate_lock_steps_with_parser` integration test in
+/// `crates/core/tests/banner_long_forms.rs`, which exercises the
+/// end-to-end contract every input that should reach `parse_fgi_marker`
+/// must first pass this gate.
+fn starts_with_fgi_prefix(s: &str) -> bool {
+    s == "FGI"
+        || s.starts_with("FGI ")
+        || s == "FOREIGN GOVERNMENT INFORMATION"
+        || s.starts_with("FOREIGN GOVERNMENT INFORMATION ")
+}
+
 /// Parse an FGI marker block in a US-classified marking.
+///
+/// **This is the production entry point** — called directly from the
+/// block walker in [`Parser::parse_marking_string`] (around
+/// `parser.rs:704` inside `Parser::parse_marking_string`). The
+/// `#[cfg(test)]` [`parse_fgi_marker`] wrapper below delegates here
+/// and discards the span buffer; production paths thread real
+/// `block_offset` + `token_spans` arguments through this function so
+/// per-country [`TokenKind::FgiOwnershipTrigraph`] spans land in the
+/// AST for `FgiOwnershipTrigraphSuggestRule` (issue #545) to consume.
 ///
 /// This is the FGI block between SAR and dissem controls in a
 /// US-classified marking (e.g., `SECRET//FGI DEU//NOFORN`). Not to
 /// be confused with [`parse_fgi_classification`] which parses a
 /// non-US classification.
+///
+/// # Span emission
+///
+/// Emits one [`TokenKind::FgiOwnershipTrigraph`] span per
+/// shape-admitted country token in the ownership list, appended into
+/// `token_spans` alongside the block-level [`TokenKind::FgiMarker`]
+/// span the caller pushes on its own. Dual emission mirrors
+/// [`parse_rel_to_with_spans`] (`RelToBlock` + `RelToTrigraph`).
+///
+/// `block_offset` is the absolute byte offset of `block` within the
+/// original source buffer. Per-country sub-spans are computed by
+/// walking `block` with a hand-rolled ASCII-whitespace cursor (NOT
+/// `split_whitespace`, which discards byte positions) so the offsets
+/// land exactly on the country token, not on a leading or trailing
+/// space.
+///
+/// The function stages per-country spans into a local `pending`
+/// buffer and flushes them to `token_spans` only after
+/// [`FgiMarker::acknowledged`] confirms a non-empty acknowledged
+/// result. The FR-016 closure (any token failing the shape gate, or
+/// an empty list after the prefix, returns `None` with no per-country
+/// spans leaked) is preserved through this staging step.
 ///
 /// # Three return cases (FR-015 / FR-016 closure, GH #280)
 ///
@@ -2578,7 +2639,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// immediately on any token-shape failure, no temporary allocation
 /// needed.
 ///
-/// # Edge cases
+/// # Edge cases (driven via the [`parse_fgi_marker`] test wrapper)
 ///
 /// - `parse_fgi_marker("")` → `None` (empty input has no `FGI` prefix).
 /// - `parse_fgi_marker("FGI")` → `Some(SourceConcealed)` — the bare
@@ -2627,59 +2688,68 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// or tetragraph codes must be separated by a single space"). The
 /// ownership-token predicate's authority chain is documented at
 /// [`marque_ism::CountryCode::admits_fgi_ownership_token`].
-/// Quick gate for "does this block start with an FGI marker, in either
-/// the abbreviation or long-form?".
-///
-/// Mirrors the prefix-check that gates [`parse_fgi_marker`] dispatch in
-/// the block-walking parser. Centralizing it here keeps the
-/// abbreviation/long-form set in lock-step between the gate and the
-/// parser. Long-form authority: CAPCO-2016 §H.7 p123 (Authorized
-/// Banner Line Marking Title: `FOREIGN GOVERNMENT INFORMATION [LIST]`
-/// for the acknowledged form / `FOREIGN GOVERNMENT INFORMATION` for
-/// the concealed form). Pair with the
-/// `fgi_gate_lock_steps_with_parser` integration test in
-/// `crates/core/tests/banner_long_forms.rs`, which exercises the
-/// end-to-end contract every input that should reach `parse_fgi_marker`
-/// must first pass this gate.
-fn starts_with_fgi_prefix(s: &str) -> bool {
-    s == "FGI"
-        || s.starts_with("FGI ")
-        || s == "FOREIGN GOVERNMENT INFORMATION"
-        || s.starts_with("FOREIGN GOVERNMENT INFORMATION ")
-}
-
-fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
+fn parse_fgi_marker_with_spans(
+    block: &str,
+    block_offset: usize,
+    token_spans: &mut SmallVec<[TokenSpan; 16]>,
+) -> Option<FgiMarker> {
     // Case 1: bare `FGI` (banner abbreviation) or `FOREIGN GOVERNMENT
     // INFORMATION` (long-form title) is the lawful source-concealed
-    // banner form per CAPCO-2016 §H.7 p123.
-    if s == "FGI" || s == "FOREIGN GOVERNMENT INFORMATION" {
+    // banner form per CAPCO-2016 §H.7 p123. No per-country spans.
+    if block == "FGI" || block == "FOREIGN GOVERNMENT INFORMATION" {
         return Some(FgiMarker::SourceConcealed);
     }
 
-    // Case 2 / Case 3 dispatch: input must start with `FGI ` or
-    // `FOREIGN GOVERNMENT INFORMATION ` (with a single trailing
-    // space) per CAPCO-2016 §H.7 p123. `strip_prefix` returning
-    // `None` on missing prefix is the Case 3 short-circuit for
-    // inputs like `"FGIDEU"`, `"foo FGI USA"`, or anything else
-    // that doesn't lead with the canonical separator. The long-form
-    // path strips `FOREIGN GOVERNMENT INFORMATION ` so the country-
-    // list parser sees an identical tail to the abbreviation path.
-    let rest = s
-        .strip_prefix("FGI ")
-        .or_else(|| s.strip_prefix("FOREIGN GOVERNMENT INFORMATION "))?;
+    // Case 2 / Case 3 dispatch. Two prefix forms: `"FGI "` (4 bytes,
+    // abbreviation) and `"FOREIGN GOVERNMENT INFORMATION "` (31
+    // bytes, long form) per CAPCO-2016 §H.7 p123. `strip_prefix`
+    // returning `None` on missing prefix is the Case 3 short-circuit
+    // for inputs like `"FGIDEU"`, `"foo FGI USA"`, or anything else
+    // that doesn't lead with the canonical separator. The actual
+    // stripped length is needed for per-country sub-span offset
+    // arithmetic — handle each branch explicitly rather than via a
+    // chained `or_else` so the prefix length stays in scope.
+    let (prefix_len, rest) = if let Some(rest) = block.strip_prefix("FGI ") {
+        (4_usize, rest)
+    } else if let Some(rest) = block.strip_prefix("FOREIGN GOVERNMENT INFORMATION ") {
+        (31_usize, rest)
+    } else {
+        return None;
+    };
 
     // Build the country list directly into the inline-4
     // `SmallVec` shape `FgiMarker::Acknowledged` carries — typical
     // FGI lists are ≤4 codes per CAPCO §H.7, so the common cases
     // (`FGI USA`, `FGI USA GBR`, the §H.7 canonical example
-    // `FGI GBR JPN NATO`) stay heap-free. A longer list spills to
-    // the heap in `SmallVec` itself once, matching what
-    // `FgiMarker::acknowledged` would produce; the previous
-    // intermediate `Vec` defeated the inline-storage optimization
-    // by forcing one heap allocation on every acknowledged marker
-    // before the constructor re-collected.
+    // `FGI GBR JPN NATO`) stay heap-free. Walk `rest` with a
+    // hand-rolled cursor so per-token byte offsets are recoverable;
+    // `split_whitespace` would lose the position information.
+    //
+    // `pending` stages per-country spans so a parse failure later
+    // in the loop does not commit half a country list. Inline-4
+    // matches `countries`.
     let mut countries: SmallVec<[CountryCode; 4]> = SmallVec::new();
-    for token in rest.split_whitespace() {
+    let mut pending: SmallVec<[TokenSpan; 4]> = SmallVec::new();
+    let base = block_offset + prefix_len;
+    let bytes = rest.as_bytes();
+    let mut idx = 0_usize;
+    while idx < bytes.len() {
+        // Skip ASCII whitespace (CAPCO §A.6 p16 specifies single
+        // space, but the parser tolerates multi-space and tab
+        // between tokens for resilience; a future style rule may
+        // flag the non-canonical separator).
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+        if idx >= bytes.len() {
+            break;
+        }
+        let tok_start = idx;
+        while idx < bytes.len() && !bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+        let tok_end = idx;
+        let token = &rest[tok_start..tok_end];
         // Issue #280: FGI ownership context — route every token
         // through the FGI-ownership shape predicate. A 2- or
         // 3-byte ASCII-upper token (admits sovereign-state
@@ -2700,6 +2770,13 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
         // the shape gate above.
         let code = CountryCode::try_new(token.as_bytes())?;
         countries.push(code);
+        let abs_start = base + tok_start;
+        let abs_end = base + tok_end;
+        pending.push(TokenSpan {
+            kind: TokenKind::FgiOwnershipTrigraph,
+            span: Span::new(abs_start, abs_end),
+            text: token.into(),
+        });
     }
 
     // Case 3 closure: `"FGI "` followed by zero shape-admitted
@@ -2708,7 +2785,30 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     // empty country list, which is exactly the FR-016 contract —
     // propagate it directly. This is the line that retired the
     // transitional `unwrap_or(SourceConcealed)` fallback (#280).
-    FgiMarker::acknowledged(countries)
+    //
+    // Only commit the staged per-country spans on a successful
+    // acknowledged parse — keeps the failure path span-clean.
+    let marker = FgiMarker::acknowledged(countries)?;
+    token_spans.extend(pending);
+    Some(marker)
+}
+
+/// Test-only thin wrapper that delegates to
+/// [`parse_fgi_marker_with_spans`] with a discarded `Vec<TokenSpan>`
+/// and zero base offset. The production call site is
+/// [`Parser::parse_marking_string`] (around `parser.rs:704`, inside
+/// the block-walker's FGI-marker arm) and uses
+/// [`parse_fgi_marker_with_spans`] directly so per-country
+/// [`TokenKind::FgiOwnershipTrigraph`] spans land in the AST.
+///
+/// Preserved only for ergonomic inline test fixtures that assert
+/// `FgiMarker` shape without driving token-span emission. See the
+/// production function's doc-comment for the full grammar, edge
+/// cases, FR-015 / FR-016 closure, and CAPCO §H.7 / §A.6 authority.
+#[cfg(test)]
+fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
+    let mut discarded: SmallVec<[TokenSpan; 16]> = SmallVec::new();
+    parse_fgi_marker_with_spans(s, 0, &mut discarded)
 }
 
 /// Attempt to parse a block as a foreign classification (NATO, JOINT, or FGI).
@@ -4932,6 +5032,146 @@ mod tests {
             }
             other => panic!("expected Acknowledged([USA]) for double-space input, got {other:?}"),
         }
+    }
+
+    // Issue #545: per-country span emission. `parse_fgi_marker_with_spans`
+    // emits one `TokenKind::FgiOwnershipTrigraph` per shape-admitted
+    // country token in the ownership list, alongside the block-level
+    // `TokenKind::FgiMarker` span the block-walker pushes on its own.
+    // These tests pin the contract `FgiOwnershipTrigraphSuggestRule`
+    // (capco:portion.fgi.ownership-trigraph-suggest) depends on.
+
+    /// Helper: drive `parse_fgi_marker_with_spans` with a fresh
+    /// `token_spans` buffer at offset zero and return both the
+    /// `FgiMarker` result and the emitted span list. Mirrors the
+    /// pattern in `parse_fgi_marker` (the test wrapper) but exposes
+    /// the spans for assertion.
+    fn parse_fgi_marker_capturing_spans(
+        s: &str,
+        base: usize,
+    ) -> (Option<FgiMarker>, SmallVec<[TokenSpan; 16]>) {
+        let mut spans: SmallVec<[TokenSpan; 16]> = SmallVec::new();
+        let marker = parse_fgi_marker_with_spans(s, base, &mut spans);
+        (marker, spans)
+    }
+
+    #[test]
+    fn fgi_marker_emits_per_country_ownership_spans_abbrev_prefix() {
+        // Single country: `FGI USA` at block_offset 100.
+        // `"FGI "` is 4 bytes, so `USA` starts at absolute offset
+        // 100 + 4 = 104 and ends at 107.
+        let (marker, spans) = parse_fgi_marker_capturing_spans("FGI USA", 100);
+        assert!(matches!(marker, Some(FgiMarker::Acknowledged { .. })));
+        let ownership: Vec<&TokenSpan> = spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::FgiOwnershipTrigraph)
+            .collect();
+        assert_eq!(ownership.len(), 1, "expected exactly one ownership span");
+        assert_eq!(ownership[0].text.as_str(), "USA");
+        assert_eq!(ownership[0].span.start, 104);
+        assert_eq!(ownership[0].span.end, 107);
+    }
+
+    #[test]
+    fn fgi_marker_emits_per_country_ownership_spans_multi_country() {
+        // Multiple countries: `FGI USA GBR NATO` at block_offset 0.
+        // Offsets (within "FGI USA GBR NATO"):
+        //   `USA` at 4..7
+        //   `GBR` at 8..11
+        //   `NATO` at 12..16
+        let (marker, spans) = parse_fgi_marker_capturing_spans("FGI USA GBR NATO", 0);
+        assert!(matches!(marker, Some(FgiMarker::Acknowledged { .. })));
+        let ownership: Vec<&TokenSpan> = spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::FgiOwnershipTrigraph)
+            .collect();
+        assert_eq!(ownership.len(), 3, "expected three ownership spans");
+        assert_eq!(ownership[0].text.as_str(), "USA");
+        assert_eq!(ownership[0].span.start, 4);
+        assert_eq!(ownership[0].span.end, 7);
+        assert_eq!(ownership[1].text.as_str(), "GBR");
+        assert_eq!(ownership[1].span.start, 8);
+        assert_eq!(ownership[1].span.end, 11);
+        assert_eq!(ownership[2].text.as_str(), "NATO");
+        assert_eq!(ownership[2].span.start, 12);
+        assert_eq!(ownership[2].span.end, 16);
+    }
+
+    #[test]
+    fn fgi_marker_emits_per_country_ownership_spans_long_form_prefix() {
+        // Long-form prefix is 31 bytes (`"FOREIGN GOVERNMENT INFORMATION "`).
+        // Verify offset arithmetic on the long-form path.
+        let input = "FOREIGN GOVERNMENT INFORMATION USA";
+        let (marker, spans) = parse_fgi_marker_capturing_spans(input, 0);
+        assert!(matches!(marker, Some(FgiMarker::Acknowledged { .. })));
+        let ownership: Vec<&TokenSpan> = spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::FgiOwnershipTrigraph)
+            .collect();
+        assert_eq!(ownership.len(), 1);
+        assert_eq!(ownership[0].text.as_str(), "USA");
+        // 31-byte prefix + 0-byte offset of "USA" within the rest
+        // = absolute offset 31.
+        assert_eq!(ownership[0].span.start, 31);
+        assert_eq!(ownership[0].span.end, 34);
+    }
+
+    #[test]
+    fn fgi_marker_emits_per_country_ownership_spans_for_unregistered_tokens() {
+        // The whole point of issue #545: `XX` and `ZZZ` are shape-
+        // admitted-but-unregistered ownership tokens. The parser
+        // produces `FgiOwnershipTrigraph` spans for them; the
+        // rule layer (S004-style suggest) handles registry validation.
+        let (marker, spans) = parse_fgi_marker_capturing_spans("FGI XX", 0);
+        assert!(matches!(marker, Some(FgiMarker::Acknowledged { .. })));
+        let ownership: Vec<&TokenSpan> = spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::FgiOwnershipTrigraph)
+            .collect();
+        assert_eq!(ownership.len(), 1);
+        assert_eq!(ownership[0].text.as_str(), "XX");
+
+        let (marker, spans) = parse_fgi_marker_capturing_spans("FGI ZZZ", 0);
+        assert!(matches!(marker, Some(FgiMarker::Acknowledged { .. })));
+        let ownership: Vec<&TokenSpan> = spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::FgiOwnershipTrigraph)
+            .collect();
+        assert_eq!(ownership.len(), 1);
+        assert_eq!(ownership[0].text.as_str(), "ZZZ");
+    }
+
+    #[test]
+    fn fgi_marker_concealed_emits_no_ownership_spans() {
+        // Bare `FGI` (concealed) has no ownership list → no spans.
+        let (marker, spans) = parse_fgi_marker_capturing_spans("FGI", 0);
+        assert!(matches!(marker, Some(FgiMarker::SourceConcealed)));
+        assert!(
+            !spans
+                .iter()
+                .any(|t| t.kind == TokenKind::FgiOwnershipTrigraph),
+            "concealed FGI must not emit any FgiOwnershipTrigraph spans"
+        );
+    }
+
+    #[test]
+    fn fgi_marker_parse_failure_emits_no_ownership_spans() {
+        // FR-016 closure: a parse failure must NOT leak per-country
+        // spans into the AST. `FGI FVEY` parses to `None` because
+        // distribution-list tetragraphs reject in the ownership slot.
+        // The `pending` staging in `parse_fgi_marker_with_spans`
+        // guarantees the failure path is span-clean.
+        let (marker, spans) = parse_fgi_marker_capturing_spans("FGI FVEY", 0);
+        assert!(
+            marker.is_none(),
+            "FGI FVEY must fail to parse (distribution tetragraph in ownership slot)"
+        );
+        assert!(
+            !spans
+                .iter()
+                .any(|t| t.kind == TokenKind::FgiOwnershipTrigraph),
+            "failed FGI parse must not leak FgiOwnershipTrigraph spans"
+        );
     }
 
     #[test]

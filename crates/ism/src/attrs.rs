@@ -96,6 +96,23 @@ pub enum TokenKind {
     AeaMarking,
     /// FGI marker token (`FGI`, `FGI DEU`, `FGI DEU GBR`).
     FgiMarker,
+    /// One country trigraph/tetragraph appearing inside an FGI ownership
+    /// list. The parser emits one of these spans per shape-admitted
+    /// country token in `parse_fgi_marker_with_spans` alongside the
+    /// block-level [`Self::FgiMarker`] span (the same dual-emission
+    /// pattern [`Self::RelToTrigraph`] uses alongside
+    /// [`Self::RelToBlock`]).
+    ///
+    /// Distinct from [`Self::RelToTrigraph`] so rules can read a single
+    /// ownership-axis span without cross-axis contamination — issue
+    /// #545's `FgiOwnershipTrigraphSuggestRule` reads only these spans.
+    /// Distinct from [`Self::Unknown`] so E008 ("unrecognized token")
+    /// does not co-fire on shape-admitted-but-unregistered ownership
+    /// tokens like `XX` / `ZZZ`.
+    ///
+    /// Authority: CAPCO-2016 §H.7 p122 (FGI ownership-list grammar)
+    /// + §A.6 p16 (single-space FGI list separator).
+    FgiOwnershipTrigraph,
     /// Dissemination control token (NOFORN, NF, ORCON, OC, RELIDO, ...).
     DissemControl,
     /// Non-IC dissemination control token (LIMDIS, DS, SBU, LES, SSI, ...).

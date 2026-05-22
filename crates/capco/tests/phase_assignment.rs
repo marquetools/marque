@@ -69,7 +69,7 @@ use std::collections::BTreeMap;
 // Legacy IDs (`C001`, `E006`, etc.) preserved in the trailing inline
 // comment for archaeology — see legacy-rule-id-map §1 for the mapping.
 const EXPECTED_PHASES: &[(&str, Phase)] = &[
-    // ----- Phase::Localized (4 rules + E064/E065/E067 declared inline
+    // ----- Phase::Localized (5 rules + E064/E065/E067 declared inline
     // below) ----------------------------------------------------------
     // Each fix is a single-token rewrite (typo, migration, suggest).
     ("marking.correction.token-typo", Phase::Localized), // C001
@@ -86,6 +86,17 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // be reproduced from `(name, attrs)` via the bridge's
     // `fix_intent_by_name` shape).
     ("portion.dissem.rel-to-trigraph-suggest", Phase::Localized), // S004
+    // Issue #545: FGI ownership-trigraph-suggest. Phase::Localized
+    // because each emitted `text_correction` replaces a single
+    // `TokenKind::FgiOwnershipTrigraph` token with a corpus-derived
+    // canonical trigraph; span is exactly one token (same dispatch
+    // shape as S004). Stays a registered walker for the same reason
+    // — candidate replacement is corpus-derived during evaluation.
+    // Authority: CAPCO-2016 §H.7 p122 + §A.6 p16.
+    (
+        "portion.fgi.ownership-trigraph-suggest",
+        Phase::Localized,
+    ),
     // ----- Phase::WholeMarking ---------------------------------------
     // Banner roll-up walkers, cross-axis decisions, intent-only
     // FactAdd / FactRemove / Recanonicalize emissions, and no-fix
