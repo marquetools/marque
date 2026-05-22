@@ -862,6 +862,11 @@ mod tests {
             title_to_portion("DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION"),
             Some("UCNI")
         );
+        // §H.4 SCI compounds — title still resolves to the Authorized Portion
+        // Mark after the banner-abbreviation fix. Guards S001 long-form
+        // detection. CAPCO-2016 §H.4 p78 line 1794, §H.4 p83 line 1944.
+        assert_eq!(title_to_portion("SI-ECRU"), Some("SI-EU"));
+        assert_eq!(title_to_portion("SI-NONBOOK"), Some("SI-NK"));
     }
 
     #[test]
@@ -880,6 +885,12 @@ mod tests {
         assert_eq!(title_to_banner("LIMITED DISTRIBUTION"), Some("LIMDIS"));
         assert_eq!(title_to_banner("EXCLUSIVE DISTRIBUTION"), Some("EXDIS"));
         assert_eq!(title_to_banner("NO DISTRIBUTION"), Some("NODIS"));
+        // §H.4 SCI compounds — title still resolves to the Authorized Banner
+        // Line Abbreviation after the banner-abbreviation fix. Guards S001
+        // long-form detection. CAPCO-2016 §H.4 p78 line 1792, §H.4 p83 line
+        // 1942, §D.1 p27 line 560.
+        assert_eq!(title_to_banner("SI-ECRU"), Some("SI-EU"));
+        assert_eq!(title_to_banner("SI-NONBOOK"), Some("SI-NK"));
     }
 
     #[test]
