@@ -40,11 +40,38 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::{AUDIT_SCHEMA_IS_V2_0, AUDIT_SCHEMA_VERSION, LintResult};
-use marque_rules::Diagnostic;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine, discriminant_from_source};
+use marque_rules::{Diagnostic, RuleId};
 use marque_scheme::{TokenSource, Vocabulary};
 use serde::Serialize;
 use std::path::Path;
+
+/// JSON projection of a [`RuleId`] as a `{scheme, predicate_id}` 2-tuple
+/// object (T044 PM OD-2 structured-object shape; `contracts/audit-record.md`
+/// "Post-`marque-1.0` RuleId migration" §128-176).
+///
+/// Borrows the two `&'static str` segments out of the `RuleId` without
+/// allocation. CLI text output uses the `Display` wire-string form
+/// (`<scheme>:<predicate_id>`); JSON output uses this structured object
+/// so audit-log consumers can filter on `scheme` directly (e.g.,
+/// `rule.scheme == "engine"` to surface engine-internal records).
+///
+/// Mirrored on the WASM side by `crates/wasm/src/lib.rs::RuleIdJson` for
+/// byte-identical NDJSON parity (SC-008).
+#[derive(Debug, Serialize)]
+pub struct RuleIdJson<'a> {
+    pub scheme: &'a str,
+    pub predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
+}
 
 /// Output format selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,7 +323,11 @@ fn paint(color: bool, style: AnsiStyle, text: &str) -> String {
 ///   `[engine-internal]` for sentinel sources.
 #[derive(Debug, Serialize)]
 pub struct DiagnosticJson<'a> {
-    pub rule: &'a str,
+    /// 2-tuple `RuleId` shape per T044 PM OD-2 (structured-object
+    /// `{scheme, predicate_id}`). Pre-T044 this was a flat
+    /// `"rule": "E001"` string; post-T044 it is
+    /// `"rule": {"scheme": "capco", "predicate_id": "..."}`.
+    pub rule: RuleIdJson<'a>,
     pub severity: &'a str,
     pub span: SpanJson,
     pub message: MessageJson<'a>,
@@ -340,7 +371,7 @@ pub struct FixJson<'a> {
 
 pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
@@ -469,7 +500,8 @@ pub struct AuditRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub schema: &'static str,
-    pub rule: &'a str,
+    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    pub rule: RuleIdJson<'a>,
     pub severity: &'static str,
     pub span: SpanJson,
     pub fix: AuditFixJson<'a>,
@@ -571,7 +603,8 @@ pub struct TextCorrectionRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub schema: &'static str,
-    pub rule: &'a str,
+    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    pub rule: RuleIdJson<'a>,
     pub severity: &'static str,
     pub span: SpanJson,
     pub original_digest: String,
@@ -774,7 +807,14 @@ fn project_message_to_json<'a>(
             serde_json::Value::Array(
                 m.contributing_rule_ids
                     .iter()
-                    .map(|r| serde_json::Value::String(r.as_str().to_owned()))
+                    // T044: `RuleId.as_str()` is removed; the canonical
+                    // wire-string form is `Display`-produced
+                    // `"<scheme>:<predicate_id>"`. The `args` field on
+                    // the `MessageArgs` projection is a partial-emit
+                    // map; keeping the value a string here matches the
+                    // existing shape (no behavior change for audit
+                    // consumers beyond the wire-string format).
+                    .map(|r| serde_json::Value::String(r.to_string()))
                     .collect(),
             ),
         );
@@ -812,7 +852,7 @@ pub fn applied_fix_to_audit_json_v1_0<'a>(
     AuditRecordJsonV1_0 {
         kind: "applied_fix",
         schema: AUDIT_SCHEMA_VERSION,
-        rule: fix.rule.as_str(),
+        rule: (&fix.rule).into(),
         severity: fix.severity.as_str(),
         span: SpanJson {
             start: fix.span.start,
@@ -836,7 +876,7 @@ pub fn text_correction_to_audit_json_v1_0<'a>(
     TextCorrectionRecordJsonV1_0 {
         kind: "text_correction",
         schema: AUDIT_SCHEMA_VERSION,
-        rule: tc.rule.as_str(),
+        rule: (&tc.rule).into(),
         severity: tc.severity.as_str(),
         span: SpanJson {
             start: tc.span.start,
@@ -925,10 +965,13 @@ pub fn render_audit_line(
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
     let _ = AUDIT_SCHEMA_IS_V2_0;
-    let rule_id: &str = match line {
-        AuditLine::AppliedFix(fix) => fix.rule.as_str(),
-        AuditLine::TextCorrection(tc) => tc.rule.as_str(),
-        _ => "unknown",
+    // T044: `RuleId.as_str()` is removed; the `Display` impl renders
+    // the canonical wire-string form `"<scheme>:<predicate_id>"`, which
+    // is what the error-frame fallback channel surfaces to humans.
+    let rule_id: String = match line {
+        AuditLine::AppliedFix(fix) => fix.rule.to_string(),
+        AuditLine::TextCorrection(tc) => tc.rule.to_string(),
+        _ => "unknown".to_owned(),
     };
     let serialized = serde_json::to_vec(&audit_line_to_json_v1_0(scheme, line));
     match serialized {
@@ -937,7 +980,7 @@ pub fn render_audit_line(
             stderr.write_all(&buf)
         }
         Err(e) => {
-            render_audit_error_frame(stderr, rule_id, &e.to_string())?;
+            render_audit_error_frame(stderr, &rule_id, &e.to_string())?;
             Err(std::io::Error::other(format!(
                 "audit record serialization failed for rule {rule_id}: {e}"
             )))
@@ -1010,7 +1053,7 @@ mod tests {
     use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
 
     fn make_diagnostic(
-        rule: &'static str,
+        rule: RuleId,
         span: Span,
         _message: &str,
         fix: Option<FixIntent<CapcoScheme>>,
@@ -1018,8 +1061,12 @@ mod tests {
         // PR 3c.2.C C5: typed Message + Citation. Test fixtures use a
         // generic template/citation; the test bodies inspect rule/span/
         // severity, not message content.
+        // T044: helper now takes a constructed `RuleId` directly so the
+        // 2-tuple form is visible at every call site (the `&'static str`
+        // single-arg shape was tied to the pre-T044 `RuleId::new(id)`
+        // constructor).
         Diagnostic::new(
-            RuleId::new(rule),
+            rule,
             Severity::Fix,
             span,
             Message::new(
@@ -1084,8 +1131,14 @@ mod tests {
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
         let fix = make_intent_fix();
+        // T044: legacy `E001` retired (PR 3c.B Commit 6); test fixture
+        // uses the canonical illustrative tuple
+        // `("capco", "banner.classification.usa-trigraph")` matching
+        // F1's lib.rs unit-test convention. The renderer's `[{}]`
+        // formatter now emits the `Display` wire-string form
+        // `<scheme>:<predicate_id>`.
         let diag = make_diagnostic(
-            "E001",
+            RuleId::new("capco", "banner.classification.usa-trigraph"),
             span,
             "banner uses abbreviated dissem control \"NF\"; use \"NOFORN\"",
             Some(fix),
@@ -1099,7 +1152,11 @@ mod tests {
         // PR 3c.2.C C5: the message column renders the closed-template
         // label, no longer a free-form sentence; `make_diagnostic`
         // uses `MessageTemplate::BannerRollupMismatch`.
-        assert!(rendered.contains("banner.txt:1:17 fix[E001]"));
+        // T044: the rule label is the wire-string form
+        // `"<scheme>:<predicate_id>"` (Display impl) per PM OD-3.
+        assert!(rendered.contains(
+            "banner.txt:1:17 fix[capco:banner.classification.usa-trigraph]"
+        ));
         assert!(rendered.contains("BannerRollupMismatch"));
         // Location arrow
         assert!(rendered.contains("--> banner.txt:1:17-19"));
@@ -1130,7 +1187,13 @@ mod tests {
     fn render_human_without_color_has_no_ansi_escapes() {
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        let diag = make_diagnostic("E001", span, "test", None);
+        // T044: 2-tuple form; see canonical-illustrative comment above.
+        let diag = make_diagnostic(
+            RuleId::new("capco", "banner.classification.usa-trigraph"),
+            span,
+            "test",
+            None,
+        );
 
         let mut out = Vec::new();
         render_human(&mut out, "x.txt", src, &diag, false).unwrap();
@@ -1145,7 +1208,13 @@ mod tests {
     fn render_human_with_color_emits_ansi_escapes() {
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        let diag = make_diagnostic("E001", span, "test", None);
+        // T044: 2-tuple form; see canonical-illustrative comment above.
+        let diag = make_diagnostic(
+            RuleId::new("capco", "banner.classification.usa-trigraph"),
+            span,
+            "test",
+            None,
+        );
 
         let mut out = Vec::new();
         render_human(&mut out, "x.txt", src, &diag, true).unwrap();
@@ -1169,7 +1238,13 @@ mod tests {
         // emits the same label under `message.template`.
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        let diag = make_diagnostic("E001", span, "test message", None);
+        // T044: 2-tuple form; see canonical-illustrative comment above.
+        let diag = make_diagnostic(
+            RuleId::new("capco", "banner.classification.usa-trigraph"),
+            span,
+            "test message",
+            None,
+        );
         let template_label = diag.message.template().as_str();
 
         let mut human_out = Vec::new();
@@ -1199,7 +1274,9 @@ mod tests {
         let src = b"SECRET//XYZZY//NOFORN\n";
         let span = Span::new(8, 13);
         let diag = Diagnostic::new(
-            RuleId::new("E008"),
+            // T044: `E008` → `("capco", "marking.metadata.unrecognized-token")`
+            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+            RuleId::new("capco", "marking.metadata.unrecognized-token"),
             Severity::Error,
             span,
             Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default()),
@@ -1226,7 +1303,9 @@ mod tests {
         let span = Span::new(20, 23);
         let fix = make_intent_fix();
         let diag = Diagnostic::new(
-            RuleId::new("S004"),
+            // T044: `S004` → `("capco", "portion.dissem.rel-to-trigraph-suggest")`
+            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+            RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest"),
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
@@ -1239,9 +1318,11 @@ mod tests {
         let rendered = String::from_utf8(out).unwrap();
 
         // Header carries the "suggest" level string, not "error" / "fix".
+        // T044: header includes the wire-string form `<scheme>:<predicate_id>`.
+        let expected_header = "suggest[capco:portion.dissem.rel-to-trigraph-suggest]";
         assert!(
-            rendered.contains("suggest[S004]"),
-            "header must read suggest[S004]; got:\n{rendered}"
+            rendered.contains(expected_header),
+            "header must read {expected_header}; got:\n{rendered}"
         );
         // PR 3c.2.C C5: the fixture uses `make_intent_fix()` (a
         // `FixIntent` carrying a structural `Recanonicalize` intent),
@@ -1271,7 +1352,8 @@ mod tests {
         let span = Span::new(20, 23);
         let fix = make_intent_fix();
         let diag = Diagnostic::new(
-            RuleId::new("S004"),
+            // T044: see canonical map row for `S004`.
+            RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest"),
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
@@ -1307,7 +1389,11 @@ mod tests {
         let src = b"SECRET//REL TO USA, FVEY\n";
         let span = Span::new(20, 24);
         let diag = Diagnostic::new(
-            RuleId::new("S999"),
+            // T044: `S999` → `("test", "synthetic.s999-fixture")` per
+            // `docs/refactor-006/legacy-rule-id-map.md` §10 (reserved
+            // `test` scheme for synthetic Constitution V Principle V
+            // test-fixture identifiers).
+            RuleId::new("test", "synthetic.s999-fixture"),
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
@@ -1326,9 +1412,10 @@ mod tests {
         render_human(&mut out, "rel.txt", src, &diag, false).unwrap();
         let rendered = String::from_utf8(out).unwrap();
 
+        // T044: rule label is the wire-string form.
         assert!(
-            rendered.contains("suggest[S999]"),
-            "Suggest with no fix still renders header at suggest level"
+            rendered.contains("suggest[test:synthetic.s999-fixture]"),
+            "Suggest with no fix still renders header at suggest level; got:\n{rendered}"
         );
         assert!(
             !rendered.contains("did you mean"),
@@ -1349,7 +1436,8 @@ mod tests {
         let span = Span::new(0, 3);
         let fix = make_intent_fix();
         let diag = Diagnostic::new(
-            RuleId::new("S004"),
+            // T044: see canonical map row for `S004`.
+            RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest"),
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
@@ -1359,7 +1447,12 @@ mod tests {
 
         let json = diagnostic_to_json(&diag);
         assert_eq!(json.severity, "suggest");
-        assert_eq!(json.rule, "S004");
+        // T044 PM OD-2: `json.rule` is the structured-object form
+        // `RuleIdJson { scheme, predicate_id }` (not a flat string).
+        // The NDJSON serializes it as
+        // `"rule": {"scheme": "capco", "predicate_id": "..."}`.
+        assert_eq!(json.rule.scheme, "capco");
+        assert_eq!(json.rule.predicate_id, "portion.dissem.rel-to-trigraph-suggest");
         // Fix payload is preserved on the wire so a downstream
         // consumer can render the candidate replacement themselves.
         assert!(json.fix.is_some());
@@ -1440,7 +1533,9 @@ mod tests {
         // synthetic AppliedFix for renderer exercise only.
         let token = EnginePromotionToken::__engine_construct();
         let applied = AuditAppliedFix::<CapcoScheme>::__engine_promote(
-            RuleId::new("E002"),
+            // T044: `E002` → `("capco", "portion.dissem.rel-to-missing-usa")`
+            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+            RuleId::new("capco", "portion.dissem.rel-to-missing-usa"),
             marque_rules::Severity::Fix,
             Span::new(8, 10),
             fix,
@@ -1465,7 +1560,9 @@ mod tests {
         // Top-level marque-1.0 shape per contract §107-178.
         assert_eq!(v["type"], "applied_fix");
         assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
-        assert_eq!(v["rule"], "E002");
+        // T044 PM OD-2: structured-object `rule` shape on the wire.
+        assert_eq!(v["rule"]["scheme"], "capco");
+        assert_eq!(v["rule"]["predicate_id"], "portion.dissem.rel-to-missing-usa");
         assert_eq!(v["severity"], "fix");
         assert_eq!(v["span"]["start"], 8);
         assert_eq!(v["span"]["end"], 10);
@@ -1561,7 +1658,9 @@ mod tests {
         // Test-fixture carve-out per Constitution V Principle V.
         let token = EnginePromotionToken::__engine_construct();
         let tc = AppliedTextCorrection::__engine_promote_text_correction(
-            RuleId::new("C001"),
+            // T044: `C001` → `("capco", "marking.correction.token-typo")`
+            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+            RuleId::new("capco", "marking.correction.token-typo"),
             Severity::Fix,
             Span::new(0, 6),
             original_digest,
@@ -1587,7 +1686,9 @@ mod tests {
         // Per contract §388-402.
         assert_eq!(v["type"], "text_correction");
         assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
-        assert_eq!(v["rule"], "C001");
+        // T044 PM OD-2: structured-object `rule` shape on the wire.
+        assert_eq!(v["rule"]["scheme"], "capco");
+        assert_eq!(v["rule"]["predicate_id"], "marking.correction.token-typo");
         assert_eq!(v["severity"], "fix");
         assert_eq!(v["span"]["start"], 0);
         assert_eq!(v["span"]["end"], 6);
