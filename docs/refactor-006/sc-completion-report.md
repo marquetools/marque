@@ -91,7 +91,7 @@ even though the load-bearing assertion still holds.
 - **Check kind**: `corpus`
 - **Check ref**: `crates/capco/tests/category_lattice_laws.rs`
 - **Evidence**: 12 lattice types in `marque-capco::lattice` covered by assoc/comm/idem/identity-with-bottom property tests. Compile-time pin at `crates/capco/tests/lattice_static_assertions.rs` locks 12 Join + 9 Meet + 2 BoundedJoin + 2 BoundedMeet trait-impl shape via `static_assertions::assert_impl_all!` + `assert_not_impl_any!(MeetSemilattice)` for the three Join-only types (DissemSet / JointSet / DisplayOnlyBlock). `SupersessionSet` lives in `marque-scheme` and is also Join-only by audit (PR #538) — its compile-time pin is deferred to issue #665 because adding tests under `crates/scheme/` requires authorized engine-crate touch (Constitution VII §IV).
-- **Notes**: Landed across PR 4b umbrella + PR 4 tests closeout (T116 2026-05-19). PR #456 split `Lattice` into `JoinSemilattice + MeetSemilattice` halves; Join-only types deliberately reject `.meet()` calls at type-system level (stronger than runtime test).
+- **Notes**: Landed across PR 4b umbrella + PR 4 tests closeout (T116 2026-05-19). The `Lattice` trait split (issue #456 / PR #502) divided `Lattice` into `JoinSemilattice + MeetSemilattice` halves; Join-only types deliberately reject `.meet()` calls at type-system level (stronger than runtime test).
 
 ### SC-005 — Citation-lint resolves 100% of references (zero defects)
 

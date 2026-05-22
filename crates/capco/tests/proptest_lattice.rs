@@ -12,8 +12,9 @@
 //! # Audit coverage (decisions.md D24 follow-up)
 //!
 //! In addition to the original `SciSet`, `SarSet`, `FgiSet`, and `RelToBlock`
-//! tests, this file covers the three per-axis types identified by PR #456 as
-//! carrying join-side observational state:
+//! tests, this file covers the three per-axis types identified by the
+//! `Lattice` trait split (issue #456 / PR #502) as carrying join-side
+//! observational state:
 //!
 //! - **`DissemSet`** — `relido_observed_unanimous` flag; tests verify that
 //!   `join(a, a) == a` under structural `Eq` across all reachable states.
