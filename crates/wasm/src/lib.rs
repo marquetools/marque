@@ -835,11 +835,14 @@ struct BatchResultEntry<'a> {
 /// [`wasm_config_from_value`]. The retirement targets the WASM bundle
 /// size — the `HashMap<String, String>` `Deserialize` monomorphization
 /// alone was ~3-4 KB before linker dedup, and the per-field
-/// `Visitor`/`__Field` scaffolding accounted for another ~3 KB. The
-/// explicit `obj.get(...)` form additionally tightens the
-/// runtime-config surface relative to the derive (the closed
-/// accept-list is enumerated at the call site, not implied by the
-/// struct shape).
+/// `Visitor`/`__Field` scaffolding accounted for another ~3 KB.
+///
+/// The post-R2 surface matches the pre-R2 Derive exactly — the same
+/// four field names, the same `Option<T>` shape, the same loud-failure
+/// behavior on type mismatch, and the same silent-ignore behavior on
+/// unknown fields. The R2 change is structural (binary-size cut +
+/// improved error messages with field names), NOT a tightening of the
+/// runtime-config surface.
 ///
 /// **Field-naming constraint (R2 / #689)**: `WasmConfig` field names
 /// MUST remain in alphabetical order relative to their
@@ -1058,6 +1061,28 @@ fn build_engine_config(wasm_cfg: WasmConfig) -> Result<Config, String> {
 /// deadline-only invocation hits the same cache slot as a no-config
 /// invocation.
 ///
+/// **Hot-path note.** This runs on every `parse_wasm_config` call —
+/// which means every `lint_native` / `fix_native` JS-API entry —
+/// regardless of whether the resulting cache key hits or misses the
+/// engine cache (the key has to be built before the lookup can
+/// happen). The implementation clones the `corrections` keys and
+/// values into a `serde_json::Map<String, Value::String>` projection
+/// rather than emitting from borrowed `&str` pairs directly. A
+/// borrow-preserving alternative (sort a `Vec<(&str,&str)>` and
+/// write JSON manually) was empirically tested against PR #697's
+/// Copilot review and REGRESSED WASM bundle size by ~6.5 KB —
+/// the `serde_json::Map`/`Value::Object`/`to_string::<Value>` path
+/// reuses serde_json machinery already monomorphized for the
+/// Diagnostic JSON output side of this crate, while the manual-write
+/// approach forces fresh monomorphizations of
+/// `serde_json::to_string::<str>` and a longer push-based code path.
+/// Per the LTO+ICF lesson from R1's `sorted_entries` revert
+/// (PR #696): empirical measurement, not theoretical clone count,
+/// drives the binary size; the per-call clones here are O(n) in
+/// `corrections.len()` and bounded by the input map (typically
+/// 5-20 entries) — the runtime cost is small while the binary
+/// savings are dominant.
+///
 /// Builds a `serde_json::Map` directly and serializes it; the
 /// previously-derived `#[derive(Serialize)] WasmConfigCacheKey` was
 /// retired in R2 (#689 follow-up) to cut WASM-bundle size.
@@ -1101,7 +1126,9 @@ fn build_cache_key(cfg: &WasmConfig) -> Result<Option<String>, String> {
         // `#[derive(Serialize)] WasmConfigCacheKey` path (which used
         // `serialize_f32` directly). The format-then-parse roundtrip
         // here is cheap (one short alloc, one parse of a known-valid
-        // numeric literal) and runs only on engine-cache-miss.
+        // numeric literal) and runs on every `parse_wasm_config`
+        // call where `confidence_threshold` is set — NOT only on
+        // engine-cache miss (clarified per PR #697 Copilot review).
         let formatted = serde_json::to_string(&threshold).map_err(|e| e.to_string())?;
         let parsed: serde_json::Value =
             serde_json::from_str(&formatted).map_err(|e| e.to_string())?;
