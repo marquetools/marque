@@ -9,7 +9,7 @@
 //!
 //! Five proptest blocks covering all 5 rows of `SCI_PER_SYSTEM_CATALOG`:
 //!
-//! - **Row #1** `sci-per-system/HCS-O-companions` — HCS-O with US
+//! - **Row #1** `marking.sci.hcs-o-companions` — HCS-O with US
 //!   classification; ORCON + NOFORN required, ORCON-USGOV forbidden. §H.4 p64.
 //! - **Row #2** `sci-per-system/HCS-P-NOFORN` — HCS-P (bare or sub) with
 //!   US classification; NOFORN required. §H.4 p66.
@@ -272,7 +272,7 @@ fn has_us_classification(attrs: &CanonicalAttrs) -> bool {
     attrs.us_classification().is_some()
 }
 
-/// Oracle for `sci-per-system/HCS-O-companions`:
+/// Oracle for `marking.sci.hcs-o-companions`:
 /// HCS-O present + US classified + (ORCON or ORCON-USGOV absent) OR NOFORN absent.
 /// Fires when ORCON or NOFORN is missing. §H.4 p64.
 ///
@@ -416,7 +416,7 @@ proptest! {
     #[test]
     fn hcs_o_companions_matches_oracle(attrs in arb_attrs_hcs_o()) {
         prop_assert_eq!(
-            fires_via_dispatch("sci-per-system/HCS-O-companions", &attrs),
+            fires_via_dispatch("marking.sci.hcs-o-companions", &attrs),
             oracle_hcs_o_companions(&attrs),
             "HCS-O-companions dispatch vs oracle diverged"
         );
@@ -436,7 +436,7 @@ proptest! {
     #[test]
     fn hcs_p_noforn_matches_oracle(attrs in arb_attrs_hcs_p_noforn()) {
         prop_assert_eq!(
-            fires_via_dispatch("sci-per-system/HCS-P-NOFORN", &attrs),
+            fires_via_dispatch("marking.sci.hcs-p-noforn-required", &attrs),
             oracle_hcs_p_noforn(&attrs),
             "HCS-P-NOFORN dispatch vs oracle diverged"
         );
@@ -456,7 +456,7 @@ proptest! {
     #[test]
     fn hcs_p_sub_companions_matches_oracle(attrs in arb_attrs_hcs_p_sub()) {
         prop_assert_eq!(
-            fires_via_dispatch("sci-per-system/HCS-P-sub-companions", &attrs),
+            fires_via_dispatch("marking.sci.hcs-p-sub-companions", &attrs),
             oracle_hcs_p_sub_companions(&attrs),
             "HCS-P-sub-companions dispatch vs oracle diverged"
         );
@@ -476,7 +476,7 @@ proptest! {
     #[test]
     fn si_g_companions_matches_oracle(attrs in arb_attrs_si_g()) {
         prop_assert_eq!(
-            fires_via_dispatch("sci-per-system/SI-G-companions", &attrs),
+            fires_via_dispatch("marking.sci.si-g-companions", &attrs),
             oracle_si_g_companions(&attrs),
             "SI-G-companions dispatch vs oracle diverged"
         );
@@ -496,7 +496,7 @@ proptest! {
     #[test]
     fn tk_compartment_noforn_matches_oracle(attrs in arb_attrs_tk_noforn()) {
         prop_assert_eq!(
-            fires_via_dispatch("sci-per-system/TK-compartment-NOFORN", &attrs),
+            fires_via_dispatch("marking.sci.tk-compartment-noforn-required", &attrs),
             oracle_tk_compartment_noforn(&attrs),
             "TK-compartment-NOFORN dispatch vs oracle diverged"
         );

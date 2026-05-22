@@ -1,5 +1,5 @@
 {
   "diagnostics": [
-    {"rule": "W003", "span": {"start": 16, "end": 22}}
+    {"rule": {"scheme": "capco", "predicate_id": "page.dissem.non-ic-dissem-in-classified-banner"}, "span": {"start": 16, "end": 22}}
   ]
 }

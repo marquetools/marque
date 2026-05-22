@@ -47,13 +47,19 @@ fn diagnostics_for(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::
 fn e073_diags(
     diags: &[marque_rules::Diagnostic<marque_capco::CapcoScheme>],
 ) -> Vec<&marque_rules::Diagnostic<marque_capco::CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.as_str() == "E073").collect()
+    diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "marking.fgi.invalid-ownership-token")
+        .collect()
 }
 
 fn e008_diags(
     diags: &[marque_rules::Diagnostic<marque_capco::CapcoScheme>],
 ) -> Vec<&marque_rules::Diagnostic<marque_capco::CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.as_str() == "E008").collect()
+    diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token")
+        .collect()
 }
 
 fn citation_contains(
@@ -77,7 +83,7 @@ fn e073_fires_on_fvey_ownership_token() {
         "(S//FGI FVEY) must emit exactly one E073 diagnostic; got diagnostics={:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
     let d = e073[0];
@@ -100,7 +106,7 @@ fn e073_fires_on_fvey_ownership_token() {
         "E008 must not co-fire on the same FGI-marker span; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -167,7 +173,7 @@ fn e073_fires_on_source_segregated_portion_form() {
         "source-segregated form must still emit E073 on invalid token; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
     assert_eq!(e073[0].severity, Severity::Error);
@@ -194,7 +200,7 @@ fn e073_fires_only_on_invalid_token_in_mixed_list() {
         "mixed valid+invalid list must emit exactly one E073 (on FVEY); got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
     assert_eq!(e073[0].severity, Severity::Error);
@@ -214,7 +220,7 @@ fn e073_does_not_fire_on_nato_ownership_token() {
         "valid NATO ownership token must not emit E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -229,7 +235,7 @@ fn e073_does_not_fire_on_eu_ownership_token() {
         "valid EU ownership token must not emit E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -244,7 +250,7 @@ fn e073_does_not_fire_on_canonical_sovereign_trigraph() {
         "valid sovereign trigraph DEU must not emit E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -270,7 +276,7 @@ fn e073_does_not_co_fire_on_lowercase_trigraph_decoder_route() {
          R001 owns this surface. got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -293,7 +299,7 @@ fn e073_fires_on_banner_form_with_invalid_ownership_token() {
          exactly one E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
     assert_eq!(e073[0].severity, Severity::Error);
@@ -318,7 +324,7 @@ fn e073_fires_on_long_form_marker_with_invalid_ownership_token() {
          one E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
     assert_eq!(e073[0].severity, Severity::Error);
@@ -344,7 +350,7 @@ fn e073_emits_one_diagnostic_per_invalid_token() {
          diagnostics; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
     assert!(
@@ -392,7 +398,7 @@ fn e073_does_not_fire_on_multi_token_valid_list() {
         "valid multi-token FGI list must not emit E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -430,7 +436,7 @@ fn e073_does_not_fire_on_long_form_valid_banner() {
          E073; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 }
@@ -466,7 +472,7 @@ fn e073_does_not_suppress_e008_on_unrelated_unknown_tokens() {
         "E073 must fire on the FGI FVEY marker; got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 
@@ -481,7 +487,7 @@ fn e073_does_not_suppress_e008_on_unrelated_unknown_tokens() {
          other Unknown spans in the same portion. Got {:?}",
         diags
             .iter()
-            .map(|d| (d.rule.as_str(), d.severity))
+            .map(|d| (d.rule.predicate_id(), d.severity))
             .collect::<Vec<_>>(),
     );
 
@@ -517,12 +523,12 @@ fn e073_lint_is_idempotent() {
     let first_ids: Vec<(String, Severity)> = first
         .diagnostics
         .iter()
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect();
     let second_ids: Vec<(String, Severity)> = second
         .diagnostics
         .iter()
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect();
     assert_eq!(
         first_ids, second_ids,

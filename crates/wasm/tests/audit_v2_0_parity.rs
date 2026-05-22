@@ -2,18 +2,24 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T088 / SC-008 — `marque-1.0` audit-record byte-identity parity.
+//! T088 / SC-008 — `marque-2.0` audit-record byte-identity parity.
 //!
 //! PR 3c.2.D / D5 binding constraint: the CLI's
 //! `marque::render::render_audit_line` and the WASM crate's
 //! `audit_line_to_json_v1_0` MUST produce byte-identical NDJSON for
 //! every `AuditLine<CapcoScheme>` value the engine emits. This test
 //! exercises the WASM-side projection through every variant of the
-//! v1.0 shape — strict / decoder discriminants, AppliedFix /
+//! v2.0 shape — strict / decoder discriminants, AppliedFix /
 //! TextCorrection arms, optional-field null-emit, MessageArgs
 //! partial-emit — and validates the contract-shape invariants per
 //! `specs/006-engine-rule-refactor/contracts/audit-record.md`
 //! §107-178 (AppliedFix) + §388-402 (TextCorrection).
+//!
+//! T044: schema-version cutover `marque-1.0` → `marque-2.0` carries
+//! the 2-tuple `RuleId` shape. The `rule` field on the wire is now
+//! a structured `{scheme, predicate_id}` object per PM OD-2. The
+//! file is renamed from `audit_v1_0_parity.rs` to track the schema
+//! label.
 //!
 //! Test-fixture construction uses [`marque_rules::AppliedFix::__engine_promote`]
 //! and [`marque_rules::audit::AppliedTextCorrection::__engine_promote_text_correction`]
@@ -24,7 +30,7 @@
 //! The CLI-vs-WASM byte-identity at the production emit boundary is
 //! verified end-to-end by `tests/parity.rs` and `tests/native_parity.rs`
 //! which drive the same engine through both surfaces. This test
-//! focuses on the v1.0 shape's structural correctness across the
+//! focuses on the v2.0 shape's structural correctness across the
 //! audit-record variants.
 //!
 //! Native-only target — `target_arch = "wasm32"` cannot host this
@@ -45,6 +51,27 @@ use marque_scheme::fix_intent::RecanonScope;
 use marque_scheme::{CategoryId, ReplacementIntent, Scope};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
+
+// T044: `RuleId` constants used across the parity tests. Pre-T044
+// these were flat `&'static str` rule-ID labels (`"E002"`, `"R001"`,
+// `"E006"`, `"C001"`); post-T044 they are 2-tuple values per
+// `docs/refactor-006/legacy-rule-id-map.md`.
+//
+// Defined at module scope so each test reads as a one-liner like
+// `synth_applied_fix(RULE_E002, ...)` rather than re-spelling the
+// tuple at every call site. `RuleId` is `Copy` so passing by value
+// has no cost.
+//
+// **Reserved-scheme note**: `R001` historically named an engine-minted
+// decoder-recognition diagnostic; under T044 its canonical 2-tuple is
+// `("engine", "recognition.decoder-recognized")` per the
+// `legacy-rule-id-map.md` §7 reserved-scheme convention. The parity
+// fixture below preserves the engine-scheme identity since the audit
+// record's provenance routes through the `Discriminant::Decoder` arm
+// regardless of which `(scheme, predicate_id)` carries it.
+const RULE_E002: RuleId = RuleId::new("capco", "portion.dissem.rel-to-missing-usa");
+const RULE_E006: RuleId = RuleId::new("capco", "marking.deprecation.deprecated-dissem-control");
+const RULE_R001_DECODER: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
 
 /// Build the synthetic `FixIntent<CapcoScheme>` for a Recanonicalize fix.
 fn make_recanonicalize_intent() -> FixIntent<CapcoScheme> {
@@ -68,8 +95,12 @@ fn make_recanonicalize_intent() -> FixIntent<CapcoScheme> {
 /// `__engine_promote`'s engine-only seal — test code MAY construct
 /// synthetic audit-record fixtures inside integration-test contexts
 /// to exercise renderers, never commingled with engine output.
+///
+/// T044: the `rule` parameter is a constructed [`RuleId`] (2-tuple
+/// `(scheme, predicate_id)`) rather than a flat `&'static str` so each
+/// call site shows the structured shape explicitly.
 fn synth_applied_fix(
-    rule: &'static str,
+    rule: RuleId,
     source: FixSource,
     classifier_id: Option<Arc<str>>,
     dry_run: bool,
@@ -91,7 +122,7 @@ fn synth_applied_fix(
     // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
     AuditAppliedFix::<CapcoScheme>::__engine_promote(
-        RuleId::new(rule),
+        rule,
         Severity::Fix,
         Span::new(8, 10),
         intent,
@@ -116,7 +147,9 @@ fn synth_text_correction(
     // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
     AppliedTextCorrection::__engine_promote_text_correction(
-        RuleId::new("C001"),
+        // T044: `C001` → `("capco", "marking.correction.token-typo")`
+        // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+        RuleId::new("capco", "marking.correction.token-typo"),
         Severity::Fix,
         Span::new(0, 6),
         original_digest,
@@ -156,7 +189,7 @@ fn validate_contract_shape(value: &serde_json::Value, expected_type: &str) {
 fn applied_fix_strict_discriminant_full_context() {
     // FixSource::BuiltinRule routes to Discriminant::Strict per PM-D-7.
     let fix = synth_applied_fix(
-        "E002",
+        RULE_E002,
         FixSource::BuiltinRule,
         Some(Arc::from("classifier-42")),
         false,
@@ -165,7 +198,12 @@ fn applied_fix_strict_discriminant_full_context() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     validate_contract_shape(&v, "applied_fix");
-    assert_eq!(v["rule"], "E002");
+    // T044 PM OD-2: structured-object `rule` shape on the wire.
+    assert_eq!(v["rule"]["scheme"], "capco");
+    assert_eq!(
+        v["rule"]["predicate_id"],
+        "portion.dissem.rel-to-missing-usa"
+    );
     assert_eq!(v["severity"], "fix");
     assert_eq!(v["fix"]["replacement"]["discriminant"], "strict");
     assert_eq!(v["classifier_id"], "classifier-42");
@@ -177,7 +215,7 @@ fn applied_fix_strict_discriminant_full_context() {
 fn applied_fix_decoder_discriminant_full_context() {
     // FixSource::DecoderPosterior routes to Discriminant::Decoder.
     let fix = synth_applied_fix(
-        "R001",
+        RULE_R001_DECODER,
         FixSource::DecoderPosterior,
         Some(Arc::from("classifier-42")),
         false,
@@ -193,7 +231,7 @@ fn applied_fix_decoder_discriminant_full_context() {
 fn applied_fix_decoder_classification_heuristic_routes_to_decoder() {
     // FixSource::DecoderClassificationHeuristic also maps to "decoder".
     let fix = synth_applied_fix(
-        "R001",
+        RULE_R001_DECODER,
         FixSource::DecoderClassificationHeuristic,
         None,
         false,
@@ -207,7 +245,7 @@ fn applied_fix_decoder_classification_heuristic_routes_to_decoder() {
 #[test]
 fn applied_fix_migration_table_routes_to_strict() {
     // FixSource::MigrationTable also maps to "strict" per PM-D-7.
-    let fix = synth_applied_fix("E006", FixSource::MigrationTable, None, false, None);
+    let fix = synth_applied_fix(RULE_E006, FixSource::MigrationTable, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     assert_eq!(v["fix"]["replacement"]["discriminant"], "strict");
@@ -216,7 +254,7 @@ fn applied_fix_migration_table_routes_to_strict() {
 #[test]
 fn applied_fix_classifier_id_absent_emits_null() {
     let fix = synth_applied_fix(
-        "E002",
+        RULE_E002,
         FixSource::BuiltinRule,
         None,
         false,
@@ -233,7 +271,7 @@ fn applied_fix_classifier_id_absent_emits_null() {
 #[test]
 fn applied_fix_input_absent_emits_null() {
     let fix = synth_applied_fix(
-        "E002",
+        RULE_E002,
         FixSource::BuiltinRule,
         Some(Arc::from("classifier-42")),
         false,
@@ -250,7 +288,7 @@ fn applied_fix_input_absent_emits_null() {
 #[test]
 fn applied_fix_dry_run_toggles() {
     for &dry in &[true, false] {
-        let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, dry, None);
+        let fix = synth_applied_fix(RULE_E002, FixSource::BuiltinRule, None, dry, None);
         let line = AuditLine::AppliedFix(fix);
         let v = project(&line);
         assert_eq!(
@@ -265,7 +303,8 @@ fn applied_fix_strict_path_canonical_open_vocab_shape() {
     // The Recanonicalize fixture routes through CategoryId::MARKING →
     // open_vocab path. Validate the open_vocab arm carries category +
     // render_call_site + bytes_digest (no token_id).
-    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
+    let fix = synth_applied_fix(RULE_E002, FixSource::BuiltinRule, None, false, None);
+
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let canonical = &v["fix"]["replacement"]["canonical"];
@@ -290,7 +329,8 @@ fn applied_fix_strict_path_canonical_open_vocab_shape() {
 
 #[test]
 fn applied_fix_confidence_round_trip() {
-    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
+    let fix = synth_applied_fix(RULE_E002, FixSource::BuiltinRule, None, false, None);
+
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let confidence = &v["fix"]["replacement"]["confidence"];
@@ -311,7 +351,8 @@ fn applied_fix_confidence_round_trip() {
 
 #[test]
 fn applied_fix_message_default_args_emit_empty_map() {
-    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
+    let fix = synth_applied_fix(RULE_E002, FixSource::BuiltinRule, None, false, None);
+
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let message = &v["message"];
@@ -351,7 +392,8 @@ fn applied_fix_message_populated_args_round_trip() {
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V Principle V (continued).
     let fix = AuditAppliedFix::<CapcoScheme>::__engine_promote(
-        RuleId::new("E006"),
+        // T044: see `RULE_E006` const above.
+        RULE_E006,
         Severity::Warn,
         Span::new(0, 5),
         intent,
@@ -386,7 +428,9 @@ fn text_correction_arm_round_trip_full_context() {
     let line = AuditLine::TextCorrection(tc);
     let v = project(&line);
     validate_contract_shape(&v, "text_correction");
-    assert_eq!(v["rule"], "C001");
+    // T044 PM OD-2: structured-object `rule` shape on the wire.
+    assert_eq!(v["rule"]["scheme"], "capco");
+    assert_eq!(v["rule"]["predicate_id"], "marking.correction.token-typo");
     assert_eq!(v["severity"], "fix");
     assert_eq!(v["replacement"], "SECRET");
     assert_eq!(v["source"], "CorrectionsMap");
@@ -433,7 +477,7 @@ fn project_preserves_record_kind_dispatch() {
     // top-level `type` field. This is the dispatcher discipline per
     // contract §107 vs §388.
     let fix_line = AuditLine::AppliedFix(synth_applied_fix(
-        "E002",
+        RULE_E002,
         FixSource::BuiltinRule,
         None,
         false,
@@ -457,7 +501,8 @@ fn fix_record_carries_original_digest_blake3_prefix() {
     // Constitution V Principle V — G13 invariant. The audit record's
     // original_digest field MUST be "blake3:<hex>"; bytes themselves
     // never appear in the audit output.
-    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
+    let fix = synth_applied_fix(RULE_E002, FixSource::BuiltinRule, None, false, None);
+
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let digest = v["fix"]["original_digest"].as_str().unwrap();

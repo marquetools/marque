@@ -106,15 +106,15 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
     vec![
         // ---- §2.1 Floor TS — single classification level (5 rows) -
         Constraint::Custom {
-            name: "class-floor/HCS-comp-sub",
+            name: "banner.classification.floor-hcs-comp-sub",
             label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
-            name: "class-floor/SI-comp",
+            name: "banner.classification.floor-si-comp",
             label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
-            name: "class-floor/TK-BLFH",
+            name: "banner.classification.floor-tk-blfh",
             label: capco(SectionLetter::H, 4, 60),
         },
         // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
@@ -128,32 +128,32 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // Appendix B is the NATO classification ladder
         // appendix, not the BALK/BOHEMIA registration.
         Constraint::Custom {
-            name: "class-floor/BALK",
+            name: "banner.classification.floor-balk",
             label: capco(SectionLetter::G, 2, 40),
         },
         Constraint::Custom {
-            name: "class-floor/BOHEMIA",
+            name: "banner.classification.floor-bohemia",
             label: capco(SectionLetter::G, 2, 40),
         },
         // ---- §2.2 Floor S — TS-or-S allowed (8 rows) --------------
         Constraint::Custom {
-            name: "class-floor/HCS-comp",
+            name: "banner.classification.floor-hcs-comp",
             label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
-            name: "class-floor/RSV-comp",
+            name: "banner.classification.floor-rsv-comp",
             label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
-            name: "class-floor/TK",
+            name: "banner.classification.floor-tk",
             label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
-            name: "class-floor/RD-SG",
+            name: "banner.aea.floor-rd-sg",
             label: capco(SectionLetter::H, 6, 113),
         },
         Constraint::Custom {
-            name: "class-floor/FRD-SG",
+            name: "banner.aea.floor-frd-sg",
             label: capco(SectionLetter::H, 6, 113),
         },
         // CNWDI — replaces retired E022. Per PM directive #5 + the
@@ -164,38 +164,38 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // E022 rule ID is not preserved — users keying `.marque.toml`
         // at `E022` will need to migrate to `E058`.
         Constraint::Custom {
-            name: "E058/CNWDI-classification-floor",
+            name: "banner.aea.floor-cnwdi",
             label: capco(SectionLetter::H, 6, 104),
         },
         Constraint::Custom {
-            name: "class-floor/RSEN",
+            name: "banner.dissem.floor-rsen",
             label: capco(SectionLetter::H, 8, 149),
         },
         Constraint::Custom {
-            name: "class-floor/IMCON",
+            name: "banner.dissem.floor-imcon",
             label: capco(SectionLetter::H, 8, 144),
         },
         // ---- §2.3 Floor C — any classified level (8 rows) --------
         Constraint::Custom {
-            name: "class-floor/SI",
+            name: "banner.classification.floor-si",
             label: capco(SectionLetter::H, 4, 60),
         },
         // SAR — replaces retired E027. Walker-prefixed name per PM
         // directive #5.
         Constraint::Custom {
-            name: "E058/SAR-classification-floor",
+            name: "banner.classification.floor-sar",
             label: capco(SectionLetter::H, 5, 99),
         },
         Constraint::Custom {
-            name: "class-floor/RD",
+            name: "banner.aea.floor-rd",
             label: capco(SectionLetter::H, 6, 104),
         },
         Constraint::Custom {
-            name: "class-floor/FRD",
+            name: "banner.aea.floor-frd",
             label: capco(SectionLetter::H, 6, 104),
         },
         Constraint::Custom {
-            name: "class-floor/TFNI",
+            name: "banner.aea.floor-tfni",
             label: capco(SectionLetter::H, 6, 107),
         },
         // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
@@ -205,15 +205,15 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // the canonical AEA-axis placement (paralleling §H.6's
         // RD/CNWDI worked-example citations).
         Constraint::Custom {
-            name: "class-floor/ATOMAL",
+            name: "banner.aea.floor-atomal",
             label: capco(SectionLetter::H, 7, 122),
         },
         Constraint::Custom {
-            name: "class-floor/ORCON",
+            name: "banner.dissem.floor-orcon",
             label: capco(SectionLetter::H, 8, 136),
         },
         Constraint::Custom {
-            name: "class-floor/EYES-ONLY",
+            name: "banner.dissem.floor-eyes-only",
             label: capco(SectionLetter::H, 8, 152),
         },
         // ---- §2.4 Floor =U — UNCLASSIFIED-only (2 rows; UCNI split) -
@@ -223,11 +223,11 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // so each row carries its own §H.6 sub-page citation. Both
         // use the walker-prefixed name `E058/<suffix>`.
         Constraint::Custom {
-            name: "E058/DOD-UCNI-classification-ceiling",
+            name: "banner.aea.ceiling-dod-ucni",
             label: capco(SectionLetter::H, 6, 116),
         },
         Constraint::Custom {
-            name: "E058/DOE-UCNI-classification-ceiling",
+            name: "banner.aea.ceiling-doe-ucni",
             label: capco(SectionLetter::H, 6, 118),
         },
         // ---- §2.6 Unknown-floor passthrough (4 rows) -------------
@@ -238,19 +238,19 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // the walker at the per-row severity stored in the catalog
         // table.
         Constraint::Custom {
-            name: "class-floor/passthrough-BUR",
+            name: "banner.classification.floor-passthrough-bur",
             label: PASSTHROUGH_CITATION,
         },
         Constraint::Custom {
-            name: "class-floor/passthrough-HCS-X",
+            name: "banner.classification.floor-passthrough-hcs-x",
             label: PASSTHROUGH_CITATION,
         },
         Constraint::Custom {
-            name: "class-floor/passthrough-KLM",
+            name: "banner.classification.floor-passthrough-klm",
             label: PASSTHROUGH_CITATION,
         },
         Constraint::Custom {
-            name: "class-floor/passthrough-MVL",
+            name: "banner.classification.floor-passthrough-mvl",
             label: PASSTHROUGH_CITATION,
         },
     ]

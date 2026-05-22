@@ -45,7 +45,15 @@ fn check_invalid_banner_exits_one_with_e002() {
         .code(1);
     let output = assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"rule\":\"E002\""), "got: {stdout}");
+    // T044 PM OD-2: `rule` field is a structured 2-tuple object on
+    // the wire. The diagnostic NDJSON path (`diagnostic_to_json` →
+    // direct serde serialization) emits fields in struct-definition
+    // order: `scheme` first, `predicate_id` second. Legacy `E002` →
+    // `("capco", "portion.dissem.rel-to-missing-usa")` per
+    // `docs/refactor-006/legacy-rule-id-map.md` §1.
+    let e002_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
+    assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
     assert!(stdout.contains("\"span\""), "got: {stdout}");
 }
 
@@ -57,7 +65,11 @@ fn check_unknown_token_fixture_fires_e008() {
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E008\""));
+    // T044: legacy `E008` →
+    // `("capco", "marking.metadata.unrecognized-token")`.
+    let e008_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"marking.metadata.unrecognized-token"}"#;
+    assert!(stdout.contains(e008_rule_fragment), "got: {stdout}");
 }
 
 #[test]
@@ -68,7 +80,9 @@ fn check_stdin_dash_sentinel_works() {
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E002\""));
+    let e002_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
+    assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
 }
 
 #[test]
@@ -79,7 +93,9 @@ fn check_stdin_default_when_no_paths() {
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E002\""));
+    let e002_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
+    assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
 }
 
 #[test]

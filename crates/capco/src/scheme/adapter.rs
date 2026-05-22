@@ -174,41 +174,44 @@ impl CapcoScheme {
     /// The method returns `Some(FixIntent { ... })` for the
     /// following catalog row names and `None` otherwise:
     ///
-    /// - `"E021/rd-frd-requires-noforn"` — `FactAdd(NOFORN, Portion)`
+    /// - `"portion.aea.rd-frd-requires-noforn"` — `FactAdd(NOFORN, Portion)`
     ///   at confidence 0.95 per CAPCO-2016 §H.6 p104 + p111. Severity
     ///   is `Warn` per #559 close-out (the §123/§144 sharing-agreement
     ///   carve-out is documentary and Marque cannot verify it).
-    /// - `"E038/nodis-or-exdis-requires-noforn"` — `FactAdd(NOFORN,
-    ///   Portion | Page)` at confidence 1.0 per §H.9 p172 + p174.
-    ///   The scope tracks `marking_type` (portion → `Portion`,
-    ///   banner → `Page`); other marking types return `None`.
-    /// - `"capco/noforn-conflicts-rel-to"` (when `marking_type ==
-    ///   Portion`) — `FactRemove(REL_TO, Portion)` at confidence
-    ///   1.0 per §H.8.
-    /// - `"E054/relido-conflicts-noforn"` —
+    /// - `"portion.dissem.nodis-or-exdis-requires-noforn"` —
+    ///   `FactAdd(NOFORN, Portion | Page)` at confidence 1.0 per
+    ///   §H.9 p172 + p174. The scope tracks `marking_type` (portion
+    ///   → `Portion`, banner → `Page`); other marking types return
+    ///   `None`.
+    /// - `"portion.dissem.noforn-conflicts-rel-to"` (when
+    ///   `marking_type == Portion`) — `FactRemove(REL_TO, Portion)`
+    ///   at confidence 1.0 per §H.8.
+    /// - `"portion.dissem.relido-conflicts-noforn"` —
     ///   `FactRemove(RELIDO, Portion)` at confidence 0.95 per
-    ///   §H.8 p154. E055 / E056 / E057 retired here in #559 close-out
-    ///   (2026-05-19) / #618 (DISPLAY ONLY sibling); see
-    ///   `crates/capco/src/scheme/rewrites/relido_clears.rs` for the
-    ///   PageRewrite forms that replaced them.
+    ///   §H.8 p154. E055 / E056 / E057 retired here in #559
+    ///   close-out (2026-05-19) / #618 (DISPLAY ONLY sibling); see
+    ///   `crates/capco/src/scheme/rewrites/relido_clears.rs` for
+    ///   the PageRewrite forms that replaced them.
     ///
     /// Other catalog families that ride the bridge take different
     /// paths and remain `None` here:
     ///
-    /// - The class-floor catalog (E058 rows) produces no fixes —
-    ///   every class-floor violation requires human review — so
-    ///   there is nothing for this method to synthesize.
-    /// - The SCI per-system catalog (E059 rows) DO produce fixes
-    ///   (companion-insertion, `ORCON-USGOV → ORCON` token
+    /// - The class-floor catalog (`banner.<axis>.<floor|ceiling>-*`
+    ///   rows) produces no fixes — every class-floor violation
+    ///   requires human review — so there is nothing for this method
+    ///   to synthesize.
+    /// - The SCI per-system catalog (`marking.sci.*` rows) DO produce
+    ///   fixes (companion-insertion, `ORCON-USGOV → ORCON` token
     ///   replacement), but those fixes ride the direct bridge path
     ///   via [`Self::bridge_sci_per_system_diagnostics`] rather than
     ///   the `(name, attrs, marking_type)` side-table — a single
     ///   row can emit multiple diagnostics with distinct fixes,
     ///   which the side-table shape cannot disambiguate.
-    /// - S004 (`"S004/rel-to-trigraph-suggest"`) is intentionally
-    ///   NOT a catalog row — its replacement string is corpus-derived
-    ///   during evaluation and the side-table cannot reproduce it.
-    ///   S004 stays a registered walker (`RelToTrigraphSuggestRule`).
+    /// - S004 (`"capco:portion.dissem.rel-to-trigraph-suggest"`) is
+    ///   intentionally NOT a catalog row — its replacement string is
+    ///   corpus-derived during evaluation and the side-table cannot
+    ///   reproduce it. S004 stays a registered walker
+    ///   (`RelToTrigraphSuggestRule`).
     pub fn fix_intent_by_name(
         &self,
         name: &str,
@@ -229,7 +232,7 @@ impl CapcoScheme {
             // predicate, so any diagnostic that reaches this
             // intent has already cleared the byte-level carve-out
             // check.
-            "E021/rd-frd-requires-noforn" => Some(FixIntent {
+            "portion.aea.rd-frd-requires-noforn" => Some(FixIntent {
                 replacement: ReplacementIntent::FactAdd {
                     token: FactRef::Cve(TOK_NOFORN),
                     scope: Scope::Portion,
@@ -240,7 +243,7 @@ impl CapcoScheme {
                 source: FixSource::BuiltinRule,
                 migration_ref: None,
             }),
-            "E038/nodis-or-exdis-requires-noforn" => {
+            "portion.dissem.nodis-or-exdis-requires-noforn" => {
                 let trigger_token = attrs
                     .non_ic_dissem
                     .iter()
@@ -275,7 +278,7 @@ impl CapcoScheme {
                     migration_ref: None,
                 })
             }
-            "capco/noforn-conflicts-rel-to" if marking_type == MarkingType::Portion => {
+            "portion.dissem.noforn-conflicts-rel-to" if marking_type == MarkingType::Portion => {
                 Some(FixIntent {
                     replacement: ReplacementIntent::fact_remove(
                         FactRef::Cve(TOK_REL_TO),
@@ -306,7 +309,7 @@ impl CapcoScheme {
             // is embedded in each PageRewrite row's `action` directly,
             // so `fix_intent_by_name` has nothing to synthesize for
             // those names.
-            "E054/relido-conflicts-noforn" => Some(FixIntent {
+            "portion.dissem.relido-conflicts-noforn" => Some(FixIntent {
                 replacement: ReplacementIntent::fact_remove(
                     FactRef::Cve(TOK_RELIDO),
                     Scope::Portion,
@@ -331,7 +334,7 @@ impl CapcoScheme {
             // E024 (`rd-precedence`) has the same Severity::Fix +
             // missing-FixIntent shape and remains out of scope for
             // this PR — tracked separately for parallel wiring.
-            "E070/frd-tfni-precedence" => Some(FixIntent {
+            "portion.aea.frd-tfni-precedence" => Some(FixIntent {
                 replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_TFNI), Scope::Portion),
                 confidence: Confidence::strict(1.0),
                 feature_ids: Default::default(),
@@ -360,27 +363,28 @@ impl CapcoScheme {
     /// `e038_dos_dissem_requires_noforn`, `class_floor_emit`, etc.)
     /// and the generic evaluator never touches their `message` field.
     ///
-    /// # Rows covered (PR #578 / issue-fix follow-up)
+    /// # Rows covered (PR #578 / issue-fix follow-up; post-T044 names)
     ///
-    /// - `"E015/non-us-requires-dissem"` — non-US classification
-    ///   requires an explicit dissemination control marking per
-    ///   CAPCO-2016 §H.7 p122 + §B.3 p20.
-    /// - `"E016/joint-conflicts-restricted"` — JOINT cannot be used
-    ///   with RESTRICTED per CAPCO-2016 §H.3 p56.
-    /// - `"E036/joint-conflicts-hcs"` — JOINT cannot be used with HCS
-    ///   markings per CAPCO-2016 §H.3 p57.
-    /// - `"capco/noforn-conflicts-rel-to"` — NOFORN cannot be used
-    ///   with REL TO per CAPCO-2016 §H.8 p145.
-    /// - `"E037/nodis-conflicts-exdis"` — NODIS and EXDIS must not
-    ///   coexist per CAPCO-2016 §H.9 p172 + p174.
-    /// - `"E054/relido-conflicts-noforn"` — RELIDO cannot be used
-    ///   with NOFORN per CAPCO-2016 §H.8 p154.
+    /// - `"portion.classification.non-us-requires-dissem"` — non-US
+    ///   classification requires an explicit dissemination control
+    ///   marking per CAPCO-2016 §H.7 p122 + §B.3 p20.
+    /// - `"portion.classification.joint-conflicts-restricted"` —
+    ///   JOINT cannot be used with RESTRICTED per CAPCO-2016 §H.3 p56.
+    /// - `"portion.classification.joint-conflicts-hcs"` — JOINT
+    ///   cannot be used with HCS markings per CAPCO-2016 §H.3 p57.
+    /// - `"portion.dissem.noforn-conflicts-rel-to"` — NOFORN cannot
+    ///   be used with REL TO per CAPCO-2016 §H.8 p145.
+    /// - `"portion.dissem.nodis-conflicts-exdis"` — NODIS and EXDIS
+    ///   must not coexist per CAPCO-2016 §H.9 p172 + p174.
+    /// - `"portion.dissem.relido-conflicts-noforn"` — RELIDO cannot
+    ///   be used with NOFORN per CAPCO-2016 §H.8 p154.
     ///
     /// # Class-floor and SCI-per-system catalog rows (PR 3c.2.C C7)
     ///
     /// PR 3c.2.C C7 (reviewer R-C1) extended the dispatch to cover the
-    /// 27 `class-floor/*` + `E058/*` catalog rows and the 5
-    /// `sci-per-system/*` catalog rows. Both prefixes route through
+    /// 27 class-floor catalog rows (now `banner.<axis>.<floor|ceiling>-*`
+    /// predicate IDs post-T044) and the 5 SCI-per-system catalog rows
+    /// (now `marking.sci.*` predicate IDs). Both groups route through
     /// [`find_class_floor_row`](Self::find_class_floor_row) /
     /// [`find_sci_per_system_row`](Self::find_sci_per_system_row)
     /// label lookups so the per-row [`MessageTemplate`] +
@@ -413,7 +417,12 @@ impl CapcoScheme {
         // record carries the right category. Per-row §-citations
         // resolve via citation_by_name (kept in lockstep with this
         // function for the same label set).
-        if name.starts_with("class-floor/") || name.starts_with("E058/") {
+        //
+        // Post-T044: catalog row names migrated from the
+        // `class-floor/` / `E058/` slash-form to the predicate-ID
+        // `banner.<axis>.<floor|ceiling>-<marking>` form. The
+        // discriminator is the `.floor-` / `.ceiling-` substring.
+        if name.contains(".floor-") || name.contains(".ceiling-") {
             // Row lookup is O(27); cheap. Avoids re-encoding the
             // dispatch in two places.
             if let Some(row) = self.find_class_floor_row(name) {
@@ -441,7 +450,11 @@ impl CapcoScheme {
         // semantics (CompanionRequired forbids absence of a required
         // companion; Custom rows enforce companion presence + forbid
         // conflict). Audit category is CAT_SCI.
-        if name.starts_with("sci-per-system/") && self.find_sci_per_system_row(name).is_some() {
+        // Post-T044: SCI per-system catalog rows migrated from
+        // `sci-per-system/*` slash-form to `marking.sci.*` predicate-ID
+        // form (unique to this catalog; `portion.sci.*` is reserved for
+        // standalone SCI rules like E061/E062/E063/W034/E065).
+        if name.starts_with("marking.sci.") && self.find_sci_per_system_row(name).is_some() {
             return Some(Message::new(
                 MessageTemplate::RequiredByPresence,
                 MessageArgs {
@@ -452,49 +465,49 @@ impl CapcoScheme {
         }
 
         match name {
-            "E015/non-us-requires-dissem" => Some(Message::new(
+            "portion.classification.non-us-requires-dissem" => Some(Message::new(
                 MessageTemplate::RequiredByPresence,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_DISSEM),
                     ..MessageArgs::default()
                 },
             )),
-            "E016/joint-conflicts-restricted" => Some(Message::new(
+            "portion.classification.joint-conflicts-restricted" => Some(Message::new(
                 MessageTemplate::ConflictsWith,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_JOINT_CLASSIFICATION),
                     ..MessageArgs::default()
                 },
             )),
-            "E036/joint-conflicts-hcs" => Some(Message::new(
+            "portion.classification.joint-conflicts-hcs" => Some(Message::new(
                 MessageTemplate::ConflictsWith,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_JOINT_CLASSIFICATION),
                     ..MessageArgs::default()
                 },
             )),
-            "capco/noforn-conflicts-rel-to" => Some(Message::new(
+            "portion.dissem.noforn-conflicts-rel-to" => Some(Message::new(
                 MessageTemplate::ConflictsWith,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_DISSEM),
                     ..MessageArgs::default()
                 },
             )),
-            "E037/nodis-conflicts-exdis" => Some(Message::new(
+            "portion.dissem.nodis-conflicts-exdis" => Some(Message::new(
                 MessageTemplate::ConflictsWith,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_NON_IC_DISSEM),
                     ..MessageArgs::default()
                 },
             )),
-            "E054/relido-conflicts-noforn" => Some(Message::new(
+            "portion.dissem.relido-conflicts-noforn" => Some(Message::new(
                 MessageTemplate::ConflictsWith,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_DISSEM),
                     ..MessageArgs::default()
                 },
             )),
-            "W005/rel-to-not-in-joint-coverage" => Some(Message::new(
+            "portion.classification.rel-to-not-in-joint-coverage" => Some(Message::new(
                 MessageTemplate::RelToExpandsBeyondJoint,
                 MessageArgs {
                     category: Some(crate::scheme::CAT_REL_TO),
@@ -601,55 +614,88 @@ impl CapcoScheme {
     ///
     /// Both fields are user-facing config keys: `canonicalize_rule_overrides`
     /// inserts the `rule_id` and the `name` into the known-key map,
-    /// aliasing both to the canonical ID. A `.marque.toml` entry
-    /// `[rules] class-floor-catalog = "off"` is therefore silently
-    /// accepted as an alias for `[rules] E058 = "off"`. The shorter
-    /// `E058` form is the recommended one (matches what `Diagnostic.rule`
-    /// emits, what audit-stream consumers see, and what `did_you_mean`
-    /// suggests for typos); the longer name is the descriptive alias
-    /// users discovering rule IDs in source might also reach for.
+    /// aliasing both to the canonical ID. The first column is the
+    /// canonical wire-string form (`<scheme>:<predicate_id>`) per OD-7
+    /// of the T044 PM decisions; the second column is a descriptive
+    /// alias. A `.marque.toml` entry `[rules] frd-tfni-precedence = "off"`
+    /// is silently accepted as an alias for
+    /// `[rules] "capco:portion.aea.frd-tfni-precedence" = "off"`.
     /// This convention parallels the `id-or-name` aliasing every
     /// registered `Rule` already accepts.
     ///
-    /// # Entries (PR 3c.B Commit 7.3)
+    /// # Post-T044 (OD-8.A): one entry per bridge-emitted catalog row
     ///
-    ///   - `("E058", "class-floor-catalog")` — retired
-    ///     `DeclarativeClassFloorRule` walker. The 27 class-floor
-    ///     catalog rows fire through the bridge with
-    ///     `Diagnostic.rule = "E058"`; the bridge folds the per-row
-    ///     `E058/...` / `class-floor/...` constraint-label names to
-    ///     this collapsed ID.
-    ///
-    /// PR 3c.B Commit 7.4 added `("E059", "sci-per-system-catalog")`.
-    ///
-    /// PR #578 added the remaining declarative catalog IDs.
+    /// The retired `DeclarativeClassFloorRule` (E058) and
+    /// `DeclarativeSciPerSystemRule` (E059) walkers no longer fold the
+    /// per-row catalog labels to a single ID. Each catalog row emits
+    /// its own predicate ID directly via the bridge no-op pass-through;
+    /// the per-row predicates appear here so users can configure them
+    /// individually via `.marque.toml [rules]`.
     pub fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
         &[
-            ("E058", "class-floor-catalog"),
-            ("E059", "sci-per-system-catalog"),
-            ("E010", "HCS-system-constraints"),
-            ("E012", "dual-classification"),
-            ("E014", "joint-requires-rel-to-coverage"),
+            // ---- Core catalog (15 dyadic / Custom rows) ----
+            (
+                "capco:portion.sci.hcs-system-constraints",
+                "hcs-system-constraints",
+            ),
+            (
+                "capco:portion.classification.dual-classification",
+                "dual-classification",
+            ),
+            (
+                "capco:portion.classification.joint-requires-rel-to-coverage",
+                "joint-requires-rel-to-coverage",
+            ),
             // W005: reverse of E014 (REL TO entries not in JOINT). Resolved
             // by `message_by_name` to the typed
             // `MessageTemplate::RelToExpandsBeyondJoint` (closing #666).
-            ("W005", "rel-to-not-in-joint-coverage"),
-            ("E015", "non-us-requires-dissem"),
-            ("E016", "joint-conflicts-restricted"),
-            ("E036", "joint-conflicts-hcs"),
-            ("E021", "rd-frd-requires-noforn"),
-            ("E024", "rd-precedence"),
+            (
+                "capco:portion.classification.rel-to-not-in-joint-coverage",
+                "rel-to-not-in-joint-coverage",
+            ),
+            (
+                "capco:portion.classification.non-us-requires-dissem",
+                "non-us-requires-dissem",
+            ),
+            (
+                "capco:portion.classification.joint-conflicts-restricted",
+                "joint-conflicts-restricted",
+            ),
+            (
+                "capco:portion.classification.joint-conflicts-hcs",
+                "joint-conflicts-hcs",
+            ),
+            (
+                "capco:portion.aea.rd-frd-requires-noforn",
+                "rd-frd-requires-noforn",
+            ),
+            ("capco:portion.aea.rd-precedence", "rd-precedence"),
             // #661 — E070 now emits user-visible diagnostics (mirror of
             // E024; FRD>TFNI leg of the §H.6 p120 precedence rule).
-            // Listed here so `.marque.toml [rules] E070 = "off"` (and
-            // the descriptive `frd-tfni-precedence` alias) resolve
-            // through `canonicalize_rule_overrides` without an
-            // `UnknownRuleOverride` failure.
-            ("E070", "frd-tfni-precedence"),
-            ("E037", "nodis-conflicts-exdis"),
-            ("E038", "nodis-or-exdis-requires-noforn"),
-            ("E053", "noforn-conflicts-rel-to"),
-            ("E054", "relido-conflicts-noforn"),
+            (
+                "capco:portion.aea.frd-tfni-precedence",
+                "frd-tfni-precedence",
+            ),
+            (
+                "capco:portion.dissem.nodis-conflicts-exdis",
+                "nodis-conflicts-exdis",
+            ),
+            (
+                "capco:portion.dissem.nodis-or-exdis-requires-noforn",
+                "nodis-or-exdis-requires-noforn",
+            ),
+            (
+                "capco:portion.dissem.noforn-conflicts-rel-to",
+                "noforn-conflicts-rel-to",
+            ),
+            (
+                "capco:portion.dissem.relido-conflicts-noforn",
+                "relido-conflicts-noforn",
+            ),
+            (
+                "capco:portion.classification.joint-requires-usa",
+                "joint-requires-usa",
+            ),
             // #559 close-out (2026-05-19): E055 / E056 / E057
             // retired here. The constraint rows moved to
             // `relido_clears.rs` as PageRewrites (one per
@@ -660,6 +706,94 @@ impl CapcoScheme {
             // no longer accepted; per project memory
             // `feedback_pre_users_no_deprecation_phasing.md` marque
             // is pre-users and we don't carry alias maps.
+            // ---- Class-floor catalog (27 rows) ----
+            (
+                "capco:banner.classification.floor-hcs-comp-sub",
+                "class-floor-hcs-comp-sub",
+            ),
+            (
+                "capco:banner.classification.floor-si-comp",
+                "class-floor-si-comp",
+            ),
+            (
+                "capco:banner.classification.floor-tk-blfh",
+                "class-floor-tk-blfh",
+            ),
+            ("capco:banner.classification.floor-balk", "class-floor-balk"),
+            (
+                "capco:banner.classification.floor-bohemia",
+                "class-floor-bohemia",
+            ),
+            (
+                "capco:banner.classification.floor-hcs-comp",
+                "class-floor-hcs-comp",
+            ),
+            (
+                "capco:banner.classification.floor-rsv-comp",
+                "class-floor-rsv-comp",
+            ),
+            ("capco:banner.classification.floor-tk", "class-floor-tk"),
+            ("capco:banner.aea.floor-rd-sg", "class-floor-rd-sg"),
+            ("capco:banner.aea.floor-frd-sg", "class-floor-frd-sg"),
+            ("capco:banner.aea.floor-cnwdi", "class-floor-cnwdi"),
+            ("capco:banner.dissem.floor-rsen", "class-floor-rsen"),
+            ("capco:banner.dissem.floor-imcon", "class-floor-imcon"),
+            ("capco:banner.classification.floor-si", "class-floor-si"),
+            ("capco:banner.classification.floor-sar", "class-floor-sar"),
+            ("capco:banner.aea.floor-rd", "class-floor-rd"),
+            ("capco:banner.aea.floor-frd", "class-floor-frd"),
+            ("capco:banner.aea.floor-tfni", "class-floor-tfni"),
+            ("capco:banner.aea.floor-atomal", "class-floor-atomal"),
+            ("capco:banner.dissem.floor-orcon", "class-floor-orcon"),
+            (
+                "capco:banner.dissem.floor-eyes-only",
+                "class-floor-eyes-only",
+            ),
+            (
+                "capco:banner.aea.ceiling-dod-ucni",
+                "class-ceiling-dod-ucni",
+            ),
+            (
+                "capco:banner.aea.ceiling-doe-ucni",
+                "class-ceiling-doe-ucni",
+            ),
+            (
+                "capco:banner.classification.floor-passthrough-bur",
+                "class-floor-passthrough-bur",
+            ),
+            (
+                "capco:banner.classification.floor-passthrough-hcs-x",
+                "class-floor-passthrough-hcs-x",
+            ),
+            (
+                "capco:banner.classification.floor-passthrough-klm",
+                "class-floor-passthrough-klm",
+            ),
+            (
+                "capco:banner.classification.floor-passthrough-mvl",
+                "class-floor-passthrough-mvl",
+            ),
+            // ---- SCI per-system catalog (5 rows) ----
+            (
+                "capco:marking.sci.hcs-o-companions",
+                "sci-per-system-hcs-o-companions",
+            ),
+            (
+                "capco:marking.sci.hcs-p-noforn-required",
+                "sci-per-system-hcs-p-noforn",
+            ),
+            (
+                "capco:marking.sci.hcs-p-sub-companions",
+                "sci-per-system-hcs-p-sub-companions",
+            ),
+            (
+                "capco:marking.sci.si-g-companions",
+                "sci-per-system-si-g-companions",
+            ),
+            (
+                "capco:marking.sci.tk-compartment-noforn-required",
+                "sci-per-system-tk-compartment-noforn",
+            ),
         ]
     }
 
@@ -697,24 +831,27 @@ impl CapcoScheme {
     ///
     /// # Severity override handling
     ///
-    /// The caller passes the resolved `Severity` for `E059`
-    /// (`severity_override` = the `[rules] E059 = ...` config, or
-    /// `None` to use each diagnostic's authoring severity). When
-    /// `severity_override = Some(Severity::Off)` the method returns
-    /// an empty `Vec` (FR-008: an `Off`-severity diagnostic is
-    /// unrepresentable). A non-`Off` override replaces the per-
-    /// diagnostic severity uniformly.
+    /// Per-row severity override resolution: the caller passes the
+    /// engine's pre-resolved `emitted_id_overrides` table
+    /// (`&'static str → Severity`), and this method looks up each
+    /// row's `name` (the row's predicate ID post-T044) independently.
+    /// Each catalog row is independently overridable through its own
+    /// `.marque.toml [rules]` wire-string key (e.g.,
+    /// `"capco:marking.sci.hcs-o-companions" = "off"`), matching the
+    /// T044 OD-8.A design intent — the catalog row's `name` IS the
+    /// predicate ID, with no walker-level "E059" key behind it.
+    ///
+    /// `Severity::Off` on a row suppresses every diagnostic that row
+    /// would otherwise emit (FR-008: an `Off`-severity diagnostic is
+    /// unrepresentable). A non-`Off` override replaces each emitted
+    /// diagnostic's severity uniformly for that row.
     pub fn bridge_sci_per_system_diagnostics(
         &self,
         attrs: &CanonicalAttrs,
         candidate_span: marque_scheme::Span,
         fix_scope: marque_scheme::Scope,
-        severity_override: Option<marque_rules::Severity>,
+        emitted_id_overrides: &std::collections::HashMap<&'static str, marque_rules::Severity>,
     ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
-        // FR-008 early-out — `Off` suppresses the entire catalog.
-        if matches!(severity_override, Some(marque_rules::Severity::Off)) {
-            return Vec::new();
-        }
         // Hot-path early-out — every SCI per-system row is SCI-axis-
         // only. If no SCI markings are present, no row can fire and
         // the catalog walk costs effectively nothing. Mirrors the
@@ -724,11 +861,25 @@ impl CapcoScheme {
         }
         let mut out = Vec::new();
         for row in SCI_PER_SYSTEM_CATALOG {
+            // T044 OD-8.A: each row is independently severity-
+            // overridable via its `name` (= the row's predicate ID
+            // post-T044). Resolve per-row so the user can
+            // `[rules] "capco:marking.sci.hcs-o-companions" = "off"`
+            // without suppressing the other 4 rows. Drops the stale
+            // walker-level "E059" hoist that always returned None
+            // post-T044 (`emitted_id_overrides` is keyed by predicate
+            // ID; "E059" was never a key).
+            let row_override = emitted_id_overrides.get(row.name).copied();
+            // FR-008 per-row early-out — `Off` suppresses just this
+            // row's diagnostics.
+            if matches!(row_override, Some(marque_rules::Severity::Off)) {
+                continue;
+            }
             if !(row.presence)(attrs) {
                 continue;
             }
             for mut diag in sci_per_system_emit(attrs, candidate_span, fix_scope, row) {
-                if let Some(sev) = severity_override {
+                if let Some(sev) = row_override {
                     diag.severity = sev;
                 }
                 out.push(diag);

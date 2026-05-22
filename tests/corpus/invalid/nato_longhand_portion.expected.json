@@ -1,6 +1,6 @@
 {
   "_note": "T130: decoder folds NATO S longhand to canonical NS portion form. R001 fires at span 0..18 (the full portion mark). Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.",
   "diagnostics": [
-    {"rule": "R001", "span": {"start": 0, "end": 18}}
+    {"rule": {"scheme": "engine", "predicate_id": "recognition.decoder-recognized"}, "span": {"start": 0, "end": 18}}
   ]
 }

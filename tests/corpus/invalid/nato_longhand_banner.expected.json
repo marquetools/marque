@@ -1,6 +1,6 @@
 {
   "_note": "FIX-1 (#260 banner half): decoder folds NATO TS banner abbreviation to canonical COSMIC TOP SECRET long form. R001 fires at span 0..15 (the banner line content without newline). Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 p15.",
   "diagnostics": [
-    {"rule": "R001", "span": {"start": 0, "end": 15}}
+    {"rule": {"scheme": "engine", "predicate_id": "recognition.decoder-recognized"}, "span": {"start": 0, "end": 15}}
   ]
 }

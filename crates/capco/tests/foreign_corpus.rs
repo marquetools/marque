@@ -83,7 +83,7 @@ fn observed_rule_ids(fixture_name: &str) -> HashSet<String> {
     result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect()
 }
 
@@ -128,12 +128,12 @@ fn t062_pure_foreign_banner_zero_diagnostics() {
     // is scoped to E068/E069 to keep the test orthogonal to unrelated
     // walker registrations) are tolerated.
     assert!(
-        !observed.contains("E068"),
+        !observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 fired on pure-foreign banner — banner classification \
          matches projected state; rule should not fire. observed = {observed:?}"
     );
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 fired on pure-foreign banner — banner FGI marker \
          matches projected state; rule should not fire. observed = {observed:?}"
     );
@@ -161,12 +161,12 @@ fn t063_joint_us_uk_zero_diagnostics() {
 
     let observed = observed_rule_ids("joint_us_uk.txt");
     assert!(
-        !observed.contains("E068"),
+        !observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 fired on JOINT US+GBR — banner classification matches \
          projected Joint variant; rule should not fire. observed = {observed:?}"
     );
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 fired on JOINT US+GBR — FGI marker absent on both \
          observed and projected sides; rule should not fire. observed = {observed:?}"
     );
@@ -191,13 +191,13 @@ fn t063_nato_only_page_zero_diagnostics() {
 
     let observed = observed_rule_ids("nato_only_page.txt");
     assert!(
-        !observed.contains("E068"),
+        !observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 fired on pure-NATO page — banner classification matches \
          projected Nato variant per §H.7 pp123-125; rule should not fire. \
          observed = {observed:?}"
     );
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 fired on pure-NATO page — pure-NATO portions do not \
          populate fgi_marker; rule should not fire. observed = {observed:?}"
     );
@@ -232,15 +232,22 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
     // Arrange: the fixture documents that E068 + E069 are the
     // expected diagnostics.
     let expected = load_expected(&foreign_fixture("mixed_us_foreign_rollup.txt"));
+    // T044: `ExpectedRuleId` is a struct of (scheme, predicate_id)
+    // String fields, not a `RuleId`. The expected.json fixture
+    // serializes the 2-tuple form per the corpus migration; the test
+    // checks predicate-ID strings directly.
     let expected_rules: HashSet<&str> = expected
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id.as_str())
         .collect();
     assert!(
-        expected_rules.contains("E068") && expected_rules.contains("E069"),
-        "mixed_us_foreign_rollup.expected.json must list E068 + E069 \
-         per PR 5 PM Addendum I.4; got {expected_rules:?}"
+        expected_rules.contains("banner.classification.mismatch-vs-projected")
+            && expected_rules.contains("banner.fgi.marker-mismatch-vs-projected"),
+        "mixed_us_foreign_rollup.expected.json must list \
+         banner.classification.mismatch-vs-projected + \
+         banner.fgi.marker-mismatch-vs-projected per PR 5 PM Addendum \
+         I.4 (post-T044 predicate IDs); got {expected_rules:?}"
     );
 
     // Act: lint with the default engine.
@@ -248,19 +255,20 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
 
     // Assert: both rules fired.
     assert!(
-        observed.contains("E068"),
-        "E068 did NOT fire on mixed US+foreign roll-up — this is the \
-         #276 regression. Observed banner SECRET//NOFORN classifies \
-         as Secret; projection across `(S//NF) + (//DEU TS)` is \
-         TopSecret per §H.7 pp123-125 reciprocal raise. observed = \
-         {observed:?}"
+        observed.contains("banner.classification.mismatch-vs-projected"),
+        "banner.classification.mismatch-vs-projected did NOT fire on \
+         mixed US+foreign roll-up — this is the #276 regression. \
+         Observed banner SECRET//NOFORN classifies as Secret; projection \
+         across `(S//NF) + (//DEU TS)` is TopSecret per §H.7 pp123-125 \
+         reciprocal raise. observed = {observed:?}"
     );
     assert!(
-        observed.contains("E069"),
-        "E069 did NOT fire on mixed US+foreign roll-up — this is the \
-         #276 regression. Observed banner has no FGI marker; projection \
-         across `(S//NF) + (//DEU TS)` populates FGI DEU per the \
-         FgiSet cross-axis fold. observed = {observed:?}"
+        observed.contains("banner.fgi.marker-mismatch-vs-projected"),
+        "banner.fgi.marker-mismatch-vs-projected did NOT fire on mixed \
+         US+foreign roll-up — this is the #276 regression. Observed \
+         banner has no FGI marker; projection across `(S//NF) + \
+         (//DEU TS)` populates FGI DEU per the FgiSet cross-axis fold. \
+         observed = {observed:?}"
     );
 }
 
@@ -283,13 +291,13 @@ fn t063_fgi_concealed_zero_diagnostics() {
 
     let observed = observed_rule_ids("fgi_concealed.txt");
     assert!(
-        !observed.contains("E068"),
+        !observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 fired on §H.7 p128 concealed+acknowledged worked example \
          — banner classification matches projected Secret; rule should \
          not fire. observed = {observed:?}"
     );
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 fired on §H.7 p128 concealed+acknowledged worked example \
          — banner `FGI` (bare) matches projected source-concealed FGI \
          marker per the §H.7 p124 dominance rule; rule should not fire. \

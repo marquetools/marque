@@ -135,9 +135,12 @@ fn fix_10kb_pass2_only(c: &mut Criterion) {
     // re-parse arm and dispatches pass-2 directly against the
     // post-pass-0 buffer.
     let result = engine.fix(&input, FixMode::Apply);
+    // T044: legacy `C001` → predicate id `marking.correction.token-typo`.
     debug_assert!(
-        result.applied_fixes().all(|a| a.rule.as_str() != "C001"),
-        "fix_10kb_pass2_only fixture leaked a C001 trigger"
+        result
+            .applied_fixes()
+            .all(|a| a.rule.predicate_id() != "marking.correction.token-typo"),
+        "fix_10kb_pass2_only fixture leaked a marking.correction.token-typo trigger"
     );
 
     c.bench_function("fix_10kb_pass2_only", |b| {

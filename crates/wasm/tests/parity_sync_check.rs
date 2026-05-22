@@ -31,7 +31,7 @@
 
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_rules::Diagnostic;
+use marque_rules::{Diagnostic, RuleId};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -52,12 +52,29 @@ use std::sync::OnceLock;
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// T044 PM OD-2: 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for SC-008 byte-identical NDJSON.
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
     message: MessageJson<'a>,
     citation: String,
     fix: Option<FixJson<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -92,7 +109,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
 
 fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,

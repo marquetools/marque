@@ -93,7 +93,10 @@ pub enum AuditNoteKind {
 /// facts. For `InferredFact`, `suppressed_by` is always `None`.
 #[derive(Debug, Clone)]
 pub struct AuditNoteStructural {
-    /// The `ClosureRule.name` that fired (e.g., `"capco/noforn-if-no-fdr"`).
+    /// The `ClosureRule.name` that fired (e.g.,
+    /// `"capco:closure.dissem.noforn-if-caveated"` post-T044; legacy
+    /// slash-form `"capco/noforn-if-no-fdr"` retained on existing
+    /// fixtures for archaeological context).
     pub row_name: &'static str,
     /// The closure rule's **declared cone slice** — a verbatim reference
     /// to the `ClosureRule.cone` of the firing rule. This is the
@@ -142,7 +145,9 @@ pub struct AuditNoteStructural {
 /// preconditions, so the typed emit path is wired end-to-end).
 #[derive(Debug)]
 pub struct AuditNote<S: MarkingScheme> {
-    /// The closure rule's RuleId (e.g., scheme="capco", predicate_id="noforn-if-no-fdr").
+    /// The closure rule's RuleId (e.g., `scheme="capco"`,
+    /// `predicate_id="closure.dissem.noforn-if-caveated"` per the
+    /// T044 wire-string convention).
     pub rule: RuleId,
     /// Authoritative-source citation copied from the closure rule's `label`.
     /// Migrated from `&'static str` to typed [`Citation`] in PR 10.A.1.
@@ -174,7 +179,7 @@ pub struct AuditNote<S: MarkingScheme> {
 impl<S: MarkingScheme> Clone for AuditNote<S> {
     fn clone(&self) -> Self {
         Self {
-            rule: self.rule.clone(),
+            rule: self.rule,
             citation: self.citation,
             kind: self.kind,
             timestamp: self.timestamp,

@@ -67,7 +67,7 @@ fn c001_pass1_dispatch_noop_after_pass0() {
     let text_corrections: Vec<_> = result.applied_text_corrections().collect();
     let c001_count = text_corrections
         .iter()
-        .filter(|tc| tc.rule.as_str() == "C001")
+        .filter(|tc| tc.rule.predicate_id() == "marking.correction.token-typo")
         .count();
     assert_eq!(
         c001_count,
@@ -76,7 +76,7 @@ fn c001_pass1_dispatch_noop_after_pass0() {
          is a no-op after pass-0 rewrote the source. Text corrections: {:?}",
         text_corrections
             .iter()
-            .map(|tc| tc.rule.as_str())
+            .map(|tc| tc.rule.predicate_id())
             .collect::<Vec<_>>()
     );
     // Sanity: the output buffer contains the corrected token.
@@ -104,7 +104,7 @@ fn c001_self_correction_filtered_at_pass0() {
 
     let c001_count = result
         .applied_text_corrections()
-        .filter(|tc| tc.rule.as_str() == "C001")
+        .filter(|tc| tc.rule.predicate_id() == "marking.correction.token-typo")
         .count();
     assert_eq!(
         c001_count, 0,

@@ -50,7 +50,7 @@ fn s004_diags(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         .lint(source)
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "S004")
+        .filter(|d| d.rule.predicate_id() == "portion.dissem.rel-to-trigraph-suggest")
         .collect()
 }
 

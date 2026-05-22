@@ -58,23 +58,23 @@ use marque_scheme::{Constraint, SectionLetter, capco};
 pub(super) fn sci_per_system_constraints() -> Vec<Constraint> {
     vec![
         Constraint::Custom {
-            name: "sci-per-system/HCS-O-companions",
+            name: "marking.sci.hcs-o-companions",
             label: capco(SectionLetter::H, 4, 64),
         },
         Constraint::Custom {
-            name: "sci-per-system/HCS-P-NOFORN",
+            name: "marking.sci.hcs-p-noforn-required",
             label: capco(SectionLetter::H, 4, 66),
         },
         Constraint::Custom {
-            name: "sci-per-system/HCS-P-sub-companions",
+            name: "marking.sci.hcs-p-sub-companions",
             label: capco(SectionLetter::H, 4, 68),
         },
         Constraint::Custom {
-            name: "sci-per-system/SI-G-companions",
+            name: "marking.sci.si-g-companions",
             label: capco(SectionLetter::H, 4, 80),
         },
         Constraint::Custom {
-            name: "sci-per-system/TK-compartment-NOFORN",
+            name: "marking.sci.tk-compartment-noforn-required",
             label: capco(SectionLetter::H, 4, 87),
         },
     ]

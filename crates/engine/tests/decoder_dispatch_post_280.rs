@@ -109,7 +109,7 @@ fn build_engine_threshold_zero() -> Engine {
 fn diags_summary(diags: &[Diagnostic<CapcoScheme>]) -> Vec<(String, Severity)> {
     diags
         .iter()
-        .map(|d| (d.rule.as_str().to_owned(), d.severity))
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
         .collect()
 }
 
@@ -119,7 +119,7 @@ fn diags_summary(diags: &[Diagnostic<CapcoScheme>]) -> Vec<(String, Severity)> {
 /// for these tests.
 fn find_r001(diags: &[Diagnostic<CapcoScheme>]) -> Option<&Diagnostic<CapcoScheme>> {
     diags.iter().find(|d| {
-        d.rule.as_str() == "R001"
+        d.rule.predicate_id() == "recognition.decoder-recognized"
             && d.fix
                 .as_ref()
                 .is_some_and(|f| matches!(f.source, FixSource::DecoderPosterior))
@@ -316,7 +316,8 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
         let r001_decoder_count = applied
             .iter()
             .filter(|a| {
-                a.rule.as_str() == "R001" && matches!(a.source, FixSource::DecoderPosterior)
+                a.rule.predicate_id() == "recognition.decoder-recognized"
+                    && matches!(a.source, FixSource::DecoderPosterior)
             })
             .count();
         assert_eq!(
@@ -326,7 +327,7 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
              AppliedFix under the zero-threshold engine; applied = {:?}",
             applied
                 .iter()
-                .map(|a| (a.rule.as_str(), a.source))
+                .map(|a| (a.rule.predicate_id(), a.source))
                 .collect::<Vec<_>>(),
         );
         let output = String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output");
@@ -389,7 +390,10 @@ fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
         1,
         "exactly one AppliedFix should land (the R001 decoder fix)",
     );
-    assert_eq!(applied[0].rule.as_str(), "R001");
+    assert_eq!(
+        applied[0].rule.predicate_id(),
+        "recognition.decoder-recognized"
+    );
     assert!(matches!(applied[0].source, FixSource::DecoderPosterior));
 }
 
@@ -428,14 +432,17 @@ fn fgi_fvey_ownership_token_emits_e073_category_diagnostic() {
         diags_summary(&lint.diagnostics),
     );
     assert!(
-        lint.diagnostics
-            .iter()
-            .any(|d| d.rule.as_str() == "E073" && d.severity == Severity::Error),
+        lint.diagnostics.iter().any(|d| d.rule.predicate_id()
+            == "marking.fgi.invalid-ownership-token"
+            && d.severity == Severity::Error),
         "post-#501 expected E073 (fgi-invalid-ownership-token) at Error severity; got {:?}",
         diags_summary(&lint.diagnostics),
     );
     assert!(
-        !lint.diagnostics.iter().any(|d| d.rule.as_str() == "E008"),
+        !lint
+            .diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token"),
         "post-#501 E008 must NOT co-fire on FGI-marker span (suppressed via \
          `is_fgi_invalid_ownership_token`); got {:?}",
         diags_summary(&lint.diagnostics),
@@ -459,14 +466,17 @@ fn fgi_deux_unknown_tetragraph_emits_e073_category_diagnostic() {
         diags_summary(&lint.diagnostics),
     );
     assert!(
-        lint.diagnostics
-            .iter()
-            .any(|d| d.rule.as_str() == "E073" && d.severity == Severity::Error),
+        lint.diagnostics.iter().any(|d| d.rule.predicate_id()
+            == "marking.fgi.invalid-ownership-token"
+            && d.severity == Severity::Error),
         "post-#501 expected E073 (fgi-invalid-ownership-token) at Error severity; got {:?}",
         diags_summary(&lint.diagnostics),
     );
     assert!(
-        !lint.diagnostics.iter().any(|d| d.rule.as_str() == "E008"),
+        !lint
+            .diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token"),
         "post-#501 E008 must NOT co-fire on FGI-marker span (suppressed via \
          `is_fgi_invalid_ownership_token`); got {:?}",
         diags_summary(&lint.diagnostics),

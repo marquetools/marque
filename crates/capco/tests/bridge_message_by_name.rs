@@ -68,7 +68,7 @@ fn empty_attrs() -> CanonicalAttrs {
 fn message_by_name_e015_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E015/non-us-requires-dissem",
+        "portion.classification.non-us-requires-dissem",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -92,7 +92,7 @@ fn message_by_name_e015_returns_some() {
 fn message_by_name_e016_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E016/joint-conflicts-restricted",
+        "portion.classification.joint-conflicts-restricted",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -116,7 +116,7 @@ fn message_by_name_e016_returns_some() {
 fn message_by_name_e036_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E036/joint-conflicts-hcs",
+        "portion.classification.joint-conflicts-hcs",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -140,7 +140,7 @@ fn message_by_name_e036_returns_some() {
 fn message_by_name_noforn_conflicts_rel_to_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "capco/noforn-conflicts-rel-to",
+        "portion.dissem.noforn-conflicts-rel-to",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -164,7 +164,7 @@ fn message_by_name_noforn_conflicts_rel_to_returns_some() {
 fn message_by_name_e037_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E037/nodis-conflicts-exdis",
+        "portion.dissem.nodis-conflicts-exdis",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -188,7 +188,7 @@ fn message_by_name_e037_returns_some() {
 fn message_by_name_e054_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E054/relido-conflicts-noforn",
+        "portion.dissem.relido-conflicts-noforn",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -223,7 +223,7 @@ fn message_by_name_returns_none_for_unknown_name() {
     );
     // Custom-arm constraint names should also return None — they have
     // their own well-formed messages from the predicate body helpers.
-    // (PR 3c.2.C C7 carved out `class-floor/*` + `sci-per-system/*` from
+    // (PR 3c.2.C C7 carved out `class-floor/*` + `marking.sci.*` from
     // this rule; those are now bridge-resolved via row lookup. E012 stays
     // a predicate-body Custom row and returns None.)
     assert!(
@@ -251,11 +251,11 @@ fn message_by_name_returns_none_for_unknown_name() {
 fn message_by_name_class_floor_hcs_comp_sub_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "class-floor/HCS-comp-sub",
+        "banner.classification.floor-hcs-comp-sub",
         &empty_attrs(),
         MarkingType::Portion,
     );
-    let msg = msg.expect("class-floor/HCS-comp-sub must return Some(...)");
+    let msg = msg.expect("banner.classification.floor-hcs-comp-sub must return Some(...)");
     assert_eq!(
         msg.template(),
         MessageTemplate::ClassificationFloorViolated,
@@ -266,7 +266,7 @@ fn message_by_name_class_floor_hcs_comp_sub_returns_some() {
     assert_eq!(
         msg.args().category,
         Some(marque_capco::scheme::CAT_SCI),
-        "class-floor/HCS-comp-sub must identify the SCI axis (primary_kind=SciSystem); got {:?}",
+        "banner.classification.floor-hcs-comp-sub must identify the SCI axis (primary_kind=SciSystem); got {:?}",
         msg.args().category,
     );
 }
@@ -277,33 +277,33 @@ fn message_by_name_class_floor_hcs_comp_sub_returns_some() {
 fn message_by_name_class_floor_e058_cnwdi_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E058/CNWDI-classification-floor",
+        "banner.aea.floor-cnwdi",
         &empty_attrs(),
         MarkingType::Portion,
     );
-    let msg = msg.expect("E058/CNWDI-classification-floor must return Some(...)");
+    let msg = msg.expect("banner.aea.floor-cnwdi must return Some(...)");
     assert_eq!(msg.template(), MessageTemplate::ClassificationFloorViolated);
     // CNWDI's primary_kind is AeaMarking → CAT_AEA.
     assert_eq!(
         msg.args().category,
         Some(marque_capco::scheme::CAT_AEA),
-        "E058/CNWDI must identify the AEA axis (primary_kind=AeaMarking); got {:?}",
+        "banner.aea.floor-cnwdi must identify the AEA axis (primary_kind=AeaMarking); got {:?}",
         msg.args().category,
     );
 }
 
-/// SCI per-system catalog rows (5 rows; `sci-per-system/*` prefix)
+/// SCI per-system catalog rows (5 rows; `marking.sci.*` prefix)
 /// must resolve to `MessageTemplate::RequiredByPresence` with
 /// `CAT_SCI`.
 #[test]
 fn message_by_name_sci_per_system_hcs_o_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "sci-per-system/HCS-O-companions",
+        "marking.sci.hcs-o-companions",
         &empty_attrs(),
         MarkingType::Portion,
     );
-    let msg = msg.expect("sci-per-system/HCS-O-companions must return Some(...)");
+    let msg = msg.expect("marking.sci.hcs-o-companions must return Some(...)");
     assert_eq!(
         msg.template(),
         MessageTemplate::RequiredByPresence,
@@ -313,7 +313,7 @@ fn message_by_name_sci_per_system_hcs_o_returns_some() {
     assert_eq!(
         msg.args().category,
         Some(marque_capco::scheme::CAT_SCI),
-        "sci-per-system/* must identify the SCI axis; got {:?}",
+        "marking.sci.* must identify the SCI axis; got {:?}",
         msg.args().category,
     );
 }
@@ -328,7 +328,7 @@ fn message_by_name_class_floor_unknown_label_returns_none() {
     assert!(
         scheme
             .message_by_name(
-                "class-floor/no-such-row",
+                "banner.classification.floor-no-such-row",
                 &empty_attrs(),
                 MarkingType::Portion
             )
@@ -340,7 +340,7 @@ fn message_by_name_class_floor_unknown_label_returns_none() {
 /// PR 10.A.1: typed Citation now lives directly on `Constraint.label`
 /// (not in a `citation_by_name` bridge fallback). This test reads the
 /// `Constraint::Custom { label }` field directly to confirm the per-row
-/// citation matches the documented anchor — `class-floor/HCS-comp-sub`
+/// citation matches the documented anchor — `banner.classification.floor-hcs-comp-sub`
 /// at §H.4 p60 (SCI section start).
 #[test]
 fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
@@ -349,13 +349,13 @@ fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
     let row = scheme
         .constraints()
         .iter()
-        .find(|c| c.name() == "class-floor/HCS-comp-sub")
-        .expect("class-floor/HCS-comp-sub must appear in the catalog");
+        .find(|c| c.name() == "banner.classification.floor-hcs-comp-sub")
+        .expect("banner.classification.floor-hcs-comp-sub must appear in the catalog");
     let cite = row.label();
     assert_eq!(
         cite,
         capco(SectionLetter::H, 4, 60),
-        "class-floor/HCS-comp-sub citation must be §H.4 p60; got {cite}",
+        "banner.classification.floor-hcs-comp-sub citation must be §H.4 p60; got {cite}",
     );
     assert_eq!(cite.document, AuthoritativeSource::Capco2016);
 }
@@ -369,13 +369,13 @@ fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
     let row = scheme
         .constraints()
         .iter()
-        .find(|c| c.name() == "sci-per-system/HCS-O-companions")
-        .expect("sci-per-system/HCS-O-companions must appear in the catalog");
+        .find(|c| c.name() == "marking.sci.hcs-o-companions")
+        .expect("marking.sci.hcs-o-companions must appear in the catalog");
     let cite = row.label();
     assert_eq!(
         cite,
         capco(SectionLetter::H, 4, 64),
-        "sci-per-system/HCS-O-companions citation must be §H.4 p64; got {cite}",
+        "marking.sci.hcs-o-companions citation must be §H.4 p64; got {cite}",
     );
     assert_eq!(cite.document, AuthoritativeSource::Capco2016);
 }
@@ -391,8 +391,8 @@ fn class_floor_passthrough_carries_engine_internal_citation() {
     let row = scheme
         .constraints()
         .iter()
-        .find(|c| c.name() == "class-floor/passthrough-BUR")
-        .expect("class-floor/passthrough-BUR must appear in the catalog");
+        .find(|c| c.name() == "banner.classification.floor-passthrough-bur")
+        .expect("banner.classification.floor-passthrough-bur must appear in the catalog");
     let cite = row.label();
     // Passthrough rows reference marque-applied.md, not CAPCO. The
     // citation routes through AuthoritativeSource::EngineInternal so
@@ -422,7 +422,7 @@ fn bridge_emits_typed_message_for_e037() {
     let e037 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E037")
+        .find(|d| d.rule.predicate_id() == "portion.dissem.nodis-conflicts-exdis")
         .expect("E037 must fire on (S//NF//ND/XD)");
 
     assert_eq!(
@@ -452,7 +452,7 @@ fn bridge_emits_typed_message_for_e054() {
     let e054 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E054")
+        .find(|d| d.rule.predicate_id() == "portion.dissem.relido-conflicts-noforn")
         .expect("E054 must fire on (S//NF/RELIDO)");
 
     assert_eq!(

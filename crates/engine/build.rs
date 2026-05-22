@@ -5,12 +5,17 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! Post PR 3c.2.D (atomic cutover) the accept-list is a single value:
-//! `["marque-1.0"]`. The legacy `mvp-1` / `mvp-2` / `mvp-3` shapes
-//! retired atomically with the v2 `AppliedFix` reshape and BLAKE3
-//! digesting; their structural envelopes are no longer representable.
-//! A single build emits exactly one schema version per FR-014 and
-//! FR-037 (clean break, no marque-audit-reader crate).
+//! Post T044 (atomic cutover) the accept-list is a single value:
+//! `["marque-2.0"]`. The pre-T044 `marque-1.0` shape carried the
+//! 1-tuple `RuleId(&'static str)` form; T044 reshapes `RuleId` to a
+//! `(scheme, predicate_id)` 2-tuple and structures the audit-record
+//! `"rule"` JSON field accordingly (object form, never a flattened
+//! string). Pre-cutover `marque-1.0` records are not interoperable
+//! with post-cutover binaries per FR-037 (clean break, no
+//! marque-audit-reader crate). The earlier `mvp-1` / `mvp-2` /
+//! `mvp-3` shapes retired in PR 3c.2.D atomically with the v2
+//! `AppliedFix` reshape and BLAKE3 digesting. A single build emits
+//! exactly one schema version per FR-014.
 //!
 //! The value is surfaced to downstream code via
 //! `env!("MARQUE_AUDIT_SCHEMA")`. Rebuilds are triggered when the
@@ -21,8 +26,8 @@ fn main() {
     // or removing a value MUST coordinate with audit-emit paths.
     // `crates/engine/tests/audit_schema_accept_list.rs` regression-
     // pins this verbatim.
-    const ACCEPTED: &[&str] = &["marque-1.0"];
-    const DEFAULT: &str = "marque-1.0";
+    const ACCEPTED: &[&str] = &["marque-2.0"];
+    const DEFAULT: &str = "marque-2.0";
 
     let schema = std::env::var("MARQUE_AUDIT_SCHEMA").unwrap_or_else(|_| DEFAULT.to_string());
 

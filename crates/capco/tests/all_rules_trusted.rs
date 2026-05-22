@@ -28,7 +28,7 @@ fn every_registered_capco_rule_is_trusted() {
         .rules()
         .iter()
         .filter(|r| !r.trusted())
-        .map(|r| r.id().as_str())
+        .map(|r| r.id().predicate_id())
         .collect();
 
     assert!(

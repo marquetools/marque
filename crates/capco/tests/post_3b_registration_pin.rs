@@ -30,10 +30,11 @@
 //!
 //! The intent of PM Addendum I.6 (closing the audit gap for the new
 //! E068 + E069 IDs) is preserved by the `additional_emitted_ids`
-//! contribution on the walker — `.marque.toml` configurations like
-//! `[rules] E068 = "warn"` and `[rules] E069 = "warn"` are
-//! recognized via the canonicalization path. Per-row diagnostics
-//! carry `Diagnostic.rule = "E068"` / `"E069"` for audit-stream
+//! contribution on the walker — post-T044 `.marque.toml` configurations
+//! like `[rules] "capco:banner.classification.mismatch-vs-projected" =
+//! "warn"` and `[rules] "capco:banner.fgi.marker-mismatch-vs-projected"
+//! = "warn"` are recognized via the canonicalization path. Per-row
+//! diagnostics carry the respective predicate IDs for audit-stream
 //! traceability without inflating the registered count.
 //!
 //! Asserts the **exact set** of 29 registered `Rule::id()` values.
@@ -100,10 +101,11 @@ use std::collections::BTreeSet;
 /// `Phase::PageFinalization` so the rule also closes the pre-#488
 /// banner-less false-negative (40 → 39).
 /// The 27 class-floor + 5 SCI per-system catalog rows still fire; they
-/// emit through the bridge as `Diagnostic.rule = "E058"` and
-/// `Diagnostic.rule = "E059"` respectively (audit-stream +
-/// `[rules] E058 = "off"` / `[rules] E059 = "off"` config-override
-/// continuity) but are no longer counted as registered `Rule` impls.
+/// emit through the bridge using the catalog row's `name` as the
+/// predicate ID (post-T044 the bridge became a no-op pass-through —
+/// e.g., `banner.classification.floor-hcs-comp-sub` row emits with predicate
+/// `banner.classification.floor-hcs-comp-sub`). They are no longer
+/// counted as registered `Rule` impls.
 /// Issue #261 adds `FgiExplicitWithTrigraphRule` (E071) — FGI with
 /// explicit trigraph when concealment is intended or acknowledgment is
 /// contradicted per §H.7 p124 (24 → 25). Issue #250 adds
@@ -118,6 +120,17 @@ use std::collections::BTreeSet;
 /// shape gate (`FVEY`, `DEUX`, `ACGU`, `ISAF`, etc.); replaces the
 /// generic E008 surface via the existing suppression chain. Authority:
 /// CAPCO-2016 §H.7 p123 (28 → 29).
+///
+/// The 29 registered rule IDs in wire-string form
+/// (`"<scheme>:<predicate_id>"`).
+///
+/// Post-T044 the legacy E### / W### / C### / S### / R### flat-string IDs
+/// became the 2-tuple `(scheme, predicate_id)` shape. The wire-string
+/// form here is what `RuleId::Display` produces (`scheme:predicate_id`)
+/// — also what users type in `.marque.toml` `[rules]` keys per PM
+/// decision OD-7, and what the comparison logic builds via
+/// `r.id().to_string()`. Each entry's legacy-ID + CAPCO citation is
+/// recorded in `docs/refactor-006/legacy-rule-id-map.md` §1.
 const EXPECTED_RULE_IDS: &[&str] = &[
     // PR #578 retires the following 15 IDs as registered `Rule` impls
     // (they remain emittable via the engine's constraint-catalog bridge,
@@ -126,65 +139,83 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     //   E053 E054 E055 E056 E057
     //
     // S004 stays a registered walker (see top-of-file header).
-    "C001", "E002", "E005", "E006", "E007", "E008", "E031", "E039", "E041", "E061", "E062", "E063",
-    "E064", "E065",
+    "capco:marking.correction.token-typo",     // C001
+    "capco:portion.dissem.rel-to-missing-usa", // E002
+    "capco:portion.declassification.declassify-on-misplaced", // E005
+    "capco:marking.deprecation.deprecated-dissem-control", // E006
+    "capco:portion.metadata.x-shorthand-date-pattern", // E007
+    "capco:marking.metadata.unrecognized-token", // E008
+    "capco:banner.banner-rollup.sar-portions-roll-up", // E031 (SAR row;
+    // walker registration. The walker emits 4 additional rule IDs
+    // (E035/E040/E068/E069) per `additional_emitted_ids`; those are
+    // NOT separately registered — see file header.
+    "capco:page.dissem.nodis-exdis-clears-banner-rel-to", // E039
+    "capco:portion.dissem.nodis-supersedes-exdis-in-portion", // E041
+    "capco:portion.sci.hcs-bare-at-confidential-legacy-remark", // E061
+    "capco:portion.sci.hcs-bare-suggest-subcompartment",  // E062
+    "capco:portion.sci.rsv-bare-requires-compartment",    // E063
+    "capco:portion.dissem.eyes-only-convert-to-rel-to",   // E064
+    "capco:portion.sci.deprecated-long-form",             // E065
     // PR 9c.1 T134: legacy NATO compound text re-marking per
     // CAPCO-2016 §G.2 p40 (Table 5 — ATOMAL/BOHEMIA/BALK as
     // standalone registered control markings) + §H.7 p122 (ATOMAL
     // → AEA worked example) + §H.7 p127 (BALK/BOHEMIA → SCI
     // worked example).
-    "E066",
+    "capco:marking.recanonicalize.legacy-nato-compound", // E066
     // Issue #407 / PR #491: bare-canonical-compound rewriter. Three
     // legacy short-forms (bare CNWDI / NK / EU in SCI position) carry
     // CAPCO-2016 canonical compound portion marks (RD-CNWDI per
     // §H.6 p106; SI-NK per §H.4 p83; SI-EU per §H.4 p78).
-    "E067", "S003", "S004",
+    "capco:marking.recanonicalize.bare-canonical-compound", // E067
+    "capco:portion.classification.joint-usa-first-style",   // S003
+    "capco:portion.dissem.rel-to-trigraph-suggest",         // S004
     // PR #488 (issue #488): S006 retired; S005 is the sole survivor
     // of the historical Suggest/Info split. See the header for the
     // collapse rationale.
-    "S005",
+    "capco:page.dissem.rel-to-uncertain-reduction", // S005
     // PR 9c.2 / FR-048: bare NATO classification in a US-classified
     // document should carry `REL TO USA, NATO` per §H.7 p127 Notional
     // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
-    "S007",
+    "capco:portion.nato.bare-nato-requires-rel-to-usa-nato", // S007
     // #559 close-out C1 (2026-05-19): RELIDO byte-surfacing twin of
     // the `CLOSURE_RELIDO_SCI` / `CLOSURE_RELIDO_US_CLASS` lattice-
     // layer closures. Severity::Suggest at confidence 0.85 — matches
     // S007's text-layer pattern. Authority: CAPCO-2016 §H.8 p154 +
     // §D.2 Table 3 rule 17.
-    "S008",
+    "capco:portion.dissem.relido-implied-by-closure", // S008
     // Issue #250: suggest replacing explicit member trigraph lists with
     // a compact tetragraph when all members are present. Default Off —
     // tetragraph vs. explicit-member form is an org style choice.
     // Authority: CAPCO-2016 §H.8 p150.
-    "S009",
+    "capco:page.dissem.prefer-tetragraph-collapse", // S009
     // Issue #251: suggest bare REL when all portions carry the same
     // REL TO list as the banner. Default Off. Authority: §H.8 p150.
-    "S010",
+    "capco:page.dissem.collapse-uniform-rel-portions", // S010
     // Issue #251: warn when bare-REL and explicit-REL-TO portions with
     // a divergent list coexist. Default Warn. Authority: §H.8 p150-151.
-    "E072",
+    "capco:page.dissem.bare-rel-portion-divergence", // E072
     // W002 retired in the PR closing #470 — CAPCO §H.7 p123
     // authorized the shape the rule was warning on. See
     // `crates/capco/src/rules.rs` module header for the rationale.
-    "W003",
+    "capco:page.dissem.non-ic-dissem-in-classified-banner", // W003
     // PR 4b-B Commit 9 (006 T112): joint-disunity-collapse-to-FGI per
     // CAPCO-2016 §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass updated
     // from §H.3 p56). Surfaces the cross-axis transformation when
     // all-JOINT portions disagree on producer lists and
     // JointSet::DisunityCollapse fires.
-    "W004", "W034",
+    "capco:page.fgi.joint-disunity-collapses-to-fgi", // W004
+    "capco:portion.sci.unpublished-custom-control",   // W034
     // Issue #261: FGI with explicit trigraph when concealment intended
     // or acknowledgment contradicted per CAPCO-2016 §H.7 p124. Four-case
     // behavioral spec (Full/Empty/Partial REL TO overlap + Case B valid).
-    "E071",
+    "capco:portion.fgi.fgi-explicit-with-trigraph", // E071
     // Issue #501: invalid FGI ownership tokens — category-specific
     // diagnostic per CAPCO-2016 §H.7 p123. Replaces the generic E008
     // surface on FGI-marker spans whose ownership-list tail contains
     // a token that fails `CountryCode::admits_fgi_ownership_token`
     // (`FVEY`, `DEUX`, `ACGU`, `ISAF`, …). The E008 emission path
     // suppresses co-firing via `is_fgi_invalid_ownership_token`.
-    "E073",
+    "capco:marking.fgi.invalid-ownership-token", // E073
 ];
 
 #[test]
@@ -222,10 +253,17 @@ fn post_pr_578_registers_exact_29_rule_ids() {
          raw_len={raw_len}",
     );
 
+    // T044: `RuleId` reshaped to the 2-tuple `(scheme, predicate_id)`.
+    // `RuleId::Display` produces the wire-string form
+    // `"<scheme>:<predicate_id>"` (per `crates/rules/src/lib.rs` Display
+    // impl), which is also what users type in `.marque.toml [rules]`
+    // keys per PM decision OD-7. `EXPECTED_RULE_IDS` carries the wire
+    // strings; the comparison uses `r.id().to_string()` so the wire
+    // shape is the load-bearing assertion.
     let actual: BTreeSet<String> = rule_set
         .rules()
         .iter()
-        .map(|r| r.id().as_str().to_owned())
+        .map(|r| r.id().to_string())
         .collect();
     let expected: BTreeSet<&str> = EXPECTED_RULE_IDS.iter().copied().collect();
 

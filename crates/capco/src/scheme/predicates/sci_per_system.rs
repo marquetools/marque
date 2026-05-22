@@ -82,12 +82,15 @@ pub(crate) fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs)
 /// [`sci_per_system_catalog_eval`]. Used by `evaluate_custom_by_attrs`
 /// to route on the table.
 ///
-/// O(1) prefix check — every catalog row's `name` MUST start with
-/// `sci-per-system/`. The `sci_per_system_catalog_naming_convention`
-/// test in `crates/capco/tests/sci_per_system_catalog.rs` enforces the
+/// Post-T044: O(1) prefix check on the canonical predicate-ID form —
+/// every catalog row's `name` MUST start with `marking.sci.`. This
+/// prefix is uniquely scoped to the per-system catalog
+/// (`portion.sci.*` is reserved for standalone SCI rules). The
+/// `sci_per_system_catalog_naming_convention` test in
+/// `crates/capco/tests/sci_per_system_catalog.rs` enforces the
 /// invariant at build time.
 pub(crate) fn is_sci_per_system_catalog_name(name: &str) -> bool {
-    name.starts_with("sci-per-system/")
+    name.starts_with("marking.sci.")
 }
 
 /// Resolve a catalog row by `name`. Returns `None` for unknown names.

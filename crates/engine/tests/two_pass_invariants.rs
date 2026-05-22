@@ -159,7 +159,7 @@ proptest! {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
         let mut seen: HashSet<(String, usize, usize)> = HashSet::new();
         for fix in result.applied_fixes() {
-            let key = (fix.rule.as_str().to_string(), fix.span.start, fix.span.end);
+            let key = (fix.rule.predicate_id().to_string(), fix.span.start, fix.span.end);
             prop_assert!(
                 seen.insert(key.clone()),
                 "duplicate (rule_id, span) in applied: {:?} for input {:?}",
@@ -185,7 +185,7 @@ proptest! {
         let mut counts: std::collections::HashMap<(String, usize, usize), usize> =
             std::collections::HashMap::new();
         for fix in result.applied_fixes() {
-            let key = (fix.rule.as_str().to_string(), fix.span.start, fix.span.end);
+            let key = (fix.rule.predicate_id().to_string(), fix.span.start, fix.span.end);
             *counts.entry(key).or_insert(0) += 1;
         }
         for (key, count) in &counts {

@@ -54,7 +54,7 @@ fn e072_diags(
     result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "E072")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.bare-rel-portion-divergence")
         .collect()
 }
 

@@ -42,7 +42,7 @@ fn lint_w005(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoS
         .lint(source)
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "W005")
+        .filter(|d| d.rule.predicate_id() == "portion.classification.rel-to-not-in-joint-coverage")
         .collect()
 }
 

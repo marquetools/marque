@@ -1,6 +1,6 @@
 {
   "_note": "REL TO GBR not in JOINT participants AUS CAN USA per CAPCO-2016 §H.3 p57. Warn-only (no fix): §H.3 '[LIST]' superset semantics permit intentional expansion beyond co-owners, so Marque surfaces the divergence for classifier review without auto-applying a fix.",
   "diagnostics": [
-    {"rule": "W005", "span": {"start": 3, "end": 22}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.classification.rel-to-not-in-joint-coverage"}, "span": {"start": 3, "end": 22}}
   ]
 }

@@ -77,7 +77,7 @@ pub(crate) fn e012_dual_classification(
             .unwrap_or(Span::new(0, 0));
 
         vec![ConstraintViolation {
-            constraint_label: "E012/dual-classification",
+            constraint_label: "portion.classification.dual-classification",
             // The message here matches the retired `DeclarativeDualClassificationRule`.
             message: format!(
                 "marking has both US ({}) and foreign ({}) classification; §H.3 p55 mandates \
@@ -118,7 +118,7 @@ pub(crate) fn e014_joint_rel_to_coverage(
         return Vec::new();
     }
     vec![ConstraintViolation {
-        constraint_label: "E014/joint-requires-rel-to-coverage",
+        constraint_label: "portion.classification.joint-requires-rel-to-coverage",
         message: format!(
             "JOINT participants [{}] must appear in REL TO list",
             missing.join(", ")
@@ -171,7 +171,7 @@ pub(crate) fn w005_rel_to_not_in_joint_coverage(
     }
     let entries: Vec<&str> = not_in_joint.iter().copied().collect();
     vec![ConstraintViolation {
-        constraint_label: "W005/rel-to-not-in-joint-coverage",
+        constraint_label: "portion.classification.rel-to-not-in-joint-coverage",
         message: format!(
             "REL TO {} not in JOINT participant list: {}",
             if entries.len() == 1 {

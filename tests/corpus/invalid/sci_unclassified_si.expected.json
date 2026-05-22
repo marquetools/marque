@@ -1,6 +1,6 @@
 {
   "_note": "CAPCO-2016 §H.4 p60 — SCI control SI requires CONFIDENTIAL minimum (any classified level). Fires E058 class-floor/SI.",
   "diagnostics": [
-    {"rule": "E058", "span": {"start": 14, "end": 16}}
+    {"rule": {"scheme": "capco", "predicate_id": "banner.classification.floor-si"}, "span": {"start": 14, "end": 16}}
   ]
 }
