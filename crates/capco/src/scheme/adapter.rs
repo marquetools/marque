@@ -719,10 +719,7 @@ impl CapcoScheme {
                 "capco:banner.classification.floor-tk-blfh",
                 "class-floor-tk-blfh",
             ),
-            (
-                "capco:banner.classification.floor-balk",
-                "class-floor-balk",
-            ),
+            ("capco:banner.classification.floor-balk", "class-floor-balk"),
             (
                 "capco:banner.classification.floor-bohemia",
                 "class-floor-bohemia",
@@ -735,58 +732,19 @@ impl CapcoScheme {
                 "capco:banner.classification.floor-rsv-comp",
                 "class-floor-rsv-comp",
             ),
-            (
-                "capco:banner.classification.floor-tk",
-                "class-floor-tk",
-            ),
-            (
-                "capco:banner.aea.floor-rd-sg",
-                "class-floor-rd-sg",
-            ),
-            (
-                "capco:banner.aea.floor-frd-sg",
-                "class-floor-frd-sg",
-            ),
-            (
-                "capco:banner.aea.floor-cnwdi",
-                "class-floor-cnwdi",
-            ),
-            (
-                "capco:banner.dissem.floor-rsen",
-                "class-floor-rsen",
-            ),
-            (
-                "capco:banner.dissem.floor-imcon",
-                "class-floor-imcon",
-            ),
-            (
-                "capco:banner.classification.floor-si",
-                "class-floor-si",
-            ),
-            (
-                "capco:banner.classification.floor-sar",
-                "class-floor-sar",
-            ),
-            (
-                "capco:banner.aea.floor-rd",
-                "class-floor-rd",
-            ),
-            (
-                "capco:banner.aea.floor-frd",
-                "class-floor-frd",
-            ),
-            (
-                "capco:banner.aea.floor-tfni",
-                "class-floor-tfni",
-            ),
-            (
-                "capco:banner.aea.floor-atomal",
-                "class-floor-atomal",
-            ),
-            (
-                "capco:banner.dissem.floor-orcon",
-                "class-floor-orcon",
-            ),
+            ("capco:banner.classification.floor-tk", "class-floor-tk"),
+            ("capco:banner.aea.floor-rd-sg", "class-floor-rd-sg"),
+            ("capco:banner.aea.floor-frd-sg", "class-floor-frd-sg"),
+            ("capco:banner.aea.floor-cnwdi", "class-floor-cnwdi"),
+            ("capco:banner.dissem.floor-rsen", "class-floor-rsen"),
+            ("capco:banner.dissem.floor-imcon", "class-floor-imcon"),
+            ("capco:banner.classification.floor-si", "class-floor-si"),
+            ("capco:banner.classification.floor-sar", "class-floor-sar"),
+            ("capco:banner.aea.floor-rd", "class-floor-rd"),
+            ("capco:banner.aea.floor-frd", "class-floor-frd"),
+            ("capco:banner.aea.floor-tfni", "class-floor-tfni"),
+            ("capco:banner.aea.floor-atomal", "class-floor-atomal"),
+            ("capco:banner.dissem.floor-orcon", "class-floor-orcon"),
             (
                 "capco:banner.dissem.floor-eyes-only",
                 "class-floor-eyes-only",

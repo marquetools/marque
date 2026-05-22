@@ -1155,9 +1155,7 @@ mod tests {
         // uses `MessageTemplate::BannerRollupMismatch`.
         // T044: the rule label is the wire-string form
         // `"<scheme>:<predicate_id>"` (Display impl) per PM OD-3.
-        assert!(rendered.contains(
-            "banner.txt:1:17 fix[capco:banner.classification.usa-trigraph]"
-        ));
+        assert!(rendered.contains("banner.txt:1:17 fix[capco:banner.classification.usa-trigraph]"));
         assert!(rendered.contains("BannerRollupMismatch"));
         // Location arrow
         assert!(rendered.contains("--> banner.txt:1:17-19"));
@@ -1453,7 +1451,10 @@ mod tests {
         // The NDJSON serializes it as
         // `"rule": {"scheme": "capco", "predicate_id": "..."}`.
         assert_eq!(json.rule.scheme, "capco");
-        assert_eq!(json.rule.predicate_id, "portion.dissem.rel-to-trigraph-suggest");
+        assert_eq!(
+            json.rule.predicate_id,
+            "portion.dissem.rel-to-trigraph-suggest"
+        );
         // Fix payload is preserved on the wire so a downstream
         // consumer can render the candidate replacement themselves.
         assert!(json.fix.is_some());
@@ -1563,7 +1564,10 @@ mod tests {
         assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
         // T044 PM OD-2: structured-object `rule` shape on the wire.
         assert_eq!(v["rule"]["scheme"], "capco");
-        assert_eq!(v["rule"]["predicate_id"], "portion.dissem.rel-to-missing-usa");
+        assert_eq!(
+            v["rule"]["predicate_id"],
+            "portion.dissem.rel-to-missing-usa"
+        );
         assert_eq!(v["severity"], "fix");
         assert_eq!(v["span"]["start"], 8);
         assert_eq!(v["span"]["end"], 10);

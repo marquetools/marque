@@ -3145,7 +3145,10 @@ const E061_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
 impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     fn id(&self) -> RuleId {
-        RuleId::new("capco", "portion.sci.hcs-bare-at-confidential-legacy-remark")
+        RuleId::new(
+            "capco",
+            "portion.sci.hcs-bare-at-confidential-legacy-remark",
+        )
     }
     fn name(&self) -> &'static str {
         "hcs-bare-at-confidential-legacy-remark"

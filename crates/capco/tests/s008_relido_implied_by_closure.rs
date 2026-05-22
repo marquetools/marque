@@ -165,11 +165,7 @@ fn silent_on_banner_marking() {
     // it to the banner.
     let result = engine().lint(b"SECRET\n(S)\n");
     let s008 = marque_rules::RuleId::new("capco", "portion.dissem.relido-implied-by-closure");
-    let banner_s008 = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule == s008)
-        .count();
+    let banner_s008 = result.diagnostics.iter().filter(|d| d.rule == s008).count();
     // The portion (S) may trigger S008, but the banner must not.
     // We check that S008 doesn't fire MORE than once (the portion's),
     // and if multiple match-fits exist this would catch the

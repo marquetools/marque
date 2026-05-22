@@ -27,14 +27,11 @@ use marque_rules::Severity;
 /// Build an engine with S010 enabled at `suggest` severity.
 fn engine_with_s010() -> Engine {
     let mut config = Config::default();
-    config
-        .rules
-        .overrides
-        .insert(
-            // T044: rule-override key uses the wire-string form per OD-7.
-            "capco:page.dissem.collapse-uniform-rel-portions".to_string(),
-            "suggest".to_string(),
-        );
+    config.rules.overrides.insert(
+        // T044: rule-override key uses the wire-string form per OD-7.
+        "capco:page.dissem.collapse-uniform-rel-portions".to_string(),
+        "suggest".to_string(),
+    );
     Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],

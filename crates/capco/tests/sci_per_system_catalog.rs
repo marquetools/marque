@@ -96,9 +96,7 @@ fn sci_diags_for<'a>(
 fn sci_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
     diags
         .iter()
-        .filter(|d| {
-            d.rule.scheme() == "capco" && d.rule.predicate_id().starts_with("marking.sci.")
-        })
+        .filter(|d| d.rule.scheme() == "capco" && d.rule.predicate_id().starts_with("marking.sci."))
         .collect()
 }
 
@@ -685,10 +683,8 @@ fn pr_d_class_floor_only_fires_when_companion_satisfied() {
     //    S-floor).
     //  - PR E HCS-P NOFORN does NOT fire (NOFORN present).
     let diags = lint("(C//HCS-P//OC/NF)");
-    let class_floor: Vec<_> = sci_diags_with_predicate(
-        &diags,
-        "banner.classification.floor-hcs-comp",
-    );
+    let class_floor: Vec<_> =
+        sci_diags_with_predicate(&diags, "banner.classification.floor-hcs-comp");
     assert_eq!(
         class_floor.len(),
         1,
@@ -757,13 +753,10 @@ fn sci_per_system_off_severity_suppresses_specific_row() {
     // untouched. The pre-T044 walker-level "E059" key no longer
     // exists.
     let mut config = Config::default();
-    config
-        .rules
-        .overrides
-        .insert(
-            "capco:marking.sci.hcs-o-companions".to_owned(),
-            "off".to_owned(),
-        );
+    config.rules.overrides.insert(
+        "capco:marking.sci.hcs-o-companions".to_owned(),
+        "off".to_owned(),
+    );
     let engine = Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
@@ -790,13 +783,10 @@ fn sci_per_system_off_does_not_leak_to_other_rows() {
     // (always-None post-T044), every row's diagnostics would have
     // leaked through unchanged regardless of any override.
     let mut config = Config::default();
-    config
-        .rules
-        .overrides
-        .insert(
-            "capco:marking.sci.hcs-o-companions".to_owned(),
-            "off".to_owned(),
-        );
+    config.rules.overrides.insert(
+        "capco:marking.sci.hcs-o-companions".to_owned(),
+        "off".to_owned(),
+    );
     let engine = Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
@@ -828,7 +818,10 @@ fn sci_per_system_off_all_five_rows_independently() {
         "capco:marking.sci.si-g-companions",
         "capco:marking.sci.tk-compartment-noforn-required",
     ] {
-        config.rules.overrides.insert(row.to_owned(), "off".to_owned());
+        config
+            .rules
+            .overrides
+            .insert(row.to_owned(), "off".to_owned());
     }
     let engine = Engine::new(
         config,

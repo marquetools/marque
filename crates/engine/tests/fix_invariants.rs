@@ -248,7 +248,11 @@ fn i19_same_rule_and_span_never_repeats_in_audit_stream() {
     let result = eng.fix(src, FixMode::Apply);
     let mut seen: HashSet<(String, usize, usize)> = HashSet::new();
     for fix in result.applied_fixes() {
-        let key = (fix.rule.predicate_id().to_string(), fix.span.start, fix.span.end);
+        let key = (
+            fix.rule.predicate_id().to_string(),
+            fix.span.start,
+            fix.span.end,
+        );
         assert!(
             seen.insert(key.clone()),
             "duplicate (rule, span) in applied stream: {key:?}"

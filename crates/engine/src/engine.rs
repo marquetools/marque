@@ -1683,7 +1683,11 @@ impl Engine {
                     // walker rules carries the per-row catalog
                     // severity).
                     diags.retain_mut(|d| {
-                        match self.emitted_id_overrides.get(d.rule.predicate_id()).copied() {
+                        match self
+                            .emitted_id_overrides
+                            .get(d.rule.predicate_id())
+                            .copied()
+                        {
                             Some(Severity::Off) => false,
                             Some(override_severity) => {
                                 d.severity = override_severity;
@@ -2275,8 +2279,7 @@ impl Engine {
                 dropped_keys.insert((fix.rule, fix.span));
             }
         }
-        let kept_keys: HashSet<(RuleId, Span)> =
-            kept.iter().map(|f| (f.rule, f.span)).collect();
+        let kept_keys: HashSet<(RuleId, Span)> = kept.iter().map(|f| (f.rule, f.span)).collect();
         // Resurrect the diagnostics for the dropped fixes so they can
         // surface via `remaining_diagnostics`.
         let dropped_diags: Vec<Diagnostic<CapcoScheme>> = lint
@@ -7160,10 +7163,8 @@ mod tests {
         // E002 diagnostics via the fast-path skip.
         // T044: legacy `"E002"` config key → wire-string form
         // `"capco:portion.dissem.rel-to-missing-usa"`.
-        let engine = capco_engine_with_overrides(&[(
-            "capco:portion.dissem.rel-to-missing-usa",
-            "off",
-        )]);
+        let engine =
+            capco_engine_with_overrides(&[("capco:portion.dissem.rel-to-missing-usa", "off")]);
         let diagnostics = engine.lint(b"SECRET//REL TO GBR").diagnostics;
         let e002: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
@@ -7258,10 +7259,8 @@ mod tests {
         // E002 must become `Off`; every other rule's entry must
         // stay at its default; `emitted_id_overrides` must contain
         // exactly `{"portion.dissem.rel-to-missing-usa": Off}`.
-        let engine = capco_engine_with_overrides(&[(
-            "capco:portion.dissem.rel-to-missing-usa",
-            "off",
-        )]);
+        let engine =
+            capco_engine_with_overrides(&[("capco:portion.dissem.rel-to-missing-usa", "off")]);
 
         // Find the (set_idx, rule_idx) for E002 (predicate id
         // `portion.dissem.rel-to-missing-usa`).
@@ -7397,10 +7396,8 @@ mod tests {
         // E002 rule's fast-path entry stays at its default and
         // `emitted_id_overrides` does NOT contain `"E002"`.
         // T044: legacy `"E002"` config → wire-string form.
-        let engine = capco_engine_with_overrides(&[(
-            "capco:portion.dissem.rel-to-missing-usa",
-            "borked",
-        )]);
+        let engine =
+            capco_engine_with_overrides(&[("capco:portion.dissem.rel-to-missing-usa", "borked")]);
 
         // Find E002's location.
         let mut e002_loc: Option<(usize, usize, Severity)> = None;
@@ -7652,8 +7649,7 @@ mod tests {
         // T044 / OD-7: users type the wire-string form
         // `"capco:marking.sci.hcs-o-companions"` in `.marque.toml`;
         // canonicalize reduces to the predicate-id intern.
-        let mut config =
-            config_with_overrides(&[("capco:marking.sci.hcs-o-companions", "warn")]);
+        let mut config = config_with_overrides(&[("capco:marking.sci.hcs-o-companions", "warn")]);
         let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
             .expect("bridge-emitted wire-string form must be accepted");
@@ -7685,8 +7681,7 @@ mod tests {
         // The descriptive alias (second column of
         // `bridge_emitted_rule_ids`) is a third permissible config-key
         // form. It canonicalizes to the predicate-id intern.
-        let mut config =
-            config_with_overrides(&[("sci-per-system-hcs-o-companions", "error")]);
+        let mut config = config_with_overrides(&[("sci-per-system-hcs-o-companions", "error")]);
         let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
             .expect("bridge-emitted descriptive alias must be accepted");
@@ -7708,10 +7703,8 @@ mod tests {
     fn canonicalize_accepts_class_floor_wire_string() {
         // Same round-trip for a class-floor catalog row (per Agent A's
         // rename to wire-string form in `bridge_emitted_rule_ids`).
-        let mut config = config_with_overrides(&[(
-            "capco:banner.classification.floor-hcs-comp-sub",
-            "off",
-        )]);
+        let mut config =
+            config_with_overrides(&[("capco:banner.classification.floor-hcs-comp-sub", "off")]);
         let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
             .expect("class-floor wire-string form must be accepted");

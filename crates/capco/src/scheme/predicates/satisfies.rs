@@ -467,7 +467,9 @@ pub(crate) fn evaluate_custom_by_attrs(
             marque_scheme::capco(marque_scheme::SectionLetter::H, 4, 62),
         ),
         "portion.classification.dual-classification" => e012_dual_classification(attrs),
-        "portion.classification.joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
+        "portion.classification.joint-requires-rel-to-coverage" => {
+            e014_joint_rel_to_coverage(attrs)
+        }
         "portion.classification.rel-to-not-in-joint-coverage" => {
             w005_rel_to_not_in_joint_coverage(attrs)
         }

@@ -99,7 +99,10 @@ fn assert_bench_invariants(engine: &Engine) {
          got {}. Applied rules: {:?}",
         std::str::from_utf8(SINGLE_FIX_INPUT).unwrap_or("<non-utf8>"),
         applied.len(),
-        applied.iter().map(|f| f.rule.predicate_id()).collect::<Vec<_>>(),
+        applied
+            .iter()
+            .map(|f| f.rule.predicate_id())
+            .collect::<Vec<_>>(),
     );
 
     let e054_fix = applied[0];

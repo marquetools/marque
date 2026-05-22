@@ -98,8 +98,7 @@ fn fix_with_warning_only_exits_two() {
     // object. Legacy `W003` →
     // `("capco", "page.dissem.non-ic-dissem-in-classified-banner")`
     // per `docs/refactor-006/legacy-rule-id-map.md` §1.
-    let expected_rule_fragment =
-        r#""rule":{"scheme":"capco","predicate_id":"page.dissem.non-ic-dissem-in-classified-banner"}"#;
+    let expected_rule_fragment = r#""rule":{"scheme":"capco","predicate_id":"page.dissem.non-ic-dissem-in-classified-banner"}"#;
     assert!(
         stdout.contains(expected_rule_fragment),
         "expected the non-ic-dissem-in-classified-banner rule (legacy W003) in diagnostic stream; got: {stdout}"

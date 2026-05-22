@@ -135,7 +135,9 @@ fn assert_e066_fires_and_rewrites_to(
     // E066 must appear in the applied set (sanity check on the
     // promotion path).
     assert!(
-        result.applied_fixes().any(|af| af.rule.predicate_id() == "marking.recanonicalize.legacy-nato-compound"),
+        result
+            .applied_fixes()
+            .any(|af| af.rule.predicate_id() == "marking.recanonicalize.legacy-nato-compound"),
         "E066 must appear in applied fixes on {input:?}; applied: {:?}",
         result
             .applied_fixes()
@@ -300,7 +302,9 @@ fn e066_does_not_fire_on_bare_cts_portion() {
     let lint = eng.lint(source);
 
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT fire on bare canonical (//CTS); diagnostics: {:?}",
         lint.diagnostics
             .iter()
@@ -311,7 +315,9 @@ fn e066_does_not_fire_on_bare_cts_portion() {
     // And the fix output is byte-identical (modulo unrelated rules).
     let result = eng.fix(source, FixMode::Apply);
     assert!(
-        result.applied_fixes().all(|af| af.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
+        result
+            .applied_fixes()
+            .all(|af| af.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT appear in applied fixes for bare (//CTS); applied: {:?}",
         result
             .applied_fixes()
@@ -333,7 +339,9 @@ fn e066_does_not_fire_on_bare_us_portion() {
     let lint = eng.lint(source);
 
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT fire on US-class (S); diagnostics: {:?}",
         lint.diagnostics
             .iter()

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # T044 — `RuleId` 2-Tuple Migration: Tactical Implementation Plan
 
 **Date**: 2026-05-22

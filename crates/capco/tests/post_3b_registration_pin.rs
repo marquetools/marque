@@ -133,29 +133,29 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     //   E053 E054 E055 E056 E057
     //
     // S004 stays a registered walker (see top-of-file header).
-    "capco:marking.correction.token-typo",                  // C001
-    "capco:portion.dissem.rel-to-missing-usa",              // E002
+    "capco:marking.correction.token-typo",     // C001
+    "capco:portion.dissem.rel-to-missing-usa", // E002
     "capco:portion.declassification.declassify-on-misplaced", // E005
-    "capco:marking.deprecation.deprecated-dissem-control",  // E006
-    "capco:portion.metadata.x-shorthand-date-pattern",      // E007
-    "capco:marking.metadata.unrecognized-token",            // E008
-    "capco:banner.banner-rollup.sar-portions-roll-up",      // E031 (SAR row;
+    "capco:marking.deprecation.deprecated-dissem-control", // E006
+    "capco:portion.metadata.x-shorthand-date-pattern", // E007
+    "capco:marking.metadata.unrecognized-token", // E008
+    "capco:banner.banner-rollup.sar-portions-roll-up", // E031 (SAR row;
     // walker registration. The walker emits 4 additional rule IDs
     // (E035/E040/E068/E069) per `additional_emitted_ids`; those are
     // NOT separately registered — see file header.
-    "capco:page.dissem.nodis-exdis-clears-banner-rel-to",   // E039
+    "capco:page.dissem.nodis-exdis-clears-banner-rel-to", // E039
     "capco:portion.dissem.nodis-supersedes-exdis-in-portion", // E041
     "capco:portion.sci.hcs-bare-at-confidential-legacy-remark", // E061
-    "capco:portion.sci.hcs-bare-suggest-subcompartment",    // E062
-    "capco:portion.sci.rsv-bare-requires-compartment",      // E063
-    "capco:portion.dissem.eyes-only-convert-to-rel-to",     // E064
-    "capco:portion.sci.deprecated-long-form",               // E065
+    "capco:portion.sci.hcs-bare-suggest-subcompartment",  // E062
+    "capco:portion.sci.rsv-bare-requires-compartment",    // E063
+    "capco:portion.dissem.eyes-only-convert-to-rel-to",   // E064
+    "capco:portion.sci.deprecated-long-form",             // E065
     // PR 9c.1 T134: legacy NATO compound text re-marking per
     // CAPCO-2016 §G.2 p40 (Table 5 — ATOMAL/BOHEMIA/BALK as
     // standalone registered control markings) + §H.7 p122 (ATOMAL
     // → AEA worked example) + §H.7 p127 (BALK/BOHEMIA → SCI
     // worked example).
-    "capco:marking.recanonicalize.legacy-nato-compound",    // E066
+    "capco:marking.recanonicalize.legacy-nato-compound", // E066
     // Issue #407 / PR #491: bare-canonical-compound rewriter. Three
     // legacy short-forms (bare CNWDI / NK / EU in SCI position) carry
     // CAPCO-2016 canonical compound portion marks (RD-CNWDI per
@@ -166,7 +166,7 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // PR #488 (issue #488): S006 retired; S005 is the sole survivor
     // of the historical Suggest/Info split. See the header for the
     // collapse rationale.
-    "capco:page.dissem.rel-to-uncertain-reduction",         // S005
+    "capco:page.dissem.rel-to-uncertain-reduction", // S005
     // PR 9c.2 / FR-048: bare NATO classification in a US-classified
     // document should carry `REL TO USA, NATO` per §H.7 p127 Notional
     // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
@@ -176,18 +176,18 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // layer closures. Severity::Suggest at confidence 0.85 — matches
     // S007's text-layer pattern. Authority: CAPCO-2016 §H.8 p154 +
     // §D.2 Table 3 rule 17.
-    "capco:portion.dissem.relido-implied-by-closure",       // S008
+    "capco:portion.dissem.relido-implied-by-closure", // S008
     // Issue #250: suggest replacing explicit member trigraph lists with
     // a compact tetragraph when all members are present. Default Off —
     // tetragraph vs. explicit-member form is an org style choice.
     // Authority: CAPCO-2016 §H.8 p150.
-    "capco:page.dissem.prefer-tetragraph-collapse",         // S009
+    "capco:page.dissem.prefer-tetragraph-collapse", // S009
     // Issue #251: suggest bare REL when all portions carry the same
     // REL TO list as the banner. Default Off. Authority: §H.8 p150.
-    "capco:page.dissem.collapse-uniform-rel-portions",      // S010
+    "capco:page.dissem.collapse-uniform-rel-portions", // S010
     // Issue #251: warn when bare-REL and explicit-REL-TO portions with
     // a divergent list coexist. Default Warn. Authority: §H.8 p150-151.
-    "capco:page.dissem.bare-rel-portion-divergence",        // E072
+    "capco:page.dissem.bare-rel-portion-divergence", // E072
     // W002 retired in the PR closing #470 — CAPCO §H.7 p123
     // authorized the shape the rule was warning on. See
     // `crates/capco/src/rules.rs` module header for the rationale.
@@ -197,12 +197,12 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // from §H.3 p56). Surfaces the cross-axis transformation when
     // all-JOINT portions disagree on producer lists and
     // JointSet::DisunityCollapse fires.
-    "capco:page.fgi.joint-disunity-collapses-to-fgi",       // W004
-    "capco:portion.sci.unpublished-custom-control",         // W034
+    "capco:page.fgi.joint-disunity-collapses-to-fgi", // W004
+    "capco:portion.sci.unpublished-custom-control",   // W034
     // Issue #261: FGI with explicit trigraph when concealment intended
     // or acknowledgment contradicted per CAPCO-2016 §H.7 p124. Four-case
     // behavioral spec (Full/Empty/Partial REL TO overlap + Case B valid).
-    "capco:portion.fgi.fgi-explicit-with-trigraph",         // E071
+    "capco:portion.fgi.fgi-explicit-with-trigraph", // E071
 ];
 
 #[test]

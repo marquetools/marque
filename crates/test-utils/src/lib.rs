@@ -278,7 +278,10 @@ mod tests {
         let parsed: ExpectedRuleId =
             serde_json::from_str(json).expect("structured rule id must deserialize");
         assert_eq!(parsed.scheme, "capco");
-        assert_eq!(parsed.predicate_id, "portion.dissem.noforn-conflicts-rel-to");
+        assert_eq!(
+            parsed.predicate_id,
+            "portion.dissem.noforn-conflicts-rel-to"
+        );
     }
 
     #[test]
@@ -299,7 +302,10 @@ mod tests {
         let parsed: ExpectedDiagnostic =
             serde_json::from_str(json).expect("structured shape must deserialize");
         assert_eq!(parsed.rule.scheme, "capco");
-        assert_eq!(parsed.rule.predicate_id, "banner.classification.usa-trigraph");
+        assert_eq!(
+            parsed.rule.predicate_id,
+            "banner.classification.usa-trigraph"
+        );
         assert_eq!(parsed.span.start, 8);
         assert_eq!(parsed.span.end, 13);
         assert!(parsed.severity.is_none());

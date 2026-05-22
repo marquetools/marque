@@ -200,7 +200,10 @@ fn applied_fix_strict_discriminant_full_context() {
     validate_contract_shape(&v, "applied_fix");
     // T044 PM OD-2: structured-object `rule` shape on the wire.
     assert_eq!(v["rule"]["scheme"], "capco");
-    assert_eq!(v["rule"]["predicate_id"], "portion.dissem.rel-to-missing-usa");
+    assert_eq!(
+        v["rule"]["predicate_id"],
+        "portion.dissem.rel-to-missing-usa"
+    );
     assert_eq!(v["severity"], "fix");
     assert_eq!(v["fix"]["replacement"]["discriminant"], "strict");
     assert_eq!(v["classifier_id"], "classifier-42");

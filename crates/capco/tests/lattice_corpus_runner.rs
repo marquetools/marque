@@ -320,7 +320,9 @@ fn lattice_corpus_fixtures_match_expected() {
         // built from `RuleId::predicate_id()` above.
         let mut expected_counts: BTreeMap<String, usize> = BTreeMap::new();
         for e in &expected.diagnostics {
-            *expected_counts.entry(e.rule.predicate_id.clone()).or_insert(0) += 1;
+            *expected_counts
+                .entry(e.rule.predicate_id.clone())
+                .or_insert(0) += 1;
         }
 
         if actual_counts != expected_counts {

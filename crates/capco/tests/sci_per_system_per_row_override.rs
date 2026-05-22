@@ -64,9 +64,7 @@ fn all_sci_diags(
     result
         .diagnostics
         .iter()
-        .filter(|d| {
-            d.rule.scheme() == "capco" && d.rule.predicate_id().starts_with("marking.sci.")
-        })
+        .filter(|d| d.rule.scheme() == "capco" && d.rule.predicate_id().starts_with("marking.sci."))
         .collect()
 }
 
@@ -101,10 +99,7 @@ fn baseline_default_config_emits_hcs_o_companion_diagnostic() {
 /// honored.
 #[test]
 fn off_severity_on_hcs_o_row_suppresses_hcs_o_diagnostics() {
-    let engine = engine_with_overrides(&[(
-        "capco:marking.sci.hcs-o-companions",
-        "off",
-    )]);
+    let engine = engine_with_overrides(&[("capco:marking.sci.hcs-o-companions", "off")]);
     let result = engine.lint(b"(S//HCS-O//OC)");
     let hcs_o = diags_with_predicate(&result, "marking.sci.hcs-o-companions");
     assert!(
@@ -119,10 +114,7 @@ fn off_severity_on_hcs_o_row_suppresses_hcs_o_diagnostics() {
 /// walker-level fall-through.
 #[test]
 fn off_severity_on_hcs_o_row_leaves_si_g_row_alone() {
-    let engine = engine_with_overrides(&[(
-        "capco:marking.sci.hcs-o-companions",
-        "off",
-    )]);
+    let engine = engine_with_overrides(&[("capco:marking.sci.hcs-o-companions", "off")]);
     // (TS//SI-G//NF) fires the SI-G row (ORCON missing). HCS-O is
     // absent from this fixture, but if dispatch accidentally
     // collapsed to a walker level the SI-G diagnostic would be
@@ -169,10 +161,7 @@ fn off_severity_on_all_five_rows_suppresses_every_catalog_diagnostic() {
 /// doc-comment).
 #[test]
 fn warn_severity_override_on_hcs_o_row_replaces_emitted_severity() {
-    let engine = engine_with_overrides(&[(
-        "capco:marking.sci.hcs-o-companions",
-        "warn",
-    )]);
+    let engine = engine_with_overrides(&[("capco:marking.sci.hcs-o-companions", "warn")]);
     let result = engine.lint(b"(S//HCS-O//OC)");
     let hcs_o = diags_with_predicate(&result, "marking.sci.hcs-o-companions");
     assert!(
@@ -196,10 +185,7 @@ fn warn_severity_override_on_hcs_o_row_replaces_emitted_severity() {
 /// scoping check.
 #[test]
 fn warn_override_on_hcs_o_row_does_not_change_si_g_row_severity() {
-    let engine = engine_with_overrides(&[(
-        "capco:marking.sci.hcs-o-companions",
-        "warn",
-    )]);
+    let engine = engine_with_overrides(&[("capco:marking.sci.hcs-o-companions", "warn")]);
     let result = engine.lint(b"(TS//SI-G//NF)");
     let si_g = diags_with_predicate(&result, "marking.sci.si-g-companions");
     assert!(

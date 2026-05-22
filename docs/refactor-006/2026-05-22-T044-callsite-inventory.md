@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # T044 Callsite Inventory — RuleId 2-Tuple Migration
 
 **Date:** 2026-05-22  

@@ -446,7 +446,11 @@ fn rules_and_closure_rules_are_section_isolated() {
 
     // [rules] → config.rules.overrides
     assert_eq!(
-        config.rules.overrides.get("capco:closure.dissem.noforn-if-caveated").map(String::as_str),
+        config
+            .rules
+            .overrides
+            .get("capco:closure.dissem.noforn-if-caveated")
+            .map(String::as_str),
         Some("warn"),
         "[rules] capco:closure.dissem.noforn-if-caveated must be 'warn'"
     );
@@ -464,7 +468,11 @@ fn rules_and_closure_rules_are_section_isolated() {
 
     // Cross-talk: [rules] must not see the closure value and vice versa.
     assert_ne!(
-        config.rules.overrides.get("capco:closure.dissem.noforn-if-caveated").map(String::as_str),
+        config
+            .rules
+            .overrides
+            .get("capco:closure.dissem.noforn-if-caveated")
+            .map(String::as_str),
         config
             .closure_rules
             .overrides

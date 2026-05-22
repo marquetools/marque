@@ -327,7 +327,9 @@ fn e066_fires_on_legacy_cts_b_portion() {
     let lint = engine.lint(source);
 
     assert!(
-        lint.diagnostics.iter().any(|d| d.rule.predicate_id() == "marking.recanonicalize.legacy-nato-compound"),
+        lint.diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.recanonicalize.legacy-nato-compound"),
         "E066 must fire on (//CTS-B) legacy portion; diagnostics: {:?}",
         lint.diagnostics
             .iter()
@@ -351,7 +353,9 @@ fn e066_does_not_fire_on_bare_cts_portion() {
     let lint = engine.lint(source);
 
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT fire on bare canonical (//CTS); diagnostics: {:?}",
         lint.diagnostics
             .iter()
@@ -450,7 +454,9 @@ fn h7_p127_worked_example_round_trip() {
     let engine = engine_with_fixed_clock();
     let result = engine.fix(source, FixMode::Apply);
     assert!(
-        result.applied_fixes().all(|af| af.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
+        result
+            .applied_fixes()
+            .all(|af| af.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "§H.7 p127 canonical banner must NOT trigger E066; applied: {:?}",
         result
             .applied_fixes()

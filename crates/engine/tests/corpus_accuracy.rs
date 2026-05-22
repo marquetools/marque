@@ -217,8 +217,11 @@ fn fix_accuracy_invalid_fixtures() {
         let relint = engine.lint(fix_result.source.expose_secret());
 
         // Check which fixable rules still have violations
-        let remaining_rules: std::collections::HashSet<&str> =
-            relint.diagnostics.iter().map(|d| d.rule.predicate_id()).collect();
+        let remaining_rules: std::collections::HashSet<&str> = relint
+            .diagnostics
+            .iter()
+            .map(|d| d.rule.predicate_id())
+            .collect();
 
         // A fixture counts as "fixed clean" if no fixable rules remain
         let all_fixable_resolved = fixable_rules

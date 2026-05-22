@@ -145,8 +145,14 @@ fn pr_9c_1_nato_rows_pin_citation_anchors() {
     // row's expected citation re-verified at PR 9c.1 authorship; this
     // PR preserves the per-row anchor values verbatim.
     let expected: &[(&str, Citation)] = &[
-        ("banner.classification.floor-balk", capco(SectionLetter::G, 2, 40)),
-        ("banner.classification.floor-bohemia", capco(SectionLetter::G, 2, 40)),
+        (
+            "banner.classification.floor-balk",
+            capco(SectionLetter::G, 2, 40),
+        ),
+        (
+            "banner.classification.floor-bohemia",
+            capco(SectionLetter::G, 2, 40),
+        ),
         ("banner.aea.floor-atomal", capco(SectionLetter::H, 7, 122)),
     ];
 
@@ -693,13 +699,10 @@ fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
     // requires setting that key (FR-008 invariant unchanged — an
     // `Off`-severity rule cannot fire).
     let mut config = Config::default();
-    config
-        .rules
-        .overrides
-        .insert(
-            "capco:banner.aea.floor-cnwdi".to_string(),
-            "off".to_string(),
-        );
+    config.rules.overrides.insert(
+        "capco:banner.aea.floor-cnwdi".to_string(),
+        "off".to_string(),
+    );
     let engine_with_off = Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
@@ -912,7 +915,11 @@ fn diagnostic_message_reports_reciprocal_raised_level_for_nato() {
 
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
-    let violations = validate_and_filter(&scheme, &marking, "banner.classification.floor-passthrough-bur");
+    let violations = validate_and_filter(
+        &scheme,
+        &marking,
+        "banner.classification.floor-passthrough-bur",
+    );
     assert_eq!(
         violations.len(),
         1,
@@ -944,7 +951,11 @@ fn diagnostic_message_reports_unknown_only_when_no_classification() {
 
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
-    let violations = validate_and_filter(&scheme, &marking, "banner.classification.floor-passthrough-bur");
+    let violations = validate_and_filter(
+        &scheme,
+        &marking,
+        "banner.classification.floor-passthrough-bur",
+    );
     assert_eq!(violations.len(), 1);
     assert!(
         violations[0].message.contains("unknown"),

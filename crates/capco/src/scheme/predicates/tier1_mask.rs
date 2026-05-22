@@ -308,7 +308,10 @@ mod tests {
         attrs.aea_markings = vec![AeaMarking::Rd(Default::default())].into_boxed_slice();
         let out = e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].constraint_label, "portion.aea.rd-frd-requires-noforn");
+        assert_eq!(
+            out[0].constraint_label,
+            "portion.aea.rd-frd-requires-noforn"
+        );
     }
 
     #[test]

@@ -149,7 +149,8 @@ fn sci_per_system_coarse_gate_row_fires_on_sci_present_only() {
     let bits = scheme.precompute_bits(&marking);
 
     // HCS-P-NOFORN (coarse gate row) MUST fire — bare HCS-P + no NOFORN.
-    let hcs_p_violations = scheme.evaluate_custom("marking.sci.hcs-p-noforn-required", &marking, bits);
+    let hcs_p_violations =
+        scheme.evaluate_custom("marking.sci.hcs-p-noforn-required", &marking, bits);
     assert!(
         !hcs_p_violations.is_empty(),
         "HCS-P-NOFORN must fire on bare HCS-P + US S + no NOFORN (coarse gate row)"
