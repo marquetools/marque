@@ -2486,9 +2486,10 @@ impl DissemSet {
 // The `relido_observed_unanimous` flag is a join-side aggregation property
 // (a record of observed page composition); `meet` has no natural reading
 // for this flag — the dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold
-// over the full `(set, relido_observed_unanimous)` pair. PR #456 resolved
-// this by splitting the `Lattice` trait into `JoinSemilattice` and
-// `MeetSemilattice` halves; `DissemSet` implements only the join half,
+// over the full `(set, relido_observed_unanimous)` pair. Issue #456 /
+// PR #502 resolved this by splitting the `Lattice` trait into
+// `JoinSemilattice` and `MeetSemilattice` halves; `DissemSet`
+// implements only the join half,
 // so the type system now rejects any attempt to call `.meet()` on it at
 // compile time.
 //
@@ -2929,10 +2930,10 @@ impl JointSet {
 // `DisunityCollapse` self-pairs (`a ⊓ a = Bottom ≠ a`) because the
 // fallback arm collapsed every non-identical-payload pair to `Bottom`
 // — the partial behavior was stronger than dual-absorption failure alone.
-// PR #456 resolved this by splitting the `Lattice` trait into
-// `JoinSemilattice` and `MeetSemilattice` halves; `JointSet` implements
-// only the join half, so the type system now rejects any attempt to call
-// `.meet()` on it at compile time.
+// Issue #456 / PR #502 resolved this by splitting the `Lattice` trait
+// into `JoinSemilattice` and `MeetSemilattice` halves; `JointSet`
+// implements only the join half, so the type system now rejects any
+// attempt to call `.meet()` on it at compile time.
 impl JoinSemilattice for JointSet {
     ///   with union of non-US producers and max level.
     fn join(&self, other: &Self) -> Self {

@@ -2379,7 +2379,7 @@ need for accurate banner attribution downstream.
 
 ---
 
-## 12. PR #456 addenda (2026-05-17) — `JoinSemilattice` / `MeetSemilattice` trait split
+## 12. `Lattice` trait split addenda (issue #456 / PR #502, 2026-05-17) — `JoinSemilattice` / `MeetSemilattice`
 
 ### 12.1 Motivation
 
@@ -2391,9 +2391,10 @@ usable in generic lattice contexts.
 
 `DissemSet` and `JointSet` both carry join-side observational state
 (`relido_observed_unanimous` and the `Mixed`/`DisunityCollapse` distinction
-respectively) that has no sensible interpretation in a meet operation. Pre-PR
-#456 the "solution" was to implement `meet` with a vacuous identity-safe value
-and document the partial violation via the P-9-3 comments (kept above in
+respectively) that has no sensible interpretation in a meet operation.
+Pre-split (before issue #456 / PR #502) the "solution" was to implement
+`meet` with a vacuous identity-safe value and document the partial
+violation via the P-9-3 comments (kept above in
 section 11.3 / section 11.4). The "trait shape will be refined in a follow-up
 PR" language in those
 comments referred to this PR.
@@ -2405,7 +2406,7 @@ core lattice law.
 
 ### 12.2 Resolution
 
-PR #456 split `Lattice` into:
+Issue #456 (PR #502) split `Lattice` into:
 
 - `JoinSemilattice` — supplies `fn join(&self, other: &Self) -> Self`
 - `MeetSemilattice` — supplies `fn meet(&self, other: &Self) -> Self`
@@ -2421,7 +2422,7 @@ verified partial-absorption behavior.
 
 ### 12.3 Affected types (summary)
 
-| Type | Before PR #456 | After PR #456 | Rationale |
+| Type | Before the split | After the split | Rationale |
 |---|---|---|---|
 | `DissemSet` | `impl Lattice` (with partial meet) | `impl JoinSemilattice` only | `relido_observed_unanimous` is join-side state; meet has no natural definition |
 | `JointSet` | `impl Lattice` (with partial meet) | `impl JoinSemilattice` only | `Mixed`/`DisunityCollapse` are observational join-side variants |
@@ -2449,5 +2450,6 @@ compile-time rejections rather than runtime property tests:
 - `joint_set_meet_identical_producers_returns_min_level`
 - `joint_set_proptest_join_side_absorption` proptest
 
-Each removal site carries a comment noting the PR #456 trait-split resolution.
+Each removal site carries a comment noting the `Lattice` trait-split
+resolution (issue #456 / PR #502).
 

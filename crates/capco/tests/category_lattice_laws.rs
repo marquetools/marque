@@ -1442,7 +1442,7 @@ mod dissem_set {
             prop_assert_eq!(s1.join(&bottom), s1.clone());
         }
 
-        // NOTE (PR #456 trait split): `DissemSet` is join-only
+        // NOTE (`Lattice` trait split, issue #456 / PR #502): `DissemSet` is join-only
         // (`JoinSemilattice` but NOT `MeetSemilattice`). The C-4 meet-
         // side absorption test `a ⊔ (a ⊓ b) = a` is enforced at the
         // type level — `DissemSet::meet` does not exist. The join-only
@@ -1512,7 +1512,7 @@ mod dissem_set {
         );
     }
 
-    // NOTE (PR #456 trait split): `DissemSet::absorption_specific_relido_case`
+    // NOTE (`Lattice` trait split, issue #456 / PR #502): `DissemSet::absorption_specific_relido_case`
     // was removed because `DissemSet` no longer implements `MeetSemilattice`.
     // The C-4 correction (unanimous-RELIDO join-absorption) is now enforced
     // structurally by the trait split: callers cannot call `.meet()` on
@@ -1755,7 +1755,7 @@ mod joint_set {
         }
     }
 
-    // NOTE (PR #456 trait split): `JointSet` is join-only (`JoinSemilattice`
+    // NOTE (`Lattice` trait split, issue #456 / PR #502): `JointSet` is join-only (`JoinSemilattice`
     // but NOT `MeetSemilattice`). The C-6 meet-side absorption test and the
     // `meet_identical_producers` test are removed because `JointSet::meet`
     // no longer exists. The join-absorption law `a ⊔ (a ⊓ b) = a` is now
@@ -1909,7 +1909,7 @@ mod joint_set {
             prop_assert_eq!(a.join(&a), a.clone());
         }
 
-        // NOTE (PR #456 trait split): `joint_set_proptest_join_side_absorption`
+        // NOTE (`Lattice` trait split, issue #456 / PR #502): `joint_set_proptest_join_side_absorption`
         // removed. `JointSet` no longer implements `MeetSemilattice`, so the
         // absorption expression `a ⊔ (a ⊓ b) = a` is not expressible. The
         // join-only laws (commutativity, associativity, idempotency) in
