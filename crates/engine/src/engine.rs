@@ -1116,13 +1116,15 @@ impl Engine {
                         &self.pass_finalization_rule_indices,
                         &self.fast_path_severities,
                         &self.emitted_id_overrides,
-                        &page_portions,
-                        &mut page_portions_arc,
-                        &mut page_marking_arc,
-                        &page_join_acc,
-                        page_banner_span,
+                        PageFinalizationContext {
+                            portions: &page_portions,
+                            portions_arc: &mut page_portions_arc,
+                            marking_arc: &mut page_marking_arc,
+                            join_acc: &page_join_acc,
+                            banner_span: page_banner_span,
+                            boundary_offset: candidate.span.start,
+                        },
                         &corrections_arc,
-                        candidate.span.start,
                         opts.deadline,
                         &mut diagnostics,
                     )
@@ -1926,13 +1928,15 @@ impl Engine {
                 &self.pass_finalization_rule_indices,
                 &self.fast_path_severities,
                 &self.emitted_id_overrides,
-                &page_portions,
-                &mut page_portions_arc,
-                &mut page_marking_arc,
-                &page_join_acc,
-                page_banner_span,
+                PageFinalizationContext {
+                    portions: &page_portions,
+                    portions_arc: &mut page_portions_arc,
+                    marking_arc: &mut page_marking_arc,
+                    join_acc: &page_join_acc,
+                    banner_span: page_banner_span,
+                    boundary_offset: source.len(),
+                },
                 &corrections_arc,
-                source.len(),
                 opts.deadline,
                 &mut diagnostics,
             )
@@ -4659,6 +4663,67 @@ fn partition_rules_by_phase(
     (pass1, pass2, pass_finalization)
 }
 
+/// Per-page accumulator state bundled at a [`Phase::PageFinalization`]
+/// boundary, threaded through [`dispatch_page_finalization`] as a
+/// single struct rather than six individual parameters.
+///
+/// Constructed by field literal at each of the two
+/// [`dispatch_page_finalization`] call sites in [`Engine::lint_inner`]
+/// — the [`marque_ism::MarkingType::PageBreak`] branch and the
+/// end-of-document flush — and consumed by the dispatch for the
+/// duration of a single statement. The struct holds borrows into
+/// `lint_inner`'s accumulator locals; it MUST be built on the line
+/// immediately above the dispatch call and let die at the semicolon.
+/// Constructing it earlier or holding it across the post-dispatch
+/// reset block (where `page_join_acc` is reassigned to a fresh
+/// `CanonicalAttrs::default()`) would fight the borrow checker for
+/// no purpose. See `lint_inner`'s `MarkingType::PageBreak` arm for
+/// the canonical construction site.
+///
+/// Crate-internal (`pub(crate)`). The struct is constructed via field
+/// literal at two call sites in this same file; `#[non_exhaustive]`
+/// is deliberately omitted so those literals stay terse and a future
+/// reader doesn't have to wonder whether the omission was an
+/// oversight.
+///
+/// # Field choices
+///
+/// - `portions` is `&'a [CanonicalAttrs]` (not `Arc<...>`), matching
+///   the borrowed slice the dispatch already consumed before the
+///   refactor; the dispatch lazily promotes it to `Arc<Box<[_]>>`
+///   via `portions_arc.get_or_insert_with(...)` so consecutive
+///   same-page banner/CAB candidates share the allocation.
+/// - `portions_arc` and `marking_arc` are `&'a mut Option<Arc<...>>`
+///   because the dispatch force-initializes both `Some(_)`
+///   (PageFinalization rules expect populated Arcs) and the caller
+///   threads the same Arcs to any subsequent same-page banner/CAB
+///   candidate.
+/// - `join_acc` is `&'a CanonicalAttrs` (not `Arc<_>` and not
+///   `Cow<_>`) so the hot path's `std::mem::take(&mut page_join_acc)`
+///   in `lint_inner` (the issue #306 / PR #674 O(N) accumulation
+///   fix) stays a move, not a clone.
+/// - `banner_span` is `Option<Span>` by value — `Span` is `Copy` and
+///   the dispatch needs an owned `None`/`Some(_)` snapshot that
+///   survives the caller's post-dispatch reset of its own
+///   accumulator. The field's semantics — Copy snapshot of the
+///   closing page's most-recent banner candidate, with the
+///   PageFinalization-only visibility contract preserved by the
+///   caller — are governed by issue #663 / PR #681; see
+///   `RuleContext::page_banner_span` and the `Invariants` section
+///   on [`dispatch_page_finalization`] for the clearing guarantee.
+/// - `boundary_offset` is the `usize` byte offset of the synthetic
+///   page-boundary candidate's zero-length span anchor (the
+///   `candidate.span.start` of the trailing page-break candidate on
+///   the PageBreak branch, or `source.len()` on the EOD flush).
+pub(crate) struct PageFinalizationContext<'a> {
+    pub(crate) portions: &'a [marque_ism::CanonicalAttrs],
+    pub(crate) portions_arc: &'a mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
+    pub(crate) marking_arc: &'a mut Option<Arc<marque_ism::ProjectedMarking>>,
+    pub(crate) join_acc: &'a marque_ism::CanonicalAttrs,
+    pub(crate) banner_span: Option<Span>,
+    pub(crate) boundary_offset: usize,
+}
+
 /// Dispatch every registered [`Phase::PageFinalization`] rule against
 /// the page-level fixpoint snapshot at a page-boundary anchor offset.
 ///
@@ -4678,33 +4743,50 @@ fn partition_rules_by_phase(
 /// transformation, a streaming dispatch) without spelunking through
 /// `Engine`'s field list.
 ///
+/// The per-page accumulator inputs (`portions`, `portions_arc`,
+/// `marking_arc`, `join_acc`, `banner_span`, `boundary_offset`) are
+/// bundled into [`PageFinalizationContext`] so the signature stays
+/// readable; see that struct's doc-comment for per-field semantics
+/// and lifetime constraints. The remaining parameters carry the
+/// engine-wide state the dispatch reads but does not mutate: the
+/// scheme handle, the registered rule sets, the
+/// PageFinalization-bucket indices, the resolved per-rule severities,
+/// the per-emitted-id override map, the corrections map (threaded to
+/// `RuleContext::corrections`), the optional cooperative deadline,
+/// and the output diagnostic sink.
+///
 /// # Invariants
 ///
-/// - `page_portions` must be non-empty at call time (the caller
+/// - `pf_ctx.portions` must be non-empty at call time (the caller
 ///   guards on `!page_portions.is_empty()`). An empty-page dispatch
 ///   produces no useful work and `CapcoScheme::project_from_attrs_slice`
 ///   would emit a noisy default. The skip is in the caller so the
 ///   cost of the `is_empty()` probe is paid at the boundary, not
 ///   per rule.
-/// - `page_portions_arc` / `page_marking_arc` are mutable `Option`
-///   references because the dispatch path force-initializes both
-///   Arcs (PageFinalization rules expect `Some(_)` for both). The
-///   caller threads the same Arcs through to a possible subsequent
-///   banner/CAB candidate on the same page — except for the
-///   end-of-document call, where the document ends without further
-///   candidates.
+/// - `pf_ctx.portions_arc` / `pf_ctx.marking_arc` are mutable
+///   `Option` references because the dispatch path force-initializes
+///   both Arcs (PageFinalization rules expect `Some(_)` for both).
+///   The caller threads the same Arcs through to a possible
+///   subsequent banner/CAB candidate on the same page — except for
+///   the end-of-document call, where the document ends without
+///   further candidates.
 /// - The synthetic boundary candidate carries a zero-length `Span`
-///   at the boundary offset. Today this is the only span a
+///   at `pf_ctx.boundary_offset`. Today this is the only span a
 ///   PageFinalization rule can emit on its `Diagnostic`: the
 ///   per-page accumulator stores `[CanonicalAttrs]` without
-///   per-portion spans, so `ctx.page_portions` cannot recover an
-///   offending portion's own offsets. Rules document this
+///   per-portion spans, so `RuleContext::page_portions` cannot
+///   recover an offending portion's own offsets. Rules document this
 ///   limitation in their doc comments (W004 from issue #461 and
 ///   S005 from issue #488 are the worked examples). A future
 ///   enhancement that threads per-portion spans through the
 ///   accumulator — or a span-lookup helper into `RuleContext` —
 ///   would let rules refine the anchor to the specific offending
 ///   portion.
+/// - `pf_ctx.banner_span` is the closing page's most-recent banner
+///   span (issue #663), or `None` if the page had no banner. The
+///   caller (`lint_inner`) clears its own accumulator AFTER this
+///   dispatch returns; the field is `Copy`/by-value so the boundary
+///   snapshot is independent of the caller's reset.
 /// - `candidates_processed` is NOT incremented by this dispatch.
 ///   That counter tracks scanner-emitted candidates; the synthetic
 ///   PageFinalization candidate is engine-internal.
@@ -4717,6 +4799,19 @@ fn partition_rules_by_phase(
 /// (the per-page work is small relative to the per-candidate rule
 /// loop) so an already-expired deadline returns immediately without
 /// invoking any rule.
+// Clippy threshold (`too_many_arguments` default = 7) — the dispatch
+// retains 9 parameters after issue #680's parameter bundling. The six
+// per-page accumulator parameters that originally tripped the lint
+// are now collapsed into a single `PageFinalizationContext`; what
+// remains is engine-wide read-mostly state (scheme + rule sets +
+// resolved severities + emitted-id overrides + corrections map +
+// deadline) plus the diagnostic sink. Folding that residual set into
+// a second "invariant engine state" bundle is plausibly defensible
+// but would muddy the call sites without payoff at the current
+// surface area; if a future dispatch grows further parameters or a
+// second consumer of the same invariant state appears, that bundling
+// is the right next step. The deferral is deliberate per #680's
+// scope contract.
 #[allow(clippy::too_many_arguments)]
 fn dispatch_page_finalization(
     scheme: &CapcoScheme,
@@ -4724,25 +4819,29 @@ fn dispatch_page_finalization(
     pass_finalization_rule_indices: &PassFinalizationIndices,
     fast_path_severities: &FastPathSeverities,
     emitted_id_overrides: &EmittedIdOverrides,
-    page_portions: &[marque_ism::CanonicalAttrs],
-    page_portions_arc: &mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
-    page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
-    page_join_acc: &marque_ism::CanonicalAttrs,
-    // Issue #663: byte span of the closing page's most recent banner
-    // candidate, or `None` if the page had no banner. Plumbed through
-    // to `RuleContext::page_banner_span` so PageFinalization rules can
-    // target a banner-scope fix from the synthetic page-boundary
-    // anchor. The caller (`lint_inner`) clears its accumulator AFTER
-    // this dispatch returns; we read by value so the boundary copy is
-    // independent of the caller's reset.
-    page_banner_span: Option<Span>,
+    pf_ctx: PageFinalizationContext<'_>,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
-    boundary_offset: usize,
     deadline: Option<Instant>,
     out_diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
 ) -> Result<(), ()> {
     use marque_ism::MarkingType;
     use marque_rules::RuleContext;
+
+    // Destructure the bundle into locals so the dispatch body keeps
+    // the same shape it had before the parameter-bundling refactor
+    // (issue #680). The destructure splits the borrows on
+    // `portions_arc` and `portions` so the `get_or_insert_with(...)`
+    // mutable access below cannot collide with the immutable
+    // `portions` read inside its closure — a pattern the borrow
+    // checker would reject on direct field access through `pf_ctx`.
+    let PageFinalizationContext {
+        portions: page_portions,
+        portions_arc: page_portions_arc,
+        marking_arc: page_marking_arc,
+        join_acc: page_join_acc,
+        banner_span: page_banner_span,
+        boundary_offset,
+    } = pf_ctx;
 
     // Deadline guard once at the dispatch boundary. Per-rule
     // deadline checks would amortize the wall-clock probe across a
@@ -6609,6 +6708,105 @@ mod tests {
             "page-2 finalization MUST see None — the form feed must clear the banner accumulator. \
              Got: {:?}",
             page_final_spans[1]
+        );
+    }
+
+    #[test]
+    fn page_banner_span_distinct_at_both_dispatch_sites() {
+        // Issue #680 — multi-page document where BOTH `dispatch_page_finalization`
+        // call sites fire AND each page has its own banner. The PageBreak-branch
+        // dispatch (page-1 closes at `\f`) and the EOD-flush dispatch (page-2
+        // closes at end-of-document) must each surface their own page's banner
+        // span, not the other page's and not `None`.
+        //
+        // This is the behavior-level pin for the `PageFinalizationContext`
+        // parameter-bundling refactor: the struct's `banner_span` field is
+        // constructed inline at each call site in `lint_inner`, and a future
+        // accidental swap (e.g., reading from the wrong stack-local at the
+        // EOD site) would land here as a span mismatch rather than a silent
+        // semantic regression. The `_resets_across_form_feed` sibling test
+        // pins the `\f` reset for a no-banner-on-page-2 case; this test pins
+        // the both-pages-have-banners case so a refactor cannot trade one
+        // dispatch's correctness for the other's.
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        // Page-1 layout: portion + banner; `\f` separates the pages so the
+        // PageBreak branch fires. Page-2 layout: portion + banner; EOD
+        // flush fires at `source.len()`. Both banners carry the same text
+        // ("SECRET//NOFORN") but at distinct offsets — we assert on offsets,
+        // not content, so the test distinguishes the two even when the
+        // banner text is identical.
+        let page1: &[u8] = b"(SECRET//NF) p1\nSECRET//NOFORN\n";
+        let page_break: &[u8] = b"\x0c";
+        let page2: &[u8] = b"(SECRET//NF) p2\nSECRET//NOFORN\n";
+        let page2_start: usize = page1.len() + page_break.len();
+        let mut src = Vec::new();
+        src.extend_from_slice(page1);
+        src.extend_from_slice(page_break);
+        src.extend_from_slice(page2);
+        let _ = engine.lint(&src);
+
+        let obs = observations.lock().unwrap();
+        let page_final_spans: Vec<marque_scheme::Span> = obs
+            .iter()
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .map(|(_, _, span)| span.expect("both pages have banners; span MUST be Some"))
+            .collect();
+        assert_eq!(
+            page_final_spans.len(),
+            2,
+            "expected 2 PageFinalization fires (PageBreak + EOD); got: {obs:?}"
+        );
+
+        // Page-1 banner: "SECRET//NOFORN" lives at offset 16..30 inside
+        // `page1` (the portion `(SECRET//NF) p1\n` is 16 bytes; the banner
+        // content is 14 bytes; the trailing `\n` is excluded from the span
+        // per the scanner contract pinned in
+        // `page_banner_span_populated_at_page_finalization`).
+        let page1_portion_len: usize = b"(SECRET//NF) p1\n".len();
+        let banner_content_len: usize = b"SECRET//NOFORN".len();
+        assert_eq!(
+            (page_final_spans[0].start, page_final_spans[0].end),
+            (page1_portion_len, page1_portion_len + banner_content_len),
+            "page-1 (PageBreak dispatch) MUST see page-1's banner span, \
+             not page-2's; got={:?}",
+            page_final_spans[0]
+        );
+
+        // Page-2 banner: same content, but the offsets are shifted by
+        // `page2_start` (the byte position where page-2 begins inside the
+        // composed source). The EOD dispatch MUST see page-2's banner span,
+        // not page-1's.
+        let page2_banner_start: usize = page2_start + page1_portion_len;
+        assert_eq!(
+            (page_final_spans[1].start, page_final_spans[1].end),
+            (page2_banner_start, page2_banner_start + banner_content_len),
+            "page-2 (EOD dispatch) MUST see page-2's banner span, not \
+             page-1's leftover; got={:?}",
+            page_final_spans[1]
+        );
+
+        // Cross-pin: page-1 and page-2 spans MUST NOT be equal. A future
+        // refactor that accidentally reads from a single shared local at
+        // both dispatch sites would trip here even if both spans happened
+        // to be `Some`.
+        assert_ne!(
+            page_final_spans[0], page_final_spans[1],
+            "page-1 and page-2 banner spans MUST differ — distinct byte ranges",
         );
     }
 
