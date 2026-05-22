@@ -251,12 +251,18 @@ fn portion_with_nato_secret_banner_form_fires_form_mismatch() {
 
 #[test]
 fn banner_with_classification_abbrev_fires_form_mismatch() {
-    // Classifier abbreviation `S` in a banner — `portion_to_banner("S")`
-    // returns `Some("SECRET")` so the broad-scope walker catches it.
-    // This is the PM-4 sister bug subsumed by broad scope (no separate
-    // issue needed). Banner line requires the spelled-out classification
-    // per §D.1 p27 line 555 ("The classification level must be in
-    // English without abbreviation").
+    // Classification abbreviation `S` in a banner — caught by the
+    // rule's dedicated US-classification branch in
+    // `find_portion_form_in_banner`, which checks
+    // `attrs.us_classification()` against `Classification::portion_str()`
+    // and fires when the banner-position text matches the portion form.
+    // Classification tokens are NOT in `MARKING_FORMS` (the table
+    // covers control markings only), so the broad-scope walker's
+    // `portion_to_banner` path would miss this case — the dedicated
+    // branch closes the gap. PM-4 sister bug subsumed (no separate
+    // issue needed). Banner requires spelled-out classification per
+    // §D.1 p27 ("The classification level must be in English without
+    // abbreviation").
     let diags = lint("S//NOFORN");
     let hits = form_mismatch_diags(&diags);
     assert!(
