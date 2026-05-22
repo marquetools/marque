@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `marque-1.0` audit-record v2 types.
+//! `marque-2.0` audit-record types (was `marque-1.0` pre-T044).
 //!
 //! This module ships the audit-record-side types reshaped for the
-//! `marque-1.0` audit schema cutover landing at PR 3c.2.D:
+//! `marque-1.0` audit schema cutover landing at PR 3c.2.D, then
+//! re-pinned to `marque-2.0` at T044 to carry the `RuleId`
+//! `(scheme, predicate_id)` 2-tuple form on the audit-record wire:
 //!
 //! - [`Discriminant`] — closed `Strict | Decoder` provenance discriminator.
 //!   Derived at audit-emit time from [`crate::FixSource`] per PM-D-7
@@ -15,7 +17,7 @@
 //!   record path.
 //! - [`AppliedFixDetail`] — `{ replacement, original_span,
 //!   original_digest }`. The marking-side fix-detail substructure on
-//!   the `marque-1.0` envelope.
+//!   the `marque-2.0` envelope (was `marque-1.0` pre-T044).
 //! - [`AppliedTextCorrection`] — separate audit-record type for the
 //!   C001 / `[corrections]`-map path. Disjoint from [`crate::AppliedFix`]
 //!   by construction so the G13 boundary (Constitution V Principle V)
@@ -62,7 +64,7 @@ use marque_scheme::Severity;
 ///
 /// Distinguishes strict-recognizer-derived fixes from decoder-fallback
 /// fixes per `specs/006-engine-rule-refactor/contracts/audit-record.md`
-/// `marque-1.0` shape.
+/// `marque-2.0` shape (was `marque-1.0` pre-T044).
 ///
 /// The `Strict` arm covers every [`crate::FixSource`] value that comes
 /// from a deterministic-parse path
@@ -108,8 +110,9 @@ pub enum Discriminant {
 impl Discriminant {
     /// Audit-emit wire string.
     ///
-    /// Matches `contracts/audit-record.md` `marque-1.0`
-    /// `replacement.discriminant` JSON field. Pinned by
+    /// Matches `contracts/audit-record.md` `marque-2.0`
+    /// `replacement.discriminant` JSON field (was `marque-1.0`
+    /// pre-T044). Pinned by
     /// `crates/rules/tests/discriminant_audit_string.rs` so a silent
     /// rename of either arm becomes a compile-time test failure.
     #[inline]
@@ -255,8 +258,8 @@ impl<S: MarkingScheme> Clone for AppliedReplacement<S> {
 ///
 /// # Shape per contract
 ///
-/// The `marque-1.0` audit-record contract at
-/// `contracts/audit-record.md` shapes the JSON as
+/// The `marque-2.0` audit-record contract at
+/// `contracts/audit-record.md` (was `marque-1.0` pre-T044) shapes the JSON as
 /// `{ "fix": { "replacement": {...}, "original_span": ...,
 /// "original_digest": ... } }` — `fix` is a nested object, not a flat
 /// field set. Matching the JSON shape at the type level (rather than
@@ -292,10 +295,12 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 }
 
 // ---------------------------------------------------------------------------
-// AppliedFix<S> — v2 outer type (marque-1.0 audit-record shape)
+// AppliedFix<S> — v2 outer type (marque-2.0 audit-record shape;
+//                                  was marque-1.0 pre-T044)
 // ---------------------------------------------------------------------------
 
-/// `marque-1.0` audit-record marking-side type (v2 shape).
+/// `marque-2.0` audit-record marking-side type (v2 shape; was
+/// `marque-1.0` pre-T044).
 ///
 /// The marking-side complement of [`AppliedTextCorrection`]: a
 /// promoted [`FixIntent<S>`] with the engine-rendered
@@ -333,7 +338,7 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 ///   contract would otherwise force (the field already lives inside
 ///   the `fix` sub-object).
 /// - `migration_ref: Option<&'static str>` — removed. The
-///   `marque-1.0` contract does not emit a top-level `migration_ref`;
+///   `marque-2.0` contract does not emit a top-level `migration_ref`;
 ///   PR 3c.2.C's typed `Citation` on [`crate::Diagnostic`] supersedes
 ///   it as the citation-provenance channel.
 ///
@@ -757,8 +762,8 @@ impl AppliedTextCorrection {
 /// in the order the engine promoted them, without consumer-side
 /// timestamp merge logic.
 ///
-/// Per `contracts/audit-record.md` `marque-1.0` shape, each arm
-/// projects to its own NDJSON line type
+/// Per `contracts/audit-record.md` `marque-2.0` shape (was
+/// `marque-1.0` pre-T044), each arm projects to its own NDJSON line type
 /// (`{"type": "applied_fix", ...}` vs
 /// `{"type": "text_correction", ...}`).
 ///

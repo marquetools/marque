@@ -39,7 +39,7 @@
 //! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_capco::CapcoScheme;
-use marque_engine::{AUDIT_SCHEMA_IS_V1_0, AUDIT_SCHEMA_VERSION, LintResult};
+use marque_engine::{AUDIT_SCHEMA_IS_V2_0, AUDIT_SCHEMA_VERSION, LintResult};
 use marque_rules::Diagnostic;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine, discriminant_from_source};
 use marque_scheme::{TokenSource, Vocabulary};
@@ -921,10 +921,10 @@ pub fn render_audit_line(
     scheme: &CapcoScheme,
     line: &AuditLine<CapcoScheme>,
 ) -> std::io::Result<()> {
-    // Single accepted schema (`marque-1.0`) so dispatch is a no-op
+    // Single accepted schema (`marque-2.0`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = AUDIT_SCHEMA_IS_V1_0;
+    let _ = AUDIT_SCHEMA_IS_V2_0;
     let rule_id: &str = match line {
         AuditLine::AppliedFix(fix) => fix.rule.as_str(),
         AuditLine::TextCorrection(tc) => tc.rule.as_str(),

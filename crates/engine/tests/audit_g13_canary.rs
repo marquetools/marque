@@ -459,7 +459,7 @@ fn canary_fires_on_synthetic_regression() {
     // path, so we synthesize the NDJSON directly here to exercise
     // the canary's check function in isolation.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-1.0","rule":"R999",
+        r#"{{"type":"text_correction","schema":"marque-2.0","rule":"R999",
           "severity":"info","span":{{"start":0,"end":10}},
           "leak_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",
@@ -588,7 +588,7 @@ fn canary_fires_on_synthetic_text_correction_regression() {
     // non-permitted field. Mirrors `canary_fires_on_synthetic_regression`
     // for the `applied_fix` shape.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-1.0","rule":"R999",
+        r#"{{"type":"text_correction","schema":"marque-2.0","rule":"R999",
           "severity":"info","span":{{"start":0,"end":43}},
           "bogus_text_corr_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",

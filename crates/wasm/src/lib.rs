@@ -751,10 +751,10 @@ fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    // Single accepted schema (`marque-1.0`) so dispatch is a no-op
+    // Single accepted schema (`marque-2.0`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V1_0;
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V2_0;
     let json =
         serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
