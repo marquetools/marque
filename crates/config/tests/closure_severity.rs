@@ -31,11 +31,16 @@
 //! later starts with the right key shape.
 //!
 //! The `MARQUE_CLOSURE_RULES_*` env-var encoding in
-//! `crates/config/src/lib.rs::env_var_to_closure_rule_name` still
-//! emits the legacy slash form (the encoding hasn't been migrated to
-//! the wire-string colon separator yet); the env-var-namespace tests
-//! below preserve that surface verbatim until the encoding catches
-//! up.
+//! `crates/config/src/lib.rs::env_var_to_closure_rule_name` was
+//! migrated to the wire-string form in the Copilot reviewer pass
+//! (2026-05-22). The encoder splits the env-var suffix on `__` into
+//! N segments: the first becomes the scheme (joined with `:` to the
+//! predicate), subsequent segments join with `.`; single `_` within
+//! a segment becomes `-`. Example:
+//! `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__DISSEM__NOFORN_IF_CAVEATED`
+//! → `"capco:closure.dissem.noforn-if-caveated"` — matching the
+//! `.marque.toml [closure_rules]` key shape verbatim, so env-var
+//! and file-level overrides converge on the same map key.
 
 use marque_config::ConfigError;
 use std::fs;
@@ -576,53 +581,57 @@ fn closure_rules_multiple_entries_all_loaded() {
 // Category 6: Env-var override (MARQUE_CLOSURE_RULES_*)
 // ---------------------------------------------------------------------------
 
-/// `MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR=warn` is decoded by
-/// the env-var encoder to the legacy slash form
-/// `"capco/noforn-if-no-fdr"` (per
-/// `config/src/lib.rs::env_var_to_closure_rule_name`). The encoder
-/// has NOT been migrated to the T044 wire-string form yet — the
-/// `__` → `/` substitution is hardcoded — so this test asserts on
-/// the encoder's actual output, NOT the canonical wire-string. When
-/// the encoder migrates (separate follow-up; see module-level note),
-/// this test's expected key shape will need to flip too.
+/// `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__DISSEM__NOFORN_IF_CAVEATED=warn`
+/// is decoded by the env-var encoder to the post-T044 wire-string
+/// form `"capco:closure.dissem.noforn-if-caveated"` (per
+/// `config/src/lib.rs::env_var_to_closure_rule_name`). Encoder
+/// convention: `__` between segments (first occurrence becomes `:`,
+/// subsequent become `.`); `_` within a segment becomes `-`. This
+/// matches the `.marque.toml [closure_rules]` key shape (PM OD-1
+/// refinement; Copilot reviewer pass — the env-var encoder was
+/// migrated to the wire-string form in the same commit as the test
+/// reshape).
 ///
 /// The env-var override path is keyed by whatever the encoder
-/// produces; the test pins that the file-level value gets overridden
-/// when the encoder-produced key matches.
+/// produces; the test pins that file-level and env-var key shapes
+/// CONVERGE — both write `capco:closure.dissem.noforn-if-caveated`
+/// into `closure_rules.overrides` so the env var actually overrides
+/// the file value (the bug Copilot flagged was that they DIDN'T
+/// converge pre-migration).
 #[test]
 fn env_var_overrides_closure_rule_file_value() {
     let dir = make_tmpdir("closure-env-override");
-    // Both keys use the legacy slash form to match the encoder's
-    // current output — the file value gets overridden when the same
-    // key is in both file and env.
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"info\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"info\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _ambient = AmbientClosureEnvCleanGuard::new();
-    let _env = EnvGuard::set("MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR", "warn");
+    let _env = EnvGuard::set(
+        "MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__DISSEM__NOFORN_IF_CAVEATED",
+        "warn",
+    );
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("warn"),
-        "MARQUE_CLOSURE_RULES_* env var must override file-level value (legacy \
-         slash-form pre-encoder-migration)"
+        "MARQUE_CLOSURE_RULES_* env var must override file-level value \
+         (wire-string convergence post-T044)"
     );
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR=error` without a file-level
-/// entry must add the override to `config.closure_rules.overrides` (the env
-/// var is the sole source of the row's severity). Encoder produces the
-/// legacy slash form — see the note on the preceding test for why this
-/// is the wire-string form's pre-migration shape.
+/// `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__NATO__REL_TO_USA_NATO_IF_NATO_CLASSIFICATION=error`
+/// without a file-level entry must add the override to
+/// `config.closure_rules.overrides` (the env var is the sole source
+/// of the row's severity). Encoder produces the post-T044 wire-string
+/// form — see the note on the preceding test for the encoding convention.
 #[test]
 fn env_var_adds_closure_rule_when_absent_in_file() {
     let dir = make_tmpdir("closure-env-add");
@@ -630,18 +639,21 @@ fn env_var_adds_closure_rule_when_absent_in_file() {
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let _ambient = AmbientClosureEnvCleanGuard::new();
-    let _env = EnvGuard::set("MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR", "error");
+    let _env = EnvGuard::set(
+        "MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__NATO__REL_TO_USA_NATO_IF_NATO_CLASSIFICATION",
+        "error",
+    );
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
         config
             .closure_rules
             .overrides
-            .get("capco/relido-if-no-fdr")
+            .get("capco:closure.nato.rel-to-usa-nato-if-nato-classification")
             .map(String::as_str),
         Some("error"),
-        "MARQUE_CLOSURE_RULES_* env var must add entry absent in file (legacy \
-         slash-form pre-encoder-migration)"
+        "MARQUE_CLOSURE_RULES_* env var must add entry absent in file \
+         (wire-string convergence post-T044)"
     );
     let _ = fs::remove_dir_all(&dir);
 }

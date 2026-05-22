@@ -596,13 +596,17 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     }
     // D19 B / plan §1.5b: MARQUE_CLOSURE_RULES_* env-var namespace.
     //
-    // Naming convention: MARQUE_CLOSURE_RULES_<NAME> where <NAME> is the
-    // closure rule name with '/' replaced by '__' and the whole suffix
-    // lowercased. Examples:
-    //   MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR=warn
-    //     → "capco/noforn-if-no-fdr"
-    //   MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR=off
-    //     → "capco/relido-if-no-fdr"
+    // Naming convention (post-T044 wire-string form): the env-var
+    // suffix encodes the closure-rule key segments separated by `__`
+    // (double-underscore); single `_` within a segment becomes `-`.
+    // The first segment is the scheme; subsequent segments are the
+    // dot-separated predicate parts. Result joins as
+    // `<scheme>:<seg1>.<seg2>…`. See `env_var_to_closure_rule_name`
+    // for the encoder. Examples:
+    //   MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__DISSEM__NOFORN_IF_CAVEATED=warn
+    //     → "capco:closure.dissem.noforn-if-caveated"
+    //   MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__NATO__REL_TO_USA_NATO_IF_NATO_CLASSIFICATION=off
+    //     → "capco:closure.nato.rel-to-usa-nato-if-nato-classification"
     //
     // Note: MARQUE_RULES_* per-rule env-var overrides do not exist for the
     // [rules] section as of this implementation; MARQUE_CLOSURE_RULES_* is
@@ -631,38 +635,57 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// Convert a `MARQUE_CLOSURE_RULES_*` env-var key to a closure rule name.
+/// Convert a `MARQUE_CLOSURE_RULES_*` env-var key to a closure rule
+/// name in the post-T044 wire-string form
+/// (`<scheme>:closure.<category>.<predicate>`).
 ///
-/// Encoding convention (env var → rule name):
+/// Encoding convention (env var → wire-string rule name):
 /// 1. Strip the `MARQUE_CLOSURE_RULES_` prefix.
-/// 2. Replace `__` (double-underscore) with `/` (domain separator).
-/// 3. Replace remaining `_` (single-underscore) with `-` (word separator).
+/// 2. Split the remainder on `__` (double-underscore) into N segments.
+///    The first segment is the scheme; the remaining segments are the
+///    dot-separated predicate parts.
+/// 3. Within each segment, replace single `_` with `-` (word separator).
 /// 4. Lowercase the whole result.
+/// 5. Re-join: `<scheme>:<segment1>.<segment2>.…`.
 ///
-/// Examples:
-/// - `MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR` → `"capco/noforn-if-no-fdr"`
-/// - `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR` → `"capco/relido-if-no-fdr"`
+/// Returns `None` if the key does not have the expected prefix OR if
+/// the suffix lacks at least one `__` segment boundary (need scheme +
+/// at least one predicate segment).
 ///
-/// Returns `None` if the key does not have the expected prefix.
+/// Examples (post-T044 wire-string output, matching
+/// `.marque.toml [closure_rules]` keys verbatim):
+/// - `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__DISSEM__NOFORN_IF_CAVEATED`
+///   → `"capco:closure.dissem.noforn-if-caveated"`
+/// - `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__NATO__REL_TO_USA_NATO_IF_NATO_CLASSIFICATION`
+///   → `"capco:closure.nato.rel-to-usa-nato-if-nato-classification"`
 ///
-/// **T044 status:** the encoder currently emits the pre-T044 legacy
-/// slash form. The `.marque.toml [closure_rules]` keys use the
-/// post-T044 wire-string form (`<scheme>:closure.<category>.<predicate>`).
-/// The two surfaces will land on the same shape when the env-var
-/// encoder is migrated; until then, env-var-derived overrides and
-/// file-derived overrides land in `closure_rules.overrides` under
-/// different keys. The engine does not yet consume
-/// `closure_rules.overrides` so this divergence is forward-looking
-/// only; the migration is its own follow-up.
+/// The double-underscore `__` is the segment boundary (becomes `:`
+/// for the first occurrence, `.` for subsequent occurrences); single
+/// underscores `_` within a segment become hyphens. This preserves
+/// the post-T044 invariant that env-var-derived overrides and
+/// file-derived `[closure_rules]` overrides land on the SAME key in
+/// `closure_rules.overrides` (Copilot reviewer pass).
+///
+/// The engine does not yet consume `closure_rules.overrides` (the
+/// `[closure_rules]` config-section runtime wiring is deferred to a
+/// follow-up); the env-var surface is therefore forward-looking
+/// today but uses the correct wire-string form so the future engine
+/// hookup needs no encoder migration.
 #[cfg(feature = "toml-loader")]
 fn env_var_to_closure_rule_name(env_key: &str) -> Option<String> {
     const PREFIX: &str = "MARQUE_CLOSURE_RULES_";
     let suffix = env_key.strip_prefix(PREFIX)?;
-    // Step 1: replace `__` with `/` first so single-underscore pass doesn't
-    // corrupt the double-underscore separator.
-    // Step 2: replace remaining `_` with `-`.
-    // Step 3: lowercase.
-    Some(suffix.replace("__", "/").replace('_', "-").to_lowercase())
+    let segments: Vec<String> = suffix
+        .split("__")
+        .map(|seg| seg.replace('_', "-").to_lowercase())
+        .collect();
+    // Need at least scheme + 1 predicate segment.
+    if segments.len() < 2 {
+        return None;
+    }
+    let scheme = &segments[0];
+    let predicate = segments[1..].join(".");
+    Some(format!("{scheme}:{predicate}"))
 }
 
 /// T023: validate schema version matches compiled marque-ism (FR-011).
