@@ -97,13 +97,12 @@ use marque_scheme::{
 /// "fixture missing"). Removing an entry is automatic when a fixture
 /// covers it (assertion 3 fires).
 ///
-/// **Current entries** (10): the structurally-unreachable carve-outs
+/// **Current entries**: the structurally-unreachable carve-outs
 /// documented in `docs/refactor-006/citation-coverage-report.md`.
 /// Two synthetic sentinels (`[config]` / `[engine-internal]`), one
-/// cross-reference pin (`§D.1 p27`), one data-dependent rule trigger
-/// gap (`§F p35` — no dissem entries in MIGRATIONS), and six
-/// PageRewrite citations whose enforcement is projection-time only
-/// with no `Diagnostic` emission.
+/// data-dependent rule trigger gap (`§F p35` — no dissem entries in
+/// MIGRATIONS), and six PageRewrite citations whose enforcement is
+/// projection-time only with no `Diagnostic` emission.
 ///
 /// Issue #661 closed (PR fix/661-e070-frd-tfni-bridge): E070 (§H.6
 /// p120 — FRD precedence over TFNI) was previously suppressed by
@@ -113,12 +112,16 @@ use marque_scheme::{
 /// `e024_rd_precedence`) and added the corpus fixture
 /// `tests/corpus/invalid/e070_frd_tfni_precedence.txt`, so the
 /// citation is now harvested.
+///
+/// Issue #677 closed: §D.1 p27 (banner-line syntax — Marking Title
+/// OR Authorized Abbreviation) became the primary citation for the
+/// new `PortionFormInBannerRule`, harvested by corpus fixtures
+/// `tests/corpus/invalid/677_*.txt`. Removed from the whitelist —
+/// the gate now treats the coverage as authoritative.
 const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
     // Synthetic non-CAPCO sentinels.
     (marque_rules::CORRECTIONS_MAP_CITATION, "config-sentinel"),
     (engine_internal_sentinel(), "engine-internal-sentinel"),
-    // Cross-reference pin (E005 secondary cite §D.1 p27).
-    (capco(SectionLetter::D, 1, 27), "d1-p27-cross-ref"),
     // Rule trigger conditions not exercisable from current data.
     (
         capco_section(SectionLetter::F, 35),

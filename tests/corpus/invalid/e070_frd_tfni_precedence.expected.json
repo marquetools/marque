@@ -1,6 +1,7 @@
 {
-  "_note": "CAPCO-2016 §H.6 p120 — 'If the TFNI marking is contained in any portion of a document that contains portions of RD and/or FRD, the RD or FRD takes precedence.' Per p120 commingling clause (p120→p121): 'If TFNI is commingled with RD or FRD within a portion, the RD or FRD takes precedence and \"RD\" or \"FRD,\" as appropriate, is annotated in the portion mark.' Fires E070 frd-tfni-precedence anchored on the dominated TFNI token (issue #661 wired span + severity through the engine bridge — pre-fix the predicate fired but `bridge_constraint_diagnostic` silently dropped the ConstraintViolation because span/severity were both None).",
+  "_note": "CAPCO-2016 §H.6 p120 — 'If the TFNI marking is contained in any portion of a document that contains portions of RD and/or FRD, the RD or FRD takes precedence.' Per p120 commingling clause (p120→p121): 'If TFNI is commingled with RD or FRD within a portion, the RD or FRD takes precedence and \"RD\" or \"FRD,\" as appropriate, is annotated in the portion mark.' Fires E070 frd-tfni-precedence anchored on the dominated TFNI token (issue #661 wired span + severity through the engine bridge — pre-fix the predicate fired but `bridge_constraint_diagnostic` silently dropped the ConstraintViolation because span/severity were both None). Issue #677: NOFORN (banner form) appears in the portion's dissem block; canonical portion form is NF (§C.1 p25). Two diagnostics expected — orthogonal defects.",
   "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "portion.metadata.uses-banner-form"}, "span": {"start": 14, "end": 20}},
     {"rule": {"scheme": "capco", "predicate_id": "portion.aea.frd-tfni-precedence"}, "span": {"start": 8, "end": 12}}
   ]
 }

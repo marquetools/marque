@@ -292,6 +292,18 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
         "page.dissem.bare-rel-portion-divergence",
         Phase::PageFinalization,
     ), // E072
+    // Issue #677: portion-form-in-banner / banner-form-in-portion form-
+    // mismatch detection. Phase::WholeMarking because the
+    // `Recanonicalize { Page | Portion }` fix scope is the whole
+    // marking — the engine's `render_canonical` re-emits the entire
+    // marking from canonical attrs, covering every wrong-form token
+    // within it in one pass. The diagnostic span points at the first
+    // offending token (sub-region of the marking), but the fix scope
+    // must span the marking by construction (matches E066
+    // `LegacyNatoCompoundRemarkRule`'s WholeMarking precedent).
+    // Authority: CAPCO-2016 §D.1 p27 + §C.1 p25.
+    ("banner.metadata.uses-portion-form", Phase::WholeMarking),
+    ("portion.metadata.uses-banner-form", Phase::WholeMarking),
 ];
 
 #[test]
