@@ -92,7 +92,7 @@ Render functions in `marque_capco::render::*` and lattice helpers in
 | ID | What | Estimate | Risk |
 |----|------|----------|------|
 | **R1** | Sort consolidation across render + lattice (CHOSEN, PR cycle in progress) | 80–130 KB | low (byte-identity tests cover render outputs) |
-| R2 | `parse_wasm_config` serde reduction (40-line struct → 10 KB) | 5–8 KB | low |
+| R2 | `parse_wasm_config` serde reduction (40-line struct → 10 KB) | 5–8 KB (estimated) / **7,759 bytes (measured, landed)** | low |
 | R3 | Decoder code-size budget / feature-gate question | 20–60 KB | strategic |
 | R4 | `parse_marking_string` / `TwoPassFixer::run` `#[inline(never)]` splits | 10–20 KB | medium (perf-sensitive paths) |
 | R5 | Render-function dispatch consolidation (overlaps R1) | 30–60 KB | medium |
@@ -103,9 +103,68 @@ Render functions in `marque_capco::render::*` and lattice helpers in
 ## Decisions taken in this investigation
 
 - **R1 first** (PM decision 2026-05-22). Highest impact, lowest risk, cleanest test coverage. PR cycle in progress (preflight → synthesis → implementation → review → PR).
-- **R2 deferred** to a follow-up cut.
+- **R2 landed** as PR #689 follow-up — see "R2 results" below.
 - **R3 deferred** pending strategic decision on whether the default WASM target needs the probabilistic decoder.
 - **#692 filed** for the `wasm-monoaudit.sh` script gap so future investigations don't rediscover the wasm-pack 0.14 DWARF plumbing issue.
+
+## R2 results (2026-05-22)
+
+| measurement | bytes |
+|---|---|
+| pre-R2 (post-R1, `origin/staging` `7af85fb2`) | 1,372,791 |
+| post-R2 (`refactor/r2-wasm-config-serde-reduction`) | 1,365,032 |
+| **delta** | **−7,759 (−0.57%)** |
+
+`wasm-pack build crates/wasm --target web --release` with the system
+`wasm-opt`. Note: `wasm-pack 0.14` did NOT honor the
+`package.metadata.wasm-pack.profile.release-web` flag list — wasm-opt
+was invoked with just `-O` rather than the full SIMD-enabled flag set;
+`--release` worked. The raw delta is what we measured; a full
+`release-web` build (or `wasm-pack 0.15`) may give a different absolute
+size but the relative R2 delta should be in the same band.
+
+**Above the synthesis-brief 4 KB go/no-go gate.** Landed.
+
+R2 cuts:
+
+- `#[derive(Deserialize)] WasmConfig` (4 fields including
+  `HashMap<String, String>` and `Option<f32>` / `Option<f64>`) →
+  retired. Replaced with explicit `serde_json::Value::as_object().get(...)`
+  extraction in a new private `wasm_config_from_value` helper.
+- `#[derive(Serialize)] WasmConfigCacheKey<'a>` (3 borrowed-field
+  struct with `skip_serializing_if = "Option::is_none"`) → retired
+  entirely. Replaced with direct `serde_json::Map` construction in
+  `build_cache_key`.
+
+Bench impact:
+
+- `lint_10kb` pre: `[422.35 µs 428.08 µs 434.97 µs]` (low / median / high)
+- `lint_10kb` post: `[421.49 µs 432.21 µs 447.64 µs]`
+- Median +0.45%, p=0.88. Criterion reports "no statistically significant
+  change". Config parsing is once-per-call, not on the hot path.
+
+Adjacent code that intentionally stays put:
+
+- `BatchEntry`'s `#[derive(Deserialize)]` at lib.rs:811 (two `String`
+  fields, no `Option`, no nested types). Estimated <1 KB; out-of-scope
+  per the R2 synthesis brief. File R2b if a measurable cut is wanted.
+- All `#[derive(Serialize)]` impls on OUTPUT-side types (FixResultJson,
+  the diagnostic/audit projection structs at lines 284-437): in scope
+  ONLY if the JS-API contract is explicitly broken open for a separate
+  PR. R2 deliberately did not touch them.
+
+f32 byte-identity gotcha worth noting for future serde-reduction work:
+
+- `Value::Number` is f64-only. `Number::from_f64(threshold as f64)`
+  widens before formatting and emits the long-form
+  `"0.8500000238418579"` for the 0.85 bit-pattern — NOT the
+  shortest-roundtrip `"0.85"` that `#[derive(Serialize)]` for a struct
+  with an `f32` field would have produced via serde's `serialize_f32`.
+- The R2 byte-identity tests caught this on first build. Fix: route
+  the f32 through `serde_json::to_string(&f32)` (which goes through
+  `serialize_f32`) and then parse back via `serde_json::from_str` so
+  the resulting `Value::Number` retains the shortest-f32 string. One
+  short alloc + one parse, only on engine-cache-miss.
 
 ## Related issues
 
