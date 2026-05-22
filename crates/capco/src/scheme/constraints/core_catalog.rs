@@ -107,12 +107,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // Reverse of E014: E014 flags JOINT participants missing from REL TO
         // (auto-fix); W005 flags REL TO entries beyond JOINT (advisory only).
         //
-        // MessageTemplate deferred: W005 currently falls through to the
-        // bridge's `ConflictsWith` fallback template because adding a typed
-        // `MessageTemplate::RelToExpandsBeyondJoint` variant requires an
-        // audit-schema bump that belongs in PR 3c.2 alongside the
-        // `MARQUE_AUDIT_SCHEMA` cutover (per closed-template invariant in
-        // `crates/rules/src/message.rs`). Tracked as follow-up.
+        // Audit emission: typed `MessageTemplate::RelToExpandsBeyondJoint`
+        // resolved via `CapcoScheme::message_by_name` (closing #666).
         Constraint::Custom {
             name: "W005/rel-to-not-in-joint-coverage",
             label: capco(SectionLetter::H, 3, 57),
