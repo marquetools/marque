@@ -208,6 +208,14 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
         "portion.fgi.fgi-explicit-with-trigraph",
         Phase::WholeMarking,
     ), // E071
+    // Issue #501: invalid FGI ownership token. Phase::WholeMarking
+    // because the rule walks `attrs.token_spans` for `Unknown` spans
+    // whose text leads with `"FGI "` / `"FOREIGN GOVERNMENT INFORMATION "`
+    // (the cross-token marker block produced by `parse_fgi_marker`'s
+    // rejection path); per-token splice on a localized sub-span is not
+    // the right dispatch shape here. No fix emitted — the diagnostic is
+    // itself the user-actionable signal. Authority: CAPCO-2016 §H.7 p123.
+    ("marking.fgi.invalid-ownership-token", Phase::WholeMarking), // E073
     // Issue #250: S009 prefer-tetragraph-collapse. Phase::WholeMarking
     // because the rule rewrites the entire RelToBlock span (multi-token
     // replacement: explicit member trigraphs → compact tetragraph form).
