@@ -347,7 +347,7 @@
       "name": "w005_rel_to_not_in_joint.txt",
       "category": "invalid",
       "input": "(//JOINT S AUS CAN USA//REL TO USA, AUS, CAN, GBR)\n",
-      "expected_lint": "{\"rule\":\"W005\",\"severity\":\"warn\",\"span\":{\"start\":3,\"end\":22},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p57\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"W005\",\"severity\":\"warn\",\"span\":{\"start\":3,\"end\":22},\"message\":{\"template\":\"RelToExpandsBeyondJoint\"},\"citation\":\"§H.3 p57\",\"fix\":null}\n"
     },
     {
       "name": "x_shorthand_date.txt",
