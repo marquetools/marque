@@ -143,7 +143,7 @@ use marque_rules::{Diagnostic, FixSource, RuleId};
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 // Single-threaded allocator: WasmDynamicTalc grows WASM memory via memory.grow and
@@ -825,13 +825,25 @@ struct BatchResultEntry<'a> {
 // Partial config accepted from JS callers.
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize, Default)]
+/// Partial config accepted from JS callers — a closed accept-list of
+/// four fields (`classifier_id`, `confidence_threshold`, `corrections`,
+/// `deadline_ms`). Constitution III preservation: unknown JSON fields
+/// are silently ignored; field-level type mismatches are loud errors.
+///
+/// The `#[derive(Deserialize)]` form was retired in R2 (#689 follow-up)
+/// in favor of explicit `Value::as_object().get(...)` extraction in
+/// [`wasm_config_from_value`]. The retirement targets the WASM bundle
+/// size — the `HashMap<String, String>` `Deserialize` monomorphization
+/// alone was ~3-4 KB before linker dedup, and the per-field
+/// `Visitor`/`__Field` scaffolding accounted for another ~3 KB. The
+/// explicit `obj.get(...)` form additionally tightens the
+/// runtime-config surface relative to the derive (the closed
+/// accept-list is enumerated at the call site, not implied by the
+/// struct shape).
+#[derive(Default)]
 struct WasmConfig {
-    #[serde(default)]
     classifier_id: Option<String>,
-    #[serde(default)]
     confidence_threshold: Option<f32>,
-    #[serde(default)]
     corrections: Option<HashMap<String, String>>,
     /// Per-call wall-clock budget in milliseconds (spec 005).
     /// `None` / absent → no deadline. Values must satisfy
@@ -839,7 +851,6 @@ struct WasmConfig {
     /// at parse time. See `parse_deadline_ms` for the validation
     /// rules and the Constitution III analysis at the top of this
     /// file for why a runtime budget cap is permitted in WASM.
-    #[serde(default)]
     deadline_ms: Option<f64>,
 }
 
@@ -861,11 +872,12 @@ struct WasmConfig {
 /// at the top of this file explains why `deadline_ms` is
 /// non-semantic and therefore safe to drop from the cache key.
 ///
-/// `corrections` is serialized via `BTreeMap<&str, &str>` (sorted by
-/// key) so the cache-key string is stable across calls — `HashMap`
-/// iteration order is non-deterministic, which would otherwise
-/// produce different cache-key strings for byte-equal corrections
-/// content and force unnecessary engine rebuilds.
+/// `corrections` is serialized through `serde_json::Map` (BTreeMap-
+/// backed without the `preserve_order` feature) so the cache-key
+/// string is stable across calls — `HashMap` iteration order is
+/// non-deterministic, which would otherwise produce different
+/// cache-key strings for byte-equal corrections content and force
+/// unnecessary engine rebuilds.
 ///
 /// Returns `Ok(None)` for the cache key when no cache-relevant field
 /// is set (default config OR an empty corrections map); a
@@ -873,13 +885,133 @@ struct WasmConfig {
 fn parse_wasm_config(
     json: &Option<String>,
 ) -> Result<(WasmConfig, Option<Duration>, Option<String>), String> {
-    let wasm_cfg: WasmConfig = match json {
-        Some(s) => serde_json::from_str(s).map_err(|e| e.to_string())?,
+    let wasm_cfg = match json {
         None => WasmConfig::default(),
+        Some(s) => {
+            let value: serde_json::Value = serde_json::from_str(s).map_err(|e| e.to_string())?;
+            wasm_config_from_value(value)?
+        }
     };
     let deadline_duration = parse_deadline_ms(wasm_cfg.deadline_ms)?;
     let cache_key = build_cache_key(&wasm_cfg)?;
     Ok((wasm_cfg, deadline_duration, cache_key))
+}
+
+/// Extract a [`WasmConfig`] from a parsed JSON value.
+///
+/// The accepted-field set is enumerated explicitly via
+/// `obj.get(...)`. Unknown fields are silently ignored, matching the
+/// pre-R2 `#[derive(Deserialize)]` behavior (no
+/// `#[serde(deny_unknown_fields)]`). Constitution III preservation:
+/// the WASM target's runtime-config surface MUST NOT widen — the
+/// closed accept-list of `{classifier_id, confidence_threshold,
+/// corrections, deadline_ms}` is the load-bearing contract; see the
+/// constitutional analysis at the top of this file.
+///
+/// Each field is null-tolerant (a JSON `null` is treated as absent)
+/// and type-strict (a wrong-typed value produces a loud error
+/// carrying the field name). The post-R2 error wording gains
+/// field-name context relative to serde-derived messages, at the
+/// cost of the column-number context serde provided — a worthwhile
+/// trade because the field name is what JS callers actually need to
+/// fix, and the outer `serde_json::from_str::<Value>(...)` parse
+/// still surfaces malformed-JSON column numbers for syntactic
+/// errors.
+fn wasm_config_from_value(value: serde_json::Value) -> Result<WasmConfig, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "config must be a JSON object".to_owned())?;
+
+    let classifier_id = match obj.get("classifier_id") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(other) => {
+            return Err(format!(
+                "classifier_id must be a string; got {}",
+                value_type_name(other)
+            ));
+        }
+    };
+
+    let confidence_threshold = match obj.get("confidence_threshold") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Number(n)) => {
+            let f = n
+                .as_f64()
+                .ok_or_else(|| "confidence_threshold must be a finite number".to_owned())?;
+            // Match serde's `f32` deserializer: any finite JSON number
+            // narrows via `as f32` (potentially losing precision; that
+            // is the contract callers rely on, including the existing
+            // 0.85 round-trip exercised by the R2 byte-identity tests).
+            Some(f as f32)
+        }
+        Some(other) => {
+            return Err(format!(
+                "confidence_threshold must be a number; got {}",
+                value_type_name(other)
+            ));
+        }
+    };
+
+    let corrections = match obj.get("corrections") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Object(map_in)) => {
+            let mut map_out = HashMap::with_capacity(map_in.len());
+            for (k, v) in map_in {
+                let s = match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "corrections[{k}] must be a string; got {}",
+                            value_type_name(other)
+                        ));
+                    }
+                };
+                map_out.insert(k.clone(), s);
+            }
+            Some(map_out)
+        }
+        Some(other) => {
+            return Err(format!(
+                "corrections must be a JSON object; got {}",
+                value_type_name(other)
+            ));
+        }
+    };
+
+    let deadline_ms = match obj.get("deadline_ms") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Number(n)) => Some(
+            n.as_f64()
+                .ok_or_else(|| "deadline_ms must be a finite number".to_owned())?,
+        ),
+        Some(other) => {
+            return Err(format!(
+                "deadline_ms must be a number; got {}",
+                value_type_name(other)
+            ));
+        }
+    };
+
+    Ok(WasmConfig {
+        classifier_id,
+        confidence_threshold,
+        corrections,
+        deadline_ms,
+    })
+}
+
+/// Human-readable type name for a JSON value, used in field-level
+/// type-mismatch error messages.
+fn value_type_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
 }
 
 /// Build an engine-level [`Config`] from a parsed [`WasmConfig`].
@@ -904,21 +1036,6 @@ fn build_engine_config(wasm_cfg: WasmConfig) -> Result<Config, String> {
     Ok(config)
 }
 
-/// Cache-relevant projection of [`WasmConfig`]. Serialized to build
-/// the engine cache key — `deadline_ms` is excluded; `corrections`
-/// is projected through a `BTreeMap` so iteration order is stable
-/// (HashMap iteration is non-deterministic and would produce
-/// different cache-key strings for byte-equal content).
-#[derive(Serialize)]
-struct WasmConfigCacheKey<'a> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    classifier_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    confidence_threshold: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    corrections: Option<BTreeMap<&'a str, &'a str>>,
-}
-
 /// Build the engine cache key for a parsed [`WasmConfig`].
 ///
 /// Returns `Ok(None)` when no cache-relevant field is set — this
@@ -928,23 +1045,70 @@ struct WasmConfigCacheKey<'a> {
 /// "default with empty corrections" vs. "absent corrections"). A
 /// deadline-only invocation hits the same cache slot as a no-config
 /// invocation.
+///
+/// Builds a `serde_json::Map` directly and serializes it; the
+/// previously-derived `#[derive(Serialize)] WasmConfigCacheKey` was
+/// retired in R2 (#689 follow-up) to cut WASM-bundle size.
+///
+/// **Cache-key byte-identity.** The output is byte-identical to the
+/// pre-R2 emission path — pinned by the R2 byte-identity tests in
+/// `mod tests`. The serde-derive path emitted fields in
+/// struct-declaration order; `serde_json::Map` without the
+/// `preserve_order` feature is BTreeMap-backed and emits in
+/// alphabetical key order. Struct-declaration order
+/// (`classifier_id` < `confidence_threshold` < `corrections`)
+/// coincides with alphabetical order today, so byte-identity holds.
+/// Adding a future cache-key field that breaks the alphabetical
+/// arrangement will fail the byte-identity tests and require either
+/// renaming the field or enabling `serde_json/preserve_order` and
+/// inserting in struct-declaration order.
+///
+/// `corrections` is projected via the inner `serde_json::Map` (also
+/// BTreeMap-backed) so the byte-order of correction keys is stable
+/// regardless of the input `HashMap` iteration order.
 fn build_cache_key(cfg: &WasmConfig) -> Result<Option<String>, String> {
     let corrections_present = cfg.corrections.as_ref().is_some_and(|c| !c.is_empty());
     if cfg.classifier_id.is_none() && cfg.confidence_threshold.is_none() && !corrections_present {
         return Ok(None);
     }
-    let projection = WasmConfigCacheKey {
-        classifier_id: cfg.classifier_id.as_deref(),
-        confidence_threshold: cfg.confidence_threshold,
-        corrections: cfg.corrections.as_ref().filter(|c| !c.is_empty()).map(|c| {
-            // Project HashMap → BTreeMap for stable iteration order.
-            // Borrowed (&str, &str) pairs avoid String allocations.
-            c.iter()
-                .map(|(k, v)| (k.as_str(), v.as_str()))
-                .collect::<BTreeMap<_, _>>()
-        }),
-    };
-    serde_json::to_string(&projection)
+
+    let mut map = serde_json::Map::new();
+    if let Some(id) = cfg.classifier_id.as_deref() {
+        map.insert(
+            "classifier_id".to_owned(),
+            serde_json::Value::String(id.to_owned()),
+        );
+    }
+    if let Some(threshold) = cfg.confidence_threshold {
+        // Route the f32 through serde's `serialize_f32` path so the
+        // emitted number preserves the shortest-roundtrip form (e.g.
+        // `0.85` rather than `0.8500000238418579`). `Value::Number`
+        // is f64-only, and `Number::from_f64(threshold as f64)`
+        // widens before formatting, producing the longer string —
+        // that breaks byte-identity with the retired
+        // `#[derive(Serialize)] WasmConfigCacheKey` path (which used
+        // `serialize_f32` directly). The format-then-parse roundtrip
+        // here is cheap (one short alloc, one parse of a known-valid
+        // numeric literal) and runs only on engine-cache-miss.
+        let formatted = serde_json::to_string(&threshold).map_err(|e| e.to_string())?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&formatted).map_err(|e| e.to_string())?;
+        map.insert("confidence_threshold".to_owned(), parsed);
+    }
+    if corrections_present {
+        // Unwrap-safe: `corrections_present` proved Some + non-empty.
+        let corrections = cfg.corrections.as_ref().expect("corrections present");
+        let mut corrections_map = serde_json::Map::new();
+        for (k, v) in corrections {
+            corrections_map.insert(k.clone(), serde_json::Value::String(v.clone()));
+        }
+        map.insert(
+            "corrections".to_owned(),
+            serde_json::Value::Object(corrections_map),
+        );
+    }
+
+    serde_json::to_string(&serde_json::Value::Object(map))
         .map(Some)
         .map_err(|e| e.to_string())
 }
@@ -1924,9 +2088,8 @@ mod tests {
     /// but re-asserted here against the full JSON parse path.
     #[test]
     fn r2_byte_identity_empty_corrections() {
-        let (_, _, cache_key) =
-            parse_wasm_config(&Some(r#"{"corrections": {}}"#.to_owned()))
-                .expect("parse empty corrections");
+        let (_, _, cache_key) = parse_wasm_config(&Some(r#"{"corrections": {}}"#.to_owned()))
+            .expect("parse empty corrections");
         assert_eq!(cache_key, None);
     }
 
@@ -1934,9 +2097,8 @@ mod tests {
     /// from the cache key by design; see `parse_wasm_config` doc).
     #[test]
     fn r2_byte_identity_deadline_only() {
-        let (_, _, cache_key) =
-            parse_wasm_config(&Some(r#"{"deadline_ms": 1000}"#.to_owned()))
-                .expect("parse deadline only");
+        let (_, _, cache_key) = parse_wasm_config(&Some(r#"{"deadline_ms": 1000}"#.to_owned()))
+            .expect("parse deadline only");
         assert_eq!(cache_key, None);
     }
 
@@ -1946,10 +2108,7 @@ mod tests {
         let (_, _, cache_key) =
             parse_wasm_config(&Some(r#"{"classifier_id": "agent42"}"#.to_owned()))
                 .expect("parse classifier_id");
-        assert_eq!(
-            cache_key.as_deref(),
-            Some(r#"{"classifier_id":"agent42"}"#)
-        );
+        assert_eq!(cache_key.as_deref(), Some(r#"{"classifier_id":"agent42"}"#));
     }
 
     /// `confidence_threshold` only → exact byte string. Asserts the
@@ -1994,7 +2153,9 @@ mod tests {
         .expect("parse all three");
         assert_eq!(
             cache_key.as_deref(),
-            Some(r#"{"classifier_id":"agent42","confidence_threshold":0.85,"corrections":{"K":"V"}}"#)
+            Some(
+                r#"{"classifier_id":"agent42","confidence_threshold":0.85,"corrections":{"K":"V"}}"#
+            )
         );
     }
 
@@ -2008,10 +2169,7 @@ mod tests {
             r#"{"deadline_ms": 1000, "classifier_id": "agent42"}"#.to_owned(),
         ))
         .expect("parse deadline + classifier");
-        assert_eq!(
-            cache_key.as_deref(),
-            Some(r#"{"classifier_id":"agent42"}"#)
-        );
+        assert_eq!(cache_key.as_deref(), Some(r#"{"classifier_id":"agent42"}"#));
     }
 
     // -----------------------------------------------------------------------
@@ -2126,10 +2284,7 @@ mod tests {
         ))
         .expect("unknown + known must not error");
         assert_eq!(cfg.classifier_id.as_deref(), Some("agent42"));
-        assert_eq!(
-            cache_key.as_deref(),
-            Some(r#"{"classifier_id":"agent42"}"#)
-        );
+        assert_eq!(cache_key.as_deref(), Some(r#"{"classifier_id":"agent42"}"#));
     }
 
     // -----------------------------------------------------------------------
