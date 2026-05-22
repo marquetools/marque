@@ -116,7 +116,7 @@ SECRET//FGI DEU//NOFORN
     // banner observes Secret (Some-Some effective_level mismatch
     // branch — arm 4 of the E068 match).
     assert!(
-        observed.contains("E068"),
+        observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 must fire on TopSecret-projected page with Secret \
          banner; observed = {observed:?}"
     );
@@ -143,7 +143,7 @@ SECRET//NOFORN
 
     // Assert
     assert!(
-        observed.contains("E068"),
+        observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 must fire when banner is Secret but portions project \
          TopSecret (§H.7 reciprocal raise); observed = {observed:?}"
     );
@@ -165,7 +165,7 @@ SECRET//NOFORN
 
     // Assert
     assert!(
-        !observed.contains("E068"),
+        !observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 must not fire when banner and projection agree; \
          observed = {observed:?}"
     );
@@ -200,7 +200,7 @@ TOP SECRET//NOFORN
     // fire because of dependent classification mismatch; this test
     // is orthogonal to that.)
     assert!(
-        observed.contains("E069"),
+        observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 must fire when banner lacks FGI marker but portions \
          contribute FGI DEU (§H.7 p124 banner roll-up); observed = \
          {observed:?}"
@@ -225,7 +225,7 @@ CONFIDENTIAL//FGI DEU
 
     // Assert
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 must not fire when banner FGI marker matches projection; \
          observed = {observed:?}"
     );
@@ -250,7 +250,7 @@ fn e069_does_not_fire_on_pure_nato_page() {
 
     // Assert
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 must not fire on pure-NATO page (fgi_marker is None on \
          both sides; NATO is its own axis per §G.2 p40); observed = \
          {observed:?}"
@@ -299,7 +299,7 @@ SECRET//FGI NZL GBR//NOFORN
     // Pre-fix-up this assertion would have failed because slice
     // equality saw `[NZL, GBR] != [GBR, NZL]`.
     assert!(
-        !observed.contains("E069"),
+        !observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 must not fire on non-canonical country order (sets are \
          identical); observed = {observed:?}"
     );
@@ -325,13 +325,13 @@ SECRET//NOFORN
 
     // Assert
     assert!(
-        observed.contains("E068"),
+        observed.contains("banner.classification.mismatch-vs-projected"),
         "E068 must fire on classification-level mismatch (§H.7 \
          reciprocal raise: Secret observed, TopSecret projected); \
          observed = {observed:?}"
     );
     assert!(
-        observed.contains("E069"),
+        observed.contains("banner.fgi.marker-mismatch-vs-projected"),
         "E069 must fire on missing FGI marker (§H.7 p124 + p129 line \
          3168); observed = {observed:?}"
     );

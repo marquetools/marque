@@ -69,7 +69,11 @@ fn engine() -> Engine {
 /// is the production contract, not a test detail to pin numerically).
 fn engine_with_s007_as_fix() -> Engine {
     let mut overrides = HashMap::new();
-    overrides.insert("S007".to_owned(), "fix".to_owned());
+    // T044: rule-override keys use the wire-string form per OD-7.
+    overrides.insert(
+        "capco:portion.nato.bare-nato-requires-rel-to-usa-nato".to_owned(),
+        "fix".to_owned(),
+    );
     let mut config = Config::default();
     config.rules = RuleConfig { overrides };
     config

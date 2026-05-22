@@ -211,7 +211,8 @@ const EXPECTED_PAGE_REWRITES: &[&str] = &[
 /// `marking_scheme_impl.rs::CapcoScheme::closure` applies the static
 /// USA leg via the bitmask path's `REL_TO_USA` atom and runs the
 /// surviving `cone_derived` as a single post-Kleene tail.
-const EXPECTED_CLOSURE_RULES: &[&str] = &["capco/rel-to-usa-nato-if-nato-classification"];
+const EXPECTED_CLOSURE_RULES: &[&str] =
+    &["capco:closure.nato.rel-to-usa-nato-if-nato-classification"];
 
 /// Closed list of 10 `ClosureRow` names in the positional order of
 /// `marque_capco::closure_table::CLOSURE_TABLE`. PR-D moved the
@@ -233,17 +234,21 @@ const EXPECTED_CLOSURE_RULES: &[&str] = &["capco/rel-to-usa-nato-if-nato-classif
 ///   (NATO REL TO portion-level closure).
 /// - Rows 8 and 9 — RELIDO closure rows per §H.8 pp 155-156
 ///   (RELIDO observed-unanimity for SCI-portion / US-classified-portion).
+// T044: closure-rule names use the canonical wire-string form per
+// PM-decisions OD-1.B refinement (`closure` as a fifth `<surface>`
+// segment). Legacy slash form `capco/<predicate>` retired in lockstep
+// with the closure_table.rs rename.
 const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
-    "capco/noforn-if-caveated",
-    "capco/hcs-o-implies-noforn-orcon",
-    "capco/hcs-p-sub-implies-noforn-orcon",
-    "capco/si-g-implies-orcon",
-    "capco/tk-blfh-implies-noforn",
-    "capco/tk-idit-implies-noforn",
-    "capco/tk-kand-implies-noforn",
-    "capco/rel-to-usa-nato-if-nato-classification",
-    "capco/relido-if-sci-and-not-incompatible",
-    "capco/relido-if-us-collateral-class",
+    "capco:closure.dissem.noforn-if-caveated",
+    "capco:closure.dissem.hcs-o-implies-noforn-orcon",
+    "capco:closure.dissem.hcs-p-sub-implies-noforn-orcon",
+    "capco:closure.dissem.si-g-implies-orcon",
+    "capco:closure.dissem.tk-blfh-implies-noforn",
+    "capco:closure.dissem.tk-idit-implies-noforn",
+    "capco:closure.dissem.tk-kand-implies-noforn",
+    "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
+    "capco:closure.dissem.relido-if-sci-and-not-incompatible",
+    "capco:closure.dissem.relido-if-us-collateral-class",
 ];
 
 /// Closed **sorted set** of 39 `Constraint::Custom` row names from the

@@ -394,7 +394,11 @@ fn s005_severity_config_off_silences_rule() {
     //
     // Arrange.
     let mut overrides = HashMap::new();
-    overrides.insert("S005".to_owned(), "off".to_owned());
+    // T044: rule-override key uses the wire-string form per OD-7.
+    overrides.insert(
+        "capco:page.dissem.rel-to-uncertain-reduction".to_owned(),
+        "off".to_owned(),
+    );
     let mut config = Config::default();
     config.rules = RuleConfig { overrides };
     let engine = Engine::with_clock(

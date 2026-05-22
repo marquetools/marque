@@ -30,7 +30,11 @@ fn engine_with_s009() -> Engine {
     config
         .rules
         .overrides
-        .insert("S009".to_string(), "suggest".to_string());
+        .insert(
+            // T044: rule-override key uses the wire-string form per OD-7.
+            "capco:page.dissem.prefer-tetragraph-collapse".to_string(),
+            "suggest".to_string(),
+        );
     Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],

@@ -80,7 +80,17 @@ fn e058_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.predicate_id() == "E058").collect()
+    // T044 OD-8.A: the bridge no longer collapses to a single `E058`
+    // rule_id; each catalog row emits its own predicate ID in the
+    // `banner.<axis>.<floor|ceiling>-<marking>` form. Filter on the
+    // substring discriminator (mirrors `is_class_floor_catalog_name`).
+    diags
+        .iter()
+        .filter(|d| {
+            let pid = d.rule.predicate_id();
+            pid.contains(".floor-") || pid.contains(".ceiling-")
+        })
+        .collect()
 }
 
 // ===========================================================================
@@ -203,15 +213,18 @@ fn catalog_citations_reference_capco_or_passthrough() {
 fn class_floor_diagnostics_flow_through_engine_bridge_at_e058() {
     // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` retired from
     // `CapcoRuleSet`. The 27 catalog rows still emit diagnostics —
-    // they flow through the engine's constraint-catalog bridge with
-    // `Diagnostic.rule = "E058"` (the bridge folds catalog row names
-    // `E058/...` and `class-floor/...` to the walker-level ID per
-    // engine.rs comment). This test pins the post-deletion external
-    // surface:
-    //   1. No registered `Rule::id() == "E058"` (walker is gone);
-    //   2. `engine.lint` still produces an E058-tagged diagnostic on
+    // they flow through the engine's constraint-catalog bridge.
+    //
+    // T044 OD-8.A: the bridge no longer folds catalog row names to a
+    // walker-level `Diagnostic.rule = "E058"` — each row emits its own
+    // canonical predicate ID (`banner.<axis>.<floor|ceiling>-<marking>`).
+    // This test pins the post-deletion + post-T044 external surface:
+    //   1. No registered rule with the legacy E058/E022/E025/E027
+    //      predicate-IDs (those walkers are gone);
+    //   2. `engine.lint` still produces a class-floor diagnostic on
     //      a known-firing fixture (CONFIDENTIAL//RD-CNWDI → CNWDI
-    //      floor row, §H.6 p104 §2.2 family).
+    //      floor row, §H.6 p104 §2.2 family) — now with predicate ID
+    //      `capco:banner.aea.floor-cnwdi`.
     let set = capco_rules();
     let ids: Vec<&str> = set.rules().iter().map(|r| r.id().predicate_id()).collect();
     assert!(
@@ -674,11 +687,19 @@ fn passthrough_mvl_fires_at_warn_severity() {
 
 #[test]
 fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
+    // T044 OD-8.A: the bridge no longer collapses to a single E058
+    // walker ID. The CNWDI floor is now targeted by its own
+    // predicate ID `capco:banner.aea.floor-cnwdi`; suppression
+    // requires setting that key (FR-008 invariant unchanged — an
+    // `Off`-severity rule cannot fire).
     let mut config = Config::default();
     config
         .rules
         .overrides
-        .insert("E058".to_string(), "off".to_string());
+        .insert(
+            "capco:banner.aea.floor-cnwdi".to_string(),
+            "off".to_string(),
+        );
     let engine_with_off = Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
@@ -690,11 +711,15 @@ fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
     let diags = engine_with_off
         .lint(b"CONFIDENTIAL//RD-CNWDI//NOFORN\n")
         .diagnostics;
-    let e058: Vec<&Diagnostic<CapcoScheme>> =
-        diags.iter().filter(|d| d.rule.predicate_id() == "E058").collect();
+    let cnwdi: Vec<&Diagnostic<CapcoScheme>> = diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "banner.aea.floor-cnwdi")
+        .collect();
     assert!(
-        e058.is_empty(),
-        "with `[rules] E058 = \"off\"`, no E058 diagnostics may emit (FR-008): {diags:?}"
+        cnwdi.is_empty(),
+        "with `[rules] \"capco:banner.aea.floor-cnwdi\" = \"off\"`, \
+         no banner.aea.floor-cnwdi diagnostics may emit \
+         (FR-008): {diags:?}"
     );
 }
 

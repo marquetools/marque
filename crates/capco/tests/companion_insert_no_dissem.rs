@@ -35,7 +35,14 @@ fn e059_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.predicate_id() == "E059").collect()
+    // T044 OD-8.A: the bridge no longer collapses to a single `E059`
+    // rule_id; each catalog row emits its own predicate ID in the
+    // `marking.sci.<predicate>` form. Filter on the substring prefix
+    // (mirrors `is_sci_per_system_catalog_name`).
+    diags
+        .iter()
+        .filter(|d| d.rule.predicate_id().starts_with("marking.sci."))
+        .collect()
 }
 
 #[test]

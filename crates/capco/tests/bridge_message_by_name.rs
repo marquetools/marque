@@ -68,7 +68,7 @@ fn empty_attrs() -> CanonicalAttrs {
 fn message_by_name_e015_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E015/non-us-requires-dissem",
+        "portion.classification.non-us-requires-dissem",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -92,7 +92,7 @@ fn message_by_name_e015_returns_some() {
 fn message_by_name_e016_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E016/joint-conflicts-restricted",
+        "portion.classification.joint-conflicts-restricted",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -116,7 +116,7 @@ fn message_by_name_e016_returns_some() {
 fn message_by_name_e036_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E036/joint-conflicts-hcs",
+        "portion.classification.joint-conflicts-hcs",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -140,7 +140,7 @@ fn message_by_name_e036_returns_some() {
 fn message_by_name_noforn_conflicts_rel_to_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "capco/noforn-conflicts-rel-to",
+        "portion.dissem.noforn-conflicts-rel-to",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -164,7 +164,7 @@ fn message_by_name_noforn_conflicts_rel_to_returns_some() {
 fn message_by_name_e037_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E037/nodis-conflicts-exdis",
+        "portion.dissem.nodis-conflicts-exdis",
         &empty_attrs(),
         MarkingType::Portion,
     );
@@ -188,7 +188,7 @@ fn message_by_name_e037_returns_some() {
 fn message_by_name_e054_returns_some() {
     let scheme = CapcoScheme::new();
     let msg = scheme.message_by_name(
-        "E054/relido-conflicts-noforn",
+        "portion.dissem.relido-conflicts-noforn",
         &empty_attrs(),
         MarkingType::Portion,
     );

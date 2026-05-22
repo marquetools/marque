@@ -166,7 +166,11 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 None,
             ) {
                 out.push((
-                    diag.rule.to_string(),
+                    // T044: match the predicate-id-without-scheme
+                    // shape the rest of this test uses (line 120
+                    // collects `predicate_id().to_owned()`; the
+                    // bridge emulator also passes raw constraint_label).
+                    diag.rule.predicate_id().to_owned(),
                     diag.span.start,
                     diag.span.end,
                 ));
@@ -183,19 +187,15 @@ fn assert_matches(
     expected: &ExpectedFixture,
     actual: &[(String, usize, usize)],
 ) {
-    // T044: `ExpectedRuleId` is a 2-tuple struct; render the wire
-    // string for comparison against the engine-side `Display` form
-    // (`<scheme>:<predicate_id>`).
+    // T044: `ExpectedRuleId` is a 2-tuple struct; the actual side
+    // (above) collects predicate_id strings WITHOUT the scheme prefix
+    // (from `d.rule.predicate_id().to_owned()` and from the bridge's
+    // `v.constraint_label.to_owned()`). Match that shape on the want
+    // side by reading the predicate_id field directly.
     let mut want: Vec<(String, usize, usize)> = expected
         .diagnostics
         .iter()
-        .map(|d| {
-            (
-                format!("{}:{}", d.rule.scheme, d.rule.predicate_id),
-                d.span.start,
-                d.span.end,
-            )
-        })
+        .map(|d| (d.rule.predicate_id.clone(), d.span.start, d.span.end))
         .collect();
     want.sort();
     assert_eq!(
