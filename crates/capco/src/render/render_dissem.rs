@@ -154,11 +154,11 @@ fn banner_str(d: &DissemControl) -> &'static str {
         DissemControl::Rel => "REL",
         DissemControl::Relido => "RELIDO",
         DissemControl::Eyes => "EYES ONLY",
-        // §H.8 p159 line 3905 lists the Authorized Banner Line Marking
-        // Title as "DEA SENSITIVE"; line 3911 shows the worked banner
-        // example `UNCLASSIFIED//DEA SENSITIVE`. The §G.1 Table 4 p36
-        // row carries `None` under the "Authorized Abbreviation" column
-        // — `DSEN` is the portion mark, not the banner form. Pre-#677
+        // §H.8 p159 lists the Authorized Banner Line Marking Title as
+        // "DEA SENSITIVE" with the worked banner example
+        // `UNCLASSIFIED//DEA SENSITIVE`. The §G.1 Table 4 p36 row
+        // carries `None` under the "Authorized Abbreviation" column —
+        // `DSEN` is the portion mark, not the banner form. Pre-#677
         // this renderer mis-emitted "DSEN" in banner position, which
         // made issue #677's `Recanonicalize { Page }` fix a no-op on
         // `SECRET//DSEN` inputs (the round-trip produced the same

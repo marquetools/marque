@@ -6950,8 +6950,8 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 // The banner rule adds a small classification branch reading
 // `attrs.classification` to cover this; it catches the PM-4 sister bug
 // (`S//NOFORN` — classification abbreviation in banner) per CAPCO-2016
-// §D.1 p27 line 555 ("The classification level must be in English
-// without abbreviation"). One rule covers two gaps; no separate
+// §D.1 p27 ("The classification level must be in English without
+// abbreviation"). One rule covers two gaps; no separate
 // sister-bug issue is needed.
 //
 // ## Emission shape — ONE diagnostic per marking
