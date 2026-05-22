@@ -20,7 +20,7 @@
 //! ("row renamed at the same count" / "row swapped at the same
 //! count") that the type system cannot see.
 //!
-//! ## Join-only invariant (PR #456 split + PR #538 audit)
+//! ## Join-only invariant (issue #456 / PR #502 split + PR #538 audit)
 //!
 //! Three types — [`DissemSet`], [`JointSet`], [`DisplayOnlyBlock`] —
 //! implement only [`JoinSemilattice`]. The reasons differ but the
@@ -45,7 +45,7 @@
 //!
 //! ## Authority
 //!
-//! - PR #456 lattice-split addendum:
+//! - Lattice-split addendum (issue #456 / PR #502):
 //!   `docs/plans/2026-05-01-lattice-design.md` §12.
 //! - PR #538 observational-state-lattice audit (memory
 //!   `project_pr538_observational_lattice_audit`).
@@ -118,7 +118,7 @@ assert_not_impl_any!(DissemSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(JointSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(DisplayOnlyBlock: BoundedJoinSemilattice, BoundedMeetSemilattice);
 
-// --- Join-only observational-state types (PR #456 split + PR #538 audit) ---
+// --- Join-only observational-state types (issue #456 / PR #502 split + PR #538 audit) ---
 
 assert_impl_all!(DissemSet: JoinSemilattice);
 assert_not_impl_any!(DissemSet: MeetSemilattice);
