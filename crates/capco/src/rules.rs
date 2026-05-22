@@ -7047,8 +7047,8 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
 /// Authority: CAPCO-2016 §H.7 p123. The FGI Authorized Portion / Banner
 /// forms define the ownership-token shape; this predicate is the
 /// rule-layer surface of the parser's `parse_fgi_marker` rejection
-/// path. Re-verified against `crates/capco/docs/CAPCO-2016.md` lines
-/// 3043-3053 at authorship per Constitution VIII.
+/// path. Re-verified against `crates/capco/docs/CAPCO-2016.md` at
+/// authorship per Constitution VIII.
 pub(crate) fn is_fgi_invalid_ownership_token(text: &str) -> bool {
     let Some(tail) = text
         .strip_prefix("FGI ")
@@ -7056,9 +7056,16 @@ pub(crate) fn is_fgi_invalid_ownership_token(text: &str) -> bool {
     else {
         return false;
     };
-    // Empty tail (`"FGI "` followed only by whitespace) is a malformed
-    // FGI shape — E073 owns it. Non-empty tail with at least one
-    // rejected token also routes here.
+    // Forward-compat: the empty-tail branch (`"FGI "` followed only by
+    // whitespace) is unreachable via the production parser path. The
+    // block-walker trims input with `raw.trim()` before dispatch, so
+    // `"FGI "` collapses to `"FGI"`, which `parse_fgi_marker` admits
+    // as `FgiMarker::SourceConcealed` (no `Unknown` span is produced).
+    // This branch covers synthetic `TokenKind::Unknown` spans (e.g.,
+    // test-harness injection or out-of-tree consumers that bypass the
+    // production parser) and any future parser change that allows an
+    // empty-tail FGI to reach the rule layer. Keeping it preserves the
+    // E073-owns-malformed-FGI invariant under those drift scenarios.
     let mut saw_token = false;
     for token in tail.split_whitespace() {
         saw_token = true;
@@ -7132,12 +7139,14 @@ impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
     /// specify the ownership-token grammar: `[LIST]` is "one or more
     /// Register, Annex B trigraph country codes or Register, Annex A
     /// tetragraph code(s), or Manual, Appendix B NATO/NAC markings"
-    /// (line 844, page 35). The FGI ownership slot specifically admits
-    /// sovereign trigraphs, the 2-byte `EU` exception, and the literal
-    /// `NATO` tetragraph; distribution-list tetragraphs (`FVEY`,
-    /// `ACGU`, `ISAF`, `CFIUS`) describe who may receive a marking,
-    /// not who owns it (issue #280). Re-verified against
-    /// `crates/capco/docs/CAPCO-2016.md` lines 3043-3053 at authorship.
+    /// per §G.1 p38 (Table 4 footnote on the §G.1 Register of
+    /// Authorized Classification and Control Markings). The FGI
+    /// ownership slot specifically admits sovereign trigraphs, the
+    /// 2-byte `EU` exception, and the literal `NATO` tetragraph;
+    /// distribution-list tetragraphs (`FVEY`, `ACGU`, `ISAF`, `CFIUS`)
+    /// describe who may receive a marking, not who owns it (issue
+    /// #280). Re-verified against `crates/capco/docs/CAPCO-2016.md` at
+    /// authorship per Constitution VIII.
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
         for tok in attrs.token_spans.iter() {
@@ -7200,11 +7209,18 @@ impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
                     ));
                 }
             }
-            // Malformed `"FGI "` with no trailing tokens (`tail`
-            // entirely whitespace) also routes here per the parser's
-            // Case 3 closure. Anchor the diagnostic at the trailing
-            // separator region rather than a zero-byte span at end-of-
-            // token for a meaningful pointer.
+            // Forward-compat companion to the matching branch in
+            // `is_fgi_invalid_ownership_token`: an empty tail (`"FGI "`
+            // with no trailing tokens) is unreachable via the production
+            // parser path because the block-walker trims input before
+            // dispatch — `"FGI "` collapses to `"FGI"`, which
+            // `parse_fgi_marker` admits as `SourceConcealed`. This
+            // branch handles synthetic `TokenKind::Unknown` spans
+            // (test-harness injection, out-of-tree consumers) and any
+            // future parser change that allows an empty-tail FGI to
+            // reach the rule layer. Anchor the diagnostic at the
+            // trailing separator region rather than a zero-byte span
+            // at end-of-token for a meaningful pointer.
             if !saw_token {
                 let abs_start = span_start + prefix_len;
                 let abs_end = tok.span.end;

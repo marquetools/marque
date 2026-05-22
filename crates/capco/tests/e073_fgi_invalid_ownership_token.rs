@@ -24,8 +24,7 @@
 //! actionable category-specific diagnostic.
 //!
 //! Authority: CAPCO-2016 §H.7 p123. Verified against
-//! `crates/capco/docs/CAPCO-2016.md` (lines 3043-3053) at authorship
-//! per Constitution VIII.
+//! `crates/capco/docs/CAPCO-2016.md` at authorship per Constitution VIII.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
@@ -152,10 +151,14 @@ fn e073_fires_on_isaf_ownership_token() {
 
 #[test]
 fn e073_fires_on_source_segregated_portion_form() {
-    // `(//FGI FVEY)` — segregated portion form per §H.7 p123 Example
-    // Portion Mark "when source must be concealed and segregated from
-    // US". E073 still fires because FVEY fails the ownership shape
-    // gate regardless of segregation status.
+    // `(//FGI FVEY)` — the `FGI` token is followed by an explicit
+    // ownership list, which is the §H.7 p123 acknowledged-segregated
+    // shape (Authorized Portion Mark "when source(s) is acknowledged
+    // and segregated from US": `[LIST] [Non-US Classification Portion
+    // Mark]`). The concealed-segregated shape would be `(//FGI <non-US
+    // class>)` with no list — distinct surface, not exercised here.
+    // E073 fires because FVEY fails the ownership shape gate
+    // regardless of which segregated form the user intended.
     let diags = diagnostics_for(b"(//FGI FVEY)");
     let e073 = e073_diags(&diags);
     assert_eq!(
@@ -283,14 +286,17 @@ fn e073_fires_on_banner_form_with_invalid_ownership_token() {
     // E073 must fire on the FVEY token regardless of marking type.
     let diags = diagnostics_for(b"SECRET//FGI FVEY//NOFORN");
     let e073 = e073_diags(&diags);
-    assert!(
-        e073.iter().any(|d| d.severity == Severity::Error),
-        "banner form with invalid FGI ownership token must emit E073; got {:?}",
+    assert_eq!(
+        e073.len(),
+        1,
+        "banner form with one invalid FGI ownership token must emit \
+         exactly one E073; got {:?}",
         diags
             .iter()
             .map(|d| (d.rule.as_str(), d.severity))
             .collect::<Vec<_>>(),
     );
+    assert_eq!(e073[0].severity, Severity::Error);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,14 +311,197 @@ fn e073_fires_on_long_form_marker_with_invalid_ownership_token() {
     // recognize the same shape.
     let diags = diagnostics_for(b"SECRET//FOREIGN GOVERNMENT INFORMATION FVEY//NOFORN");
     let e073 = e073_diags(&diags);
-    assert!(
-        e073.iter().any(|d| d.severity == Severity::Error),
-        "long-form FGI marker with invalid token must emit E073; got {:?}",
+    assert_eq!(
+        e073.len(),
+        1,
+        "long-form FGI marker with one invalid token must emit exactly \
+         one E073; got {:?}",
         diags
             .iter()
             .map(|d| (d.rule.as_str(), d.severity))
             .collect::<Vec<_>>(),
     );
+    assert_eq!(e073[0].severity, Severity::Error);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-invalid-token list — one E073 per invalid token, distinct spans
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e073_emits_one_diagnostic_per_invalid_token() {
+    // `(S//FGI FVEY ISAF)` — two invalid tokens in the same list. The
+    // parser packs the whole marker into one `TokenKind::Unknown` span;
+    // the E073 walker tokenizes the tail and emits one diagnostic per
+    // failing token. Spans must differ so a downstream renderer or
+    // audit consumer can point at each offending token individually.
+    let diags = diagnostics_for(b"(S//FGI FVEY ISAF)");
+    let e073 = e073_diags(&diags);
+    assert_eq!(
+        e073.len(),
+        2,
+        "two invalid tokens in one FGI list must emit exactly two E073 \
+         diagnostics; got {:?}",
+        diags
+            .iter()
+            .map(|d| (d.rule.as_str(), d.severity))
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        e073.iter().all(|d| d.severity == Severity::Error),
+        "every per-token E073 diagnostic must be Error severity",
+    );
+    // Per-token span precision: the two diagnostics must not share the
+    // same byte range. If the walker were emitting a single
+    // marker-scoped span twice, this assertion would fail.
+    assert_ne!(
+        (e073[0].span.start, e073[0].span.end),
+        (e073[1].span.start, e073[1].span.end),
+        "each E073 must anchor at its own token span, not at the whole \
+         marker: got spans {:?} and {:?}",
+        (e073[0].span.start, e073[0].span.end),
+        (e073[1].span.start, e073[1].span.end),
+    );
+    // Both diagnostics must carry the §H.7 p123 citation.
+    assert!(
+        e073.iter().all(|d| citation_contains(d, "§H.7 p123")),
+        "all per-token E073 diagnostics must cite §H.7 p123",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Valid multi-token list — `FGI DEU GBR` must not fire E073
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e073_does_not_fire_on_multi_token_valid_list() {
+    // `(S//FGI DEU GBR)` — two valid sovereign trigraphs, both admitted
+    // by `CountryCode::admits_fgi_ownership_token`. The §A.6 p16
+    // worked example "SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN,
+    // NATO" establishes that multi-country FGI lists are §A.6
+    // p16-authorized; the rule layer must not over-fire on lists that
+    // pass the shape gate. The parser admits this input as
+    // `FgiMarker::Acknowledged([DEU, GBR])`, no `Unknown` span is
+    // produced, and E073 finds nothing to walk.
+    //
+    // Authority: CAPCO-2016 §A.6 p16 — "Multiple FGI trigraph country
+    // codes or tetragraph codes must be separated by a single space".
+    let diags = diagnostics_for(b"(S//FGI DEU GBR)");
+    assert!(
+        e073_diags(&diags).is_empty(),
+        "valid multi-token FGI list must not emit E073; got {:?}",
+        diags
+            .iter()
+            .map(|d| (d.rule.as_str(), d.severity))
+            .collect::<Vec<_>>(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Long-form valid path — `FOREIGN GOVERNMENT INFORMATION DEU` must not
+// fire E073 (positive sanity for the long-form branch in
+// `is_fgi_invalid_ownership_token` and the matching strip in `check()`)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e073_does_not_fire_on_long_form_valid_banner() {
+    // `SECRET//FOREIGN GOVERNMENT INFORMATION DEU//NOFORN` — the
+    // `FOREIGN GOVERNMENT INFORMATION` long-form banner-title prefix
+    // is the §H.7 p123 Authorized Banner Line Marking Title (acknowledged
+    // form). The parser's `starts_with_fgi_prefix` gate admits both
+    // the abbreviation and the long-form, and `parse_fgi_marker` strips
+    // either prefix uniformly before walking the country-list tail.
+    //
+    // For this input the parser succeeds: tail `"DEU"` admits via
+    // `CountryCode::admits_fgi_ownership_token`, the marker is recorded
+    // as `TokenKind::FgiMarker` (not `Unknown`), and the rule layer's
+    // walker finds nothing to inspect. This test is the regression
+    // guard against a future change that mishandles the long-form
+    // strip — e.g., the rule reaching into the long-form prefix bytes
+    // or a parser rebase that fails to dispatch the long-form path.
+    //
+    // Authority: CAPCO-2016 §H.7 p123 — "Authorized Banner Line Marking
+    // Title (when source is acknowledged): FOREIGN GOVERNMENT
+    // INFORMATION [LIST]".
+    let diags = diagnostics_for(b"SECRET//FOREIGN GOVERNMENT INFORMATION DEU//NOFORN");
+    assert!(
+        e073_diags(&diags).is_empty(),
+        "valid long-form FGI banner with valid trigraph must not emit \
+         E073; got {:?}",
+        diags
+            .iter()
+            .map(|d| (d.rule.as_str(), d.severity))
+            .collect::<Vec<_>>(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Suppression scope — E073 must not over-broadly suppress E008 on
+// unrelated `Unknown` tokens that happen to share a portion with an
+// FGI-marker rejection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e073_does_not_suppress_e008_on_unrelated_unknown_tokens() {
+    // `(S//FOO//FGI FVEY)` — two distinct `Unknown` spans on the same
+    // portion:
+    //   1. `"FOO"` — generic unknown token, no FGI prefix. E008 must
+    //      fire (the suppression is scoped to the per-token text via
+    //      `is_fgi_invalid_ownership_token(text)`, which returns
+    //      `false` for `"FOO"`).
+    //   2. `"FGI FVEY"` — FGI-marker rejection. E073 must fire and
+    //      E008 must be suppressed on this span.
+    //
+    // This pins the per-token suppression invariant. An over-broad
+    // suppression (e.g., "any portion containing one FGI-marker
+    // rejection drops all E008 on that portion") would silently lose
+    // the FOO diagnostic.
+    let diags = diagnostics_for(b"(S//FOO//FGI FVEY)");
+
+    // E073 fires once on the FGI marker.
+    let e073 = e073_diags(&diags);
+    assert_eq!(
+        e073.len(),
+        1,
+        "E073 must fire on the FGI FVEY marker; got {:?}",
+        diags
+            .iter()
+            .map(|d| (d.rule.as_str(), d.severity))
+            .collect::<Vec<_>>(),
+    );
+
+    // E008 still fires on the FOO span (suppression is per-token-text,
+    // not per-portion). The FOO span carries text `"FOO"` which fails
+    // `is_fgi_invalid_ownership_token` and so survives the filter.
+    let e008 = e008_diags(&diags);
+    assert!(
+        !e008.is_empty(),
+        "E008 must still fire on unrelated `FOO` unknown token; \
+         the FGI-marker suppression must NOT broaden to drop E008 on \
+         other Unknown spans in the same portion. Got {:?}",
+        diags
+            .iter()
+            .map(|d| (d.rule.as_str(), d.severity))
+            .collect::<Vec<_>>(),
+    );
+
+    // E073 and E008 must anchor at disjoint byte ranges (different
+    // tokens). Verifying the spans don't overlap is the strongest
+    // form of "the suppression is per-token, not per-portion".
+    for e008_d in &e008 {
+        for e073_d in &e073 {
+            let overlap =
+                e008_d.span.start < e073_d.span.end && e073_d.span.start < e008_d.span.end;
+            assert!(
+                !overlap,
+                "E008 ({:?}) and E073 ({:?}) must anchor at disjoint \
+                 spans — overlap means the suppression invariant is \
+                 broken",
+                (e008_d.span.start, e008_d.span.end),
+                (e073_d.span.start, e073_d.span.end),
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
