@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        28,
+        29,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -312,7 +312,13 @@ fn rule_count_reflects_registration_changes() {
          `CollapseUniformRelPortionsRule` (S010) + \
          `BareRelPortionDivergenceRule` (E072) — REL TO / bare-REL \
          consistency per CAPCO-2016 §H.8 p150-151. Net delta: +2. \
-         Final: 28. \
+         Final: 28. Issue #501 adds \
+         `FgiInvalidOwnershipTokenRule` (E073) — category-specific \
+         diagnostic for FGI ownership tokens that fail the strict- \
+         parser shape gate (`FVEY`, `DEUX`, `ACGU`, `ISAF`, …); \
+         replaces the generic E008 surface via the existing \
+         suppression chain. Authority: CAPCO-2016 §H.7 p123. Net \
+         delta: +1. Final: 29. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
