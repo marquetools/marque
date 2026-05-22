@@ -106,10 +106,17 @@ fn assert_bench_invariants(engine: &Engine) {
     );
 
     let e054_fix = applied[0];
+    // Post-T044: legacy "E054" → ("capco", "portion.dissem.relido-conflicts-noforn")
+    // per `legacy-rule-id-map.md` §1. The bench documents the deterministic
+    // strict-path FactRemove that auto-fixes RELIDO when NOFORN is also
+    // present in the same portion (§H.8 p145 + p154 — mutually exclusive).
+    // `e054_fix` retained as the variable name for archaeological context.
     assert_eq!(
         e054_fix.rule.predicate_id(),
-        "E054",
-        "fix_latency invariant: expected the sole applied fix to be E054, got {:?}",
+        "portion.dissem.relido-conflicts-noforn",
+        "fix_latency invariant: expected the sole applied fix to be \
+         the legacy-E054 (capco:portion.dissem.relido-conflicts-noforn) \
+         RELIDO/NOFORN supersession fix, got {:?}",
         e054_fix.rule.predicate_id(),
     );
 
@@ -120,7 +127,8 @@ fn assert_bench_invariants(engine: &Engine) {
     let combined = e054_fix.fix.replacement.confidence.combined();
     assert!(
         (combined - EXPECTED_CONFIDENCE).abs() < 1e-6_f32,
-        "fix_latency invariant: expected E054 fix confidence {EXPECTED_CONFIDENCE}, got {combined}",
+        "fix_latency invariant: expected legacy-E054 fix confidence \
+         {EXPECTED_CONFIDENCE}, got {combined}",
     );
 
     assert_eq!(

@@ -198,15 +198,19 @@ fn default_engine_recovers_single_letter_portion_after_whitespace() {
     // Leading whitespace + canonical-case `(S)`: strict path produces
     // a SECRET marking; downstream rules see it as a real marking.
     let result = engine.lint(b" (S) some text");
-    let saw_marking = result
-        .diagnostics
-        .iter()
-        .any(|d| d.fix.is_some() || d.rule.predicate_id().starts_with('E'));
-    let _ = saw_marking; // diagnostic set is rule-dependent; the load-bearing
-    // assertion is "no panic, marking surfaces normally" — recognizer
-    // proves it via the `(s)` lower-case canonicalization in
+    // The diagnostic set is rule-dependent (the rule lineup may evolve
+    // independently of the recognizer behavior under test). The
+    // load-bearing assertion is "no panic, marking surfaces normally"
+    // — proven by `candidates_processed >= 1` below + the recognizer-
+    // canonicalization test in
     // `decoder_canonicalizes_single_letter_when_preceded_by_whitespace`.
-    // Engine-level test: zero panics and the strict path completes.
+    //
+    // T044 (Copilot reviewer pass) — the pre-T044 form here had a
+    // legacy `predicate_id().starts_with('E')` heuristic stuffed into
+    // a `let saw_marking = ...; let _ = saw_marking;` no-op pattern.
+    // The heuristic was vacuous even pre-T044 (the variable was
+    // discarded); post-T044 it's also semantically wrong (predicate
+    // IDs are descriptive paths, not E### codes). Removed entirely.
     assert!(
         result.candidates_processed >= 1,
         "engine must reach the recognizer for whitespace-preceded `(S)`, \
