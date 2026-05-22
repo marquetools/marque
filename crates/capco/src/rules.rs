@@ -4767,19 +4767,23 @@ fn check_bare_rel_portion_divergence(
         // only when `rel_to` is non-empty, therefore the `find()` MUST
         // succeed. The `else` arm is defense-in-depth against future parser
         // changes that would violate the invariant; uses the same let-else
-        // shape as S010, adding a `debug_assert!` for the invariant S010's
-        // silent `continue` omits.
+        // shape as S010, with a `debug_assert!` on the invariant itself
+        // (not on a constant) so dev/test builds panic loud if the parser
+        // ever drops the RelToBlock span while keeping `rel_to` populated.
+        debug_assert!(
+            portion
+                .token_spans
+                .iter()
+                .any(|t| t.kind == TokenKind::RelToBlock),
+            "E072: portion with non-empty rel_to has no RelToBlock token span \
+             (parser invariant violation; see parse_rel_to_with_spans call sites \
+             in marque-core::parser)"
+        );
         let Some(block) = portion
             .token_spans
             .iter()
             .find(|t| t.kind == TokenKind::RelToBlock)
         else {
-            debug_assert!(
-                false,
-                "E072: portion with non-empty rel_to has no RelToBlock token span \
-                 (parser invariant violation; see parse_rel_to_with_spans call sites \
-                 in marque-core::parser)"
-            );
             continue;
         };
         let span = block.span;
@@ -5131,19 +5135,23 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
         // only when `rel_to` is non-empty, therefore the `find()` MUST
         // succeed. The `else` arm is defense-in-depth against future parser
         // changes that would violate the invariant; uses the same let-else
-        // shape as S010, adding a `debug_assert!` for the invariant S010's
-        // silent `continue` omits.
+        // shape as S010, with a `debug_assert!` on the invariant itself
+        // (not on a constant) so dev/test builds panic loud if the parser
+        // ever drops the RelToBlock span while keeping `rel_to` populated.
+        debug_assert!(
+            attrs
+                .token_spans
+                .iter()
+                .any(|t| t.kind == TokenKind::RelToBlock),
+            "E039: candidate with non-empty rel_to has no RelToBlock token span \
+             (parser invariant violation; see parse_rel_to_with_spans call sites \
+             in marque-core::parser)"
+        );
         let Some(block) = attrs
             .token_spans
             .iter()
             .find(|t| t.kind == TokenKind::RelToBlock)
         else {
-            debug_assert!(
-                false,
-                "E039: candidate with non-empty rel_to has no RelToBlock token span \
-                 (parser invariant violation; see parse_rel_to_with_spans call sites \
-                 in marque-core::parser)"
-            );
             return vec![];
         };
         let span = block.span;
