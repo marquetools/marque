@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! SCI per-system catalog — `CompanionForm` + `RULE_E059` +
-//! `SciPerSystemKind` + `SciPerSystemRow` + the 5-row
-//! `SCI_PER_SYSTEM_CATALOG`.
+//! SCI per-system catalog — `CompanionForm` + `SciPerSystemKind` +
+//! `SciPerSystemRow` + the 5-row `SCI_PER_SYSTEM_CATALOG`.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
 //! (issue #466). Module contents are byte-identical to the pre-split
@@ -12,6 +11,12 @@
 //! `super::predicates::*`, the `emit_*_companions` closures via
 //! `super::actions::*`, and the `CapcoScheme` type via `super::*`
 //! (the parent module's `pub use self::adapter::CapcoScheme` re-export).
+//!
+//! T044 (post-mvp-3): the `RULE_E059` walker-shared constant was
+//! deleted. Per OD-8.A the bridge becomes a no-op pass-through — each
+//! row's `name` IS the canonical predicate ID, and emit functions
+//! construct `RuleId::new("capco", row.name)` directly at the call
+//! site (see `super::actions::companions`).
 
 use super::actions::*;
 use super::predicates::*;
@@ -85,13 +90,6 @@ pub(crate) enum CompanionForm {
     Full,
 }
 
-/// Walker rule ID shared by every SCI per-system catalog emit body.
-/// `RuleId::new` is `const fn`, so this is a zero-cost replacement for
-/// the four prior inline `RuleId::new("E059")` call sites (one per
-/// row-emit helper). Hoisting also makes a future rule-ID change a
-/// single edit.
-pub(crate) const RULE_E059: marque_rules::RuleId = marque_rules::RuleId::new("E059");
-
 /// Dispatch tag for an SCI per-system catalog row's emit body. Two
 /// variants keep the `match row.kind` arm count under the ≤3-branch
 /// reviewer-attestation cap (§7(b) of the PR 3b.E plan).
@@ -134,16 +132,24 @@ pub(crate) enum SciPerSystemKind {
 ///
 /// # Naming-prefix invariant
 ///
-/// Every row's `name` MUST start with `sci-per-system/`. The
-/// `sci_per_system_catalog_naming_convention` test in
-/// `crates/capco/tests/sci_per_system_catalog.rs` enforces this at build
-/// time so adding a row that doesn't follow the convention fails CI.
-/// The prefix is what makes [`is_sci_per_system_catalog_name`] dispatch
-/// O(1) instead of a linear catalog scan.
+/// Post-T044: every row's `name` is now a canonical predicate ID
+/// starting with `marking.sci.` (uniquely scoped to the per-system
+/// catalog; `portion.sci.*` is reserved for standalone SCI rules).
+/// The `sci_per_system_catalog_naming_convention` test in
+/// `crates/capco/tests/sci_per_system_catalog.rs` enforces this at
+/// build time so adding a row that doesn't follow the convention
+/// fails CI. The prefix is what makes
+/// [`is_sci_per_system_catalog_name`] dispatch O(1) instead of a
+/// linear catalog scan.
 #[derive(Copy, Clone)]
 pub(crate) struct SciPerSystemRow {
     /// Catalog row name — matches the `Constraint::Custom { name }` of
-    /// the same logical row. MUST start with `sci-per-system/`.
+    /// the same logical row. Post-T044 the name IS the canonical
+    /// `(scheme="capco", predicate_id=name)` 2-tuple's predicate
+    /// component; the engine's constraint-catalog bridge constructs
+    /// `RuleId::new("capco", row.name)` directly with no string
+    /// manipulation (OD-8.A no-op pass-through). MUST start with
+    /// `marking.sci.`.
     pub(crate) name: &'static str,
     /// Human-readable marking name for the diagnostic message
     /// (e.g., `"HCS-O"`, `"TK-{BLFH|IDIT|KAND}"`).
@@ -205,7 +211,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // companion_forbidden so the structural path runs when OcUsgov is
     // present, preserving the OcUsgov→Oc replacement fix in production.
     SciPerSystemRow {
-        name: "sci-per-system/HCS-O-companions",
+        name: "marking.sci.hcs-o-companions",
         marking_label: "HCS-O",
         presence: presence_hcs_o,
         kind: SciPerSystemKind::Custom(emit_hcs_o_companions),
@@ -224,7 +230,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // gate catches both cases; presence_hcs_p_any confirms HCS-P
     // specifically. Companion satisfied when: no US class, OR NOFORN set.
     SciPerSystemRow {
-        name: "sci-per-system/HCS-P-NOFORN",
+        name: "marking.sci.hcs-p-noforn-required",
         marking_label: "HCS-P",
         presence: presence_hcs_p_any,
         kind: SciPerSystemKind::CompanionRequired {
@@ -245,7 +251,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // HCS-P has at least one sub-compartment. Companion satisfied when:
     // no US class, OR (ORCON set AND ORCON_USGOV clear).
     SciPerSystemRow {
-        name: "sci-per-system/HCS-P-sub-companions",
+        name: "marking.sci.hcs-p-sub-companions",
         marking_label: "HCS-P sub-compartment",
         presence: presence_hcs_p_sub,
         kind: SciPerSystemKind::Custom(emit_hcs_p_sub_companions),
@@ -263,7 +269,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // present. Companion satisfied when: no US class, OR (ORCON set AND
     // ORCON_USGOV clear). Mirrors HCS-P-sub structure (same emit logic).
     SciPerSystemRow {
-        name: "sci-per-system/SI-G-companions",
+        name: "marking.sci.si-g-companions",
         marking_label: "SI-G",
         presence: presence_si_g,
         kind: SciPerSystemKind::Custom(emit_si_g_companions),
@@ -286,7 +292,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // is skipped on the fast path. Companion satisfied when: no US class,
     // OR NOFORN set.
     SciPerSystemRow {
-        name: "sci-per-system/TK-compartment-NOFORN",
+        name: "marking.sci.tk-compartment-noforn-required",
         marking_label: "TK-{BLFH|IDIT|KAND}",
         presence: presence_tk_compartment_noforn,
         kind: SciPerSystemKind::CompanionRequired {

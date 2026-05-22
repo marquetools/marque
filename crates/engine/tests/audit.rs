@@ -207,7 +207,7 @@ fn assert_text_correction_clean(
                  AppliedTextCorrection.{field_name} \
                  (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
                  field value: {value:?}",
-                rule = tc.rule.as_str(),
+                rule = tc.rule,
                 start = tc.span.start,
                 end = tc.span.end,
             );
@@ -395,7 +395,7 @@ fn no_document_text_leaks_into_diagnostic_messages() {
                     "G13 violation: prose sentinel {sentinel:?} leaked into \
                      Diagnostic.message template (rule: {}, fixture: {label})\n\n\
                      template: {template_label}",
-                    d.rule.as_str(),
+                    d.rule,
                 );
             }
         }
@@ -466,7 +466,7 @@ fn no_document_text_leaks_into_fix_remaining_diagnostics() {
                      FixResult.remaining_diagnostics[].message template \
                      (rule: {}, fixture: {label})\n\n\
                      template: {template_label}",
-                    d.rule.as_str(),
+                    d.rule,
                 );
             }
         }
@@ -518,7 +518,9 @@ fn fabricate_leaky_text_correction() -> AppliedTextCorrection {
     // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
     AppliedTextCorrection::__engine_promote_text_correction(
-        RuleId::new("C001"),
+        // T044: legacy `C001` → predicate id
+        // `marking.correction.token-typo` per legacy-rule-id-map §1.
+        RuleId::new("capco", "marking.correction.token-typo"),
         Severity::Fix,
         Span::new(0, leaky_replacement.len()),
         original_digest,
@@ -618,7 +620,7 @@ fn audit_v2_strict_path_invariants() {
             };
             let context = format!(
                 "rule {} at {}..{} ({})",
-                rule.as_str(),
+                rule,
                 span.start,
                 span.end,
                 path.display()
@@ -870,7 +872,7 @@ fn decoder_path_record_shape() {
             "decoder-path Confidence.recognition must be strictly < 1.0; \
              got {} (rule {}, span {}..{})",
             c.recognition,
-            fix.rule.as_str(),
+            fix.rule,
             fix.span.start,
             fix.span.end,
         );
@@ -878,7 +880,7 @@ fn decoder_path_record_shape() {
             !c.features.is_empty(),
             "decoder-path Confidence.features must be non-empty (FR-009); \
              got 0 features for rule {} at {}..{}",
-            fix.rule.as_str(),
+            fix.rule,
             fix.span.start,
             fix.span.end,
         );

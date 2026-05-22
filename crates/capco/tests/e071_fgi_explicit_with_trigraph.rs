@@ -46,7 +46,7 @@ fn lint_e071(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoS
         .lint(source)
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "E071")
+        .filter(|d| d.rule.predicate_id() == "portion.fgi.fgi-explicit-with-trigraph")
         .collect()
 }
 
@@ -358,7 +358,7 @@ fn gate1_silent_on_banner_marking() {
     let e071_on_banner = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "E071")
+        .filter(|d| d.rule.predicate_id() == "portion.fgi.fgi-explicit-with-trigraph")
         .filter(|d| {
             // Banner span starts at byte 0 ("SECRET" = bytes 0-5).
             // Any E071 at span.start < 7 is on the banner, not the

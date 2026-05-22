@@ -12,7 +12,7 @@
 
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_rules::Diagnostic;
+use marque_rules::{Diagnostic, RuleId};
 use secrecy::ExposeSecret as _;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -41,12 +41,31 @@ fn shared_engine() -> &'static Engine {
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// 2-tuple `RuleId` shape per T044 PM OD-2. Mirrors
+    /// [`marque::render::RuleIdJson`] / `crates/wasm/src/lib.rs::RuleIdJson`
+    /// to keep this parity test's projection in lockstep with both
+    /// emitters.
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
     message: MessageJson<'a>,
     citation: String,
     fix: Option<FixJson<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -81,7 +100,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
 
 fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
@@ -346,13 +365,20 @@ fn fix_clean_input_unchanged() {
 
 #[test]
 fn lint_with_corrections_config() {
-    // Corrections map NF→NOFORN should produce C001 diagnostic.
+    // Corrections map NF→NOFORN should produce a C001 diagnostic (the
+    // legacy rule ID; post-T044 this is the 2-tuple
+    // `("capco", "marking.correction.token-typo")` per
+    // `docs/refactor-006/legacy-rule-id-map.md` §1).
     let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
     let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
         .expect("lint with corrections");
+    // T044 PM OD-2: the rule field on the wire is a structured
+    // 2-tuple object, not a flat string.
+    let expected_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"marking.correction.token-typo"}"#;
     assert!(
-        result.contains("\"rule\":\"C001\""),
-        "corrections map should trigger C001, got: {result}"
+        result.contains(expected_rule_fragment),
+        "corrections map should trigger the C001 corrections-map predicate; got: {result}"
     );
 }
 

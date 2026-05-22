@@ -352,9 +352,14 @@ fn wasm_lint_corrections_config_passthrough() {
     let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
     let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
         .expect("lint_native must accept corrections config under wasm32");
+    // T044: rule field is the structured 2-tuple. C001 → ("capco",
+    // "marking.correction.token-typo") per `legacy-rule-id-map.md` §1.
     assert!(
-        result.contains("\"rule\":\"C001\""),
-        "corrections config must trigger C001 under wasm32, got: {result}"
+        result.contains(
+            "\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"marking.correction.token-typo\"}"
+        ),
+        "corrections config must trigger C001 (capco:marking.correction.token-typo) \
+         under wasm32, got: {result}"
     );
 }
 

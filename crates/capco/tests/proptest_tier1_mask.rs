@@ -247,21 +247,21 @@ proptest! {
 
     #[test]
     fn e021_mask_matches_oracle(attrs in arb_attrs()) {
-        prop_assert_eq!(fires("E021/rd-frd-requires-noforn", &attrs), oracle_e021(&attrs));
+        prop_assert_eq!(fires("portion.aea.rd-frd-requires-noforn", &attrs), oracle_e021(&attrs));
     }
 
     #[test]
     fn e024_mask_matches_oracle(attrs in arb_attrs()) {
-        prop_assert_eq!(fires("E024/rd-precedence", &attrs), oracle_e024(&attrs));
+        prop_assert_eq!(fires("portion.aea.rd-precedence", &attrs), oracle_e024(&attrs));
     }
 
     #[test]
     fn e038_mask_matches_oracle(attrs in arb_attrs()) {
-        prop_assert_eq!(fires("E038/nodis-or-exdis-requires-noforn", &attrs), oracle_e038(&attrs));
+        prop_assert_eq!(fires("portion.dissem.nodis-or-exdis-requires-noforn", &attrs), oracle_e038(&attrs));
     }
 
     #[test]
     fn e070_mask_matches_oracle(attrs in arb_attrs()) {
-        prop_assert_eq!(fires("E070/frd-tfni-precedence", &attrs), oracle_e070(&attrs));
+        prop_assert_eq!(fires("portion.aea.frd-tfni-precedence", &attrs), oracle_e070(&attrs));
     }
 }

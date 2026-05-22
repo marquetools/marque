@@ -70,7 +70,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // n-ary and emits multiple violations per offending
         // marking (one per failing sub-rule).
         Constraint::Custom {
-            name: "E010/HCS-system-constraints",
+            name: "portion.sci.hcs-system-constraints",
             label: capco(SectionLetter::H, 4, 62),
         },
         // ---- E012: dual classification (CAPCO-2016 §H.3 p55) -
@@ -85,7 +85,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // us, foreign }` — that the parser populates when it
         // encounters two systems in one marking.
         Constraint::Custom {
-            name: "E012/dual-classification",
+            name: "portion.classification.dual-classification",
             label: capco(SectionLetter::H, 3, 55),
         },
         // ---- E014: JOINT requires REL TO coverage (§H.3 p57) -
@@ -96,7 +96,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // Requires) because the check is iterative across all
         // JOINT countries.
         Constraint::Custom {
-            name: "E014/joint-requires-rel-to-coverage",
+            name: "portion.classification.joint-requires-rel-to-coverage",
             label: capco(SectionLetter::H, 3, 57),
         },
         // ---- W005: REL TO expands beyond JOINT participants (§H.3 p57) --
@@ -110,7 +110,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // Audit emission: typed `MessageTemplate::RelToExpandsBeyondJoint`
         // resolved via `CapcoScheme::message_by_name` (closing #666).
         Constraint::Custom {
-            name: "W005/rel-to-not-in-joint-coverage",
+            name: "portion.classification.rel-to-not-in-joint-coverage",
             label: capco(SectionLetter::H, 3, 57),
         },
         // ---- E015: non-US requires dissem (§H.7 + §B.3) ------
@@ -126,7 +126,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // separately enforced by E014 and by the existing
         // hand-written rules.
         Constraint::Requires {
-            name: "E015/non-us-requires-dissem",
+            name: "portion.classification.non-us-requires-dissem",
             left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
             right: TokenRef::AnyInCategory(CAT_DISSEM),
             label: capco(SectionLetter::H, 7, 122),
@@ -139,7 +139,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // JOINT marking owner/producer; and RESTRICTED is not an
         // authorized US classification marking.)"
         Constraint::Conflicts {
-            name: "E016/joint-conflicts-restricted",
+            name: "portion.classification.joint-conflicts-restricted",
             left: TokenRef::Token(TOK_JOINT),
             right: TokenRef::Token(TOK_RESTRICTED),
             label: capco(SectionLetter::H, 3, 56),
@@ -168,7 +168,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // See T035b retirement commit and project memory
         // `feedback_audit_predicates_against_source.md`.
         Constraint::Conflicts {
-            name: "E036/joint-conflicts-hcs",
+            name: "portion.classification.joint-conflicts-hcs",
             left: TokenRef::Token(TOK_JOINT),
             right: TokenRef::Token(TOK_HCS),
             label: capco(SectionLetter::H, 3, 57),
@@ -203,7 +203,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // because that dyadic shape would sweep UCNI in: a valid
         // `U//UCNI` marking would incorrectly require NOFORN.
         Constraint::Custom {
-            name: "E021/rd-frd-requires-noforn",
+            name: "portion.aea.rd-frd-requires-noforn",
             label: capco(SectionLetter::H, 6, 104),
         },
         // ---- §H.6 p106 CNWDI subset-of-RD: enforced by data
@@ -268,7 +268,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // deferred until Phase E wires them through
         // `project(Scope::Page, ...)`.
         Constraint::Custom {
-            name: "E024/rd-precedence",
+            name: "portion.aea.rd-precedence",
             label: capco(SectionLetter::H, 6, 104),
         },
         // ---- E070: FRD precedence over TFNI (§H.6 p120) ------
@@ -287,7 +287,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // independent of RD presence. #559 close-out PM
         // decision 2026-05-19.
         Constraint::Custom {
-            name: "E070/frd-tfni-precedence",
+            name: "portion.aea.frd-tfni-precedence",
             label: capco(SectionLetter::H, 6, 120),
         },
         // ---- E025 retired in PR 3b.D (T026d) -----------------
@@ -325,7 +325,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // clears REL TO when NOFORN is present at page scope is
         // declared separately in `build_page_rewrites`.
         Constraint::Conflicts {
-            name: "capco/noforn-conflicts-rel-to",
+            name: "portion.dissem.noforn-conflicts-rel-to",
             left: TokenRef::Token(TOK_NOFORN),
             right: TokenRef::AnyInCategory(CAT_REL_TO),
             label: capco(SectionLetter::H, 8, 145),
@@ -342,7 +342,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // a coupled predicate that doesn't decompose cleanly
         // into a single TokenRef pair.
         Constraint::Custom {
-            name: "capco/joint-requires-usa",
+            name: "portion.classification.joint-requires-usa",
             label: capco(SectionLetter::H, 3, 55),
         },
         // ---- E037: NODIS ⊥ EXDIS (§H.9 p172 + p174) ----------
@@ -358,7 +358,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // symmetric shape fits built-in Conflicts exactly, no
         // cross-category coupling, no level comparison.
         Constraint::Conflicts {
-            name: "E037/nodis-conflicts-exdis",
+            name: "portion.dissem.nodis-conflicts-exdis",
             left: TokenRef::Token(TOK_NODIS),
             right: TokenRef::Token(TOK_EXDIS),
             label: capco(SectionLetter::H, 9, 172),
@@ -381,7 +381,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // the wrapper to OR them. Folding the disjunction into a
         // single Custom predicate keeps the wrapper trivial.
         Constraint::Custom {
-            name: "E038/nodis-or-exdis-requires-noforn",
+            name: "portion.dissem.nodis-or-exdis-requires-noforn",
             label: capco(SectionLetter::H, 9, 172),
         },
         // ---- E054: RELIDO ⊥ NOFORN (§H.8 p154) ------------------
@@ -398,7 +398,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // to be family-aware and then retire this row. Per plan rev 1
         // §0 "Non-scope (deferred to PR 4): RELIDO Conflicts compaction".
         Constraint::Conflicts {
-            name: "E054/relido-conflicts-noforn",
+            name: "portion.dissem.relido-conflicts-noforn",
             left: TokenRef::Token(TOK_RELIDO),
             right: TokenRef::Token(TOK_NOFORN),
             label: capco(SectionLetter::H, 8, 154),

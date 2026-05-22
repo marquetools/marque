@@ -462,25 +462,31 @@ pub(crate) fn evaluate_custom_by_attrs(
         return sci_per_system_catalog_eval(attrs, bits, name);
     }
     match name {
-        "E010/HCS-system-constraints" => hcs_system_constraints(
+        "portion.sci.hcs-system-constraints" => hcs_system_constraints(
             attrs,
             marque_scheme::capco(marque_scheme::SectionLetter::H, 4, 62),
         ),
-        "E012/dual-classification" => e012_dual_classification(attrs),
-        "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
-        "W005/rel-to-not-in-joint-coverage" => w005_rel_to_not_in_joint_coverage(attrs),
-        "E021/rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs, bits),
-        "E024/rd-precedence" => e024_rd_precedence(attrs, bits),
+        "portion.classification.dual-classification" => e012_dual_classification(attrs),
+        "portion.classification.joint-requires-rel-to-coverage" => {
+            e014_joint_rel_to_coverage(attrs)
+        }
+        "portion.classification.rel-to-not-in-joint-coverage" => {
+            w005_rel_to_not_in_joint_coverage(attrs)
+        }
+        "portion.aea.rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs, bits),
+        "portion.aea.rd-precedence" => e024_rd_precedence(attrs, bits),
         // W002/us-commingled-with-fgi retired in the PR closing #470.
         // The catalog row + helper are removed in the same commit.
-        "capco/joint-requires-usa" => joint_requires_usa(attrs),
-        "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs, bits),
+        "portion.classification.joint-requires-usa" => joint_requires_usa(attrs),
+        "portion.dissem.nodis-or-exdis-requires-noforn" => {
+            e038_dos_dissem_requires_noforn(attrs, bits)
+        }
         // #559 close-out (2026-05-19): FRD>TFNI precedence per §H.6
         // p120. Sibling of E024 (which covers RD>FRD AND RD>TFNI);
         // E070 adds the FRD>TFNI leg with its own audit lineage per
         // Constitution V Principle V (one policy decision → one
         // audit repair).
-        "E070/frd-tfni-precedence" => e070_frd_tfni_precedence(attrs, bits),
+        "portion.aea.frd-tfni-precedence" => e070_frd_tfni_precedence(attrs, bits),
         // S004 is NOT dispatched here — it stays a registered walker
         // rule (`RelToTrigraphSuggestRule`) because its replacement
         // string is computed during evaluation and the bridge's

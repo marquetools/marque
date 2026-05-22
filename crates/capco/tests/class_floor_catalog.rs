@@ -80,7 +80,17 @@ fn e058_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.as_str() == "E058").collect()
+    // T044 OD-8.A: the bridge no longer collapses to a single `E058`
+    // rule_id; each catalog row emits its own predicate ID in the
+    // `banner.<axis>.<floor|ceiling>-<marking>` form. Filter on the
+    // substring discriminator (mirrors `is_class_floor_catalog_name`).
+    diags
+        .iter()
+        .filter(|d| {
+            let pid = d.rule.predicate_id();
+            pid.contains(".floor-") || pid.contains(".ceiling-")
+        })
+        .collect()
 }
 
 // ===========================================================================
@@ -95,7 +105,7 @@ fn catalog_declares_27_class_floor_rows() {
         .iter()
         .filter(|c| {
             let n = c.name();
-            n.starts_with("class-floor/") || n.starts_with("E058/")
+            n.contains(".floor-") || n.contains(".ceiling-")
         })
         .map(|c| c.name())
         .collect();
@@ -135,9 +145,15 @@ fn pr_9c_1_nato_rows_pin_citation_anchors() {
     // row's expected citation re-verified at PR 9c.1 authorship; this
     // PR preserves the per-row anchor values verbatim.
     let expected: &[(&str, Citation)] = &[
-        ("class-floor/BALK", capco(SectionLetter::G, 2, 40)),
-        ("class-floor/BOHEMIA", capco(SectionLetter::G, 2, 40)),
-        ("class-floor/ATOMAL", capco(SectionLetter::H, 7, 122)),
+        (
+            "banner.classification.floor-balk",
+            capco(SectionLetter::G, 2, 40),
+        ),
+        (
+            "banner.classification.floor-bohemia",
+            capco(SectionLetter::G, 2, 40),
+        ),
+        ("banner.aea.floor-atomal", capco(SectionLetter::H, 7, 122)),
     ];
 
     for (row_name, expected_cite) in expected {
@@ -176,7 +192,7 @@ fn catalog_citations_reference_capco_or_passthrough() {
     let scheme = CapcoScheme::new();
     for c in scheme.constraints() {
         let n = c.name();
-        if !(n.starts_with("class-floor/") || n.starts_with("E058/")) {
+        if !(n.contains(".floor-") || n.contains(".ceiling-")) {
             continue;
         }
         let label = c.label();
@@ -203,17 +219,20 @@ fn catalog_citations_reference_capco_or_passthrough() {
 fn class_floor_diagnostics_flow_through_engine_bridge_at_e058() {
     // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` retired from
     // `CapcoRuleSet`. The 27 catalog rows still emit diagnostics —
-    // they flow through the engine's constraint-catalog bridge with
-    // `Diagnostic.rule = "E058"` (the bridge folds catalog row names
-    // `E058/...` and `class-floor/...` to the walker-level ID per
-    // engine.rs comment). This test pins the post-deletion external
-    // surface:
-    //   1. No registered `Rule::id() == "E058"` (walker is gone);
-    //   2. `engine.lint` still produces an E058-tagged diagnostic on
+    // they flow through the engine's constraint-catalog bridge.
+    //
+    // T044 OD-8.A: the bridge no longer folds catalog row names to a
+    // walker-level `Diagnostic.rule = "E058"` — each row emits its own
+    // canonical predicate ID (`banner.<axis>.<floor|ceiling>-<marking>`).
+    // This test pins the post-deletion + post-T044 external surface:
+    //   1. No registered rule with the legacy E058/E022/E025/E027
+    //      predicate-IDs (those walkers are gone);
+    //   2. `engine.lint` still produces a class-floor diagnostic on
     //      a known-firing fixture (CONFIDENTIAL//RD-CNWDI → CNWDI
-    //      floor row, §H.6 p104 §2.2 family).
+    //      floor row, §H.6 p104 §2.2 family) — now with predicate ID
+    //      `capco:banner.aea.floor-cnwdi`.
     let set = capco_rules();
-    let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
+    let ids: Vec<&str> = set.rules().iter().map(|r| r.id().predicate_id()).collect();
     assert!(
         !ids.contains(&"E058"),
         "post-7.3: `DeclarativeClassFloorRule` retired; no rule with id `E058` should be \
@@ -261,13 +280,13 @@ fn hcs_p_subcompartment_fires_below_top_secret() {
     );
     assert_eq!(hcs_sub[0].severity, Severity::Error);
     // PR 3c.2.C C7 (R-C1): bridge now reads per-row `citation_typed`
-    // from `CLASS_FLOOR_CATALOG`; class-floor row `class-floor/HCS-comp-sub`
+    // from `CLASS_FLOOR_CATALOG`; class-floor row `banner.classification.floor-hcs-comp-sub`
     // anchors at §H.4 p60 (SCI section General Information).
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         hcs_sub[0].citation,
         capco(SectionLetter::H, 4, 60),
-        "class-floor/HCS-comp-sub must emit §H.4 p60; got: {:?}",
+        "banner.classification.floor-hcs-comp-sub must emit §H.4 p60; got: {:?}",
         hcs_sub[0].citation,
     );
     assert_eq!(hcs_sub[0].citation.document, AuthoritativeSource::Capco2016,);
@@ -439,7 +458,7 @@ fn cnwdi_fires_below_secret() {
     assert_eq!(
         cnwdi[0].citation,
         capco(SectionLetter::H, 6, 104),
-        "E058/CNWDI-classification-floor must emit §H.6 p104; got: {:?}",
+        "banner.aea.floor-cnwdi must emit §H.6 p104; got: {:?}",
         cnwdi[0].citation,
     );
     assert_eq!(cnwdi[0].citation.document, AuthoritativeSource::Capco2016);
@@ -674,11 +693,16 @@ fn passthrough_mvl_fires_at_warn_severity() {
 
 #[test]
 fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
+    // T044 OD-8.A: the bridge no longer collapses to a single E058
+    // walker ID. The CNWDI floor is now targeted by its own
+    // predicate ID `capco:banner.aea.floor-cnwdi`; suppression
+    // requires setting that key (FR-008 invariant unchanged — an
+    // `Off`-severity rule cannot fire).
     let mut config = Config::default();
-    config
-        .rules
-        .overrides
-        .insert("E058".to_string(), "off".to_string());
+    config.rules.overrides.insert(
+        "capco:banner.aea.floor-cnwdi".to_string(),
+        "off".to_string(),
+    );
     let engine_with_off = Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
@@ -690,11 +714,15 @@ fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
     let diags = engine_with_off
         .lint(b"CONFIDENTIAL//RD-CNWDI//NOFORN\n")
         .diagnostics;
-    let e058: Vec<&Diagnostic<CapcoScheme>> =
-        diags.iter().filter(|d| d.rule.as_str() == "E058").collect();
+    let cnwdi: Vec<&Diagnostic<CapcoScheme>> = diags
+        .iter()
+        .filter(|d| d.rule.predicate_id() == "banner.aea.floor-cnwdi")
+        .collect();
     assert!(
-        e058.is_empty(),
-        "with `[rules] E058 = \"off\"`, no E058 diagnostics may emit (FR-008): {diags:?}"
+        cnwdi.is_empty(),
+        "with `[rules] \"capco:banner.aea.floor-cnwdi\" = \"off\"`, \
+         no banner.aea.floor-cnwdi diagnostics may emit \
+         (FR-008): {diags:?}"
     );
 }
 
@@ -887,7 +915,11 @@ fn diagnostic_message_reports_reciprocal_raised_level_for_nato() {
 
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
-    let violations = validate_and_filter(&scheme, &marking, "class-floor/passthrough-BUR");
+    let violations = validate_and_filter(
+        &scheme,
+        &marking,
+        "banner.classification.floor-passthrough-bur",
+    );
     assert_eq!(
         violations.len(),
         1,
@@ -919,7 +951,11 @@ fn diagnostic_message_reports_unknown_only_when_no_classification() {
 
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
-    let violations = validate_and_filter(&scheme, &marking, "class-floor/passthrough-BUR");
+    let violations = validate_and_filter(
+        &scheme,
+        &marking,
+        "banner.classification.floor-passthrough-bur",
+    );
     assert_eq!(violations.len(), 1);
     assert!(
         violations[0].message.contains("unknown"),
@@ -954,7 +990,7 @@ fn dod_ucni_fires_on_nato_classification_carrying_ucni() {
 
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
-    let violations = validate_and_filter(&scheme, &marking, "E058/DOD-UCNI-classification-ceiling");
+    let violations = validate_and_filter(&scheme, &marking, "banner.aea.ceiling-dod-ucni");
     assert_eq!(
         violations.len(),
         1,
@@ -990,9 +1026,10 @@ fn dod_ucni_fires_on_nato_classification_carrying_ucni() {
 
 #[test]
 fn class_floor_catalog_naming_convention() {
-    // R3.2: every catalog row's `name` MUST start with one of the two
-    // prefixes (`E058/` or `class-floor/`). The `is_class_floor_catalog_name`
-    // dispatch in `evaluate_custom_by_attrs` is an O(1) prefix check
+    // T044: every catalog row's `name` MUST contain `.floor-` or
+    // `.ceiling-` (the new predicate-ID discriminator per
+    // legacy-rule-id-map §3). The `is_class_floor_catalog_name`
+    // dispatch in `evaluate_custom_by_attrs` is a substring check
     // that depends on this invariant. Adding a row whose name doesn't
     // follow the convention would break the dispatch routing for that
     // row silently — this test fails the build instead.
@@ -1002,15 +1039,15 @@ fn class_floor_catalog_naming_convention() {
         .iter()
         .filter(|c| {
             let n = c.name();
-            n.starts_with("E058/") || n.starts_with("class-floor/")
+            n.contains(".floor-") || n.contains(".ceiling-")
         })
         .map(|c| c.name())
         .collect();
     assert_eq!(
         class_floor_rows.len(),
         27,
-        "expected 27 class-floor catalog rows under the E058/ + class-floor/ prefix \
-         convention; got {}: {:?}",
+        "expected 27 class-floor catalog rows under the .floor- / .ceiling- \
+         substring convention (T044 predicate-ID form); got {}: {:?}",
         class_floor_rows.len(),
         class_floor_rows
     );
@@ -1026,9 +1063,9 @@ fn class_floor_catalog_naming_convention() {
         // The non-class-floor rows in the catalog (E010/, E012/,
         // capco/joint-requires-usa, etc.) are EXCLUDED — they don't
         // route through `is_class_floor_catalog_name`.
-        if n.starts_with("E058/") || n.starts_with("class-floor/") {
+        if n.contains(".floor-") || n.contains(".ceiling-") {
             assert!(
-                n.starts_with("E058/") || n.starts_with("class-floor/"),
+                n.contains(".floor-") || n.contains(".ceiling-"),
                 "class-floor catalog row name {n:?} violates naming-prefix invariant"
             );
         }
@@ -1220,7 +1257,7 @@ fn frd_sigma_does_not_fire_when_marking_absent() {
 }
 
 // ---------------------------------------------------------------------------
-// §2.2 row #11 — E058/CNWDI-classification-floor: absent
+// §2.2 row #11 — banner.aea.floor-cnwdi: absent
 // ---------------------------------------------------------------------------
 
 #[test]

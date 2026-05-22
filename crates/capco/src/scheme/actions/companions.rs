@@ -125,9 +125,14 @@ pub(crate) fn emit_hcs_o_companions(
     let form = infer_companion_form(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
+    // T044 OD-8.A: the catalog row's `name` IS the predicate ID;
+    // construct the audit RuleId from `row.name` directly with no
+    // walker-shared `RULE_E059` indirection.
+    let rule = marque_rules::RuleId::new("capco", row.name);
+
     if !has_orcon {
         out.push(emit_companion_insert(
-            RULE_E059,
+            rule,
             row.severity,
             sci_span,
             candidate_span,
@@ -142,7 +147,7 @@ pub(crate) fn emit_hcs_o_companions(
     }
     if !has_noforn {
         out.push(emit_companion_insert(
-            RULE_E059,
+            rule,
             row.severity,
             sci_span,
             candidate_span,
@@ -160,7 +165,7 @@ pub(crate) fn emit_hcs_o_companions(
         // the conflict class; `MessageArgs.category` carries the
         // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
-            rule: RULE_E059,
+            rule,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
@@ -206,9 +211,12 @@ pub(crate) fn emit_hcs_p_sub_companions(
     let form = infer_companion_form(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
+    // T044 OD-8.A: row.name IS the predicate ID.
+    let rule = marque_rules::RuleId::new("capco", row.name);
+
     if !has_orcon {
         out.push(emit_companion_insert(
-            RULE_E059,
+            rule,
             row.severity,
             sci_span,
             candidate_span,
@@ -226,7 +234,7 @@ pub(crate) fn emit_hcs_p_sub_companions(
         // the conflict class; `MessageArgs.category` carries the
         // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
-            rule: RULE_E059,
+            rule,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
@@ -270,9 +278,12 @@ pub(crate) fn emit_si_g_companions(
     let form = infer_companion_form(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
+    // T044 OD-8.A: row.name IS the predicate ID.
+    let rule = marque_rules::RuleId::new("capco", row.name);
+
     if !has_orcon {
         out.push(emit_companion_insert(
-            RULE_E059,
+            rule,
             row.severity,
             sci_span,
             candidate_span,
@@ -290,7 +301,7 @@ pub(crate) fn emit_si_g_companions(
         // the conflict class; `MessageArgs.category` carries the
         // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
-            rule: RULE_E059,
+            rule,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
@@ -382,8 +393,11 @@ pub(crate) fn emit_companion_required(
         marque_rules::MessageArgs::default(),
     );
 
+    // T044 OD-8.A: row.name IS the predicate ID.
+    let rule = marque_rules::RuleId::new("capco", row.name);
+
     vec![emit_companion_insert(
-        RULE_E059,
+        rule,
         row.severity,
         sci_span,
         candidate_span,

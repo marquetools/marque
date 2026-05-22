@@ -205,7 +205,7 @@ fn w004_fires_on_joint_disunity_banner() {
     let w004_diags: Vec<_> = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "W004")
+        .filter(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi")
         .collect();
     assert_eq!(
         w004_diags.len(),
@@ -216,7 +216,7 @@ fn w004_fires_on_joint_disunity_banner() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
     let w004 = w004_diags[0];
@@ -272,7 +272,7 @@ fn w004_message_contains_only_canonical_trigraphs() {
     let w004 = lint
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "W004")
+        .find(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi")
         .expect("W004 must fire on disunity page");
     // Closed-template identification: W004 fires under
     // `BannerRollupMismatch` with `CAT_JOINT_CLASSIFICATION`. The
@@ -304,11 +304,13 @@ fn w004_does_not_fire_on_pure_us_page() {
                    SECRET\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "W004"),
         "W004 must NOT fire on pure-US page; diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -327,11 +329,13 @@ fn w004_does_not_fire_on_mixed_joint_plus_us() {
                    SECRET//FGI GBR//NOFORN\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "W004"),
         "W004 must NOT fire on mixed JOINT+US page per §H.3 p57; diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -347,11 +351,13 @@ fn w004_does_not_fire_on_pure_joint_unanimous() {
                    //JOINT SECRET USA, GBR\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "W004"),
         "W004 must NOT fire on unanimous-JOINT page; diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -408,7 +414,10 @@ fn w004_fires_on_banner_first_via_eod_finalization() {
                    (//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion creates disunity.\n";
     let lint = engine.lint(source);
-    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
+    let w004 = lint
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi");
     assert!(
         w004.is_some(),
         "Issue #461 closure: W004 MUST fire via EOD PageFinalization \
@@ -416,7 +425,7 @@ fn w004_fires_on_banner_first_via_eod_finalization() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
     let w004 = w004.unwrap();
@@ -445,12 +454,14 @@ fn w004_does_not_fire_on_single_joint_portion_at_eod() {
     let source = b"(//JOINT S USA GBR) only portion on the page.\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "W004"),
         "W004 must NOT fire on a single JOINT portion (no disunity \
          possible); diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -487,7 +498,7 @@ fn w004_fires_per_page_break_independently() {
     let w004_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "W004")
+        .filter(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi")
         .count();
     assert_eq!(
         w004_count,
@@ -496,7 +507,7 @@ fn w004_fires_per_page_break_independently() {
          unanimous); diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -519,7 +530,7 @@ fn w004_fires_on_both_disunity_pages() {
     let w004_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "W004")
+        .filter(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi")
         .count();
     assert_eq!(
         w004_count,
@@ -528,7 +539,7 @@ fn w004_fires_on_both_disunity_pages() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -552,12 +563,14 @@ fn w004_does_not_fire_on_mixed_page_via_finalization() {
                    (S//NF) non-joint portion forces Mixed.\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "W004"),
         "W004 must NOT fire on a Mixed page (JOINT + non-JOINT \
          portions) per §H.3 p57; diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -575,12 +588,14 @@ fn w004_does_not_fire_on_empty_page() {
     let source = b"//JOINT SECRET USA, GBR\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.predicate_id() != "W004"),
         "W004 must NOT fire on a banner-only document with no \
          portions; diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -600,14 +615,17 @@ fn w004_eod_fires_for_trailing_disunity_without_pagebreak() {
     let source = b"(//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion forces disunity.\n";
     let lint = engine.lint(source);
-    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
+    let w004 = lint
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi");
     assert!(
         w004.is_some(),
         "Issue #461 closure: W004 MUST fire via EOD PageFinalization \
          on trailing-portions-only layout; diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -660,7 +678,7 @@ fn w004_fires_exactly_once_on_page_with_closing_banner() {
     let w004_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "W004")
+        .filter(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi")
         .count();
     assert_eq!(
         w004_count,
@@ -673,7 +691,7 @@ fn w004_fires_exactly_once_on_page_with_closing_banner() {
          regression guard for PR #461. Diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -701,7 +719,7 @@ fn w004_fires_exactly_once_per_page_when_banner_closes_page() {
     let w004_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "W004")
+        .filter(|d| d.rule.predicate_id() == "page.fgi.joint-disunity-collapses-to-fgi")
         .count();
     assert_eq!(
         w004_count,
@@ -714,7 +732,7 @@ fn w004_fires_exactly_once_per_page_when_banner_closes_page() {
          guard for PR #461. Diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }

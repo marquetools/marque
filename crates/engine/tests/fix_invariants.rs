@@ -85,8 +85,8 @@ fn i1_lint_is_idempotent_on_clean_input() {
     );
     for (a, b) in first.diagnostics.iter().zip(second.diagnostics.iter()) {
         assert_eq!(
-            a.rule.as_str(),
-            b.rule.as_str(),
+            a.rule.predicate_id(),
+            b.rule.predicate_id(),
             "rule order differs across lint invocations"
         );
         assert_eq!(
@@ -174,12 +174,12 @@ fn i4_suggest_severity_never_appears_in_applied_audit_stream() {
     use std::collections::HashSet;
     let applied_keys: HashSet<(String, usize, usize)> = result
         .applied_fixes()
-        .map(|a| (a.rule.as_str().to_string(), a.span.start, a.span.end))
+        .map(|a| (a.rule.predicate_id().to_string(), a.span.start, a.span.end))
         .collect();
     for d in &result.remaining_diagnostics {
         if d.severity == Severity::Suggest {
             let key = (
-                d.rule.as_str().to_string(),
+                d.rule.predicate_id().to_string(),
                 d.candidate_span.unwrap_or(d.span).start,
                 d.candidate_span.unwrap_or(d.span).end,
             );
@@ -248,7 +248,11 @@ fn i19_same_rule_and_span_never_repeats_in_audit_stream() {
     let result = eng.fix(src, FixMode::Apply);
     let mut seen: HashSet<(String, usize, usize)> = HashSet::new();
     for fix in result.applied_fixes() {
-        let key = (fix.rule.as_str().to_string(), fix.span.start, fix.span.end);
+        let key = (
+            fix.rule.predicate_id().to_string(),
+            fix.span.start,
+            fix.span.end,
+        );
         assert!(
             seen.insert(key.clone()),
             "duplicate (rule, span) in applied stream: {key:?}"
@@ -267,7 +271,7 @@ fn i19_remaining_diagnostics_do_not_duplicate_applied_keys() {
     let result = eng.fix(src, FixMode::Apply);
     let applied_keys: HashSet<(String, usize, usize)> = result
         .applied_fixes()
-        .map(|a| (a.rule.as_str().to_string(), a.span.start, a.span.end))
+        .map(|a| (a.rule.predicate_id().to_string(), a.span.start, a.span.end))
         .collect();
     for d in &result.remaining_diagnostics {
         // text_corrections key on `span`; structural fixes key on
@@ -277,7 +281,7 @@ fn i19_remaining_diagnostics_do_not_duplicate_applied_keys() {
         } else {
             d.candidate_span.unwrap_or(d.span)
         };
-        let key = (d.rule.as_str().to_string(), span.start, span.end);
+        let key = (d.rule.predicate_id().to_string(), span.start, span.end);
         if d.fix.is_some() || d.text_correction.is_some() {
             assert!(
                 !applied_keys.contains(&key),

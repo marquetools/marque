@@ -19,21 +19,19 @@ use crate::fact_bitmask::extract_us_class_level;
 /// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`
 /// to route on the table.
 ///
-/// PR D R3.2 (R3 C1): O(1) prefix check. Every catalog row's `name`
-/// follows one of two prefix conventions (see [`ClassFloorRow`]
-/// docstring):
+/// Post-T044, every catalog row's `name` is a canonical predicate ID
+/// containing either `.floor-` or `.ceiling-` (see [`ClassFloorRow`]
+/// docstring). The discriminator is the substring presence — uniquely
+/// scoped to this catalog, since `floor` and `ceiling` are reserved
+/// for class-floor (and class-ceiling) rows by convention.
 ///
-///   - `E058/<purpose>` for rows replacing a retired legacy rule.
-///   - `class-floor/<marking>` for rows with no retired-rule
-///     predecessor.
-///
-/// New catalog rows MUST follow one of these prefixes; the
+/// New catalog rows MUST contain one of these discriminators; the
 /// `class_floor_catalog_naming_convention` test in
 /// `crates/capco/tests/class_floor_catalog.rs` enforces the
 /// invariant at build time so adding a row that doesn't follow the
 /// convention fails CI.
 pub(crate) fn is_class_floor_catalog_name(name: &str) -> bool {
-    name.starts_with("E058/") || name.starts_with("class-floor/")
+    name.contains(".floor-") || name.contains(".ceiling-")
 }
 
 /// Resolve a catalog row by `name`. Returns `None` for unknown

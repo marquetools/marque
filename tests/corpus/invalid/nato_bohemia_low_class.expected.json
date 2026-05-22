@@ -1,8 +1,8 @@
 {
   "_note": "CAPCO-2016 §G.2 p40 (Table 5: BOHEMIA registered as NATO SAP) — BOHEMIA at NATO SECRET violates class-floor/BOHEMIA (NATO SAPs typically require CTS-class). Co-fires E015 §H.7 p122 (FGI requires dissem) + S007 §H.7 p127 (bare NATO requires REL TO USA, NATO).",
   "diagnostics": [
-    {"rule": "S007", "span": {"start": 3, "end": 5}},
-    {"rule": "E015", "span": {"start": 3, "end": 5}},
-    {"rule": "E058", "span": {"start": 3, "end": 5}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.nato.bare-nato-requires-rel-to-usa-nato"}, "span": {"start": 3, "end": 5}},
+    {"rule": {"scheme": "capco", "predicate_id": "portion.classification.non-us-requires-dissem"}, "span": {"start": 3, "end": 5}},
+    {"rule": {"scheme": "capco", "predicate_id": "banner.classification.floor-bohemia"}, "span": {"start": 3, "end": 5}}
   ]
 }

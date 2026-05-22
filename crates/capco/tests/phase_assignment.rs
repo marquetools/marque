@@ -63,18 +63,29 @@ use std::collections::BTreeMap;
 /// `impl Rule<CapcoScheme> for X` block via the doc comment on
 /// `fn phase(&self) -> Phase`. This table is the audit-controlled
 /// reflection of those per-rule declarations.
+// T044: phase-allowlist keys updated to the post-T044 predicate-ID form
+// (the second half of the `(scheme, predicate_id)` 2-tuple, since this
+// table keys on `r.id().predicate_id()` per the production code below).
+// Legacy IDs (`C001`, `E006`, etc.) preserved in the trailing inline
+// comment for archaeology — see legacy-rule-id-map §1 for the mapping.
 const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // ----- Phase::Localized (4 rules + E064/E065/E067 declared inline
     // below) ----------------------------------------------------------
     // Each fix is a single-token rewrite (typo, migration, suggest).
-    ("C001", Phase::Localized),
-    ("E006", Phase::Localized),
-    ("E007", Phase::Localized),
+    ("marking.correction.token-typo", Phase::Localized), // C001
+    (
+        "marking.deprecation.deprecated-dissem-control",
+        Phase::Localized,
+    ), // E006
+    (
+        "portion.metadata.x-shorthand-date-pattern",
+        Phase::Localized,
+    ), // E007
     // S004 stays a registered walker after PR #578 (its candidate
     // replacement is corpus-derived during evaluation and cannot
     // be reproduced from `(name, attrs)` via the bridge's
     // `fix_intent_by_name` shape).
-    ("S004", Phase::Localized),
+    ("portion.dissem.rel-to-trigraph-suggest", Phase::Localized), // S004
     // ----- Phase::WholeMarking ---------------------------------------
     // Banner roll-up walkers, cross-axis decisions, intent-only
     // FactAdd / FactRemove / Recanonicalize emissions, and no-fix
@@ -87,49 +98,86 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // `CapcoScheme::fix_intent_by_name`):
     //   E010 E012 E014 E015 E016 E021 E024 E036 E037 E038
     //   E053 E054 E055 E056 E057
-    ("E002", Phase::WholeMarking),
-    ("E005", Phase::WholeMarking),
-    ("E008", Phase::WholeMarking),
-    ("E031", Phase::WholeMarking),
-    ("E039", Phase::WholeMarking),
-    ("E041", Phase::WholeMarking),
+    ("portion.dissem.rel-to-missing-usa", Phase::WholeMarking), // E002
+    (
+        "portion.declassification.declassify-on-misplaced",
+        Phase::WholeMarking,
+    ), // E005
+    ("marking.metadata.unrecognized-token", Phase::WholeMarking), // E008
+    (
+        "banner.banner-rollup.sar-portions-roll-up",
+        Phase::WholeMarking,
+    ), // E031 (walker
+    // registered tuple is the SAR roll-up row per legacy-rule-id-map §5)
+    (
+        "page.dissem.nodis-exdis-clears-banner-rel-to",
+        Phase::WholeMarking,
+    ), // E039
+    (
+        "portion.dissem.nodis-supersedes-exdis-in-portion",
+        Phase::WholeMarking,
+    ), // E041
     // PR 9a (issue #307): class-specific bare-HCS / bare-RSV rules per
     // CAPCO-2016 §H.4. Phase::WholeMarking because each rule's trigger
     // is a cross-token condition (classification level + SCI marking
     // shape) — the diagnostic spans a single token but the predicate
     // needs the whole marking's attrs.
-    ("E061", Phase::WholeMarking),
-    ("E062", Phase::WholeMarking),
-    ("E063", Phase::WholeMarking),
+    (
+        "portion.sci.hcs-bare-at-confidential-legacy-remark",
+        Phase::WholeMarking,
+    ), // E061
+    (
+        "portion.sci.hcs-bare-suggest-subcompartment",
+        Phase::WholeMarking,
+    ), // E062
+    (
+        "portion.sci.rsv-bare-requires-compartment",
+        Phase::WholeMarking,
+    ), // E063
     // PR 9a Commit 5 (issue #307): EYES / EYES ONLY → REL TO
     // conversion per §H.8 p157 + p158. Phase::Localized — the
     // text_correction span covers a single TokenKind::DissemControl
     // block (the EYES compound token).
-    ("E064", Phase::Localized),
+    (
+        "portion.dissem.eyes-only-convert-to-rel-to",
+        Phase::Localized,
+    ), // E064
     // PR 9a T135a (issue #307 Group D): deprecated SCI long-form
     // canonicalization walker. Phase::Localized because every emitted
     // diagnostic carries a span that covers a single TokenSpan (the
     // deprecated long-form token); text-correction replacements are
     // byte-precise single-token splices.
-    ("E065", Phase::Localized),
+    ("portion.sci.deprecated-long-form", Phase::Localized), // E065
     // PR 9c.1 T134: legacy NATO compound text re-marking. Whole-marking
     // because the canonical re-rendering needs to span the full
     // candidate — the classification block AND the appended AEA/SCI
     // companion block need to land together (e.g.,
     // `(//CTSA)` → `(//CTS//ATOMAL)`).
-    ("E066", Phase::WholeMarking),
+    (
+        "marking.recanonicalize.legacy-nato-compound",
+        Phase::WholeMarking,
+    ), // E066
     // Issue #407: bare-canonical-compound rewriter (CNWDI → RD-CNWDI,
     // NK → SI-NK, EU → SI-EU). Phase::Localized — the text_correction
     // span covers a single `TokenKind::Unknown` token (the bare-form
     // text); replacements are byte-precise single-token splices.
-    ("E067", Phase::Localized),
-    ("S003", Phase::WholeMarking),
+    (
+        "marking.recanonicalize.bare-canonical-compound",
+        Phase::Localized,
+    ), // E067
+    (
+        "portion.classification.joint-usa-first-style",
+        Phase::WholeMarking,
+    ), // S003
     // PR 9c.2 / FR-048: S007 emits text_correction at the
     // classification token's span; the augmentation branch can also
     // emit at a RelToBlock token's span (a different token than the
     // classification block — crosses a token boundary). Phase::Localized's
     // single-token-span contract would fail the augmentation branch.
-    ("S007", Phase::WholeMarking),
+    (
+        "portion.nato.bare-nato-requires-rel-to-usa-nato",
+        Phase::WholeMarking,
+    ), // S007
     // #559 close-out C1 (2026-05-19): S008 byte-surfacing twin of
     // `CLOSURE_RELIDO_SCI` / `CLOSURE_RELIDO_US_CLASS`. Emits a
     // `FactAdd(RELIDO, Scope::Portion)` intent; the engine re-renders
@@ -137,23 +185,38 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // the splice spans the candidate. Phase::WholeMarking covers
     // the marking-scope re-render even though the intent itself is
     // single-fact.
-    ("S008", Phase::WholeMarking),
+    (
+        "portion.dissem.relido-implied-by-closure",
+        Phase::WholeMarking,
+    ), // S008
     // W002 retired in the PR closing #470 (CAPCO §H.7 p123
     // authorized the shape the rule warned on).
-    ("W003", Phase::WholeMarking),
-    ("W034", Phase::WholeMarking),
+    (
+        "page.dissem.non-ic-dissem-in-classified-banner",
+        Phase::WholeMarking,
+    ), // W003
+    (
+        "portion.sci.unpublished-custom-control",
+        Phase::WholeMarking,
+    ), // W034
     // Issue #261: FGI with explicit trigraph (concealment contradiction).
     // Phase::WholeMarking because the optional NF companion emits a
     // `FactAdd(NOFORN, Scope::Portion)` intent that targets the whole
     // marking candidate span — a single-token splice at the classification
     // position cannot also add NOFORN to the dissem axis.
-    ("E071", Phase::WholeMarking),
+    (
+        "portion.fgi.fgi-explicit-with-trigraph",
+        Phase::WholeMarking,
+    ), // E071
     // Issue #250: S009 prefer-tetragraph-collapse. Phase::WholeMarking
     // because the rule rewrites the entire RelToBlock span (multi-token
     // replacement: explicit member trigraphs → compact tetragraph form).
     // Default Off — tetragraph vs. explicit-member form is an org style
     // choice. Authority: CAPCO-2016 §H.8 p150.
-    ("S009", Phase::WholeMarking),
+    (
+        "page.dissem.prefer-tetragraph-collapse",
+        Phase::WholeMarking,
+    ), // S009
     // ----- Phase::PageFinalization (4 rules, issues #461 + #488 + #251) ----
     // PR #488 (issue #488): S005 rel-to-opaque-uncertain-reduction
     // migrated from `Phase::WholeMarking` (Banner/CAB-gated firing)
@@ -171,7 +234,10 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // ODNI ISMCAT V[`marque_ism::ISMCAT_TETRA_VERSION`] Tetragraph
     // Taxonomy. Re-verified 2026-05-17 against
     // `crates/capco/docs/CAPCO-2016.md`.
-    ("S005", Phase::PageFinalization),
+    (
+        "page.dissem.rel-to-uncertain-reduction",
+        Phase::PageFinalization,
+    ), // S005
     // PR refactor-006-pr-pagefinalization (issue #461): W004
     // joint-disunity-collapse migrated from `Phase::WholeMarking`
     // (Banner-only firing) to `Phase::PageFinalization`. The engine
@@ -185,7 +251,10 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // DisunityCollapse). Authority: §H.3 p57 (Derivative Use
     // bullets) + §H.7 p123 (FGI grammar). Re-verified 2026-05-16
     // against `crates/capco/docs/CAPCO-2016.md`.
-    ("W004", Phase::PageFinalization),
+    (
+        "page.fgi.joint-disunity-collapses-to-fgi",
+        Phase::PageFinalization,
+    ), // W004
     // Issue #251: S010 collapse-uniform-rel-portions. Phase::PageFinalization
     // because the rule reads `ctx.page_portions` to compare each portion's
     // explicit REL TO list against the projected page-level banner list —
@@ -193,14 +262,20 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // per-marking dispatch. Default Off — compact `REL` vs. explicit
     // `REL TO <list>` is a style choice when all portions agree.
     // Authority: CAPCO-2016 §H.8 p150.
-    ("S010", Phase::PageFinalization),
+    (
+        "page.dissem.collapse-uniform-rel-portions",
+        Phase::PageFinalization,
+    ), // S010
     // Issue #251: E072 bare-rel-portion-divergence. Phase::PageFinalization
     // because detecting the coexistence of bare-REL portions and explicit
     // REL TO portions with a divergent list requires a page-level snapshot
     // of all portions — per-marking dispatch cannot observe the cross-
     // portion relationship. Default Warn.
     // Authority: CAPCO-2016 §H.8 p150-151.
-    ("E072", Phase::PageFinalization),
+    (
+        "page.dissem.bare-rel-portion-divergence",
+        Phase::PageFinalization,
+    ), // E072
 ];
 
 #[test]
@@ -212,7 +287,7 @@ fn every_registered_rule_declares_expected_phase() {
     let actual: BTreeMap<String, Phase> = rule_set
         .rules()
         .iter()
-        .map(|r| (r.id().as_str().to_owned(), r.phase()))
+        .map(|r| (r.id().predicate_id().to_owned(), r.phase()))
         .collect();
 
     // Build the expected map from the allowlist. A duplicate rule ID

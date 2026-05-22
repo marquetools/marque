@@ -140,6 +140,19 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
         capco(SectionLetter::H, 9, 185),
         "h9-p185-les-nf-supersession",
     ),
+    // T044 (post-reviewer pass): §H.8 p150 is declared by the Suggest-
+    // severity REL TO rules (S003 / S004 / S005 / S010) but no current
+    // corpus fixture exercises any of them. The latent gap was
+    // previously masked by E002 (Error-severity, exercised by the
+    // `missing_usa_trigraph` fixtures) emitting §H.8 p150 too;
+    // T044 moved E002 to the more precise §H.8 p151 (the verbatim
+    // USA-first rule lives in the Additional Marking Instructions
+    // block on p151, not the section anchor on p150). The Suggest-
+    // rule gap is structural — Suggest rules don't auto-apply and
+    // the corpus does not yet carry trigraph-typo / uniform-REL-TO
+    // / uncertain-reduction fixtures. Tracked for a follow-up
+    // fixture-coverage PR; whitelisted per F.1 contract clause 1.
+    (capco(SectionLetter::H, 8, 150), "h8-p150-suggest-rules-gap"),
 ];
 
 /// Construct the `[engine-internal]` sentinel Citation. The

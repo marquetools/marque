@@ -343,7 +343,7 @@ fn arb_us_classification_for_ucni() -> impl Strategy<Value = MarkingClassificati
 
 // ---- §2.1 Floor TS oracles ------------------------------------------------
 
-/// Oracle for `class-floor/HCS-comp-sub`: HCS with a sub-compartment at < TS.
+/// Oracle for `banner.classification.floor-hcs-comp-sub`: HCS with a sub-compartment at < TS.
 /// §H.4 p68 (HCS-P sub-compartment guidance).
 fn oracle_hcs_comp_sub(attrs: &CanonicalAttrs) -> bool {
     let present = attrs.sci_markings.iter().any(|m| {
@@ -478,7 +478,7 @@ fn oracle_frd_sg(attrs: &CanonicalAttrs) -> bool {
     !class_is_at_least(attrs, Classification::Secret)
 }
 
-/// Oracle for `E058/CNWDI-classification-floor`: RD-CNWDI at < S. §H.6 p104.
+/// Oracle for `banner.aea.floor-cnwdi`: RD-CNWDI at < S. §H.6 p104.
 fn oracle_cnwdi(attrs: &CanonicalAttrs) -> bool {
     let present = attrs
         .aea_markings
@@ -668,7 +668,7 @@ proptest! {
     #[test]
     fn floor_ts_hcs_comp_sub_matches_oracle(attrs in arb_attrs_floor_ts()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/HCS-comp-sub", &attrs),
+            fires_via_dispatch("banner.classification.floor-hcs-comp-sub", &attrs),
             oracle_hcs_comp_sub(&attrs),
             "HCS-comp-sub dispatch vs oracle diverged"
         );
@@ -677,7 +677,7 @@ proptest! {
     #[test]
     fn floor_ts_si_comp_matches_oracle(attrs in arb_attrs_floor_ts()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/SI-comp", &attrs),
+            fires_via_dispatch("banner.classification.floor-si-comp", &attrs),
             oracle_si_comp(&attrs),
             "SI-comp dispatch vs oracle diverged"
         );
@@ -686,7 +686,7 @@ proptest! {
     #[test]
     fn floor_ts_tk_blfh_matches_oracle(attrs in arb_attrs_floor_ts()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/TK-BLFH", &attrs),
+            fires_via_dispatch("banner.classification.floor-tk-blfh", &attrs),
             oracle_tk_blfh(&attrs),
             "TK-BLFH dispatch vs oracle diverged"
         );
@@ -695,7 +695,7 @@ proptest! {
     #[test]
     fn floor_ts_balk_matches_oracle(attrs in arb_attrs_floor_ts()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/BALK", &attrs),
+            fires_via_dispatch("banner.classification.floor-balk", &attrs),
             oracle_balk(&attrs),
             "BALK dispatch vs oracle diverged"
         );
@@ -704,7 +704,7 @@ proptest! {
     #[test]
     fn floor_ts_bohemia_matches_oracle(attrs in arb_attrs_floor_ts()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/BOHEMIA", &attrs),
+            fires_via_dispatch("banner.classification.floor-bohemia", &attrs),
             oracle_bohemia(&attrs),
             "BOHEMIA dispatch vs oracle diverged"
         );
@@ -724,7 +724,7 @@ proptest! {
     #[test]
     fn floor_s_hcs_comp_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/HCS-comp", &attrs),
+            fires_via_dispatch("banner.classification.floor-hcs-comp", &attrs),
             oracle_hcs_comp(&attrs),
             "HCS-comp dispatch vs oracle diverged"
         );
@@ -733,7 +733,7 @@ proptest! {
     #[test]
     fn floor_s_rsv_comp_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/RSV-comp", &attrs),
+            fires_via_dispatch("banner.classification.floor-rsv-comp", &attrs),
             oracle_rsv_comp(&attrs),
             "RSV-comp dispatch vs oracle diverged"
         );
@@ -742,7 +742,7 @@ proptest! {
     #[test]
     fn floor_s_tk_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/TK", &attrs),
+            fires_via_dispatch("banner.classification.floor-tk", &attrs),
             oracle_tk(&attrs),
             "TK dispatch vs oracle diverged"
         );
@@ -751,7 +751,7 @@ proptest! {
     #[test]
     fn floor_s_rd_sg_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/RD-SG", &attrs),
+            fires_via_dispatch("banner.aea.floor-rd-sg", &attrs),
             oracle_rd_sg(&attrs),
             "RD-SG dispatch vs oracle diverged"
         );
@@ -760,7 +760,7 @@ proptest! {
     #[test]
     fn floor_s_frd_sg_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/FRD-SG", &attrs),
+            fires_via_dispatch("banner.aea.floor-frd-sg", &attrs),
             oracle_frd_sg(&attrs),
             "FRD-SG dispatch vs oracle diverged"
         );
@@ -769,7 +769,7 @@ proptest! {
     #[test]
     fn floor_s_cnwdi_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("E058/CNWDI-classification-floor", &attrs),
+            fires_via_dispatch("banner.aea.floor-cnwdi", &attrs),
             oracle_cnwdi(&attrs),
             "CNWDI dispatch vs oracle diverged"
         );
@@ -778,7 +778,7 @@ proptest! {
     #[test]
     fn floor_s_rsen_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/RSEN", &attrs),
+            fires_via_dispatch("banner.dissem.floor-rsen", &attrs),
             oracle_rsen(&attrs),
             "RSEN dispatch vs oracle diverged"
         );
@@ -787,7 +787,7 @@ proptest! {
     #[test]
     fn floor_s_imcon_matches_oracle(attrs in arb_attrs_floor_s()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/IMCON", &attrs),
+            fires_via_dispatch("banner.dissem.floor-imcon", &attrs),
             oracle_imcon(&attrs),
             "IMCON dispatch vs oracle diverged"
         );
@@ -807,7 +807,7 @@ proptest! {
     #[test]
     fn floor_c_si_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/SI", &attrs),
+            fires_via_dispatch("banner.classification.floor-si", &attrs),
             oracle_si(&attrs),
             "SI-bare dispatch vs oracle diverged"
         );
@@ -816,7 +816,7 @@ proptest! {
     #[test]
     fn floor_c_sar_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("E058/SAR-classification-floor", &attrs),
+            fires_via_dispatch("banner.classification.floor-sar", &attrs),
             oracle_sar(&attrs),
             "SAR dispatch vs oracle diverged"
         );
@@ -825,7 +825,7 @@ proptest! {
     #[test]
     fn floor_c_rd_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/RD", &attrs),
+            fires_via_dispatch("banner.aea.floor-rd", &attrs),
             oracle_rd(&attrs),
             "RD-bare dispatch vs oracle diverged"
         );
@@ -834,7 +834,7 @@ proptest! {
     #[test]
     fn floor_c_frd_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/FRD", &attrs),
+            fires_via_dispatch("banner.aea.floor-frd", &attrs),
             oracle_frd(&attrs),
             "FRD-bare dispatch vs oracle diverged"
         );
@@ -843,7 +843,7 @@ proptest! {
     #[test]
     fn floor_c_tfni_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/TFNI", &attrs),
+            fires_via_dispatch("banner.aea.floor-tfni", &attrs),
             oracle_tfni(&attrs),
             "TFNI dispatch vs oracle diverged"
         );
@@ -852,7 +852,7 @@ proptest! {
     #[test]
     fn floor_c_atomal_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/ATOMAL", &attrs),
+            fires_via_dispatch("banner.aea.floor-atomal", &attrs),
             oracle_atomal(&attrs),
             "ATOMAL dispatch vs oracle diverged"
         );
@@ -861,7 +861,7 @@ proptest! {
     #[test]
     fn floor_c_orcon_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/ORCON", &attrs),
+            fires_via_dispatch("banner.dissem.floor-orcon", &attrs),
             oracle_orcon(&attrs),
             "ORCON dispatch vs oracle diverged"
         );
@@ -870,7 +870,7 @@ proptest! {
     #[test]
     fn floor_c_eyes_only_matches_oracle(attrs in arb_attrs_floor_c()) {
         prop_assert_eq!(
-            fires_via_dispatch("class-floor/EYES-ONLY", &attrs),
+            fires_via_dispatch("banner.dissem.floor-eyes-only", &attrs),
             oracle_eyes_only(&attrs),
             "EYES-ONLY dispatch vs oracle diverged"
         );
@@ -890,7 +890,7 @@ proptest! {
     #[test]
     fn floor_eq_u_dod_ucni_matches_oracle(attrs in arb_attrs_floor_eq_u()) {
         prop_assert_eq!(
-            fires_via_dispatch("E058/DOD-UCNI-classification-ceiling", &attrs),
+            fires_via_dispatch("banner.aea.ceiling-dod-ucni", &attrs),
             oracle_dod_ucni(&attrs),
             "DOD-UCNI dispatch vs oracle diverged"
         );
@@ -899,7 +899,7 @@ proptest! {
     #[test]
     fn floor_eq_u_doe_ucni_matches_oracle(attrs in arb_attrs_floor_eq_u()) {
         prop_assert_eq!(
-            fires_via_dispatch("E058/DOE-UCNI-classification-ceiling", &attrs),
+            fires_via_dispatch("banner.aea.ceiling-doe-ucni", &attrs),
             oracle_doe_ucni(&attrs),
             "DOE-UCNI dispatch vs oracle diverged"
         );

@@ -40,7 +40,7 @@ fn find_e021(input: &[u8]) -> Option<Severity> {
         .lint(input)
         .diagnostics
         .into_iter()
-        .find(|d| d.rule.as_str() == "E021")
+        .find(|d| d.rule.predicate_id() == "portion.aea.rd-frd-requires-noforn")
         .map(|d| d.severity)
 }
 

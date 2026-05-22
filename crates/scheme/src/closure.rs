@@ -150,12 +150,14 @@ pub struct ClosureRuleMetadata {
 /// [`MarkingScheme::satisfies`]: crate::scheme::MarkingScheme::satisfies
 /// [`MarkingScheme::token_category()`]: crate::scheme::MarkingScheme::token_category
 pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
-    /// Stable scheme-unique identifier (e.g., `"capco/noforn-if-no-fdr"`).
+    /// Stable scheme-unique identifier in the T044 wire-string form
+    /// (e.g., `"capco:closure.dissem.noforn-if-caveated"`).
     ///
     /// Used as the catalog row key for `[closure_rules]` config overrides
-    /// and `AuditNote.row_name` emission. Values containing `/` MUST be
-    /// written as quoted TOML keys (e.g., `"capco/noforn-if-no-fdr" = "warn"`)
-    /// because unquoted TOML keys do not allow slash characters.
+    /// and `AuditNote.row_name` emission. Values containing `:` or `.`
+    /// MUST be written as quoted TOML keys (e.g.,
+    /// `"capco:closure.dissem.noforn-if-caveated" = "warn"`) because
+    /// unquoted TOML keys do not allow those characters.
     ///
     /// Every `ClosureRule` in a scheme's catalog MUST have a distinct `name`.
     pub name: &'static str,

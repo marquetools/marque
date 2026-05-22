@@ -72,7 +72,7 @@ pub use web_time::Instant;
 ///
 /// Set at build time by `crates/engine/build.rs` (see
 /// `MARQUE_AUDIT_SCHEMA`), validated against the closed accept-list
-/// `["marque-1.0"]`. Defaults to `"marque-1.0"`. Re-exported
+/// `["marque-2.0"]`. Defaults to `"marque-2.0"`. Re-exported
 /// through this crate so CLI and WASM emitters can populate the
 /// `schema` field without each owning a separate copy of the
 /// constant (whitepaper §980 / FR-014).
@@ -80,26 +80,30 @@ pub use web_time::Instant;
 /// Per FR-014 the value is fixed for the lifetime of a build — a
 /// single binary emits exactly one schema, never a mix.
 ///
-/// The legacy `mvp-1` / `mvp-2` / `mvp-3` shapes retired in
-/// PR 3c.2.D (atomic cutover) alongside the v2 `AppliedFix`
-/// reshape, BLAKE3 digesting, closed `MessageTemplate` JSON
-/// serialization, and `Canonical<S>` provenance wiring. Per FR-037
-/// no `marque-audit-reader` crate is scheduled — pre-cutover
-/// records are not interoperable with post-cutover binaries
-/// (clean break).
+/// T044 (post-PR-10 FR-049 unfreeze) atomically bumped this from
+/// `"marque-1.0"` to `"marque-2.0"` to carry the `RuleId`
+/// 2-tuple reshape — every audit-record `"rule"` field now
+/// serializes as a structured `{ scheme, predicate_id }` object,
+/// never the legacy flat string. The earlier `mvp-1` / `mvp-2` /
+/// `mvp-3` shapes retired in PR 3c.2.D (atomic cutover) alongside
+/// the v2 `AppliedFix` reshape, BLAKE3 digesting, closed
+/// `MessageTemplate` JSON serialization, and `Canonical<S>`
+/// provenance wiring. Per FR-037 no `marque-audit-reader` crate is
+/// scheduled — pre-cutover records are not interoperable with
+/// post-cutover binaries (clean break).
 pub const AUDIT_SCHEMA_VERSION: &str = env!("MARQUE_AUDIT_SCHEMA");
 
-/// `true` when this build emits the post-cutover audit records
-/// (`marque-1.0`).
+/// `true` when this build emits the post-T044 audit records
+/// (`marque-2.0`).
 ///
 /// Evaluated at compile time from [`AUDIT_SCHEMA_VERSION`]; folds
 /// to a constant. The accept-list is currently a single value, so
 /// the const is always `true` in any successfully-built binary;
 /// the const exists to give downstream code a stable shape-discriminant
-/// across future schema bumps (a future `marque-1.1` would land
-/// alongside an `AUDIT_SCHEMA_IS_V1_1` and a dispatch branch on
+/// across future schema bumps (a future `marque-2.1` would land
+/// alongside an `AUDIT_SCHEMA_IS_V2_1` and a dispatch branch on
 /// each emitter).
-pub const AUDIT_SCHEMA_IS_V1_0: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-1.0");
+pub const AUDIT_SCHEMA_IS_V2_0: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-2.0");
 
 const fn const_str_eq(a: &str, b: &str) -> bool {
     let a = a.as_bytes();

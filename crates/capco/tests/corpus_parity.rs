@@ -124,10 +124,10 @@ fn rule_count_reflects_registration_changes() {
     // over a 27-row class-floor catalog at marque-applied.md §3.4.6
     // family granularity. Diagnostics emit with `Diagnostic.rule = "E058"`;
     // per-row identification flows via the catalog row's `name` field
-    // (e.g., `"E058/CNWDI-classification-floor"`,
-    // `"E058/SAR-classification-floor"`,
-    // `"E058/DOD-UCNI-classification-ceiling"`,
-    // `"E058/DOE-UCNI-classification-ceiling"`,
+    // (e.g., `"banner.aea.floor-cnwdi"`,
+    // `"banner.classification.floor-sar"`,
+    // `"banner.aea.ceiling-dod-ucni"`,
+    // `"banner.aea.ceiling-doe-ucni"`,
     // `"class-floor/<marking>"` for new rows). Net delta: -2 rules
     // (3 retired + 1 walker added). Final: 61 - 2 = 59.
     //
@@ -142,12 +142,12 @@ fn rule_count_reflects_registration_changes() {
     // over a 5-row SCI per-system catalog at CAPCO-2016 §H.4 family
     // granularity. The class-floor portions of E044/E045/E046/E048/
     // E049/E050 are absorbed by PR 3b.D's class-floor catalog rows
-    // (`class-floor/HCS-comp-sub`, `class-floor/HCS-comp`,
+    // (`banner.classification.floor-hcs-comp-sub`, `class-floor/HCS-comp`,
     // `class-floor/SI-comp`, `class-floor/RSV-comp`, `class-floor/TK`,
     // `class-floor/TK-BLFH`); no class-floor rows are added in PR 3b.E.
     // Diagnostics emit with `Diagnostic.rule = "E059"`; per-row
     // identification flows via the catalog row's `name` field
-    // (`sci-per-system/HCS-O-companions`,
+    // (`marking.sci.hcs-o-companions`,
     // `sci-per-system/HCS-P-NOFORN`,
     // `sci-per-system/HCS-P-sub-companions`,
     // `sci-per-system/SI-G-companions`,

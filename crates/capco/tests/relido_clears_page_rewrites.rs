@@ -189,16 +189,32 @@ fn retired_e055_e056_e057_no_longer_fire_as_diagnostics() {
         b"(S//OC-USGOV/RELIDO)",         // E057 trigger
     ];
 
+    // Post-T044 predicate IDs for the retired E055/E056/E057 family
+    // (per `legacy-rule-id-map.md` §2 — retired declarative-wrapper IDs).
+    // These now route through the PageRewrite path silently; a
+    // re-introduced Conflicts row would emit one of these predicate
+    // IDs on the diagnostic stream. The pre-Copilot version compared
+    // against the legacy "E055"/"E056"/"E057" string literals, which
+    // were vacuous post-T044 (no rule's `predicate_id()` is those
+    // strings anymore — the comparisons always passed and would have
+    // hidden a regression).
+    const RETIRED_PREDICATE_IDS: &[&str] = &[
+        "portion.dissem.display-only-clears-relido", // E055 (§H.8 p154 + p163)
+        "portion.dissem.orcon-clears-relido",        // E056 (§H.8 p136 + p154)
+        "portion.dissem.orcon-usgov-clears-relido",  // E057 (§H.8 p140 + p154)
+    ];
+
     for input in cases {
         let result = engine.lint(input);
         for d in &result.diagnostics {
-            let id = d.rule.as_str();
+            let id = d.rule.predicate_id();
             assert!(
-                id != "E055" && id != "E056" && id != "E057",
-                "Retired rule {id} fired on input {:?} — the \
-                 Constraint::Conflicts row should be gone post-#559; \
-                 the PageRewrite path (capco/*-clears-relido) is \
-                 silent at the diagnostic surface",
+                !RETIRED_PREDICATE_IDS.contains(&id),
+                "Retired rule (post-T044 predicate {id}) fired on input \
+                 {:?} — the Constraint::Conflicts row should be gone \
+                 post-#559; the PageRewrite path \
+                 (capco/*-clears-relido) is silent at the diagnostic \
+                 surface",
                 std::str::from_utf8(input).unwrap_or("<bytes>"),
             );
         }
