@@ -3194,13 +3194,28 @@ fn assert_fgi_collapses_to_concealed(fixture_id: &str, portions: &[CanonicalAttr
 
 /// Assert that both projection paths agree on the FGI axis and produce
 /// `Some(FgiMarker::Acknowledged{ countries })` with the expected
-/// country set. Used by the pure-acknowledged baseline fixtures.
+/// country slice in **exact order**, length, and multiplicity. Used by
+/// the pure-acknowledged baseline fixtures.
+///
+/// §H.7 p124 line 3091 makes alphabetic ordering normative:
+/// "Multiple FGI countries must be listed alphabetically and separated
+/// by a single space." `expected_countries` MUST be passed in that
+/// canonical order. The helper asserts slice equality (not set equality)
+/// so a future regression that flips the canonical order — or that
+/// produces accidental duplicates — fails the test instead of silently
+/// passing. Caller passes the canonical order; the helper enforces it.
+///
+/// The `lat`-side destructure is sound because `assert_eq!` on
+/// `fgi_marker` above already enforces that `scheme_proj.fgi_marker ==
+/// lat.fgi_marker` via the derived `Eq` on `FgiMarker` (which compares
+/// `Acknowledged.countries` as a slice including order — `SmallVec`'s
+/// `PartialEq` derives slice equality). So checking one side covers
+/// both paths.
 fn assert_fgi_acknowledged_exact(
     fixture_id: &str,
     portions: &[CanonicalAttrs],
     expected_countries: &[&str],
 ) {
-    use std::collections::BTreeSet;
     let lat = project_via_lattice(portions);
     let scheme_proj = project_via_scheme(portions);
     assert_eq!(
@@ -3209,14 +3224,18 @@ fn assert_fgi_acknowledged_exact(
          lat={:?}, scheme={:?}",
         lat.fgi_marker, scheme_proj.fgi_marker,
     );
-    let expected: BTreeSet<CountryCode> = expected_countries.iter().map(|s| cc(s)).collect();
+    let expected: Vec<CountryCode> = expected_countries.iter().map(|s| cc(s)).collect();
     match &lat.fgi_marker {
         Some(FgiMarker::Acknowledged { countries, .. }) => {
-            let got: BTreeSet<CountryCode> = countries.iter().copied().collect();
             assert_eq!(
-                got, expected,
-                "{fixture_id}: acknowledged FGI country set mismatch; \
-                 got={got:?}, expected={expected:?}",
+                countries.as_slice(),
+                expected.as_slice(),
+                "{fixture_id}: acknowledged FGI country LIST mismatch \
+                 (slice equality — order, length, multiplicity all checked \
+                 per §H.7 p124 line 3091 alphabetic-ordering requirement); \
+                 got={:?}, expected={:?}",
+                countries.as_slice(),
+                expected.as_slice(),
             );
         }
         other => panic!("{fixture_id}: expected Acknowledged FGI marker; got {other:?}"),
