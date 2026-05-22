@@ -1669,7 +1669,7 @@ const SECONDS_PER_JULIAN_YEAR: u64 = 31_557_600;
 
 #[cfg(test)]
 mod tests {
-    use super::{WasmConfig, build_cache_key, current_year, parse_deadline_ms};
+    use super::{WasmConfig, build_cache_key, current_year, parse_deadline_ms, parse_wasm_config};
     use std::time::Duration;
 
     // -----------------------------------------------------------------------
@@ -1880,6 +1880,255 @@ mod tests {
         assert_ne!(
             k1, k2,
             "different classifier_ids must produce different cache keys"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // R2: byte-identity cache-key fixtures (#689 follow-up)
+    //
+    // These tests pin the exact cache-key byte-strings produced by the
+    // current implementation, so the R2 refactor (removing
+    // `#[derive(Deserialize)]` from `WasmConfig` and `#[derive(Serialize)]`
+    // from `WasmConfigCacheKey`) cannot silently churn the engine cache
+    // slot mapping. The cache key participates in the LRU mapping inside
+    // `with_engine`; any byte change there flushes the engine cache. The
+    // tests below are byte-equal-or-fail; they pass on pre-refactor code
+    // and must continue to pass post-refactor.
+    //
+    // Captured 2026-05-22 against the `#[derive(Serialize)] WasmConfigCacheKey`
+    // emission path. Field order follows struct-declaration order
+    // (classifier_id, confidence_threshold, corrections) — which happens
+    // to coincide with alphabetical order. The R2 refactor pins
+    // struct-declaration order explicitly so a future field insertion
+    // that breaks alphabetical order does not produce a different cache
+    // key.
+    // -----------------------------------------------------------------------
+
+    /// No JSON at all → no engine cache key (the default-config slot).
+    #[test]
+    fn r2_byte_identity_none_json() {
+        let (_, _, cache_key) = parse_wasm_config(&None).expect("parse default");
+        assert_eq!(cache_key, None);
+    }
+
+    /// Empty JSON object → no engine cache key (matches default slot).
+    #[test]
+    fn r2_byte_identity_empty_object() {
+        let (_, _, cache_key) =
+            parse_wasm_config(&Some("{}".to_owned())).expect("parse empty object");
+        assert_eq!(cache_key, None);
+    }
+
+    /// Empty corrections map → no engine cache key (matches default slot).
+    /// Pinned at `build_cache_key_is_none_for_empty_corrections` already,
+    /// but re-asserted here against the full JSON parse path.
+    #[test]
+    fn r2_byte_identity_empty_corrections() {
+        let (_, _, cache_key) =
+            parse_wasm_config(&Some(r#"{"corrections": {}}"#.to_owned()))
+                .expect("parse empty corrections");
+        assert_eq!(cache_key, None);
+    }
+
+    /// `deadline_ms` only → no engine cache key (deadline is excluded
+    /// from the cache key by design; see `parse_wasm_config` doc).
+    #[test]
+    fn r2_byte_identity_deadline_only() {
+        let (_, _, cache_key) =
+            parse_wasm_config(&Some(r#"{"deadline_ms": 1000}"#.to_owned()))
+                .expect("parse deadline only");
+        assert_eq!(cache_key, None);
+    }
+
+    /// `classifier_id` only → exact byte string.
+    #[test]
+    fn r2_byte_identity_classifier_id_only() {
+        let (_, _, cache_key) =
+            parse_wasm_config(&Some(r#"{"classifier_id": "agent42"}"#.to_owned()))
+                .expect("parse classifier_id");
+        assert_eq!(
+            cache_key.as_deref(),
+            Some(r#"{"classifier_id":"agent42"}"#)
+        );
+    }
+
+    /// `confidence_threshold` only → exact byte string. Asserts the
+    /// f32 serialization shape (`0.85` round-trip).
+    #[test]
+    fn r2_byte_identity_threshold_only() {
+        let (_, _, cache_key) =
+            parse_wasm_config(&Some(r#"{"confidence_threshold": 0.85}"#.to_owned()))
+                .expect("parse threshold");
+        assert_eq!(
+            cache_key.as_deref(),
+            Some(r#"{"confidence_threshold":0.85}"#)
+        );
+    }
+
+    /// Non-empty corrections → exact byte string. Pins the BTreeMap
+    /// sort order (DOC1 < MGT alphabetically) — the cache key MUST
+    /// produce identical bytes regardless of input HashMap iteration
+    /// order, otherwise byte-equal config produces different cache
+    /// slots.
+    #[test]
+    fn r2_byte_identity_corrections_sorted() {
+        let (_, _, cache_key) = parse_wasm_config(&Some(
+            r#"{"corrections": {"MGT": "MANAGEMENT", "DOC1": "DOCUMENT"}}"#.to_owned(),
+        ))
+        .expect("parse corrections");
+        assert_eq!(
+            cache_key.as_deref(),
+            Some(r#"{"corrections":{"DOC1":"DOCUMENT","MGT":"MANAGEMENT"}}"#)
+        );
+    }
+
+    /// All three cache-relevant fields → exact byte string in
+    /// struct-declaration order (classifier_id, confidence_threshold,
+    /// corrections).
+    #[test]
+    fn r2_byte_identity_all_three() {
+        let (_, _, cache_key) = parse_wasm_config(&Some(
+            r#"{"classifier_id": "agent42", "confidence_threshold": 0.85, "corrections": {"K": "V"}}"#
+                .to_owned(),
+        ))
+        .expect("parse all three");
+        assert_eq!(
+            cache_key.as_deref(),
+            Some(r#"{"classifier_id":"agent42","confidence_threshold":0.85,"corrections":{"K":"V"}}"#)
+        );
+    }
+
+    /// `deadline_ms` + `classifier_id` → cache key contains ONLY
+    /// classifier_id; deadline_ms is excluded by design so a caller
+    /// varying the per-call budget does not invalidate the engine
+    /// cache slot.
+    #[test]
+    fn r2_byte_identity_deadline_plus_classifier() {
+        let (_, _, cache_key) = parse_wasm_config(&Some(
+            r#"{"deadline_ms": 1000, "classifier_id": "agent42"}"#.to_owned(),
+        ))
+        .expect("parse deadline + classifier");
+        assert_eq!(
+            cache_key.as_deref(),
+            Some(r#"{"classifier_id":"agent42"}"#)
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // R2: type-mismatch loud-failure tests (#689 follow-up)
+    //
+    // These assert that field-level type mismatches in the config JSON
+    // produce a loud `Err`, matching the pre-refactor `#[derive(Deserialize)]`
+    // behavior. Post-refactor, the error messages gain field-name context
+    // (e.g. "classifier_id must be a string") and lose serde's column-number
+    // context. The tests below assert only `is_err()` (not exact wording) so
+    // they pass on both pre- and post-refactor code; messages improve, but
+    // the loud-vs-silent boundary is the load-bearing invariant.
+    // -----------------------------------------------------------------------
+
+    /// `classifier_id` as a number → loud error.
+    /// pre-refactor: serde "invalid type: integer ... expected a string"
+    /// post-refactor: field-name "classifier_id must be a string; got number"
+    #[test]
+    fn r2_classifier_id_wrong_type_errors() {
+        let result = parse_wasm_config(&Some(r#"{"classifier_id": 123}"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// `confidence_threshold` as a string → loud error.
+    /// pre-refactor: serde error; post-refactor: field-name error.
+    #[test]
+    fn r2_confidence_threshold_wrong_type_errors() {
+        let result = parse_wasm_config(&Some(r#"{"confidence_threshold": "high"}"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// `corrections` as an array → loud error.
+    /// pre-refactor: serde error; post-refactor: field-name error.
+    #[test]
+    fn r2_corrections_array_errors() {
+        let result = parse_wasm_config(&Some(r#"{"corrections": ["a", "b"]}"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// `corrections` with a non-string value → loud error.
+    /// pre-refactor: serde error; post-refactor: field-name error
+    /// referencing the offending key.
+    #[test]
+    fn r2_corrections_non_string_value_errors() {
+        let result = parse_wasm_config(&Some(r#"{"corrections": {"k": 123}}"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// `deadline_ms` as a string → loud error.
+    /// pre-refactor: serde error; post-refactor: field-name error.
+    #[test]
+    fn r2_deadline_ms_wrong_type_errors() {
+        let result = parse_wasm_config(&Some(r#"{"deadline_ms": "soon"}"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// Top-level non-object (string) → loud error.
+    /// pre-refactor: serde error; post-refactor: "config must be a JSON object".
+    #[test]
+    fn r2_top_level_string_errors() {
+        let result = parse_wasm_config(&Some(r#""hello""#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// Top-level non-object (array) → loud error.
+    #[test]
+    fn r2_top_level_array_errors() {
+        let result = parse_wasm_config(&Some(r#"[1, 2]"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    /// Top-level non-object (number) → loud error.
+    #[test]
+    fn r2_top_level_number_errors() {
+        let result = parse_wasm_config(&Some(r#"42"#.to_owned()));
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // R2: Constitution III preservation — unknown-field silent-ignore.
+    //
+    // The pre-refactor `#[derive(Deserialize)]` silently ignored unknown
+    // fields (no `#[serde(deny_unknown_fields)]`). The post-refactor
+    // `wasm_config_from_value` helper enumerates the accepted field set
+    // explicitly via `obj.get(...)` — narrower than the derive surface,
+    // but the silently-ignore property MUST be preserved. This test pins
+    // the property at the parse boundary.
+    // -----------------------------------------------------------------------
+
+    /// Unknown top-level field → silently ignored, no error, fields
+    /// default. This is the Constitution III preservation property —
+    /// the WASM target's runtime-config surface must NOT widen.
+    #[test]
+    fn r2_unknown_field_silently_ignored() {
+        let (cfg, _, cache_key) = parse_wasm_config(&Some(
+            r#"{"some_unknown_field": 42, "another_one": "value"}"#.to_owned(),
+        ))
+        .expect("unknown fields must NOT produce an error");
+        assert_eq!(cfg.classifier_id, None);
+        assert_eq!(cfg.confidence_threshold, None);
+        assert!(cfg.corrections.is_none());
+        assert_eq!(cfg.deadline_ms, None);
+        assert_eq!(cache_key, None);
+    }
+
+    /// Unknown field alongside a known field → known field still
+    /// honored, unknown silently dropped.
+    #[test]
+    fn r2_unknown_field_coexists_with_known() {
+        let (cfg, _, cache_key) = parse_wasm_config(&Some(
+            r#"{"future_field": true, "classifier_id": "agent42"}"#.to_owned(),
+        ))
+        .expect("unknown + known must not error");
+        assert_eq!(cfg.classifier_id.as_deref(), Some("agent42"));
+        assert_eq!(
+            cache_key.as_deref(),
+            Some(r#"{"classifier_id":"agent42"}"#)
         );
     }
 
