@@ -245,7 +245,8 @@ proptest! {
     //    - `Fouo` per §H.8 p134: drops in classified documents and
     //      when DSEN is present.
     //    Per-overlay behavior is pinned by dedicated tests in
-    //    `crates/capco/src/lattice.rs::tests` and the parity gate
+    //    the per-type `#[cfg(test)] mod tests` blocks under
+    //    `crates/capco/src/lattice/` and the parity gate
     //    at `crates/capco/tests/page_context_lattice_parity.rs`.
     //
     // 2. **FD&R-family eviction under NOFORN dominance** — the

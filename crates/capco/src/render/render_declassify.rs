@@ -13,7 +13,7 @@
 //! - CAPCO-2016 §E.3 (Multiple Sources and the Declassify On Line
 //!   Hierarchy) — only one value per CAB. When multiple sources
 //!   contribute, use the longest-duration value. The lattice form
-//!   `DeclassifyOnLattice` (in `crates/capco/src/lattice.rs`)
+//!   `DeclassifyOnLattice` (in `crates/capco/src/lattice/declassify_on.rs`)
 //!   composes per-portion values via the `MaxDate` projection
 //!   declared on `Category::aggregation = AggregationOp::MaxDate`
 //!   in `CapcoScheme::build_categories`.

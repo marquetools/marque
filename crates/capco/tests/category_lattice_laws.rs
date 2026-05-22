@@ -738,7 +738,8 @@ mod classification_lattice {
     // `a.join(a.meet(b)) = union(a, b) ≠ a` for the operand whose
     // payload was a strict subset.
     //
-    // The C-9 fix (verified against `lattice.rs::ClassificationLattice::meet`):
+    // The C-9 fix (verified against
+    // `crates/capco/src/lattice/classification.rs::ClassificationLattice::meet`):
     // - Different variants at same level are NOT incomparable — they
     //   are linearly ordered by `classification_variant_rank`
     //   (`Us < Fgi < Nato < Joint < Conflict`); `meet` returns the
@@ -2698,7 +2699,7 @@ mod non_ic_dissem_set {
     /// Control Marking. For example: SECRET//NOFORN//LES."
     ///
     /// Pins that the LES-NF → LES + needs-NF classification-gate
-    /// transformation (`crates/capco/src/lattice.rs::NonIcDissemSet::from_attrs_iter`
+    /// transformation (`crates/capco/src/lattice/non_ic_dissem.rs::NonIcDissemSet::from_attrs_iter`
     /// LES-NF branch) participates in the order-invariance property —
     /// adding a classified peer to a U/LES-NF carrier produces the
     /// same final set whether the classified peer appears first or
@@ -2819,7 +2820,7 @@ mod display_only_block {
     }
 
     /// Bottom is the join identity per the 4-variant absorbing-element
-    /// pattern at `crates/capco/src/lattice.rs::DisplayOnlyBlock::join`.
+    /// pattern at `crates/capco/src/lattice/display_only.rs::DisplayOnlyBlock::join`.
     #[test]
     fn display_only_block_bottom_is_join_identity() {
         let bottom = DisplayOnlyBlock::Bottom;

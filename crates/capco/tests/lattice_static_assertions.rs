@@ -51,7 +51,7 @@
 //!   `project_pr538_observational_lattice_audit`).
 //! - Per-row §-citations live in the originating sub-PR's plan and
 //!   in the lattice type's own doc-comment in
-//!   `crates/capco/src/lattice.rs`.
+//!   `crates/capco/src/lattice/` (per-type submodule).
 
 use marque_capco::lattice::{
     AeaSet, ClassificationLattice, DeclassifyOnLattice, DisplayOnlyBlock, DissemSet, FgiSet,

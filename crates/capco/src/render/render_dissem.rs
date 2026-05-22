@@ -88,7 +88,7 @@ pub(crate) fn render_dissem(
             .collect();
     // Named `fn`-item key adapter (`rank_dissem`) for closure-axis
     // monomorphization collapse — R1 WASM-cut per issue #689 and the
-    // PR #585 precedent at `crate::lattice::sort_smolstrs_by_sar`.
+    // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     sorted.sort_by_key(rank_dissem);
     sorted.dedup();
 
