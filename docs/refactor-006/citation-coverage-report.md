@@ -32,16 +32,20 @@ A citation enters `EXPECTED_UNCOVERED` only when one of the
 following structural properties holds:
 
 1. **Declared citation whose carrying primitive does not emit a
-   `Diagnostic` at runtime.** Two sub-shapes share this property:
-   - *PageRewrite-side:* PageRewrites operate at projection time;
-     they mutate the projected page-level marking but do not
-     themselves emit a `Diagnostic` carrying their declared
+   `Diagnostic` at runtime.** Two sub-shapes share this property;
+   per-row labels use the sub-shape number `(1a)` or `(1b)` so a
+   reader scanning a row's `Property:` line lands on the right
+   sub-shape without re-reading the family header.
+   - *(1a) PageRewrite-side:* PageRewrites operate at projection
+     time; they mutate the projected page-level marking but do
+     not themselves emit a `Diagnostic` carrying their declared
      citation. The citation shows up in tooling and in the
      catalog inventory, but never on the engine's diagnostic
      stream.
-   - *Engine-bridge-suppressed:* A `Constraint` that fires (the
-     predicate evaluates true) but whose `ConstraintViolation`
-     carries `span: None` and/or `severity: None`. The bridge at
+   - *(1b) Engine-bridge-suppressed:* A `Constraint` that fires
+     (the predicate evaluates true) but whose
+     `ConstraintViolation` carries `span: None` and/or
+     `severity: None`. The bridge at
      `engine.rs::bridge_constraint_diagnostic` requires both to
      be `Some` before producing a user-visible diagnostic;
      advisory `ConstraintViolation`s are logged via
@@ -55,10 +59,10 @@ following structural properties holds:
    Both sub-shapes share the structural invariant: no fixture
    can harvest the citation regardless of input, because the
    carrying primitive does not flow through the
-   `Diagnostic.citation` slot. Removal of any entry under this
-   property requires either changing the carrying primitive
-   (e.g., adding a Diagnostic-emitting twin rule) or fixing the
-   engine bridge for advisory violations.
+   `Diagnostic.citation` slot. Removal of any (1a) entry
+   requires changing the carrying primitive (e.g., adding a
+   Diagnostic-emitting twin rule); removal of a (1b) entry
+   requires fixing the engine bridge for advisory violations.
 2. **Closure rule citation that has no byte-surfacing twin rule.**
    Same architecture as (1) — closures inject facts into a
    marking, no `Diagnostic` emission. Closures that DO have a
@@ -276,7 +280,7 @@ without populated span/severity. Today every helper in
 
 ### `§H.8 p134` — FOUO eviction PageRewrite rows
 
-Property: (1) — PageRewrite citation, no `Diagnostic` emission.
+Property: (1a) — PageRewrite-side; no `Diagnostic` emission.
 
 Two PageRewrite rows in
 `crates/capco/src/scheme/rewrites/pattern_b.rs` declare §H.8
@@ -304,7 +308,7 @@ would be removed (assertion (c) firing).
 
 ### `§H.8 p140` — OC-USGOV clears RELIDO PageRewrite
 
-Property: (1) — PageRewrite citation, no `Diagnostic` emission.
+Property: (1a) — PageRewrite-side; no `Diagnostic` emission.
 
 The §H.8 p140 anchor is carried by the `capco/orcon-usgov-clears-relido`
 PageRewrite in
@@ -326,7 +330,7 @@ is the PageRewrite row above.
 
 ### `§H.9 p170` — LIMDIS-evicted-by-classified PageRewrite
 
-Property: (1) — PageRewrite citation, no `Diagnostic` emission.
+Property: (1a) — PageRewrite-side; no `Diagnostic` emission.
 
 `capco/limdis-evicted-by-classified` PageRewrite (row 1) in
 `crates/capco/src/scheme/rewrites/pattern_c.rs::pattern_c_rows()`.
@@ -339,7 +343,7 @@ not one carrying §H.9 p170.
 
 ### `§H.9 p176` — SBU-evicted-by-classified PageRewrite
 
-Property: (1) — PageRewrite citation, no `Diagnostic` emission.
+Property: (1a) — PageRewrite-side; no `Diagnostic` emission.
 
 Companion to §H.9 p170; same architectural property.
 `capco/sbu-evicted-by-classified` PageRewrite (row 2) in
@@ -352,7 +356,7 @@ declaration visible to tooling.
 
 ### `§H.9 p178` — SBU-NF supersession PageRewrites
 
-Property: (1) — PageRewrite citation, no `Diagnostic` emission.
+Property: (1a) — PageRewrite-side; no `Diagnostic` emission.
 
 Two PageRewrite rows declare §H.9 p178:
 
@@ -372,7 +376,7 @@ canonical output; no diagnostic emission.
 
 ### `§H.9 p185` — LES-NF supersession PageRewrites
 
-Property: (1) — PageRewrite citation, no `Diagnostic` emission.
+Property: (1a) — PageRewrite-side; no `Diagnostic` emission.
 
 Companion to §H.9 p178 for the LES-NF supersession family. Two
 PageRewrite rows declare §H.9 p185:
