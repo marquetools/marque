@@ -1654,8 +1654,13 @@ fn classification_meet_same_variant(
             // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in the
             // FGI source-disclosure dimension.  Meet with top returns the other
             // operand; dual of the join's concealed-dominates rule (P-1, 8th-pass).
-            // Authority: §H.7 p128 (concealed is most restrictive form).
-            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            // Authority: §H.7 p124 (precedence rule for banner-line guidance —
+            // "If any document contains portions of both source-concealed FGI
+            // ... then only the 'FGI' marking without the source
+            // trigraph(s)/tetragraph(s) must appear in the banner line") +
+            // §H.7 p128 (worked-example restatement: concealed is most
+            // restrictive form). Verified 2026-05-22 against
+            // crates/capco/docs/CAPCO-2016.md.
             let a_concealed = fa.countries.is_empty();
             let b_concealed = fb.countries.is_empty();
             match (a_concealed, b_concealed) {
@@ -1768,8 +1773,11 @@ fn meet_foreign_classification(
             // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in
             // the FGI source-disclosure dimension — dual of the join's
             // concealed-dominates rule (P-1, 8th-pass). Meet(top, x) = x.
-            // Authority: §H.7 p128 (concealed is most restrictive form).
-            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            // Authority: §H.7 p124 (precedence rule for banner-line guidance —
+            // mixed source-concealed + source-acknowledged FGI collapses to
+            // the bare "FGI" form) + §H.7 p128 (worked-example restatement:
+            // concealed is most restrictive form). Verified 2026-05-22
+            // against crates/capco/docs/CAPCO-2016.md.
             let a_concealed = fa.countries.is_empty();
             let b_concealed = fb.countries.is_empty();
             match (a_concealed, b_concealed) {
@@ -3379,13 +3387,20 @@ impl FgiSet {
     /// - An explicit `FgiMarker::SourceConcealed` on any portion makes
     ///   the result source-concealed (`Present { concealed: true, .. }`)
     ///   regardless of other contributions — concealed is the dominating
-    ///   element per §H.7 p128.
+    ///   element per §H.7 p124 (precedence rule) + §H.7 p128 (worked-
+    ///   example restatement / most-restrictive-form justification).
     ///
-    /// §-authority (verified 2026-05-18 against
+    /// §-authority (verified 2026-05-22 against
     /// `crates/capco/docs/CAPCO-2016.md`):
     /// - §H.7 p122 (FGI source-concealed grammar).
     /// - §H.7 p123 (FGI acknowledged + classification-derived producers).
-    /// - §H.7 p128 (concealed-dominates-acknowledged when mixed).
+    /// - §H.7 p124 (precedence rule for banner-line guidance when a
+    ///   document contains portions of both source-concealed and
+    ///   source-acknowledged FGI — only the bare "FGI" form appears in
+    ///   the banner line, no trigraphs/tetragraphs).
+    /// - §H.7 p128 (worked-example restatement: concealed-dominates-
+    ///   acknowledged because the concealed form is the most
+    ///   restrictive).
     pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
         let mut has_any_fgi = false;
         let mut has_source_concealed = false;
@@ -3441,7 +3456,8 @@ impl FgiSet {
             return Self::None;
         }
 
-        // §H.7 p128: source-concealed dominates open sources.
+        // §H.7 p124 (precedence rule) + §H.7 p128 (worked-example
+        // restatement): source-concealed dominates open sources.
         if has_source_concealed {
             return Self::Present {
                 concealed: true,
@@ -4811,7 +4827,8 @@ mod tests {
 
     #[test]
     fn fgi_set_from_attrs_iter_concealed_dominates_acknowledged() {
-        // §H.7 p128: mixed concealed + acknowledged → concealed wins.
+        // §H.7 p124 (precedence rule) + §H.7 p128 (worked-example
+        // restatement): mixed concealed + acknowledged → concealed wins.
         let mut concealed_portion = CanonicalAttrs::default();
         concealed_portion.fgi_marker = Some(FgiMarker::SourceConcealed);
         let mut acknowledged_portion = CanonicalAttrs::default();
