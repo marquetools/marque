@@ -5288,9 +5288,12 @@ fn predicate_id_of_wire(s: &'static str) -> Option<&'static str> {
 /// wire-string alias at `Engine::new` time, in the tens for the
 /// current CAPCO rule set). The same leak pattern is used by
 /// `marque_capco::vocabulary` for the per-token name interns.
-fn wire_string_of(id: marque_rules::RuleId) -> Option<&'static str> {
-    let leaked: &'static str = Box::leak(format!("{}", id).into_boxed_str());
-    Some(leaked)
+fn wire_string_of(id: marque_rules::RuleId) -> &'static str {
+    // `format!("{}", id)` is infallible; `Box::leak` is infallible;
+    // the return type is `&'static str` directly per the rust-reviewer
+    // T044 MEDIUM-1 finding (the prior `Option<&'static str>` wrapper
+    // was dead — every call site immediately unwrapped).
+    Box::leak(format!("{}", id).into_boxed_str())
 }
 
 fn canonicalize_rule_overrides(
@@ -5344,9 +5347,8 @@ fn canonicalize_rule_overrides(
             known.insert(name, predicate);
             // Also accept the wire-string form
             // (`"<scheme>:<predicate_id>"`) the user types.
-            if let Some(wire) = wire_string_of(rule.id()) {
-                known.insert(wire, predicate);
-            }
+            let wire = wire_string_of(rule.id());
+            known.insert(wire, predicate);
             // Catalog IDs / names from dispatcher walkers — Agent A's
             // pattern makes `catalog_id` the wire-string form
             // (`"capco:banner..."`); we reduce it to its predicate-id

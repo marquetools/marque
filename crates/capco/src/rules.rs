@@ -560,11 +560,14 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 ..MessageArgs::default()
             },
         );
-        // Citation §H.8 p150 covers the REL TO grammar; p151 carries
-        // the USA-first invariant. Use the first page of the range
-        // as the structured anchor; the page-range nuance lives in
-        // the doc comment above this rule, not in the citation field.
-        let citation = capco(SectionLetter::H, 8, 150);
+        // §H.8 p151 carries the verbatim USA-first rule (the
+        // Additional Marking Instructions block on the REL TO page);
+        // p150 is the section anchor for the REL TO marking template
+        // generally. T044 reviewer pass corrected this from p150 to
+        // p151 to match the precision of `cited_authorities()` —
+        // declared and emitted citations must agree (F.1 corpus-
+        // fidelity gate).
+        let citation = capco(SectionLetter::H, 8, 151);
 
         // Locate the `RelToBlock` this diagnostic refers to. If the
         // marking has more than one REL TO block (e.g.,

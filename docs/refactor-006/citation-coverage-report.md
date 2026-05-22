@@ -201,6 +201,46 @@ expand E006's scope to fire on bare `LIMDIS`/`FOUO`/etc. via a
 hand-written predicate (rule body change). Both are scope-creep
 relative to PR 10.A.2.
 
+<a id="h8-p150-suggest-rules-gap"></a>
+
+### `§H.8 p150` — REL TO Suggest-rule coverage gap (T044)
+
+Declared by the REL TO Suggest-severity rules:
+
+- `S003` (deprecated-marking suggest) cross-ref via `S003_CROSS_REFS`
+- `S004` (`RelToTrigraphSuggestRule`) primary authority via `S004_AUTHORITIES`
+- `S005` (`RelToOpaqueUncertainReductionSuggestRule`) primary citation `S005_CITATION`
+- `S010` (`CollapseUniformRelToPortionsSuggestRule`) primary citation `S010_CITATION`
+
+No current corpus fixture exercises any of these rules. They are
+Suggest-severity and default-Off in `.marque.toml`; the corpus
+does not currently carry trigraph-typo / collapse-uniform /
+uncertain-reduction fixtures.
+
+The latent gap was previously masked by `E002` (Error-severity,
+exercised by the `missing_usa_trigraph` fixtures) which until
+T044 declared and emitted `§H.8 p150` too. T044 moved `E002` to
+the more precise `§H.8 p151` per Constitution VIII (the verbatim
+USA-first rule lives in the Additional Marking Instructions block
+on p151; p150 is the section anchor for the REL TO marking template
+generally). With E002 no longer covering p150, the Suggest-rule gap
+surfaced as an F.1 gate failure.
+
+The whitelist row is a deliberate structural carve-out per F.1
+contract clause 1: the Suggest rules' carrying primitives do emit
+diagnostics (text_correction shape with `cited_authorities()` →
+`[§H.8 p150]`), but they don't fire on any current corpus fixture.
+This is **NOT** "the citation is bogus" — it's "no fixture
+currently triggers the rule that emits it."
+
+**Resolution path**: file a follow-up PR adding S003/S004/S005/S010
+fixtures (typo'd trigraph, uniform REL TO portions across a page,
+uncertain reduction signal). When such fixtures land and the gate
+harvests `§H.8 p150` from their emissions, this whitelist row is
+removed (assertion (c) of the gate would otherwise fire). Tracking:
+unfiled at T044 merge; will be opened against the corpus expansion
+backlog in the post-T044 follow-up sweep.
+
 <a id="h6-p120-frd-tfni"></a>
 
 ### `§H.6 p120` — E070 FRD/TFNI precedence (closed by #661)

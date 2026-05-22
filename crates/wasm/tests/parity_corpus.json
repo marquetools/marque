@@ -173,19 +173,19 @@
       "name": "missing_usa_trigraph.txt",
       "category": "invalid",
       "input": "SECRET//REL TO GBR, AUS\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.dissem.rel-to-missing-usa\"},\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.dissem.rel-to-missing-usa\"},\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p151\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
       "name": "missing_usa_trigraph_2.txt",
       "category": "invalid",
       "input": "SECRET//REL TO GBR, USA\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.dissem.rel-to-missing-usa\"},\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.dissem.rel-to-missing-usa\"},\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p151\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
       "name": "missing_usa_trigraph_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//REL TO DEU, FRA\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.dissem.rel-to-missing-usa\"},\"severity\":\"fix\",\"span\":{\"start\":21,\"end\":29},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.dissem.rel-to-missing-usa\"},\"severity\":\"fix\",\"span\":{\"start\":21,\"end\":29},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p151\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
       "name": "nato_bohemia_low_class.txt",
