@@ -524,9 +524,14 @@ pub struct RuleContext<'a> {
     pub page_marking: Option<std::sync::Arc<marque_ism::ProjectedMarking>>,
     /// Byte span of the most recent banner candidate observed on the
     /// current page (issue #663). `Some(span)` once a
-    /// [`marque_ism::MarkingType::Banner`] candidate has been processed
-    /// on the page; `None` until then and after the per-page reset at
-    /// every [`marque_ism::MarkingType::PageBreak`].
+    /// [`marque_ism::MarkingType::Banner`] candidate has cleared the
+    /// engine's decoder confidence gate (`prov.recognition_score()
+    /// >= self.config.confidence_threshold()`) and been processed; a
+    /// sub-threshold decoder banner recognition does NOT populate this
+    /// field — the same discipline that gates downstream rule dispatch
+    /// and `PageContext` accumulation per issue #471. `None` until
+    /// then and after the per-page reset at every
+    /// [`marque_ism::MarkingType::PageBreak`].
     ///
     /// **Visibility contract** (mirrors [`Self::page_portions`] post-PR
     /// #674): for `Phase::PageFinalization` dispatches the engine
@@ -552,15 +557,18 @@ pub struct RuleContext<'a> {
     /// **Sub-span discipline**: this is the FULL banner candidate span
     /// (the bytes the scanner identified as the banner line). Rules
     /// that need to target a sub-block (e.g., the REL TO token group
-    /// alone) parse the source bytes themselves or consume the
-    /// engine's intent-application path
+    /// alone) emit a [`crate::FixIntent`] keyed off the full banner
+    /// span and let the engine's intent-application path
     /// ([`MarkingScheme::apply_intent`] +
-    /// [`MarkingScheme::render_canonical`]) so the engine re-renders
-    /// the whole banner from the page-level lattice projection
-    /// ([`Self::page_marking`]). The single-span shape matches the
-    /// existing [`crate::FixProposal`] contract (one `span`, one
-    /// `replacement`) and avoids storing per-category sub-spans the
-    /// engine doesn't already track on the page accumulator.
+    /// [`MarkingScheme::render_canonical`]) re-render the whole
+    /// banner from the page-level lattice projection
+    /// ([`Self::page_marking`]). This is necessary because
+    /// [`Rule::check`] does NOT receive the source byte buffer — the
+    /// rule cannot read `&[u8]` slices itself from the span. The
+    /// single-span shape matches the existing [`crate::FixProposal`]
+    /// contract (one `span`, one `replacement`) and avoids storing
+    /// per-category sub-spans the engine doesn't already track on the
+    /// page accumulator.
     ///
     /// **Multi-banner pages.** A page MAY contain more than one banner
     /// in pathological inputs (e.g., a header banner + a footer banner

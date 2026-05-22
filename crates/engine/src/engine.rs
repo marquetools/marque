@@ -6338,8 +6338,11 @@ mod tests {
 
         // Single page: one portion + one banner + EOD.
         // The banner candidate's span starts at the "SECRET" prefix and
-        // ends at the trailing newline; the assertion below pins both
-        // endpoints to the byte offsets in this fixture.
+        // ends at the newline-terminator boundary (excluding the `\n`
+        // itself — the scanner's banner span ends one-past the last
+        // printable byte, not one-past the terminator). The assertion
+        // below pins both endpoints to the byte offsets in this
+        // fixture.
         let src: &[u8] = b"(SECRET//NF) body text\nSECRET//NOFORN\n";
         let _ = engine.lint(src);
 
