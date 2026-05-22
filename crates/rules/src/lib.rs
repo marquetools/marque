@@ -532,15 +532,22 @@ pub struct RuleContext<'a> {
     /// #674): for `Phase::PageFinalization` dispatches the engine
     /// populates this field with the closing page's banner span (when
     /// the page had one); the main candidate dispatch loop passes
-    /// `None` unconditionally. Per-portion / per-banner rules in the
-    /// main loop already see the relevant banner via
-    /// [`Self::candidate_span`] when the candidate IS the banner —
-    /// they have no need for a separate retroactive reach back to
-    /// "the banner on this page". This field exists specifically so a
-    /// `Phase::PageFinalization` rule (the only phase that fires AFTER
-    /// every candidate on the page is processed) can target a fix at
-    /// the banner-scope bytes from a position where the candidate-scope
-    /// is just the synthetic boundary anchor at the page break or EOD.
+    /// `None` unconditionally. The justification today is YAGNI, not
+    /// architectural: every existing per-portion / per-banner rule sees
+    /// the in-flight banner via [`Self::candidate_span`] when the
+    /// candidate IS the banner — no `Phase::WholeMarking` or
+    /// `Phase::Localized` consumer of "the banner on this page from a
+    /// position elsewhere on the page" exists. If a future
+    /// `Phase::WholeMarking` rule needs the retroactive banner span
+    /// from a portion-candidate dispatch point, populating this field
+    /// in the main loop is a one-line additive change (the per-page
+    /// accumulator is already maintained); revisit the visibility
+    /// contract at that point. This field exists today specifically so
+    /// a `Phase::PageFinalization` rule (the only phase that fires
+    /// AFTER every candidate on the page is processed) can target a
+    /// fix at the banner-scope bytes from a position where the
+    /// candidate-scope is just the synthetic boundary anchor at the
+    /// page break or EOD.
     ///
     /// **Sub-span discipline**: this is the FULL banner candidate span
     /// (the bytes the scanner identified as the banner line). Rules

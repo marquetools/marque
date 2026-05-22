@@ -1485,6 +1485,20 @@ impl Engine {
             // back to "the banner on this page" only makes sense from
             // the page-fixpoint synthesis point. Same shape as
             // `ctx_page_portions = None;` above (issue #306).
+            //
+            // The `.with_page_banner_span(None)` call below is
+            // explicit (rather than relying on `RuleContext::new`'s
+            // default) for the same reason the prior fields in this
+            // chain are explicit: it documents at the construction
+            // site which fields the main loop deliberately suppresses
+            // vs. populates, and trips a noisy compile error if a
+            // future refactor of `RuleContext::new`'s defaults moves
+            // the per-field initialization to non-`None`. The cost is
+            // a 16-byte by-value Option set on a `Copy` field — no
+            // allocation. A future cleanup pass that strips it MUST
+            // first add a unit test asserting the main-loop default
+            // is `None`; without that test, this is the only mention
+            // of the invariant outside the field's doc-comment.
             let ctx = RuleContext::new(candidate.kind, candidate.span)
                 .with_page_portions(ctx_page_portions)
                 .with_page_marking(ctx_page_marking)
@@ -6404,6 +6418,126 @@ mod tests {
             page_final_obs[0].2.is_none(),
             "page_banner_span MUST be None when the page had no banner; got: {:?}",
             page_final_obs[0].2
+        );
+    }
+
+    #[test]
+    fn page_banner_span_holds_most_recent_on_multi_banner_page() {
+        // Pathological-but-legal layout: TWO banner candidates on a
+        // single page (header banner before the portion + footer banner
+        // after, with no intervening `\f`). The doc-comment on
+        // `RuleContext::page_banner_span` defines the field as carrying
+        // the MOST RECENT banner span observed on the page; this test
+        // pins that semantic so a future refactor that changes the
+        // accumulator to "first-seen-wins" (or any other ordering)
+        // trips the assertion.
+        //
+        // S010/E072 wire-up will rely on this: when a user has both a
+        // header and footer banner, the rule's fix needs to target the
+        // footer (the one most likely to be the user's intended
+        // canonical banner — header banners are often legacy
+        // artifacts).
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        // Header banner at offset 0, portion in the middle, footer
+        // banner at offset 32. The footer banner's start offset is the
+        // assertion target.
+        let header: &[u8] = b"SECRET//NOFORN\n";
+        let portion: &[u8] = b"(SECRET//NF) body\n";
+        let footer: &[u8] = b"SECRET//NOFORN\n";
+        let footer_start: usize = header.len() + portion.len();
+        let mut src = Vec::new();
+        src.extend_from_slice(header);
+        src.extend_from_slice(portion);
+        src.extend_from_slice(footer);
+        let _ = engine.lint(&src);
+
+        let obs = observations.lock().unwrap();
+        let page_final_obs: Vec<&RecorderObservation> = obs
+            .iter()
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .collect();
+        assert_eq!(
+            page_final_obs.len(),
+            1,
+            "expected 1 PageFinalization observation at EOD; got: {obs:?}"
+        );
+        let banner_span = page_final_obs[0]
+            .2
+            .expect("page_banner_span MUST be Some on a multi-banner page");
+        assert_eq!(
+            banner_span.start, footer_start,
+            "page_banner_span MUST hold the MOST RECENT banner span (footer at offset {footer_start}), \
+             NOT the header banner at offset 0; got span={banner_span:?}"
+        );
+    }
+
+    #[test]
+    fn page_banner_span_resets_across_lint_calls() {
+        // Two consecutive `engine.lint()` calls: the first source has a
+        // banner, the second source does not. The second call's
+        // PageFinalization observation MUST see `None`, NOT the first
+        // call's leftover banner span. This pins the cross-call reset
+        // property — `page_banner_span` is a `lint_inner` stack-local,
+        // so cross-call leakage is structurally impossible today, but
+        // an explicit test makes the invariant survive future engine
+        // refactors that might pull state into `self`.
+        use marque_ism::MarkingType;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rule = ContextRecorderRule {
+            observations: std::sync::Arc::clone(&observations),
+        };
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        let src_with_banner: &[u8] = b"(SECRET//NF) p1\nSECRET//NOFORN\n";
+        let src_no_banner: &[u8] = b"(SECRET//NF) just a portion\n";
+        let _ = engine.lint(src_with_banner);
+        let _ = engine.lint(src_no_banner);
+
+        let obs = observations.lock().unwrap();
+        let page_final_spans: Vec<Option<marque_scheme::Span>> = obs
+            .iter()
+            .filter(|(kind, _, _)| *kind == MarkingType::PageFinalization)
+            .map(|(_, _, span)| *span)
+            .collect();
+        assert_eq!(
+            page_final_spans.len(),
+            2,
+            "expected 2 PageFinalization fires (one per lint call); got: {obs:?}"
+        );
+        assert!(
+            page_final_spans[0].is_some(),
+            "first lint call: banner span MUST be Some (the source has a banner): {:?}",
+            page_final_spans[0]
+        );
+        assert!(
+            page_final_spans[1].is_none(),
+            "second lint call: banner span MUST be None (the source has no banner; \
+             the first call's span MUST NOT leak into the second). Got: {:?}",
+            page_final_spans[1]
         );
     }
 
