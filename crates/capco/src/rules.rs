@@ -4766,7 +4766,9 @@ fn check_bare_rel_portion_divergence(
         // `portion.rel_to.is_empty()` guard above means we reach this site
         // only when `rel_to` is non-empty, therefore the `find()` MUST
         // succeed. The `else` arm is defense-in-depth against future parser
-        // changes that would violate the invariant; mirrors S010's pattern.
+        // changes that would violate the invariant; uses the same let-else
+        // shape as S010, adding a `debug_assert!` for the invariant S010's
+        // silent `continue` omits.
         let Some(block) = portion
             .token_spans
             .iter()
@@ -5128,12 +5130,9 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
         // `attrs.rel_to.is_empty()` guard above means we reach this site
         // only when `rel_to` is non-empty, therefore the `find()` MUST
         // succeed. The `else` arm is defense-in-depth against future parser
-        // changes that would violate the invariant; mirrors S010's pattern.
-        // The previous `unwrap_or(Span::new(0, 0))` fallback produced a
-        // zero-length boundary anchor that pointed at byte 0 — meaningless
-        // to users. The `.or_else()` lookup for `RelToTrigraph` was likewise
-        // unreachable since `RelToTrigraph` spans are pushed only inside
-        // `parse_rel_to_with_spans`, which always pushes `RelToBlock` first.
+        // changes that would violate the invariant; uses the same let-else
+        // shape as S010, adding a `debug_assert!` for the invariant S010's
+        // silent `continue` omits.
         let Some(block) = attrs
             .token_spans
             .iter()
