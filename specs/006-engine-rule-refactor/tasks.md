@@ -129,7 +129,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [x] T041 [US1] Reshape `AppliedFix` v2 in `crates/rules/src/audit.rs`: `rule: RuleId`, `severity`, `span`, `fix: AppliedFixDetail`, `message: Message`, `source`, `timestamp`, `classifier_id`, `dry_run`, `input`; `AppliedFixDetail { replacement: AppliedReplacement { canonical: Canonical<CapcoScheme>, confidence, bytes_digest }, original_span: Span, original_digest: Blake3Hash }`; separate `AppliedTextCorrection` line type per PM-D-4 (FR-002, FR-004, FR-026, FR-035; PR-3c) **— STATUS 2026-05-20: DONE — PR 3c.2.D atomic cutover landed the full v2 reshape with `Canonical<S>` provenance, BLAKE3 digesting at promotion time, `Discriminant::Strict | Decoder` derived from `FixSource` at audit-emit time, and the `AppliedTextCorrection` line-type split. `Vec<AuditLine<S>>` sum-type stream preserves cross-record promotion order (PM-D-8).**
 - [X] T042 [US1] Reshape `Diagnostic` v2 in `crates/rules/src/diagnostic.rs`: `rule: RuleId`, `severity`, `span`, `message: Message`, `citation: Citation`, `fix: Option<FixIntent<CapcoScheme>>` (FR-003, FR-018; PR-3c)
 - [x] T043 [US1] Define `Citation::new(section: SectionRef, page: PageNumber, document: AuthoritativeSource)` with const-friendly typed construction (`SectionRef` parsed structure, `PageNumber` non-zero) and CI citation-lint validation for normative/document consistency; avoid document/page-range runtime validation in constructors (FR-018; PR-3c) **— STATUS 2026-05-20: DONE — PR #627 (3c.2.A scaffolding) landed `Citation` + `SectionRef` + `SectionLetter` + `PageNumber` + `AuthoritativeSource` at `crates/rules/src/citation.rs`; constructors are const-oriented and intentionally lightweight (`PageNumber` is a non-zero scalar, not a document-range proof), while citation correctness is enforced by citation-lint in CI rather than runtime page-range checks. Re-exported via `crates/rules/src/lib.rs:80`. Field migration on `Diagnostic.citation` is T042 territory (PR 3c.2.C).**
-- [ ] T044 [US1] Migrate rule-ID convention from `E###`/`W###`/`S###`/`C###` to `RuleId(scheme, predicate_id)` per R-3 dot-nested form across `crates/capco/src/rules.rs`; emit one-time `docs/refactor-006/legacy-rule-id-map.md` listing every retired ID with successor; **migrate the existing R001 flat string `DECODER_RULE_ID = "R001"` (`crates/engine/src/engine.rs:50`) to `RuleId("engine", "r001.decoder-recognized")` per FR-044 sentinel-scheme convention** (FR-026, FR-044, R-3; PR-3c)
+- [x] T044 [US1] Migrate rule-ID convention from `E###`/`W###`/`S###`/`C###` to `RuleId(scheme, predicate_id)` per R-3 dot-nested form across `crates/capco/src/rules.rs`; emit one-time `docs/refactor-006/legacy-rule-id-map.md` listing every retired ID with successor; **migrate the existing R001 flat string `DECODER_RULE_ID = "R001"` (`crates/engine/src/engine.rs:50`) to `RuleId("engine", "recognition.decoder-recognized")` per FR-044 sentinel-scheme convention** (FR-026, FR-044, R-3; PR-3c) **— STATUS 2026-05-22: DONE — dedicated post-PR-10 PR landed the atomic 2-tuple migration + `marque-1.0 → marque-2.0` audit-schema bump under FR-049 unfreeze (commits 9887c00f preflight → 382c7a33 PM clippy). Per T044 PM OD-4, the numeric `r001`/`r002` prefixes from the original spec wording were dropped in favor of descriptive `recognition.decoder-recognized` / `fix.reparse-failed`. Bridge dispatcher simplified to no-op pass-through per OD-8 (catalog row labels ARE the predicate IDs). 28 active CAPCO rules + 27 class-floor + 5 SCI per-system + 10 closure + 15 retired declarative-wrapper + R001/R002 engine sentinels all migrated; 67 corpus fixtures + `EXPECTED_RULE_IDS` pin updated. `closure` added as fifth surface value per OD-1. See `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md` + `docs/refactor-006/2026-05-22-T044-pm-decisions.md` + `docs/refactor-006/legacy-rule-id-map.md`.**
 - [X] T045 [US1] Migrate every rule's `evaluate` to construct `FixIntent<CapcoScheme>` instead of `FixProposal`; rules emit closed-CVE `ReplacementIntent::Cve { token, scope }` for known tokens, `ReplacementIntent::Render { category, directive, scope }` for open-vocab (FR-025; PR-3c) **— STATUS 2026-05-19: DONE (variant) — rules emit `FixIntent` via `Diagnostic::with_fix*`; legacy `FixProposal` retired PR 3c.B Commit 10. `ReplacementIntent` discriminants are `FactAdd`/`FactRemove`/`Recanonicalize` (not spec's `Cve`/`Render`/`Delete`) per architecture redesign mid-3c.B.**
 - [x] T046 [US1] Migrate every rule's diagnostic message construction from `format!`-built strings to `Message::new(MessageTemplate::..., MessageArgs { ... })`; closed-enum dispatch only (FR-003; PR-3c) **— STATUS 2026-05-20: DONE — PR 3c.2.C migrated `Diagnostic.message` to `Message`; PR 3c.2.D wires the closed-enum dispatch into the v1.0 audit-record emit path. `message.template` serializes to `MessageTemplate::as_str()` (variant name verbatim per PM-D-12).**
 - [X] T047 [US1] Implement `Engine::fix_inner` promotion path: filter by `Confidence::combined() ≥ threshold`; sort + non-overlap (C-1, I-3); render `FixIntent<S>` to `Canonical<S>` via `S::render_canonical`; construct `AppliedFix` via `__engine_promote(...)`; pure `marque-engine` ownership (PR-3c) **— STATUS 2026-05-19: DONE — `Engine::fix_inner` at `engine.rs:2043`; promotion via `AppliedFix::__engine_promote` (engine.rs:3000); calls `scheme.apply_intent` + `render_canonical` via `synthesize_intent_only_fixes` (#369/#370 chain); confidence threshold gate + sort + C-1 dedup intact.**
@@ -150,7 +150,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T058a [P] [US1] **I-5 snapshot test** at `crates/engine/tests/audit_sequence_snapshot.rs` per source plan §5 amendment: apply a fixed input through `Engine::fix_inner`, snapshot the emitted `Vec<AppliedFix>` order, assert byte-identical across re-runs (catches monotonic-append regression — `Engine::fix_inner` reordering audit records post-promotion) (PR-3c)
 - [ ] T058b [P] [US1] **I-6 mutation test** at `crates/engine/tests/confidence_threshold_mutation.rs` per source plan §5 amendment: a `cfg(test)`-gated build-flag swaps `Confidence::combined()` for `Confidence::recognition()` in the engine filter; asserts the SC-010 mangled-corpus accuracy gate regresses below baseline (catches accidental introduction of a second threshold operator) (PR-3c)
 
-**Checkpoint** (amended 2026-05-20): Audit-record content-ignorance is a type invariant (achieved at PR 3c.B Commit 10's `marque-mvp-3` bump); canary scan over five-corpus sweep returns zero leaks; legacy rule-IDs retired. The `marque-mvp-3 → marque-1.0` cutover landed across PR 3c.2 (Canonical wire-up + BLAKE3 + closed MessageTemplate JSON via 3c.2.D; `from_parsed_unchecked` adapter retirement via 3c.2.E). The 2-tuple `(scheme, predicate-id)` rule-ID form remains deferred to post-PR-10 per FR-049.
+**Checkpoint** (amended 2026-05-20; amended again 2026-05-22 per T044): Audit-record content-ignorance is a type invariant (achieved at PR 3c.B Commit 10's `marque-mvp-3` bump); canary scan over five-corpus sweep returns zero leaks; legacy rule-IDs retired. The `marque-mvp-3 → marque-1.0` cutover landed across PR 3c.2 (Canonical wire-up + BLAKE3 + closed MessageTemplate JSON via 3c.2.D; `from_parsed_unchecked` adapter retirement via 3c.2.E). The 2-tuple `(scheme, predicate_id)` rule-ID form landed at T044 (2026-05-22) as a dedicated post-PR-10 PR that unfroze FR-049 for a single atomic change and bumped `marque-1.0 → marque-2.0`; the freeze re-engaged at T044's merge. See `docs/refactor-006/legacy-rule-id-map.md`.
 
 ### PR 3d — Vocabulary FormSet + Deprecation validity windows
 
@@ -246,7 +246,7 @@ keyed by `TokenId` rather than baked into the `FormSet` const.
 - [X] T075 [US3] Implement engine registration check at `Engine::new`: `Phase::Localized` rule's emitted `FixIntent::target_span` must be sub-token-only; `Phase::WholeMarking` must cover full marking; reject violators with `EngineConstructionError::PhaseSpanShapeMismatch` (FR-021; PR-7)
 - [X] T076 [US3] Restructure `Engine::fix_inner` into two passes: pass 1 dispatches `Phase::Localized` rules' fixes via single-pass forward splice; re-parse the post-pass-1 buffer (PR-7)
 - [X] T077 [US3] Implement re-parse failure path: when `parse(post_pass_1_buffer)` fails, emit `R002` diagnostic carrying `contributing_pass1_fix_ids: SmallVec<[RuleId; 4]>`; retain pass-1 audit records; do not run pass 2; return pass-1 buffer as corrected document (FR-024; PR-7)
-- [X] T078 [US3] Define `R002` synthetic diagnostic: const `R002_RULE_ID = RuleId("engine", "r002.reparse-failed")` per FR-044 sentinel-scheme convention; `R002Diagnostic { contributing_pass1_fix_ids, failure_span, message }`; minted by `marque-engine`, never by rule crates (FR-024, FR-041, FR-044; PR-7)
+- [X] T078 [US3] Define `R002` synthetic diagnostic: const `R002_RULE_ID = RuleId::new("engine", "fix.reparse-failed")` per FR-044 sentinel-scheme convention (numeric `r002` prefix dropped at T044 per PM OD-4); `R002Diagnostic { contributing_pass1_fix_ids, failure_span, message }`; minted by `marque-engine`, never by rule crates (FR-024, FR-041, FR-044; PR-7)
 - [X] T079 [US3] Add `MessageTemplate::ReparseFailed` variant (already reserved at PR 3c per FR-035) with associated `MessageArgs` shape; implement display rendering (FR-003, FR-024; PR-7)
 - [X] T080 [US3] Implement pre-pass-1 attrs cache per R-4: `SmallVec<[CanonicalAttrs<'src>; 4]>` owned by `Engine::fix_inner` stack frame; populate per-marking only when the marking's span overlaps a pass-1 fix span; pass to `Phase::WholeMarking` rules via `RuleContext.pre_pass_1_attrs: Option<&CanonicalAttrs<'src>>` (FR-023, R-4; PR-7)
 - [X] T081 [US3] Implement pass 2 dispatch: for each `Phase::WholeMarking` rule, evaluate against post-pass-1 `CanonicalAttrs` plus `pre_pass_1_attrs`; I-19 reshape-aware re-validation per FR-023 (same `(scheme, predicate-id)` → no re-fire; different rule → fire); I-18 non-overlap with pass-1 spans, demote overlapping pass-2 diagnostics to `Severity::Suggest` not auto-applied (FR-022, FR-023; PR-7)
@@ -601,3 +601,44 @@ this file, the remaining open items reduce to four follow-up tracks
 ongoing process, PR 6 N/A row, SupersessionSet #665). The structural
 refactor work is functionally complete; FR-049 stability freeze
 begins at PR 10.B merge.
+
+---
+
+## T044 (Post-PR-10 RuleId 2-tuple migration) Status — 2026-05-22
+
+Branch `feat/T044-rule-id-tuple-migration` (off `staging`); PR title
+`feat(rules): T044 — RuleId 2-tuple migration + marque-1.0 → marque-2.0 audit-schema bump`.
+
+T044 is the dedicated post-PR-10 PR that unfroze FR-049 for a single
+atomic change. The freeze re-engages at T044's merge with `marque-2.0`
+as the new inflection.
+
+Tasks closed in this PR:
+
+- [X] T044 — `RuleId` 2-tuple migration (the closeout commit range:
+  preflight `9887c00f` → PM clippy `382c7a33`; 26 commits across
+  Wave 1 / Wave 2 / Wave 3). Atomic with the `marque-1.0 → marque-2.0`
+  audit-schema bump. Engine sentinels migrated per PM OD-4 (drop the
+  `r001`/`r002` numeric prefix); bridge dispatcher simplified per PM
+  OD-8 (no-op pass-through; catalog row labels ARE the predicate IDs);
+  `closure` added as fifth surface per PM OD-1 refinement.
+
+Adjacent task touchpoints (status notes updated, not re-opened):
+
+- T078 — `R002_RULE_ID` constant body updated from the spec's
+  `"r002.reparse-failed"` placeholder to the T044 PM-OD-4 form
+  `"fix.reparse-failed"`.
+- T108e / T108f — `AuditNote.structural.row_name` and the
+  `[closure_rules]` config keyspace migrated to the wire-string form
+  per PM OD-1 (`"capco:closure.dissem.noforn-if-caveated"`, etc.).
+
+Artifacts:
+
+- `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md` — architect
+  plan with the predicate-ID convention pinned in §1.
+- `docs/refactor-006/2026-05-22-T044-pm-decisions.md` — PM closure on
+  OD-1 through OD-8.
+- `docs/refactor-006/2026-05-22-T044-callsite-inventory.md` — callsite
+  inventory backing the migration.
+- `docs/refactor-006/legacy-rule-id-map.md` — the 114-row rename
+  table; living document per plan §5 R-4.
