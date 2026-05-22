@@ -1,5 +1,5 @@
 {
   "diagnostics": [
-    {"rule": "E058", "span": {"start": 14, "end": 18}}
+    {"rule": {"scheme": "capco", "predicate_id": "banner.classification.floor-sar"}, "span": {"start": 14, "end": 18}}
   ]
 }

@@ -1,7 +1,7 @@
 {
   "_note": "CAPCO-2016 §H.6 p106 — bare CNWDI is structurally a sub-marker of RD; canonical compound portion mark is RD-CNWDI. Fires E067 bare-canonical-compound + S008 §H.8 p154 RELIDO closure suggestion.",
   "diagnostics": [
-    {"rule": "E067", "span": {"start": 4, "end": 9}},
-    {"rule": "S008", "span": {"start": 0, "end": 10}}
+    {"rule": {"scheme": "capco", "predicate_id": "marking.recanonicalize.bare-canonical-compound"}, "span": {"start": 4, "end": 9}},
+    {"rule": {"scheme": "capco", "predicate_id": "portion.dissem.relido-implied-by-closure"}, "span": {"start": 0, "end": 10}}
   ]
 }

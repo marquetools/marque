@@ -1,6 +1,6 @@
 {
   "_note": "CAPCO-2016 §H.4 p85 — bare KDK is retired (NSG PM 3802); KDK/KLONDIKE → TK migration requires originator-supplied compartment. Fires E065 deprecated-sci-long-form.",
   "diagnostics": [
-    {"rule": "E065", "span": {"start": 12, "end": 19}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.sci.deprecated-long-form"}, "span": {"start": 12, "end": 19}}
   ]
 }

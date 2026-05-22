@@ -1,7 +1,7 @@
 {
   "diagnostics": [
-    {"rule": "E037", "span": {"start": 8, "end": 10}},
-    {"rule": "E041", "span": {"start": 11, "end": 13}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.dissem.nodis-conflicts-exdis"}, "span": {"start": 8, "end": 10}},
+    {"rule": {"scheme": "capco", "predicate_id": "portion.dissem.nodis-supersedes-exdis-in-portion"}, "span": {"start": 11, "end": 13}}
   ],
   "_note": "Portion with both NODIS and EXDIS fires both E037 (mutual exclusion, Error on the first NonIcDissem at byte 8 = ND) and E041 (NODIS supersedes EXDIS in the portion, Warn on EXDIS at byte 11)."
 }
