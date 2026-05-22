@@ -14,6 +14,28 @@
 //!
 //! See `decisions.md` D19 B and `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
 //! Stage F for the binding spec.
+//!
+//! # T044 wire-string convention (HIGH-3 reviewer finding, 2026-05-22)
+//!
+//! Post-T044 closure-rule keys take the wire-string form
+//! `<scheme>:closure.<category>.<predicate>` — e.g.,
+//! `"capco:closure.dissem.noforn-if-caveated"` (PM OD-1 + the
+//! `closure_table.rs::CLOSURE_TABLE` row inventory in
+//! `crates/capco/src/scheme/closure_table.rs`). The legacy slash form
+//! (`"capco/noforn-if-no-fdr"`, etc.) was retired at T044.
+//!
+//! The engine does not yet consume `closure_rules.overrides` on the
+//! hot path — the config map is a forward-looking surface for the
+//! eventual closure-rule severity dispatch. Tests here pin the
+//! wire-string convention so whoever wires the config-to-engine path
+//! later starts with the right key shape.
+//!
+//! The `MARQUE_CLOSURE_RULES_*` env-var encoding in
+//! `crates/config/src/lib.rs::env_var_to_closure_rule_name` still
+//! emits the legacy slash form (the encoding hasn't been migrated to
+//! the wire-string colon separator yet); the env-var-namespace tests
+//! below preserve that surface verbatim until the encoding catches
+//! up.
 
 use marque_config::ConfigError;
 use std::fs;
@@ -168,13 +190,13 @@ fn explicit_empty_closure_rules_section() {
 // Category 2: Per-row overrides for each valid severity
 // ---------------------------------------------------------------------------
 
-/// `[closure_rules] "capco/foo" = "off"` must round-trip as "off".
+/// `[closure_rules] "capco:closure.dissem.noforn-if-caveated" = "off"` must round-trip as "off".
 #[test]
 fn closure_rules_severity_off() {
     let dir = make_tmpdir("closure-off");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"off\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"off\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -185,7 +207,7 @@ fn closure_rules_severity_off() {
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("off"),
         "closure rule severity 'off' must round-trip"
@@ -193,13 +215,13 @@ fn closure_rules_severity_off() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `[closure_rules] "capco/foo" = "suggest"` must round-trip as "suggest".
+/// `[closure_rules] "capco:closure.dissem.noforn-if-caveated" = "suggest"` must round-trip as "suggest".
 #[test]
 fn closure_rules_severity_suggest() {
     let dir = make_tmpdir("closure-suggest");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"suggest\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"suggest\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -210,7 +232,7 @@ fn closure_rules_severity_suggest() {
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("suggest"),
         "closure rule severity 'suggest' must round-trip"
@@ -218,13 +240,13 @@ fn closure_rules_severity_suggest() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `[closure_rules] "capco/foo" = "info"` must round-trip as "info".
+/// `[closure_rules] "capco:closure.dissem.noforn-if-caveated" = "info"` must round-trip as "info".
 #[test]
 fn closure_rules_severity_info() {
     let dir = make_tmpdir("closure-info");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"info\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"info\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -235,7 +257,7 @@ fn closure_rules_severity_info() {
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("info"),
         "closure rule severity 'info' must round-trip"
@@ -243,13 +265,13 @@ fn closure_rules_severity_info() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `[closure_rules] "capco/foo" = "warn"` must round-trip as "warn".
+/// `[closure_rules] "capco:closure.dissem.noforn-if-caveated" = "warn"` must round-trip as "warn".
 #[test]
 fn closure_rules_severity_warn() {
     let dir = make_tmpdir("closure-warn");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"warn\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"warn\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -260,7 +282,7 @@ fn closure_rules_severity_warn() {
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("warn"),
         "closure rule severity 'warn' must round-trip"
@@ -268,13 +290,13 @@ fn closure_rules_severity_warn() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `[closure_rules] "capco/foo" = "error"` must round-trip as "error".
+/// `[closure_rules] "capco:closure.dissem.noforn-if-caveated" = "error"` must round-trip as "error".
 #[test]
 fn closure_rules_severity_error() {
     let dir = make_tmpdir("closure-error");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"error\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"error\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -285,7 +307,7 @@ fn closure_rules_severity_error() {
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("error"),
         "closure rule severity 'error' must round-trip"
@@ -297,7 +319,7 @@ fn closure_rules_severity_error() {
 // Category 3: Fix rejection at load
 // ---------------------------------------------------------------------------
 
-/// `[closure_rules] "capco/foo" = "fix"` must fail with
+/// `[closure_rules] "capco:closure.dissem.noforn-if-caveated" = "fix"` must fail with
 /// `ConfigError::InvalidClosureRuleSeverity` at config load.
 ///
 /// Closure firings propagate facts, not byte-level edits — "fix" severity
@@ -307,7 +329,7 @@ fn closure_rules_fix_severity_rejected() {
     let dir = make_tmpdir("closure-fix-rejected");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"fix\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"fix\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -316,7 +338,7 @@ fn closure_rules_fix_severity_rejected() {
 
     match &err {
         ConfigError::InvalidClosureRuleSeverity { rule, hint } => {
-            assert_eq!(rule, "capco/noforn-if-no-fdr");
+            assert_eq!(rule, "capco:closure.dissem.noforn-if-caveated");
             // The hint must mention an alternative severity to guide the user.
             assert!(
                 hint.contains("fix") || hint.contains("fact") || hint.contains("byte"),
@@ -329,7 +351,7 @@ fn closure_rules_fix_severity_rejected() {
     // The error message must include both the rule name and useful guidance.
     let msg = err.to_string();
     assert!(
-        msg.contains("capco/noforn-if-no-fdr"),
+        msg.contains("capco:closure.dissem.noforn-if-caveated"),
         "error message must include the rule name; got: {msg:?}"
     );
     // The message must suggest a valid alternative (per plan §1.5b / preflight F4).
@@ -358,7 +380,7 @@ fn closure_rules_unknown_severity_rejected() {
     let dir = make_tmpdir("closure-unknown-severity");
     write_project_config(
         &dir,
-        "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"err\"\n",
+        "[closure_rules]\n\"capco:closure.dissem.noforn-if-caveated\" = \"err\"\n",
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -400,7 +422,7 @@ fn closure_rules_unknown_severity_rejected() {
 /// A key present in both `[rules]` and `[closure_rules]` must resolve
 /// independently in each section — they must NOT cross-talk.
 ///
-/// This test uses the same string `"capco/foo"` as a key in both sections
+/// This test uses the same string `"capco:closure.dissem.noforn-if-caveated"` as a key in both sections
 /// (both are `HashMap<String, String>` at the file level) and asserts the
 /// two overrides land in their respective config fields without interference.
 #[test]
@@ -409,9 +431,9 @@ fn rules_and_closure_rules_are_section_isolated() {
     let content = format!(
         "[capco]\nversion = \"{SCHEMA_VERSION}\"\n\n\
         [rules]\n\
-        \"capco/foo\" = \"warn\"\n\n\
+        \"capco:closure.dissem.noforn-if-caveated\" = \"warn\"\n\n\
         [closure_rules]\n\
-        \"capco/foo\" = \"error\"\n"
+        \"capco:closure.dissem.noforn-if-caveated\" = \"error\"\n"
     );
     fs::write(dir.join(".marque.toml"), content).unwrap();
 
@@ -424,9 +446,9 @@ fn rules_and_closure_rules_are_section_isolated() {
 
     // [rules] → config.rules.overrides
     assert_eq!(
-        config.rules.overrides.get("capco/foo").map(String::as_str),
+        config.rules.overrides.get("capco:closure.dissem.noforn-if-caveated").map(String::as_str),
         Some("warn"),
-        "[rules] capco/foo must be 'warn'"
+        "[rules] capco:closure.dissem.noforn-if-caveated must be 'warn'"
     );
 
     // [closure_rules] → config.closure_rules.overrides
@@ -434,19 +456,19 @@ fn rules_and_closure_rules_are_section_isolated() {
         config
             .closure_rules
             .overrides
-            .get("capco/foo")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("error"),
-        "[closure_rules] capco/foo must be 'error'"
+        "[closure_rules] capco:closure.dissem.noforn-if-caveated must be 'error'"
     );
 
     // Cross-talk: [rules] must not see the closure value and vice versa.
     assert_ne!(
-        config.rules.overrides.get("capco/foo").map(String::as_str),
+        config.rules.overrides.get("capco:closure.dissem.noforn-if-caveated").map(String::as_str),
         config
             .closure_rules
             .overrides
-            .get("capco/foo")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         "rules and closure_rules must NOT cross-talk for the same key"
     );
@@ -476,18 +498,20 @@ fn rules_section_does_not_populate_closure_rules() {
 // Category 5: TOML quoted-key form
 // ---------------------------------------------------------------------------
 
-/// Closure-rule names containing `/` require TOML quoted-key form.
-/// Verify that the full example from plan §1.5 / rust-preflight B4 parses
+/// Post-T044 closure-rule names contain `:` and `.` (the wire-string
+/// `<scheme>:closure.<category>.<predicate>` form), which TOML requires
+/// to be quoted. Verify that the canonical wire-string keys parse
 /// correctly.
 #[test]
-fn closure_rules_quoted_key_with_slash_parses() {
+fn closure_rules_quoted_key_with_wire_string_parses() {
     let dir = make_tmpdir("closure-quoted-key");
-    // Both keys use the slash-containing form that TOML requires quoting for.
+    // Both keys use the wire-string form that TOML requires quoting for
+    // (colon and dot are special outside string keys).
     let content = format!(
         "[capco]\nversion = \"{SCHEMA_VERSION}\"\n\n\
         [closure_rules]\n\
-        \"capco/noforn-if-no-fdr\" = \"warn\"\n\
-        \"capco/relido-if-no-fdr\" = \"off\"\n"
+        \"capco:closure.dissem.noforn-if-caveated\" = \"warn\"\n\
+        \"capco:closure.dissem.relido-if-sci-and-not-incompatible\" = \"off\"\n"
     );
     fs::write(dir.join(".marque.toml"), content).unwrap();
 
@@ -499,19 +523,19 @@ fn closure_rules_quoted_key_with_slash_parses() {
         config
             .closure_rules
             .overrides
-            .get("capco/noforn-if-no-fdr")
+            .get("capco:closure.dissem.noforn-if-caveated")
             .map(String::as_str),
         Some("warn"),
-        "capco/noforn-if-no-fdr should be 'warn'"
+        "capco:closure.dissem.noforn-if-caveated should be 'warn'"
     );
     assert_eq!(
         config
             .closure_rules
             .overrides
-            .get("capco/relido-if-no-fdr")
+            .get("capco:closure.dissem.relido-if-sci-and-not-incompatible")
             .map(String::as_str),
         Some("off"),
-        "capco/relido-if-no-fdr should be 'off'"
+        "capco:closure.dissem.relido-if-sci-and-not-incompatible should be 'off'"
     );
 
     let _ = fs::remove_dir_all(&dir);
@@ -524,9 +548,9 @@ fn closure_rules_multiple_entries_all_loaded() {
     let content = format!(
         "[capco]\nversion = \"{SCHEMA_VERSION}\"\n\n\
         [closure_rules]\n\
-        \"capco/noforn-if-no-fdr\" = \"warn\"\n\
-        \"capco/relido-if-no-fdr\" = \"off\"\n\
-        \"capco/sci-requires-ts\" = \"error\"\n"
+        \"capco:closure.dissem.noforn-if-caveated\" = \"warn\"\n\
+        \"capco:closure.dissem.relido-if-sci-and-not-incompatible\" = \"off\"\n\
+        \"capco:closure.dissem.si-g-implies-orcon\" = \"error\"\n"
     );
     fs::write(dir.join(".marque.toml"), content).unwrap();
 
@@ -544,15 +568,25 @@ fn closure_rules_multiple_entries_all_loaded() {
 // Category 6: Env-var override (MARQUE_CLOSURE_RULES_*)
 // ---------------------------------------------------------------------------
 
-/// `MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR=warn` must override a
-/// file-level value for `"capco/noforn-if-no-fdr"`.
+/// `MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR=warn` is decoded by
+/// the env-var encoder to the legacy slash form
+/// `"capco/noforn-if-no-fdr"` (per
+/// `config/src/lib.rs::env_var_to_closure_rule_name`). The encoder
+/// has NOT been migrated to the T044 wire-string form yet — the
+/// `__` → `/` substitution is hardcoded — so this test asserts on
+/// the encoder's actual output, NOT the canonical wire-string. When
+/// the encoder migrates (separate follow-up; see module-level note),
+/// this test's expected key shape will need to flip too.
 ///
-/// Naming convention: `__` → `/`, entire suffix lowercased.
-/// e.g. `CAPCO__NOFORN_IF_NO_FDR` → `capco/noforn-if-no-fdr`
+/// The env-var override path is keyed by whatever the encoder
+/// produces; the test pins that the file-level value gets overridden
+/// when the encoder-produced key matches.
 #[test]
 fn env_var_overrides_closure_rule_file_value() {
     let dir = make_tmpdir("closure-env-override");
-    // Project config sets "info"; env var overrides to "warn".
+    // Both keys use the legacy slash form to match the encoder's
+    // current output — the file value gets overridden when the same
+    // key is in both file and env.
     write_project_config(
         &dir,
         "[closure_rules]\n\"capco/noforn-if-no-fdr\" = \"info\"\n",
@@ -570,14 +604,17 @@ fn env_var_overrides_closure_rule_file_value() {
             .get("capco/noforn-if-no-fdr")
             .map(String::as_str),
         Some("warn"),
-        "MARQUE_CLOSURE_RULES_* env var must override file-level value"
+        "MARQUE_CLOSURE_RULES_* env var must override file-level value (legacy \
+         slash-form pre-encoder-migration)"
     );
     let _ = fs::remove_dir_all(&dir);
 }
 
 /// `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR=error` without a file-level
 /// entry must add the override to `config.closure_rules.overrides` (the env
-/// var is the sole source of the row's severity).
+/// var is the sole source of the row's severity). Encoder produces the
+/// legacy slash form — see the note on the preceding test for why this
+/// is the wire-string form's pre-migration shape.
 #[test]
 fn env_var_adds_closure_rule_when_absent_in_file() {
     let dir = make_tmpdir("closure-env-add");
@@ -595,7 +632,8 @@ fn env_var_adds_closure_rule_when_absent_in_file() {
             .get("capco/relido-if-no-fdr")
             .map(String::as_str),
         Some("error"),
-        "MARQUE_CLOSURE_RULES_* env var must add entry absent in file"
+        "MARQUE_CLOSURE_RULES_* env var must add entry absent in file (legacy \
+         slash-form pre-encoder-migration)"
     );
     let _ = fs::remove_dir_all(&dir);
 }

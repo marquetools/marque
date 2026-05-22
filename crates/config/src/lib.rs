@@ -176,7 +176,8 @@ pub struct Config {
     pub rules: RuleConfig,
     /// Per-closure-rule severity overrides from `[closure_rules]` in `.marque.toml`.
     ///
-    /// Keyed by closure rule name (e.g., `"capco/noforn-if-no-fdr"`).
+    /// Keyed by closure rule name in the post-T044 wire-string form
+    /// (e.g., `"capco:closure.dissem.noforn-if-caveated"`).
     /// `Severity::Fix` is rejected at config load — closure firings propagate
     /// facts, not byte-level edits. See `decisions.md` D19 B.
     pub closure_rules: ClosureRuleConfig,
@@ -240,10 +241,10 @@ pub struct RuleConfig {
 /// Per-closure-rule severity overrides.
 ///
 /// Per `decisions.md` D19 B + plan §1.5: section-isolated from `[rules]`.
-/// Keyed by `ClosureRule.name` (slash-containing, e.g.
-/// `"capco/noforn-if-no-fdr"`). `Severity::Fix` is rejected at config
-/// load because closure firings are not byte-level fixes — see
-/// `ConfigError::InvalidClosureRuleSeverity`.
+/// Keyed by `ClosureRule.name` in the post-T044 wire-string form
+/// (e.g. `"capco:closure.dissem.noforn-if-caveated"`).
+/// `Severity::Fix` is rejected at config load because closure firings
+/// are not byte-level fixes — see `ConfigError::InvalidClosureRuleSeverity`.
 #[derive(Debug, Clone, Default)]
 pub struct ClosureRuleConfig {
     /// Map of closure-rule name → configured severity string
@@ -296,14 +297,15 @@ struct ConfigFile {
     user: Option<UserConfigFile>,
     #[serde(default)]
     rules: HashMap<String, String>,
-    /// Closure-rule severity overrides. Keys use quoted TOML form because
-    /// slash-containing names like `"capco/noforn-if-no-fdr"` are not valid
-    /// as bare TOML keys (rust-preflight B4). Example:
+    /// Closure-rule severity overrides. Keys use the T044 wire-string
+    /// form (`<scheme>:closure.<category>.<predicate>`) and must be
+    /// quoted in TOML because `:` and `.` are not valid in bare TOML
+    /// keys. Example:
     ///
     /// ```toml
     /// [closure_rules]
-    /// "capco/noforn-if-no-fdr" = "warn"
-    /// "capco/relido-if-no-fdr" = "off"
+    /// "capco:closure.dissem.noforn-if-caveated" = "warn"
+    /// "capco:closure.dissem.relido-if-sci-and-not-incompatible" = "off"
     /// ```
     #[serde(default)]
     closure_rules: HashMap<String, String>,
@@ -642,6 +644,16 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
 /// - `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR` → `"capco/relido-if-no-fdr"`
 ///
 /// Returns `None` if the key does not have the expected prefix.
+///
+/// **T044 status:** the encoder currently emits the pre-T044 legacy
+/// slash form. The `.marque.toml [closure_rules]` keys use the
+/// post-T044 wire-string form (`<scheme>:closure.<category>.<predicate>`).
+/// The two surfaces will land on the same shape when the env-var
+/// encoder is migrated; until then, env-var-derived overrides and
+/// file-derived overrides land in `closure_rules.overrides` under
+/// different keys. The engine does not yet consume
+/// `closure_rules.overrides` so this divergence is forward-looking
+/// only; the migration is its own follow-up.
 #[cfg(feature = "toml-loader")]
 fn env_var_to_closure_rule_name(env_key: &str) -> Option<String> {
     const PREFIX: &str = "MARQUE_CLOSURE_RULES_";
