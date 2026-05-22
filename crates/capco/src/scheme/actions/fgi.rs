@@ -22,7 +22,7 @@ use marque_ism::MarkingClassification;
 /// `PageContext::expected_*` surface in PR 4b-E) so the lattice and
 /// scheme projection paths agree on which portions contribute which
 /// producers to the FGI axis. The lattice-native form lives in
-/// `FgiSet::from_attrs_iter` (see `crates/capco/src/lattice.rs`);
+/// `FgiSet::from_attrs_iter` (see `crates/capco/src/lattice/fgi.rs`);
 /// this helper isolates the per-variant extraction logic.
 ///
 /// Per-variant semantic (§H.7 p123 + p128, ISM `Nato`/`Joint`

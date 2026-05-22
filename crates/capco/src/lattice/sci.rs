@@ -423,6 +423,44 @@ mod tests {
     }
 
     #[test]
+    fn sci_set_text_collision_between_published_and_custom_is_deterministic() {
+        // Regression test for the `HierarchicalTreeSet::sorted_entries`
+        // determinism fix (PR #703 round 2). Distinct outer keys can
+        // project to the same `key_text` string — e.g. the bypassing
+        // construction below puts `SystemKey::Published(Si)` and
+        // `SystemKey::Custom("SI")` into the same SciSet. Both project
+        // to `"SI"`, so the `sar_sort_key`-then-`text` comparator chain
+        // returns `Equal`. `slice::sort_by` is unstable, so without the
+        // final `a.0.cmp(b.0)` tie-breaker on the outer key, the
+        // relative order of these two distinct entries could vary
+        // across Rust versions or future LLVM upgrades. With the
+        // tie-breaker, the comparator is a strict total order on the
+        // entry-pair domain and the output ordering is determined by
+        // `SystemKey`'s derived `Ord` impl
+        // (`Published(_) < NatoSap(_) < Custom(_)`).
+        let published = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([]),
+            None,
+        );
+        let custom = SciMarking::new(SciControlSystem::Custom("SI".into()), Box::new([]), None);
+        let set = SciSet::from_markings(&[published.clone(), custom.clone()]);
+        let out = set.to_markings();
+        assert_eq!(out.len(), 2);
+        // Published variant comes first per SystemKey's derived Ord.
+        assert!(matches!(
+            &out[0].system,
+            SciControlSystem::Published(SciControlBare::Si)
+        ));
+        assert!(matches!(&out[1].system, SciControlSystem::Custom(s) if s.as_str() == "SI"));
+
+        // Running the same set-build twice MUST produce byte-identical
+        // output — the determinism property the comparator now guarantees.
+        let set2 = SciSet::from_markings(&[custom, published]);
+        assert_eq!(set.to_markings(), set2.to_markings());
+    }
+
+    #[test]
     fn sci_set_custom_system_text_used_for_ordering() {
         // Two customs; ordering in output uses SAR-style sort keys
         // (numeric first, then alpha).

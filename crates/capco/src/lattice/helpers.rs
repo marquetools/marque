@@ -205,6 +205,15 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
     /// sort keys collide (e.g., two numeric identifiers that both map to
     /// `u64::MAX` under overflow) still produce a stable, total order.
     ///
+    /// A final tie-breaker on the outer key `K` itself is applied after
+    /// the text comparison. Distinct outer keys can project to the same
+    /// `key_text` string — e.g. `SystemKey::Published(SciControlBare::Si)`
+    /// and a user-constructed `SystemKey::Custom("SI")` both render as
+    /// `"SI"`. Without the outer-key tie-breaker, the comparator returns
+    /// `Equal` for two distinct entries and `slice::sort_by` (unstable)
+    /// would order them non-deterministically across Rust versions. With
+    /// it, the comparator is a strict total order on the entry-pair domain.
+    ///
     /// Inline-4 covers the typical outer-key count (SCI: SI/TK/HCS/G;
     /// SAR: ≤4 programs per portion in ordinary documents) so the sorted
     /// scratch buffer stays on the stack on the hot path (LA-4 fix per
@@ -239,6 +248,7 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
             marque_ism::sar_sort_key(ta)
                 .cmp(&marque_ism::sar_sort_key(tb))
                 .then_with(|| ta.cmp(tb))
+                .then_with(|| a.0.cmp(b.0))
         });
         entries
     }
