@@ -197,7 +197,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: None,
     },
     // §H.4 SCI compound forms where the Authorized Banner Line Abbreviation
-    // equals the Authorized Portion Mark. CAPCO §D.1 p27 line 560 authorises
+    // equals the Authorized Portion Mark. CAPCO §D.1 p27 line 560 authorizes
     // EITHER the Marking Title OR the Authorized Abbreviation in the banner
     // line — `banner` is set to the Authorized Abbreviation (== portion),
     // not the longer Marking Title, so same-form semantics apply and rules
