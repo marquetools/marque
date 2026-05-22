@@ -1047,7 +1047,7 @@ pub struct TextCorrection {
 impl<S: MarkingScheme> Clone for Diagnostic<S> {
     fn clone(&self) -> Self {
         Self {
-            rule: self.rule.clone(),
+            rule: self.rule,
             severity: self.severity,
             span: self.span,
             candidate_span: self.candidate_span,

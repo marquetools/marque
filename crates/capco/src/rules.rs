@@ -5486,7 +5486,7 @@ fn evaluate_sar_banner_rollup(
             let replacement = format!("/{}", sorted_missing.join("/"));
 
             vec![make_fix_diagnostic(FixDiagnosticParams {
-                rule: row.rule_id.clone(),
+                rule: row.rule_id,
                 severity: row.severity,
                 source: FixSource::BuiltinRule,
                 span: insertion_span,
@@ -5517,7 +5517,7 @@ fn evaluate_sar_banner_rollup(
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
             vec![Diagnostic::new(
-                row.rule_id.clone(),
+                row.rule_id,
                 Severity::Error,
                 span,
                 Message::new(
@@ -5635,7 +5635,7 @@ fn evaluate_sci_banner_rollup(
         // G13: per-system detail dropped from the typed `Message`;
         // category=CAT_SCI identifies the axis.
         return vec![Diagnostic::new(
-            row.rule_id.clone(),
+            row.rule_id,
             Severity::Error,
             Span::new(0, 0),
             Message::new(
@@ -5668,7 +5668,7 @@ fn evaluate_sci_banner_rollup(
     // PM-C-6). The canonical replacement still rides on
     // `Diagnostic.text_correction.replacement` for the engine's apply path.
     vec![make_fix_diagnostic(FixDiagnosticParams {
-        rule: row.rule_id.clone(),
+        rule: row.rule_id,
         severity: row.severity,
         source: FixSource::BuiltinRule,
         span: fix_span,
@@ -5759,7 +5759,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
             let insertion = Span::new(last_span.end, last_span.end);
             let replacement = format!("/{required_str}");
             vec![make_fix_diagnostic(FixDiagnosticParams {
-                rule: row.rule_id.clone(),
+                rule: row.rule_id,
                 severity: row.severity,
                 source: FixSource::BuiltinRule,
                 span: insertion,
@@ -5789,7 +5789,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
             // G13: drop the runtime `required_str` interpolation.
             let _ = required_str;
             vec![Diagnostic::new(
-                row.rule_id.clone(),
+                row.rule_id,
                 Severity::Error,
                 span,
                 Message::new(
@@ -5898,7 +5898,7 @@ fn evaluate_classification_banner_rollup(
     const CITATION: Citation = capco(SectionLetter::H, 7, 123);
 
     vec![Diagnostic::new(
-        row.rule_id.clone(),
+        row.rule_id,
         row.severity,
         span,
         Message::new(
@@ -6016,7 +6016,7 @@ fn evaluate_fgi_marker_banner_rollup(
     const CITATION: Citation = capco(SectionLetter::H, 7, 124);
 
     vec![Diagnostic::new(
-        row.rule_id.clone(),
+        row.rule_id,
         row.severity,
         span,
         Message::new(

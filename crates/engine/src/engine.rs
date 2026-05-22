@@ -2238,7 +2238,7 @@ impl Engine {
             .filter(|d| d.severity != Severity::Suggest)
             .filter_map(|d| {
                 d.text_correction.as_ref().map(|tc| TextCorrectionProposal {
-                    rule: d.rule.clone(),
+                    rule: d.rule,
                     severity: d.severity,
                     span: d.span,
                     replacement: tc.replacement.clone(),
@@ -2274,11 +2274,11 @@ impl Engine {
                 next_end = Some(fix.span.start);
                 kept.push(fix.clone());
             } else {
-                dropped_keys.insert((fix.rule.clone(), fix.span));
+                dropped_keys.insert((fix.rule, fix.span));
             }
         }
         let kept_keys: HashSet<(RuleId, Span)> =
-            kept.iter().map(|f| (f.rule.clone(), f.span)).collect();
+            kept.iter().map(|f| (f.rule, f.span)).collect();
         // Resurrect the diagnostics for the dropped fixes so they can
         // surface via `remaining_diagnostics`.
         let dropped_diags: Vec<Diagnostic<CapcoScheme>> = lint
@@ -2286,8 +2286,8 @@ impl Engine {
             .iter()
             .filter(|d| {
                 d.text_correction.is_some()
-                    && dropped_keys.contains(&(d.rule.clone(), d.span))
-                    && !kept_keys.contains(&(d.rule.clone(), d.span))
+                    && dropped_keys.contains(&(d.rule, d.span))
+                    && !kept_keys.contains(&(d.rule, d.span))
             })
             .cloned()
             .collect();
@@ -2994,19 +2994,19 @@ impl<'engine> TwoPassFixer<'engine> {
         for line in &all_audit_lines {
             match line {
                 AuditLine::AppliedFix(fix) => {
-                    applied_keys.insert((fix.rule.clone(), fix.span));
+                    applied_keys.insert((fix.rule, fix.span));
                 }
                 AuditLine::TextCorrection(tc) => {
-                    applied_keys.insert((tc.rule.clone(), tc.span));
+                    applied_keys.insert((tc.rule, tc.span));
                 }
                 _ => {}
             }
         }
         for k in &pass1_applied_keys {
-            applied_keys.insert(k.clone());
+            applied_keys.insert(*k);
         }
         for k in &pass2.applied_keys {
-            applied_keys.insert(k.clone());
+            applied_keys.insert(*k);
         }
 
         let mut remaining_diagnostics: Vec<Diagnostic<CapcoScheme>> = lint
@@ -3015,9 +3015,9 @@ impl<'engine> TwoPassFixer<'engine> {
             .filter(|d| {
                 let fix_applied = if d.fix.is_some() {
                     let span = d.candidate_span.unwrap_or(d.span);
-                    applied_keys.contains(&(d.rule.clone(), span))
+                    applied_keys.contains(&(d.rule, span))
                 } else if d.text_correction.is_some() {
-                    applied_keys.contains(&(d.rule.clone(), d.span))
+                    applied_keys.contains(&(d.rule, d.span))
                 } else {
                     false
                 };
@@ -3333,7 +3333,7 @@ impl<'engine> TwoPassFixer<'engine> {
                     partial_lint: lint.clone(),
                 });
             }
-            let key = (fix.rule.clone(), fix.span);
+            let key = (fix.rule, fix.span);
             applied_keys.insert(key);
 
             // PM-D-6 / G13: hash pre-fix bytes for the
@@ -3517,8 +3517,8 @@ impl<'engine> TwoPassFixer<'engine> {
                 AuditLine::TextCorrection(tc) => &tc.rule,
                 _ => continue,
             };
-            if seen.insert(rule.clone()) {
-                ids.push(rule.clone());
+            if seen.insert(*rule) {
+                ids.push(*rule);
             }
         }
         ids.sort();
@@ -3558,10 +3558,10 @@ impl<'engine> TwoPassFixer<'engine> {
         for line in &all_audit_lines {
             match line {
                 AuditLine::AppliedFix(fix) => {
-                    applied_keys.insert((fix.rule.clone(), fix.span));
+                    applied_keys.insert((fix.rule, fix.span));
                 }
                 AuditLine::TextCorrection(tc) => {
-                    applied_keys.insert((tc.rule.clone(), tc.span));
+                    applied_keys.insert((tc.rule, tc.span));
                 }
                 _ => {}
             }
@@ -3573,9 +3573,9 @@ impl<'engine> TwoPassFixer<'engine> {
             .filter(|d| {
                 let fix_applied = if d.fix.is_some() {
                     let span = d.candidate_span.unwrap_or(d.span);
-                    applied_keys.contains(&(d.rule.clone(), span))
+                    applied_keys.contains(&(d.rule, span))
                 } else if d.text_correction.is_some() {
-                    applied_keys.contains(&(d.rule.clone(), d.span))
+                    applied_keys.contains(&(d.rule, d.span))
                 } else {
                     false
                 };
@@ -3741,7 +3741,7 @@ fn apply_fr023_and_i18(
         // diagnostics that don't carry a candidate span; matches the
         // `apply_kept_fixes` keying convention at engine.rs:2228+).
         let key_span = d.candidate_span.unwrap_or(d.span);
-        if pass1_applied_keys.contains(&(d.rule.clone(), key_span)) {
+        if pass1_applied_keys.contains(&(d.rule, key_span)) {
             continue;
         }
 
@@ -4164,7 +4164,7 @@ fn synthesize_fixes(
         // The owning rule is the lex-smallest rule_id; the carried
         // `intent.confidence.rule` is scaled down so combined() equals
         // the minimum across the group.
-        group_diags.sort_by(|a, b| a.rule.cmp(&b.rule));
+        group_diags.sort_by_key(|a| a.rule);
         let owning_diag = group_diags[0];
         let owning_intent = owning_diag
             .fix
@@ -4191,7 +4191,7 @@ fn synthesize_fixes(
         }
 
         out.push(SynthesizedFix {
-            rule: owning_diag.rule.clone(),
+            rule: owning_diag.rule,
             severity: owning_diag.severity,
             span: cspan,
             replacement: replacement.into_boxed_str(),
@@ -5750,7 +5750,7 @@ mod tests {
                 .iter()
                 .map(|p| {
                     let mut d = Diagnostic::text_correction(
-                        p.rule.clone(),
+                        p.rule,
                         Severity::Fix,
                         p.span,
                         stub_message(),

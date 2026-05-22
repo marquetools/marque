@@ -478,7 +478,7 @@ pub struct AppliedFix<S: MarkingScheme> {
 impl<S: MarkingScheme> Clone for AppliedFix<S> {
     fn clone(&self) -> Self {
         Self {
-            rule: self.rule.clone(),
+            rule: self.rule,
             severity: self.severity,
             span: self.span,
             fix: self.fix.clone(),

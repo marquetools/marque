@@ -229,6 +229,37 @@ pub fn marked_document_fixtures() -> Vec<PathBuf> {
     paths
 }
 
+/// Load the per-document ground-truth fixture (`<stem>.expected.json`)
+/// for a marked document path under `tests/corpus/documents/marked/`.
+///
+/// Panics if the sidecar is missing, malformed, or lacks the
+/// `ground_truth` field — the documents corpus contract requires
+/// every marked fixture to carry structural ground truth.
+pub fn load_document_ground_truth(marked_path: &Path) -> (ExpectedFixture, DocumentGroundTruth) {
+    let stem = marked_path
+        .file_stem()
+        .unwrap_or_else(|| panic!("marked path has no file stem: {}", marked_path.display()));
+    let expected_path = corpus_root()
+        .join("documents")
+        .join(format!("{}.expected.json", stem.to_string_lossy()));
+    if !expected_path.exists() {
+        panic!(
+            "missing expected fixture for {}: {}",
+            marked_path.display(),
+            expected_path.display()
+        );
+    }
+    let content = std::fs::read_to_string(&expected_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", expected_path.display()));
+    let fixture: ExpectedFixture = serde_json::from_str(&content)
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", expected_path.display()));
+    let ground_truth = fixture
+        .ground_truth
+        .clone()
+        .unwrap_or_else(|| panic!("{} missing ground_truth field", expected_path.display()));
+    (fixture, ground_truth)
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -291,35 +322,4 @@ mod tests {
              post-T044 ExpectedDiagnostic shape",
         );
     }
-}
-
-/// Load the per-document ground-truth fixture (`<stem>.expected.json`)
-/// for a marked document path under `tests/corpus/documents/marked/`.
-///
-/// Panics if the sidecar is missing, malformed, or lacks the
-/// `ground_truth` field — the documents corpus contract requires
-/// every marked fixture to carry structural ground truth.
-pub fn load_document_ground_truth(marked_path: &Path) -> (ExpectedFixture, DocumentGroundTruth) {
-    let stem = marked_path
-        .file_stem()
-        .unwrap_or_else(|| panic!("marked path has no file stem: {}", marked_path.display()));
-    let expected_path = corpus_root()
-        .join("documents")
-        .join(format!("{}.expected.json", stem.to_string_lossy()));
-    if !expected_path.exists() {
-        panic!(
-            "missing expected fixture for {}: {}",
-            marked_path.display(),
-            expected_path.display()
-        );
-    }
-    let content = std::fs::read_to_string(&expected_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", expected_path.display()));
-    let fixture: ExpectedFixture = serde_json::from_str(&content)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", expected_path.display()));
-    let ground_truth = fixture
-        .ground_truth
-        .clone()
-        .unwrap_or_else(|| panic!("{} missing ground_truth field", expected_path.display()));
-    (fixture, ground_truth)
 }

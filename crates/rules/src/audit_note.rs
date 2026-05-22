@@ -174,7 +174,7 @@ pub struct AuditNote<S: MarkingScheme> {
 impl<S: MarkingScheme> Clone for AuditNote<S> {
     fn clone(&self) -> Self {
         Self {
-            rule: self.rule.clone(),
+            rule: self.rule,
             citation: self.citation,
             kind: self.kind,
             timestamp: self.timestamp,
