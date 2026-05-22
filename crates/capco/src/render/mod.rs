@@ -95,7 +95,7 @@ pub(crate) fn is_numeric_first(s: &str) -> bool {
 // ---------------------------------------------------------------------------
 //
 // These helpers extend the PR #585 precedent established by
-// `crate::lattice::sort_smolstrs_by_sar` (see the doc-comment on that
+// `crate::lattice::helpers::sort_smolstrs_by_sar` (see the doc-comment on that
 // function for the original mono-collapse rationale). Each comparator is a
 // concrete-typed `fn`-item — not a closure, not generic — so every callsite
 // that passes the same `fn`-item to `slice::sort_by` (resp.
