@@ -978,10 +978,14 @@ pub struct MigrationEntry {
 ///
 /// - **Abbreviation ↔ banner form** (e.g., `NF` ↔ `NOFORN`): these are
 ///   the two authorized forms of the same marking, not a deprecation.
-///   `E001 portion-mark-in-banner` owns the portion-form-in-banner check;
-///   `E009 portion-abbreviation` owns the banner-form-in-portion check.
-///   A prior `NF → NOFORN` entry was removed in T035c-4 as misleading —
-///   it was filtered out by `E006 is_abbreviation_expansion` anyway.
+///   `capco:banner.metadata.uses-portion-form` owns the
+///   portion-form-in-banner check;
+///   `capco:portion.metadata.uses-banner-form` owns the
+///   banner-form-in-portion check. A prior `NF → NOFORN` entry was
+///   removed in T035c-4 as misleading — the surviving
+///   `is_dissem_replacement` filter in `crates/capco/src/rules.rs`
+///   keeps declass-shorthand migrations separate from form-pair
+///   validation.
 ///
 /// - **FOUO → CUI**: FOUO remains a valid CAPCO dissem control per
 ///   CVEnumISMDissem.xml (still enumerated in the active CVE). CUI is a
