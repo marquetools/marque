@@ -77,7 +77,7 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
     // (`cmp_sci_marking_system` file-local; `super::cmp_sci_compartment_ident`
     // and `super::cmp_str_numeric_then_alpha` shared) for closure-axis
     // monomorphization collapse — R1 WASM-cut per issue #689 and the
-    // PR #585 precedent at `crate::lattice::sort_smolstrs_by_sar`.
+    // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     // `cmp_sci_marking_system` stays file-local because it reaches into
     // `system_text`, which is the SCI-axis private encoding of the
     // `SciControlSystem` variants and not shared by other axes.

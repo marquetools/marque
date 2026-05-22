@@ -90,7 +90,7 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
     // (`super::cmp_sar_*` / `super::cmp_str_numeric_then_alpha`) for
     // closure-axis monomorphization collapse — R1 WASM-cut per
     // issue #689 and the PR #585 precedent at
-    // `crate::lattice::sort_smolstrs_by_sar`.
+    // `crate::lattice::helpers::sort_smolstrs_by_sar`.
     let mut programs: SmallVec<[_; 4]> = sar.programs.iter().collect();
     programs.sort_by(cmp_sar_program_ident);
 

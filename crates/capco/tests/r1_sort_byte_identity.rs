@@ -9,7 +9,7 @@
 //! These tests MUST pass on pre-refactor code and again on post-refactor
 //! code. The refactor replaces inline `.sort_by(|a, b| ...)` closures
 //! with named `fn`-item comparators per the PR #585 precedent
-//! (`crates/capco/src/lattice.rs::sort_smolstrs_by_sar`). Byte-identical
+//! (`crates/capco/src/lattice/helpers.rs::sort_smolstrs_by_sar`). Byte-identical
 //! sort output is the load-bearing invariant — the refactor saves WASM
 //! bytes by collapsing per-closure monomorphizations, not by changing
 //! semantics.
@@ -20,7 +20,7 @@
 //! two sort sites had coverage gaps that the broader corpus did not
 //! exercise:
 //!
-//! - **`DisplayOnlyBlock::to_vec` (`crates/capco/src/lattice.rs:3989`)**
+//! - **`DisplayOnlyBlock::to_vec` (`crates/capco/src/lattice/display_only.rs`)**
 //!   sorts country codes trigraphs-first then tetragraphs, alpha within
 //!   each bucket, per CAPCO-2016 §H.8 p163 ("the LIST is a comma-and-
 //!   space separated list of trigraphs and tetragraphs in alphabetical
@@ -30,7 +30,7 @@
 //!   trigraphs, two tetragraphs).
 //!
 //! - **`HierarchicalTreeSet::sorted_entries`
-//!   (`crates/capco/src/lattice.rs:229`)** sorts via
+//!   (`crates/capco/src/lattice/helpers.rs::HierarchicalTreeSet::sorted_entries`)** sorts via
 //!   `sar_sort_key(ta).cmp(&sar_sort_key(tb)).then_with(|| ta.cmp(tb))`.
 //!   The tiebreaker fires only when two distinct keys produce the same
 //!   `(bool, u64, &str)` triple — the documented case is two numeric

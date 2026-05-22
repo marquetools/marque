@@ -57,7 +57,7 @@ pub(crate) fn render_non_ic_dissem(
     //
     // Named `fn`-item key adapter (`rank_non_ic`) for closure-axis
     // monomorphization collapse — R1 WASM-cut per issue #689 and the
-    // PR #585 precedent at `crate::lattice::sort_smolstrs_by_sar`.
+    // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     let mut sorted: SmallVec<[&NonIcDissem; 4]> = m.0.non_ic_dissem.iter().collect();
     sorted.sort_by_key(rank_non_ic);
 

@@ -2290,7 +2290,7 @@ fn parity_classified_les_nf_lattice_and_scheme_both_retain_les() {
     // §H.9 p184) that classification doesn't subsume; SBU is purely
     // admin-protection that classification does subsume. See
     // `NonIcDissemSet`'s type-level doc-comment in
-    // `crates/capco/src/lattice.rs` for the full rationale.
+    // `crates/capco/src/lattice/non_ic_dissem.rs` for the full rationale.
     let mut p_les_nf = portion_us(Classification::Unclassified);
     p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into_boxed_slice();
     let portions = [p_les_nf, portion_us(Classification::Secret)];

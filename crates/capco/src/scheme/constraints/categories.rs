@@ -94,7 +94,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // §H.5) and not expressible as a flat token union. Flag
             // as `Custom` so the engine routes through the lattice
             // constructor `SarSet::from_markings`
-            // (`crates/capco/src/lattice.rs`) rather than
+            // (`crates/capco/src/lattice/sar.rs`) rather than
             // substituting a naive union reducer. Pre-PR-4b-E this
             // routed through the retired
             // `PageContext::expected_sar_marking` accessor.
@@ -112,7 +112,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // compartments merge numerically across RD blocks, and
             // UCNI drops in classified documents. Flag as `Custom`
             // so the engine routes through the lattice constructor
-            // `AeaSet::from_markings` (`crates/capco/src/lattice.rs`)
+            // `AeaSet::from_markings` (`crates/capco/src/lattice/aea.rs`)
             // rather than substituting a naive union reducer.
             aggregation: AggregationOp::Custom,
             intra_ordering: IntraOrdering::AsWritten,
@@ -130,7 +130,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // countries contribute. `AggregationOp::Custom` flags
             // this so the engine routes through the lattice
             // constructor `FgiSet::from_attrs_iter`
-            // (`crates/capco/src/lattice.rs`) rather than
+            // (`crates/capco/src/lattice/fgi.rs`) rather than
             // substituting a plain union.
             //
             // When multiple source-acknowledged FGIs combine, they
@@ -159,7 +159,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // single category's token set. The cross-category
             // supersession is enforced today by the
             // `RelToBlock::from_attrs_iter` lattice constructor in
-            // `crates/capco/src/lattice.rs` (which collapses to the
+            // `crates/capco/src/lattice/rel_to.rs` (which collapses to the
             // `NofornSuperseded` sentinel variant when any NOFORN is
             // present) and by the
             // `Constraint::Conflicts(NOFORN, REL_TO)` check below.

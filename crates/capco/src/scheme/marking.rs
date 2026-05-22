@@ -51,7 +51,7 @@
 //! (`expected_sci_controls`, `expected_fgi_marker`,
 //! `expected_declass_exemption`, `expected_non_ic_dissem`,
 //! `expected_display_only`) to free helpers and lattice constructors
-//! in `crates/capco/src/lattice.rs` (`sci_controls_from_markings`,
+//! in `crates/capco/src/lattice/` (`sci_controls_from_markings`,
 //! `FgiSet::from_attrs_iter`,
 //! `DeclassExemptionAccumulator::from_attrs_iter`,
 //! `NonIcDissemSet::from_attrs_iter`,
@@ -284,7 +284,7 @@ impl CapcoMarking {
     /// consumes only `portions: &[CanonicalAttrs]` — the residue-axis
     /// `PageContext` bridge that earlier PRs threaded through this
     /// function retired in PR 4b-E (free helpers in
-    /// `crates/capco/src/lattice.rs`) and PR 4b-F (the `_tmp_ctx`
+    /// `crates/capco/src/lattice/`) and PR 4b-F (the `_tmp_ctx`
     /// parameter itself).
     ///
     /// ## Size guideline
