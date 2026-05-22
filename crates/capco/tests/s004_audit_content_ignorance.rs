@@ -38,7 +38,7 @@ use std::sync::Arc;
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_core::{Parser, Scanner};
 use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingType};
-use marque_rules::{Diagnostic, RuleContext, RuleSet};
+use marque_rules::{Diagnostic, RuleContext, RuleSet, Severity};
 use marque_scheme::MarkingScheme;
 
 /// Default per-page portion capacity. Matches the engine's accumulator
@@ -98,6 +98,20 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         // `RuleContext::new` + `with_*` setters.
         let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_portions(ctx_page);
         for rule in rule_set.rules() {
+            // Issue #672 — mirror the engine's `Severity::Off` gate
+            // (see `crates/engine/src/engine.rs` lint loop). PR #660
+            // applied this gate to `rules_us1.rs`'s twin lint helper;
+            // this is the same engine-loop reimplementation pattern
+            // and gets the same defensive filter so an opt-in rule
+            // (e.g. a future Off-severity Suggest co-firing on the
+            // S004 trigger span) cannot pollute the post-collection
+            // filter window and mask a real S004 audit-content leak.
+            // Constitution V Principle V — `Severity::Off` is a
+            // non-firing state, NOT a suppression; the engine skips
+            // the rule loop body entirely, and this test must match.
+            if rule.default_severity() == Severity::Off {
+                continue;
+            }
             out.extend(rule.check(&attrs, &ctx));
         }
         // S004 fires through the rule pipeline (not the constraint-
