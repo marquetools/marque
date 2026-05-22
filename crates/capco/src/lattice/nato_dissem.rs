@@ -32,7 +32,7 @@ use std::collections::BTreeSet;
 /// (M-25 PR 4b-B 7th-pass — `FgiSet` was previously listed in this
 /// precedent; B-1 PR 4b-B 8th-pass retired `FgiSet`'s
 /// `BoundedLattice` impl — `FgiSet` does NOT implement
-/// `BoundedLattice`. See DissemSet doc above for rationale.)
+/// `BoundedLattice`. See [`super::dissem::DissemSet`] for rationale.)
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - p41 (NATO reciprocity table — NATO dissem set is the

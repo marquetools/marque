@@ -83,8 +83,8 @@ impl SarSet {
 
 impl JoinSemilattice for SarSet {
     /// Component-wise union: merge programs, compartments, and
-    /// sub-compartments. Delegates to
-    /// [`super::helpers::HierarchicalTreeSet::join_with`].
+    /// sub-compartments. Delegates to the internal
+    /// `HierarchicalTreeSet::join_with` method in `super::helpers`.
     fn join(&self, other: &Self) -> Self {
         Self {
             programs: self.programs.join_with(&other.programs),
@@ -94,7 +94,8 @@ impl JoinSemilattice for SarSet {
 
 impl MeetSemilattice for SarSet {
     /// Component-wise equal-depth intersection per §3.3a policy (b).
-    /// Delegates to [`super::helpers::HierarchicalTreeSet::meet_with`].
+    /// Delegates to the internal `HierarchicalTreeSet::meet_with`
+    /// method in `super::helpers`.
     fn meet(&self, other: &Self) -> Self {
         Self {
             programs: self.programs.meet_with(&other.programs),

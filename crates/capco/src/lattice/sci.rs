@@ -177,8 +177,8 @@ impl SciSet {
 
 impl JoinSemilattice for SciSet {
     /// Component-wise union: merge control systems, compartments, and
-    /// sub-compartments. Delegates to
-    /// [`super::helpers::HierarchicalTreeSet::join_with`].
+    /// sub-compartments. Delegates to the internal
+    /// `HierarchicalTreeSet::join_with` method in `super::helpers`.
     fn join(&self, other: &Self) -> Self {
         Self {
             systems: self.systems.join_with(&other.systems),
@@ -196,7 +196,8 @@ impl MeetSemilattice for SciSet {
     /// tree. See the module-level docs and [`SciSet::overlaps`] /
     /// [`SciSet::common_compartments`] for alternatives.
     ///
-    /// Delegates to [`super::helpers::HierarchicalTreeSet::meet_with`].
+    /// Delegates to the internal `HierarchicalTreeSet::meet_with`
+    /// method in `super::helpers`.
     fn meet(&self, other: &Self) -> Self {
         Self {
             systems: self.systems.meet_with(&other.systems),
