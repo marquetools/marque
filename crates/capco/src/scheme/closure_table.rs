@@ -206,7 +206,7 @@ pub(crate) const CONE_REL_TO_USA: u128 = 1u128 << fact_bit::REL_TO_USA;
 pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 0 — Trio 1: caveated → NOFORN.
     ClosureRow {
-        name: "capco/noforn-if-caveated",
+        name: "capco:closure.dissem.noforn-if-caveated",
         display_label: "NOFORN if classified-and-caveated",
         label: capco_table(SectionLetter::B, 3, 2, 21),
         default_severity: Severity::Info,
@@ -216,7 +216,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     },
     // Row 1 — Per-marking: HCS-O → NOFORN + ORCON.
     ClosureRow {
-        name: "capco/hcs-o-implies-noforn-orcon",
+        name: "capco:closure.dissem.hcs-o-implies-noforn-orcon",
         display_label: "HCS-O implies NOFORN + ORCON",
         label: capco(SectionLetter::H, 4, 64),
         default_severity: Severity::Info,
@@ -226,7 +226,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     },
     // Row 2 — Per-marking: HCS-P[sub] → NOFORN + ORCON.
     ClosureRow {
-        name: "capco/hcs-p-sub-implies-noforn-orcon",
+        name: "capco:closure.dissem.hcs-p-sub-implies-noforn-orcon",
         display_label: "HCS-P[sub] implies NOFORN + ORCON",
         label: capco(SectionLetter::H, 4, 68),
         default_severity: Severity::Info,
@@ -238,7 +238,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // cone per §H.4 p80 Example Banner Line; Trio 1 adds NOFORN
     // transitively via ORCON in caveated triggers).
     ClosureRow {
-        name: "capco/si-g-implies-orcon",
+        name: "capco:closure.dissem.si-g-implies-orcon",
         display_label: "SI-G implies ORCON",
         label: capco(SectionLetter::H, 4, 80),
         default_severity: Severity::Info,
@@ -248,7 +248,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     },
     // Row 4 — Per-marking: TK-BLFH → NOFORN.
     ClosureRow {
-        name: "capco/tk-blfh-implies-noforn",
+        name: "capco:closure.dissem.tk-blfh-implies-noforn",
         display_label: "TK-BLFH implies NOFORN",
         label: capco(SectionLetter::H, 4, 87),
         default_severity: Severity::Info,
@@ -258,7 +258,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     },
     // Row 5 — Per-marking: TK-IDIT → NOFORN.
     ClosureRow {
-        name: "capco/tk-idit-implies-noforn",
+        name: "capco:closure.dissem.tk-idit-implies-noforn",
         display_label: "TK-IDIT implies NOFORN",
         label: capco(SectionLetter::H, 4, 91),
         default_severity: Severity::Info,
@@ -268,7 +268,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     },
     // Row 6 — Per-marking: TK-KAND → NOFORN.
     ClosureRow {
-        name: "capco/tk-kand-implies-noforn",
+        name: "capco:closure.dissem.tk-kand-implies-noforn",
         display_label: "TK-KAND implies NOFORN",
         label: capco(SectionLetter::H, 4, 95),
         default_severity: Severity::Info,
@@ -279,7 +279,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 7 — Trio 3: bare NATO classification → REL TO USA (+ NATO
     // open-vocab cone applied by PR-D outside the bitmask loop).
     ClosureRow {
-        name: "capco/rel-to-usa-nato-if-nato-classification",
+        name: "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
         display_label: "Bare NATO classification implies REL TO USA, NATO",
         label: capco(SectionLetter::H, 7, 127),
         default_severity: Severity::Info,
@@ -290,7 +290,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 8 — Trio 2: SCI presence → RELIDO unless FD&R-marked or
     // RELIDO-incompatible.
     ClosureRow {
-        name: "capco/relido-if-sci-and-not-incompatible",
+        name: "capco:closure.dissem.relido-if-sci-and-not-incompatible",
         display_label: "SCI presence implies RELIDO (unless FD&R or incompatible)",
         label: capco(SectionLetter::H, 8, 154),
         default_severity: Severity::Info,
@@ -301,7 +301,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 9 — Trio 2: US collateral classification → RELIDO unless
     // FD&R-marked or per-compartment SCI sentinel present.
     ClosureRow {
-        name: "capco/relido-if-us-collateral-class",
+        name: "capco:closure.dissem.relido-if-us-collateral-class",
         display_label: "US collateral classification implies RELIDO (unless FD&R)",
         label: capco_table(SectionLetter::B, 3, 2, 21),
         default_severity: Severity::Info,
@@ -459,16 +459,16 @@ mod tests {
     #[test]
     fn row_names_match_fn_pointer_catalog() {
         let expected_names = [
-            "capco/noforn-if-caveated",
-            "capco/hcs-o-implies-noforn-orcon",
-            "capco/hcs-p-sub-implies-noforn-orcon",
-            "capco/si-g-implies-orcon",
-            "capco/tk-blfh-implies-noforn",
-            "capco/tk-idit-implies-noforn",
-            "capco/tk-kand-implies-noforn",
-            "capco/rel-to-usa-nato-if-nato-classification",
-            "capco/relido-if-sci-and-not-incompatible",
-            "capco/relido-if-us-collateral-class",
+            "capco:closure.dissem.noforn-if-caveated",
+            "capco:closure.dissem.hcs-o-implies-noforn-orcon",
+            "capco:closure.dissem.hcs-p-sub-implies-noforn-orcon",
+            "capco:closure.dissem.si-g-implies-orcon",
+            "capco:closure.dissem.tk-blfh-implies-noforn",
+            "capco:closure.dissem.tk-idit-implies-noforn",
+            "capco:closure.dissem.tk-kand-implies-noforn",
+            "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
+            "capco:closure.dissem.relido-if-sci-and-not-incompatible",
+            "capco:closure.dissem.relido-if-us-collateral-class",
         ];
         for (row, expected) in CLOSURE_TABLE.iter().zip(expected_names.iter()) {
             assert_eq!(row.name, *expected);

@@ -319,7 +319,7 @@ fn rel_to_usa_nato_derived_cone(_m: &CapcoMarking) -> SmallVec<[FactRef<CapcoSch
 /// because `CountryCode::NATO` has no closed-vocab `TokenId`. Both facts
 /// route to CAT_REL_TO via `CapcoScheme::category_of`.
 pub(super) const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/rel-to-usa-nato-if-nato-classification",
+    name: "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
     display_label: "Bare NATO classification implies REL TO USA, NATO",
     label: capco(SectionLetter::H, 7, 127),
     triggers: &[TokenRef::Token(TOK_NATO_CLASS)],
