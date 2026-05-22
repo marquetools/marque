@@ -269,60 +269,58 @@ const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
 /// Total: 9 + 27 + 5 = 41. Note: the four RELIDO E054-E057 rows are
 /// `Constraint::Conflicts`, NOT `Custom` — they do not appear here.
 const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
-    // core_catalog (9)
-    "E010/HCS-system-constraints",
-    "E012/dual-classification",
-    "E014/joint-requires-rel-to-coverage",
-    "E021/rd-frd-requires-noforn",
-    "E024/rd-precedence",
-    "E038/nodis-or-exdis-requires-noforn",
+    // core_catalog (9) — T044 predicate-ID form
+    "portion.sci.hcs-system-constraints",
+    "portion.classification.dual-classification",
+    "portion.classification.joint-requires-rel-to-coverage",
+    "portion.aea.rd-frd-requires-noforn",
+    "portion.aea.rd-precedence",
+    "portion.dissem.nodis-or-exdis-requires-noforn",
     // #559 close-out (2026-05-19): FRD>TFNI precedence per §H.6 p120.
     // Sibling of E024 (RD>FRD/TFNI); independent policy decision with
     // its own audit lineage per Constitution V Principle V.
-    "E070/frd-tfni-precedence",
+    "portion.aea.frd-tfni-precedence",
     // #388 (2026-05-21): W005 reverse-direction E014. Flags REL TO
     // entries not in the JOINT participant list per §H.3 p57
     // "[LIST]" superset semantics. Warn-only (no auto-fix): cannot
     // distinguish intentional expansion from authoring error without
-    // classifier input. Position: BTreeSet uses lex order, so
-    // "W005/..." (0x57) sorts after the "E"-prefixed entries and
-    // before the "c"-prefixed "capco/..." entries (0x63).
-    "W005/rel-to-not-in-joint-coverage",
-    "capco/joint-requires-usa",
+    // classifier input.
+    "portion.classification.rel-to-not-in-joint-coverage",
+    "portion.classification.joint-requires-usa",
     // class_floor_catalog (27)
-    "E058/CNWDI-classification-floor",
-    "E058/DOD-UCNI-classification-ceiling",
-    "E058/DOE-UCNI-classification-ceiling",
-    "E058/SAR-classification-floor",
-    "class-floor/ATOMAL",
-    "class-floor/BALK",
-    "class-floor/BOHEMIA",
-    "class-floor/EYES-ONLY",
-    "class-floor/FRD",
-    "class-floor/FRD-SG",
-    "class-floor/HCS-comp",
-    "class-floor/HCS-comp-sub",
-    "class-floor/IMCON",
-    "class-floor/ORCON",
-    "class-floor/RD",
-    "class-floor/RD-SG",
-    "class-floor/RSEN",
-    "class-floor/RSV-comp",
-    "class-floor/SI",
-    "class-floor/SI-comp",
-    "class-floor/TFNI",
-    "class-floor/TK",
-    "class-floor/TK-BLFH",
-    "class-floor/passthrough-BUR",
-    "class-floor/passthrough-HCS-X",
-    "class-floor/passthrough-KLM",
-    "class-floor/passthrough-MVL",
+    "banner.aea.floor-cnwdi",
+    "banner.aea.ceiling-dod-ucni",
+    "banner.aea.ceiling-doe-ucni",
+    "banner.classification.floor-sar",
+    "banner.aea.floor-atomal",
+    "banner.classification.floor-balk",
+    "banner.classification.floor-bohemia",
+    "banner.dissem.floor-eyes-only",
+    "banner.aea.floor-frd",
+    "banner.aea.floor-frd-sg",
+    "banner.classification.floor-hcs-comp",
+    "banner.classification.floor-hcs-comp-sub",
+    "banner.dissem.floor-imcon",
+    "banner.dissem.floor-orcon",
+    "banner.aea.floor-rd",
+    "banner.aea.floor-rd-sg",
+    "banner.dissem.floor-rsen",
+    "banner.classification.floor-rsv-comp",
+    "banner.classification.floor-si",
+    "banner.classification.floor-si-comp",
+    "banner.aea.floor-tfni",
+    "banner.classification.floor-tk",
+    "banner.classification.floor-tk-blfh",
+    "banner.classification.floor-passthrough-bur",
+    "banner.classification.floor-passthrough-hcs-x",
+    "banner.classification.floor-passthrough-klm",
+    "banner.classification.floor-passthrough-mvl",
     // sci_per_system_catalog (5)
-    "sci-per-system/HCS-O-companions",
-    "sci-per-system/HCS-P-NOFORN",
-    "sci-per-system/HCS-P-sub-companions",
-    "sci-per-system/SI-G-companions",
-    "sci-per-system/TK-compartment-NOFORN",
+    "marking.sci.hcs-o-companions",
+    "marking.sci.hcs-p-noforn-required",
+    "marking.sci.hcs-p-sub-companions",
+    "marking.sci.si-g-companions",
+    "marking.sci.tk-compartment-noforn-required",
 ];
 
 #[test]

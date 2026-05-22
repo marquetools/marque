@@ -54,7 +54,7 @@ fn lint_e067(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoS
     result
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "E067")
+        .filter(|d| d.rule.predicate_id() == "marking.recanonicalize.bare-canonical-compound")
         .collect()
 }
 
@@ -232,7 +232,7 @@ fn e067_applies_in_fix_pass() {
     let text_corrections: Vec<_> = result.applied_text_corrections().collect();
     let e067_text: Vec<_> = text_corrections
         .iter()
-        .filter(|tc| tc.rule.as_str() == "E067")
+        .filter(|tc| tc.rule.predicate_id() == "marking.recanonicalize.bare-canonical-compound")
         .collect();
     assert_eq!(
         e067_text.len(),
@@ -242,7 +242,7 @@ fn e067_applies_in_fix_pass() {
         e067_text.len(),
         text_corrections
             .iter()
-            .map(|tc| tc.rule.as_str())
+            .map(|tc| tc.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
     let tc = e067_text[0];
@@ -256,7 +256,7 @@ fn e067_applies_in_fix_pass() {
     // No marking-side AppliedFix is emitted by E067.
     let e067_applied: Vec<&_> = result
         .applied_fixes()
-        .filter(|a| a.rule.as_str() == "E067")
+        .filter(|a| a.rule.predicate_id() == "marking.recanonicalize.bare-canonical-compound")
         .collect();
     assert!(
         e067_applied.is_empty(),

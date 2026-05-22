@@ -52,7 +52,7 @@ fn lint(rule: &str, source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco:
     result
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == rule)
+        .filter(|d| d.rule.predicate_id() == rule)
         .collect()
 }
 
@@ -297,7 +297,7 @@ fn e062_comint_long_form_diagnostics_have_non_zero_spans() {
             marque_ism::span::Span::new(0, 0),
             "no diagnostic on COMINT long-form input may anchor at Span::new(0, 0); \
              got rule {:?}",
-            d.rule.as_str()
+            d.rule.predicate_id()
         );
     }
 }

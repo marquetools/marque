@@ -94,7 +94,7 @@ fn s005_fires_at_eod_on_banner_less_layout() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -105,7 +105,7 @@ fn s005_fires_at_eod_on_banner_less_layout() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -141,7 +141,7 @@ fn s005_fires_per_page_break_independently() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -151,7 +151,7 @@ fn s005_fires_per_page_break_independently() {
          the two-portion bail suppresses S005). diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -185,7 +185,7 @@ fn s005_fires_at_suggest_on_banner_consistent_page_post_collapse() {
     let s006_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S006")
+        .filter(|d| d.rule.predicate_id() == "S006")
         .count();
     assert_eq!(
         s006_count,
@@ -194,14 +194,14 @@ fn s005_fires_at_suggest_on_banner_consistent_page_post_collapse() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 
     let s005: Vec<_> = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .collect();
     assert_eq!(
         s005.len(),
@@ -212,7 +212,7 @@ fn s005_fires_at_suggest_on_banner_consistent_page_post_collapse() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
     assert_eq!(
@@ -251,7 +251,7 @@ fn s005_supersession_bail_noforn_direct() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -261,7 +261,7 @@ fn s005_supersession_bail_noforn_direct() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -287,7 +287,7 @@ fn s005_supersession_bail_sbu_nf_split() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -297,7 +297,7 @@ fn s005_supersession_bail_sbu_nf_split() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -324,7 +324,7 @@ fn s005_supersession_bail_nodis() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -334,7 +334,7 @@ fn s005_supersession_bail_nodis() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -360,7 +360,7 @@ fn s005_supersession_bail_exdis() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -370,7 +370,7 @@ fn s005_supersession_bail_exdis() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -415,7 +415,7 @@ fn s005_severity_config_off_silences_rule() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -424,7 +424,7 @@ fn s005_severity_config_off_silences_rule() {
          diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -467,7 +467,7 @@ fn s005_fires_exactly_once_per_page_when_banner_closes_page() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -480,7 +480,7 @@ fn s005_fires_exactly_once_per_page_when_banner_closes_page() {
          guard for PR #488. diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -527,7 +527,7 @@ fn s005_diagnostic_carries_no_document_text() {
     let s005 = lint
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "S005")
+        .find(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .expect("S005 must fire on RSMA-uncertain page");
     // Closed-template identification: S005 fires under
     // `NonCanonicalOrder` with `CAT_REL_TO` category (see
@@ -589,7 +589,7 @@ fn s005_span_is_zero_length_boundary_anchor() {
     let s005 = lint
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "S005")
+        .find(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .expect("S005 must fire on the disjoint REL TO portions");
     assert_eq!(
         s005.span.start, s005.span.end,
@@ -631,7 +631,7 @@ fn s005_does_not_fire_on_empty_page() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -641,7 +641,7 @@ fn s005_does_not_fire_on_empty_page() {
          `dispatch_page_finalization`'s caller). diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -673,7 +673,7 @@ fn s005_does_not_fire_on_pure_trigraph_portions() {
     let s005_count = lint
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S005")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.rel-to-uncertain-reduction")
         .count();
     assert_eq!(
         s005_count,
@@ -683,7 +683,7 @@ fn s005_does_not_fire_on_pure_trigraph_portions() {
          not uncertain). diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }

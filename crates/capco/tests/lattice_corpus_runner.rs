@@ -206,7 +206,7 @@ fn discover() {
         for d in &result.diagnostics {
             println!(
                 "  {} at {}..{}: {}",
-                d.rule.as_str(),
+                d.rule.predicate_id(),
                 d.span.start,
                 d.span.end,
                 d.message.template().as_str()
@@ -312,12 +312,15 @@ fn lattice_corpus_fixtures_match_expected() {
         let mut actual_counts: BTreeMap<String, usize> = BTreeMap::new();
         for d in &result.diagnostics {
             *actual_counts
-                .entry(d.rule.as_str().to_string())
+                .entry(d.rule.predicate_id().to_string())
                 .or_insert(0) += 1;
         }
+        // T044: `ExpectedRuleId` is the 2-tuple struct; key the counts
+        // map on `predicate_id` to match the `actual_counts` shape
+        // built from `RuleId::predicate_id()` above.
         let mut expected_counts: BTreeMap<String, usize> = BTreeMap::new();
         for e in &expected.diagnostics {
-            *expected_counts.entry(e.rule.clone()).or_insert(0) += 1;
+            *expected_counts.entry(e.rule.predicate_id.clone()).or_insert(0) += 1;
         }
 
         if actual_counts != expected_counts {
@@ -329,7 +332,7 @@ fn lattice_corpus_fixtures_match_expected() {
                 .map(|d| {
                     format!(
                         "  {} at {}..{}: {}",
-                        d.rule.as_str(),
+                        d.rule.predicate_id(),
                         d.span.start,
                         d.span.end,
                         d.message.template().as_str()
@@ -419,7 +422,7 @@ fn probe_documents_lint_clean() {
             .map(|d| {
                 format!(
                     "    {} at {}..{}",
-                    d.rule.as_str(),
+                    d.rule.predicate_id(),
                     d.span.start,
                     d.span.end,
                 )

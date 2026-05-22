@@ -66,13 +66,13 @@ fn e059_diags_for<'a>(
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
     diags
         .iter()
-        .filter(|d| d.rule.as_str() == "E059" && d.message.contains(marker_text))
+        .filter(|d| d.rule.predicate_id() == "E059" && d.message.contains(marker_text))
         .collect()
 }
 
 /// All E059 diagnostics in `diags`, regardless of message content.
 fn e059_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
-    diags.iter().filter(|d| d.rule.as_str() == "E059").collect()
+    diags.iter().filter(|d| d.rule.predicate_id() == "E059").collect()
 }
 
 // ===========================================================================
@@ -85,7 +85,7 @@ fn catalog_declares_five_sci_per_system_rows() {
     let rows: Vec<&str> = scheme
         .constraints()
         .iter()
-        .filter(|c| c.name().starts_with("sci-per-system/"))
+        .filter(|c| c.name().starts_with("marking.sci."))
         .map(|c| c.name())
         .collect();
     assert_eq!(
@@ -103,20 +103,21 @@ fn catalog_declares_five_sci_per_system_rows() {
 /// fails the citation-fidelity and naming-convention tests at CI time
 /// — without requiring a public accessor on `marque_capco::scheme`.
 const EXPECTED_ROWS: &[(&str, &str)] = &[
-    ("sci-per-system/HCS-O-companions", "CAPCO-2016 §H.4 p64"),
-    ("sci-per-system/HCS-P-NOFORN", "CAPCO-2016 §H.4 p66"),
-    ("sci-per-system/HCS-P-sub-companions", "CAPCO-2016 §H.4 p68"),
-    ("sci-per-system/SI-G-companions", "CAPCO-2016 §H.4 p80"),
+    ("marking.sci.hcs-o-companions", "CAPCO-2016 §H.4 p64"),
+    ("marking.sci.hcs-p-noforn-required", "CAPCO-2016 §H.4 p66"),
+    ("marking.sci.hcs-p-sub-companions", "CAPCO-2016 §H.4 p68"),
+    ("marking.sci.si-g-companions", "CAPCO-2016 §H.4 p80"),
     (
-        "sci-per-system/TK-compartment-NOFORN",
+        "marking.sci.tk-compartment-noforn-required",
         "CAPCO-2016 §H.4 p87 + p91 + p95",
     ),
 ];
 
 #[test]
 fn sci_per_system_catalog_naming_convention() {
-    // Every expected row's `name` MUST start with `sci-per-system/` per
-    // the PR 3b.E plan §4.2 naming-prefix invariant. The companion
+    // Every expected row's `name` MUST start with `marking.sci.` per
+    // the T044 PR predicate-ID convention (legacy-rule-id-map §4); the
+    // pre-T044 form used the `sci-per-system/` slash-prefix. The companion
     // `sci_per_system_catalog_citations` test below pins the same
     // expected names against their citations as they appear on
     // `CapcoScheme.constraints()` — together the two tests catch:
@@ -137,8 +138,8 @@ fn sci_per_system_catalog_naming_convention() {
     // would flag the assertion as statically false.
     for (name, _) in EXPECTED_ROWS {
         assert!(
-            name.starts_with("sci-per-system/"),
-            "PR-E catalog row {name:?} must start with `sci-per-system/`"
+            name.starts_with("marking.sci."),
+            "PR-E catalog row {name:?} must start with `marking.sci.`"
         );
     }
 }
@@ -178,7 +179,7 @@ fn sci_per_system_diagnostics_flow_through_engine_bridge_at_e059() {
     //   3. `engine.lint` still emits E059 with a fix for a
     //      known-firing fixture (TS//HCS-O//NF missing ORCON).
     let set = capco_rules();
-    let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
+    let ids: Vec<&str> = set.rules().iter().map(|r| r.id().predicate_id()).collect();
     assert!(
         !ids.contains(&"E059"),
         "post-7.4: `DeclarativeSciPerSystemRule` retired; no rule with id `E059` should be \
@@ -202,7 +203,7 @@ fn sci_per_system_diagnostics_flow_through_engine_bridge_at_e059() {
     let diags = lint("(TS//HCS-O//NF)");
     let e059: Vec<&Diagnostic<CapcoScheme>> = diags
         .iter()
-        .filter(|d| d.rule.as_str() == "E059" && d.message.contains("HCS-O requires ORCON"))
+        .filter(|d| d.rule.predicate_id() == "E059" && d.message.contains("HCS-O requires ORCON"))
         .collect();
     assert_eq!(
         e059.len(),
@@ -600,7 +601,7 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_distinctly() {
     //  - PR E HCS-O companions fires (Error no-fix because no IC
     //    dissem block exists).
     let diags = lint("(S//HCS-O)");
-    let class_floor: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E058").collect();
+    let class_floor: Vec<_> = diags.iter().filter(|d| d.rule.predicate_id() == "E058").collect();
     assert!(
         class_floor.is_empty(),
         "class-floor must not fire on S//HCS-O (S meets floor): {class_floor:?}"
@@ -624,7 +625,7 @@ fn pr_d_class_floor_only_fires_when_companion_satisfied() {
     let diags = lint("(C//HCS-P//OC/NF)");
     let class_floor: Vec<_> = diags
         .iter()
-        .filter(|d| d.rule.as_str() == "E058" && d.message.contains("HCS-O / HCS-P"))
+        .filter(|d| d.rule.predicate_id() == "E058" && d.message.contains("HCS-O / HCS-P"))
         .collect();
     assert_eq!(
         class_floor.len(),
@@ -648,7 +649,7 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_when_both_violated() {
     //  - PR E HCS-O companions fires for both ORCON and NOFORN
     //    (escalated to Error no-fix because no IC dissem block).
     let diags = lint("(C//HCS-O)");
-    let class_floor: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E058").collect();
+    let class_floor: Vec<_> = diags.iter().filter(|d| d.rule.predicate_id() == "E058").collect();
     assert!(
         !class_floor.is_empty(),
         "class-floor must fire on C//HCS-O: {diags:?}"
@@ -698,7 +699,7 @@ fn e059_off_severity_skips_walker() {
     )
     .expect("engine constructs");
     let diags = engine.lint(b"(S//HCS-O)").diagnostics;
-    let hits: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E059").collect();
+    let hits: Vec<_> = diags.iter().filter(|d| d.rule.predicate_id() == "E059").collect();
     assert!(
         hits.is_empty(),
         "E059 = off must suppress all PR-E diagnostics (FR-008): {hits:?}"
@@ -730,7 +731,7 @@ fn e059_diagnostic_stream_per_row_identifiable() {
         let diags = lint(src);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule.as_str() == "E059" && d.message.contains(label))
+            .filter(|d| d.rule.predicate_id() == "E059" && d.message.contains(label))
             .collect();
         assert!(
             !hits.is_empty(),

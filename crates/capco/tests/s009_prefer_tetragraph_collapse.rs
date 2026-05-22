@@ -56,7 +56,7 @@ fn s009_diags(
     result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S009")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.prefer-tetragraph-collapse")
         .collect()
 }
 

@@ -44,7 +44,7 @@ fn lint_e065(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoS
     result
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "E065")
+        .filter(|d| d.rule.predicate_id() == "portion.sci.deprecated-long-form")
         .collect()
 }
 

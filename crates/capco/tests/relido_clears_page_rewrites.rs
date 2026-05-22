@@ -192,7 +192,7 @@ fn retired_e055_e056_e057_no_longer_fire_as_diagnostics() {
     for input in cases {
         let result = engine.lint(input);
         for d in &result.diagnostics {
-            let id = d.rule.as_str();
+            let id = d.rule.predicate_id();
             assert!(
                 id != "E055" && id != "E056" && id != "E057",
                 "Retired rule {id} fired on input {:?} — the \

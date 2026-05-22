@@ -90,7 +90,7 @@ fn lint_s007(source: &[u8]) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     result
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "S007")
+        .filter(|d| d.rule.predicate_id() == "portion.nato.bare-nato-requires-rel-to-usa-nato")
         .collect()
 }
 

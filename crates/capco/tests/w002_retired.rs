@@ -39,14 +39,14 @@ fn engine() -> Engine {
 fn canonical_us_plus_fgi_portion_emits_no_w002() {
     let result = engine().lint(b"(S//FGI DEU//REL TO USA, DEU)");
     assert!(
-        result.diagnostics.iter().all(|d| d.rule.as_str() != "W002"),
+        result.diagnostics.iter().all(|d| d.rule.predicate_id() != "W002"),
         "W002 retired (closes #470) — canonical (S//FGI [COUNTRY]\
          //REL TO USA, [COUNTRY]) per §H.7 p123 must not produce a \
          W002 firing. Got: {:?}",
         result
             .diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -58,14 +58,14 @@ fn canonical_us_plus_fgi_portion_emits_no_w002() {
 fn fgi_country_list_portion_emits_no_w002() {
     let result = engine().lint(b"(S//FGI GBR NZL//NF)");
     assert!(
-        result.diagnostics.iter().all(|d| d.rule.as_str() != "W002"),
+        result.diagnostics.iter().all(|d| d.rule.predicate_id() != "W002"),
         "W002 retired (closes #470) — corpus repro shape \
          (US-class + FGI [LIST] + NF) must not produce a W002 \
          firing. Got: {:?}",
         result
             .diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 }
@@ -76,7 +76,7 @@ fn fgi_country_list_portion_emits_no_w002() {
 #[test]
 fn w002_is_not_a_registered_rule_id() {
     let rule_set = CapcoRuleSet::new();
-    let registered: Vec<&str> = rule_set.rules().iter().map(|r| r.id().as_str()).collect();
+    let registered: Vec<&str> = rule_set.rules().iter().map(|r| r.id().predicate_id()).collect();
     assert!(
         !registered.contains(&"W002"),
         "W002 was retired in the PR closing #470 — re-registering \

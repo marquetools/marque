@@ -84,13 +84,13 @@ fn assert_e066_fires_and_rewrites_to(
     let e066_diag = lint
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E066")
+        .find(|d| d.rule.predicate_id() == "marking.recanonicalize.legacy-nato-compound")
         .unwrap_or_else(|| {
             panic!(
                 "E066 must fire on {input:?}; diagnostics: {:?}",
                 lint.diagnostics
                     .iter()
-                    .map(|d| d.rule.as_str())
+                    .map(|d| d.rule.predicate_id())
                     .collect::<Vec<_>>(),
             )
         });
@@ -128,18 +128,18 @@ fn assert_e066_fires_and_rewrites_to(
          got {actual:?}; applied: {:?}",
         result
             .applied_fixes()
-            .map(|af| af.rule.as_str())
+            .map(|af| af.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 
     // E066 must appear in the applied set (sanity check on the
     // promotion path).
     assert!(
-        result.applied_fixes().any(|af| af.rule.as_str() == "E066"),
+        result.applied_fixes().any(|af| af.rule.predicate_id() == "marking.recanonicalize.legacy-nato-compound"),
         "E066 must appear in applied fixes on {input:?}; applied: {:?}",
         result
             .applied_fixes()
-            .map(|af| af.rule.as_str())
+            .map(|af| af.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 }
@@ -300,22 +300,22 @@ fn e066_does_not_fire_on_bare_cts_portion() {
     let lint = eng.lint(source);
 
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "E066"),
+        lint.diagnostics.iter().all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT fire on bare canonical (//CTS); diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 
     // And the fix output is byte-identical (modulo unrelated rules).
     let result = eng.fix(source, FixMode::Apply);
     assert!(
-        result.applied_fixes().all(|af| af.rule.as_str() != "E066"),
+        result.applied_fixes().all(|af| af.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT appear in applied fixes for bare (//CTS); applied: {:?}",
         result
             .applied_fixes()
-            .map(|af| af.rule.as_str())
+            .map(|af| af.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 }
@@ -333,11 +333,11 @@ fn e066_does_not_fire_on_bare_us_portion() {
     let lint = eng.lint(source);
 
     assert!(
-        lint.diagnostics.iter().all(|d| d.rule.as_str() != "E066"),
+        lint.diagnostics.iter().all(|d| d.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "E066 must NOT fire on US-class (S); diagnostics: {:?}",
         lint.diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 }

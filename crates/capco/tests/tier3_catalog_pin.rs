@@ -44,7 +44,7 @@ fn sci_per_system_names(scheme: &CapcoScheme) -> Vec<&'static str> {
         .constraints()
         .iter()
         .filter_map(|c| match c {
-            Constraint::Custom { name, .. } if name.starts_with("sci-per-system/") => Some(*name),
+            Constraint::Custom { name, .. } if name.starts_with("marking.sci.") => Some(*name),
             _ => None,
         })
         .collect()
@@ -72,11 +72,11 @@ fn sci_per_system_catalog_row_count_is_5() {
 #[test]
 fn sci_per_system_catalog_row_names_positional() {
     const EXPECTED: &[&str] = &[
-        "sci-per-system/HCS-O-companions",
-        "sci-per-system/HCS-P-NOFORN",
-        "sci-per-system/HCS-P-sub-companions",
-        "sci-per-system/SI-G-companions",
-        "sci-per-system/TK-compartment-NOFORN",
+        "marking.sci.hcs-o-companions",
+        "marking.sci.hcs-p-noforn-required",
+        "marking.sci.hcs-p-sub-companions",
+        "marking.sci.si-g-companions",
+        "marking.sci.tk-compartment-noforn-required",
     ];
 
     let scheme = CapcoScheme::new();
@@ -149,7 +149,7 @@ fn sci_per_system_coarse_gate_row_fires_on_sci_present_only() {
     let bits = scheme.precompute_bits(&marking);
 
     // HCS-P-NOFORN (coarse gate row) MUST fire — bare HCS-P + no NOFORN.
-    let hcs_p_violations = scheme.evaluate_custom("sci-per-system/HCS-P-NOFORN", &marking, bits);
+    let hcs_p_violations = scheme.evaluate_custom("marking.sci.hcs-p-noforn-required", &marking, bits);
     assert!(
         !hcs_p_violations.is_empty(),
         "HCS-P-NOFORN must fire on bare HCS-P + US S + no NOFORN (coarse gate row)"
@@ -157,10 +157,10 @@ fn sci_per_system_coarse_gate_row_fires_on_sci_present_only() {
 
     // All exact-gate rows must NOT fire — their atoms are absent.
     for name in &[
-        "sci-per-system/HCS-O-companions",
-        "sci-per-system/HCS-P-sub-companions",
-        "sci-per-system/SI-G-companions",
-        "sci-per-system/TK-compartment-NOFORN",
+        "marking.sci.hcs-o-companions",
+        "marking.sci.hcs-p-sub-companions",
+        "marking.sci.si-g-companions",
+        "marking.sci.tk-compartment-noforn-required",
     ] {
         let violations = scheme.evaluate_custom(name, &marking, bits);
         assert!(

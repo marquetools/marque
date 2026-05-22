@@ -295,11 +295,11 @@ fn atomal_banner_h7_p122_example_end_to_end_round_trip() {
     let engine = engine_with_fixed_clock();
     let result = engine.fix(source, FixMode::Apply);
     assert!(
-        result.applied_fixes().all(|af| af.rule.as_str() != "E066"),
+        result.applied_fixes().all(|af| af.rule.predicate_id() != "marking.recanonicalize.legacy-nato-compound"),
         "§H.7 p122 canonical banner must NOT trigger E066; applied: {:?}",
         result
             .applied_fixes()
-            .map(|af| af.rule.as_str())
+            .map(|af| af.rule.predicate_id())
             .collect::<Vec<_>>(),
     );
 }

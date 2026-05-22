@@ -212,7 +212,7 @@ fn every_registered_rule_declares_expected_phase() {
     let actual: BTreeMap<String, Phase> = rule_set
         .rules()
         .iter()
-        .map(|r| (r.id().as_str().to_owned(), r.phase()))
+        .map(|r| (r.id().predicate_id().to_owned(), r.phase()))
         .collect();
 
     // Build the expected map from the allowlist. A duplicate rule ID

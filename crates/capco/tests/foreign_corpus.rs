@@ -83,7 +83,7 @@ fn observed_rule_ids(fixture_name: &str) -> HashSet<String> {
     result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect()
 }
 
@@ -232,15 +232,22 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
     // Arrange: the fixture documents that E068 + E069 are the
     // expected diagnostics.
     let expected = load_expected(&foreign_fixture("mixed_us_foreign_rollup.txt"));
+    // T044: `ExpectedRuleId` is a struct of (scheme, predicate_id)
+    // String fields, not a `RuleId`. The expected.json fixture
+    // serializes the 2-tuple form per the corpus migration; the test
+    // checks predicate-ID strings directly.
     let expected_rules: HashSet<&str> = expected
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id.as_str())
         .collect();
     assert!(
-        expected_rules.contains("E068") && expected_rules.contains("E069"),
-        "mixed_us_foreign_rollup.expected.json must list E068 + E069 \
-         per PR 5 PM Addendum I.4; got {expected_rules:?}"
+        expected_rules.contains("banner.classification.mismatch-vs-projected")
+            && expected_rules.contains("banner.fgi.marker-mismatch-vs-projected"),
+        "mixed_us_foreign_rollup.expected.json must list \
+         banner.classification.mismatch-vs-projected + \
+         banner.fgi.marker-mismatch-vs-projected per PR 5 PM Addendum \
+         I.4 (post-T044 predicate IDs); got {expected_rules:?}"
     );
 
     // Act: lint with the default engine.

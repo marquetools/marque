@@ -71,7 +71,7 @@ fn observed_rule_ids(source: &str) -> HashSet<String> {
     result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect()
 }
 

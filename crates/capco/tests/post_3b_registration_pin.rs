@@ -103,7 +103,7 @@ use std::collections::BTreeSet;
 /// The 27 class-floor + 5 SCI per-system catalog rows still fire; they
 /// emit through the bridge using the catalog row's `name` as the
 /// predicate ID (post-T044 the bridge became a no-op pass-through —
-/// e.g., `class-floor/HCS-comp-sub` row emits with predicate
+/// e.g., `banner.classification.floor-hcs-comp-sub` row emits with predicate
 /// `banner.classification.floor-hcs-comp-sub`). They are no longer
 /// counted as registered `Rule` impls.
 /// Issue #261 adds `FgiExplicitWithTrigraphRule` (E071) — FGI with

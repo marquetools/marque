@@ -117,7 +117,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 continue;
             }
             for d in rule.check(&attrs, &ctx) {
-                out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));
+                out.push((d.rule.predicate_id().to_owned(), d.span.start, d.span.end));
             }
         }
         // PR 3c.B Commit 7.3 + 7.4: emulate the engine's constraint-
@@ -148,41 +148,11 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 let (Some(span), Some(_severity)) = (v.span, v.severity) else {
                     continue;
                 };
-                // Fold constraint labels to the bridge-level rule ID,
-                // mirroring the engine's `bridge_constraint_diagnostic`
-                // logic at `crates/engine/src/engine.rs`. PR 3c.2.C C5:
-                // generalized the fold from a hand-list of two prefixes
-                // (`E058`, `E059`) to "take everything before the first
-                // `/`" — matches the engine bridge's
-                // `v.constraint_label.split('/').next()` shape.
-                let rule_id: String = if v.constraint_label.starts_with("class-floor/")
-                    || v.constraint_label.starts_with("E058/")
-                {
-                    "E058".to_owned()
-                } else if v.constraint_label.starts_with("sci-per-system/")
-                    || v.constraint_label.starts_with("E059/")
-                {
-                    "E059".to_owned()
-                } else if v.constraint_label == "capco/noforn-conflicts-rel-to" {
-                    "E053".to_owned()
-                } else if let Some(id_part) = v.constraint_label.split('/').next() {
-                    // Issue #388: mirror the engine bridge's extension of
-                    // the structural ID prefix recognition from `E` to
-                    // `E | W`. The W005 row in the constraint catalog
-                    // (added in #388) needs the same prefix relaxation
-                    // here to fold to "W005" instead of falling through
-                    // to the full constraint label.
-                    if matches!(
-                        id_part.as_bytes(),
-                        [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9']
-                    ) {
-                        id_part.to_owned()
-                    } else {
-                        v.constraint_label.to_owned()
-                    }
-                } else {
-                    v.constraint_label.to_owned()
-                };
+                // T044 OD-8.A: the engine bridge is now a no-op
+                // pass-through — the constraint_label IS the canonical
+                // predicate_id (no prefix folding to a collapsed
+                // walker ID). This test mirrors that shape.
+                let rule_id: String = v.constraint_label.to_owned();
                 out.push((rule_id, span.start, span.end));
             }
             // PR 3c.2.C C5: bridge signature now requires
@@ -196,7 +166,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 None,
             ) {
                 out.push((
-                    diag.rule.as_str().to_owned(),
+                    diag.rule.to_string(),
                     diag.span.start,
                     diag.span.end,
                 ));
@@ -213,10 +183,19 @@ fn assert_matches(
     expected: &ExpectedFixture,
     actual: &[(String, usize, usize)],
 ) {
+    // T044: `ExpectedRuleId` is a 2-tuple struct; render the wire
+    // string for comparison against the engine-side `Display` form
+    // (`<scheme>:<predicate_id>`).
     let mut want: Vec<(String, usize, usize)> = expected
         .diagnostics
         .iter()
-        .map(|d| (d.rule.clone(), d.span.start, d.span.end))
+        .map(|d| {
+            (
+                format!("{}:{}", d.rule.scheme, d.rule.predicate_id),
+                d.span.start,
+                d.span.end,
+            )
+        })
         .collect();
     want.sort();
     assert_eq!(
@@ -272,7 +251,11 @@ fn invalid_corpus_matches_expected_diagnostics() {
         // catches the full `nato_longhand_*` family + any future
         // R001-expecting fixture without per-name listing.
         let expected_peek = load_expected(&path);
-        if expected_peek.diagnostics.iter().any(|d| d.rule == "R001") {
+        // T044: legacy `R001` is `("engine", "recognition.decoder-recognized")`;
+        // expected.json carries the 2-tuple struct form.
+        if expected_peek.diagnostics.iter().any(|d| {
+            d.rule.scheme == "engine" && d.rule.predicate_id == "recognition.decoder-recognized"
+        }) {
             continue;
         }
         // Banner-rollup / page-context walker (E031/E035/E039/E040)
@@ -284,11 +267,21 @@ fn invalid_corpus_matches_expected_diagnostics() {
         // diagnostic until the test wires a projected-marking via
         // `CapcoScheme::project`. Out of scope for PR 3c.2.C — this
         // is the same pipeline-scope gap as R001.
-        if expected_peek
-            .diagnostics
-            .iter()
-            .any(|d| matches!(d.rule.as_str(), "E031" | "E035" | "E039" | "E040" | "W004"))
-        {
+        // T044: post-rename, the banner-rollup walker rules emit per-row
+        // predicate IDs (see legacy-rule-id-map §5); E031/E035/E040 are
+        // each their own predicate, plus the standalone E039
+        // (`page.dissem.nodis-exdis-clears-banner-rel-to`) and W004
+        // (`page.fgi.joint-disunity-collapses-to-fgi`).
+        if expected_peek.diagnostics.iter().any(|d| {
+            matches!(
+                d.rule.predicate_id.as_str(),
+                "banner.banner-rollup.sar-portions-roll-up"
+                    | "banner.banner-rollup.sci-portions-roll-up"
+                    | "page.dissem.nodis-exdis-clears-banner-rel-to"
+                    | "banner.banner-rollup.non-ic-dissem-roll-up"
+                    | "page.fgi.joint-disunity-collapses-to-fgi"
+            )
+        }) {
             continue;
         }
         let source = load_fixture(&path);

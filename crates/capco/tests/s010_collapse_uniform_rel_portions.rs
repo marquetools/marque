@@ -56,7 +56,7 @@ fn s010_diags(
     result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "S010")
+        .filter(|d| d.rule.predicate_id() == "page.dissem.collapse-uniform-rel-portions")
         .collect()
 }
 

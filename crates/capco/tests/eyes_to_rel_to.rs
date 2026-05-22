@@ -42,7 +42,7 @@ fn lint_e064(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoS
     result
         .diagnostics
         .into_iter()
-        .filter(|d| d.rule.as_str() == "E064")
+        .filter(|d| d.rule.predicate_id() == "portion.dissem.eyes-only-convert-to-rel-to")
         .collect()
 }
 

@@ -62,7 +62,7 @@ fn class_floor_catalog_row_count_is_27() {
             use marque_scheme::Constraint;
             match c {
                 Constraint::Custom { name, .. } => {
-                    if name.starts_with("class-floor/") || name.starts_with("E058/") {
+                    if name.contains(".floor-") || name.contains(".ceiling-") {
                         Some(*name)
                     } else {
                         None
@@ -94,37 +94,37 @@ fn class_floor_catalog_row_names_positional() {
     //         Passthrough (4) = 27 total.
     const EXPECTED: &[&str] = &[
         // ---- Floor TS (5) ----
-        "class-floor/HCS-comp-sub",
-        "class-floor/SI-comp",
-        "class-floor/TK-BLFH",
-        "class-floor/BALK",
-        "class-floor/BOHEMIA",
+        "banner.classification.floor-hcs-comp-sub",
+        "banner.classification.floor-si-comp",
+        "banner.classification.floor-tk-blfh",
+        "banner.classification.floor-balk",
+        "banner.classification.floor-bohemia",
         // ---- Floor S (8) ----
-        "class-floor/HCS-comp",
-        "class-floor/RSV-comp",
-        "class-floor/TK",
-        "class-floor/RD-SG",
-        "class-floor/FRD-SG",
-        "E058/CNWDI-classification-floor",
-        "class-floor/RSEN",
-        "class-floor/IMCON",
+        "banner.classification.floor-hcs-comp",
+        "banner.classification.floor-rsv-comp",
+        "banner.classification.floor-tk",
+        "banner.aea.floor-rd-sg",
+        "banner.aea.floor-frd-sg",
+        "banner.aea.floor-cnwdi",
+        "banner.dissem.floor-rsen",
+        "banner.dissem.floor-imcon",
         // ---- Floor C (8) ----
-        "class-floor/SI",
-        "E058/SAR-classification-floor",
-        "class-floor/RD",
-        "class-floor/FRD",
-        "class-floor/TFNI",
-        "class-floor/ATOMAL",
-        "class-floor/ORCON",
-        "class-floor/EYES-ONLY",
+        "banner.classification.floor-si",
+        "banner.classification.floor-sar",
+        "banner.aea.floor-rd",
+        "banner.aea.floor-frd",
+        "banner.aea.floor-tfni",
+        "banner.aea.floor-atomal",
+        "banner.dissem.floor-orcon",
+        "banner.dissem.floor-eyes-only",
         // ---- Floor =U (2) ----
-        "E058/DOD-UCNI-classification-ceiling",
-        "E058/DOE-UCNI-classification-ceiling",
+        "banner.aea.ceiling-dod-ucni",
+        "banner.aea.ceiling-doe-ucni",
         // ---- Passthrough (4) ----
-        "class-floor/passthrough-BUR",
-        "class-floor/passthrough-HCS-X",
-        "class-floor/passthrough-KLM",
-        "class-floor/passthrough-MVL",
+        "banner.classification.floor-passthrough-bur",
+        "banner.classification.floor-passthrough-hcs-x",
+        "banner.classification.floor-passthrough-klm",
+        "banner.classification.floor-passthrough-mvl",
     ];
 
     let scheme = CapcoScheme::new();
@@ -135,7 +135,7 @@ fn class_floor_catalog_row_names_positional() {
             use marque_scheme::Constraint;
             match c {
                 Constraint::Custom { name, .. } => {
-                    if name.starts_with("class-floor/") || name.starts_with("E058/") {
+                    if name.contains(".floor-") || name.contains(".ceiling-") {
                         Some(*name)
                     } else {
                         None
@@ -192,7 +192,7 @@ fn class_floor_catalog_all_rows_return_empty_on_empty_attrs() {
             use marque_scheme::Constraint;
             match c {
                 Constraint::Custom { name, .. } => {
-                    if name.starts_with("class-floor/") || name.starts_with("E058/") {
+                    if name.contains(".floor-") || name.contains(".ceiling-") {
                         Some(*name)
                     } else {
                         None
@@ -227,7 +227,7 @@ fn class_floor_catalog_all_rows_return_empty_on_empty_attrs() {
 /// Note: not all 23 non-passthrough rows fire on these attrs — some presence()
 /// predicates exclude the constructed input (e.g., `class-floor/HCS-comp`
 /// returns false when the HCS entry has sub-compartments, as in the attrs
-/// below; only `class-floor/HCS-comp-sub` fires for that entry).  The proptest
+/// below; only `banner.classification.floor-hcs-comp-sub` fires for that entry).  The proptest
 /// oracle suite covers per-row firing semantics exhaustively.
 ///
 /// This test indirectly verifies the 23 / 4 split without accessing the
@@ -314,7 +314,7 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
             use marque_scheme::Constraint;
             match c {
                 Constraint::Custom { name, .. } => {
-                    if (name.starts_with("class-floor/") || name.starts_with("E058/"))
+                    if (name.contains(".floor-") || name.contains(".ceiling-"))
                         && !scheme.evaluate_custom(name, &marking, bits).is_empty()
                     {
                         Some(*name)
@@ -335,11 +335,11 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
     // DOD-UCNI and DOE-UCNI ceiling rows: `EqualsU` policy fires when US
     // classification != U; R satisfies that, so they fire.
     //
-    // Note: `class-floor/HCS-comp` and `class-floor/HCS-comp-sub` are
+    // Note: `class-floor/HCS-comp` and `banner.classification.floor-hcs-comp-sub` are
     // DIFFERENT rows — the HCS-P sub-compartment row fires on HCS-P with
     // sub-compartments; the HCS-comp row fires on bare HCS-O / HCS-P
     // (no sub-compartments, not X).  Our attrs have HCS-P WITH a
-    // sub-compartment, so ONLY `class-floor/HCS-comp-sub` fires for HCS.
+    // sub-compartment, so ONLY `banner.classification.floor-hcs-comp-sub` fires for HCS.
     // That means `class-floor/HCS-comp`'s presence() returns false
     // (because the HCS entry has sub-compartments) → it does not fire.
     //
@@ -352,10 +352,10 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
 
     // None of the 4 passthrough rows should appear.
     let passthrough_rows = [
-        "class-floor/passthrough-BUR",
-        "class-floor/passthrough-HCS-X",
-        "class-floor/passthrough-KLM",
-        "class-floor/passthrough-MVL",
+        "banner.classification.floor-passthrough-bur",
+        "banner.classification.floor-passthrough-hcs-x",
+        "banner.classification.floor-passthrough-klm",
+        "banner.classification.floor-passthrough-mvl",
     ];
 
     for pt in &passthrough_rows {
