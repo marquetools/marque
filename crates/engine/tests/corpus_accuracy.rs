@@ -618,7 +618,13 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     (
         "cia-reports_prex-318se-2",
         &[ExpectedRuleCount {
-            rule: "W005",
+            // T044: legacy `"W005"` → predicate id
+            // `portion.classification.rel-to-not-in-joint-coverage`
+            // per legacy-rule-id-map §6. The pin reason is the same
+            // CAPCO §H.3 p57 worked-example expansion; the engine
+            // emits the diagnostic with `rule.predicate_id() ==
+            // "portion.classification.rel-to-not-in-joint-coverage"`.
+            rule: "portion.classification.rel-to-not-in-joint-coverage",
             count: 3,
             issue: 0,
             reason: "JOINT portions list AUS CAN ITA USA but REL TO expands to include EU \

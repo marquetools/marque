@@ -67,7 +67,11 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     // collect once for index access + Debug formatting.
     let applied: Vec<_> = result.applied_fixes().collect();
     assert_eq!(applied.len(), 1, "applied: {applied:?}");
-    assert_eq!(applied[0].rule.predicate_id(), "E002");
+    // T044: legacy `E002` → predicate id `portion.dissem.rel-to-missing-usa`.
+    assert_eq!(
+        applied[0].rule.predicate_id(),
+        "portion.dissem.rel-to-missing-usa"
+    );
     assert!((applied[0].fix.replacement.confidence.combined() - 0.97).abs() < 0.001);
 
     // The post-fix first line should have USA elevated and codes
@@ -87,7 +91,7 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.predicate_id() == "E010"),
+            .any(|d| d.rule.predicate_id() == "portion.sci.hcs-system-constraints"),
         "E010 (bare HCS, conscious-defer no-fix) should remain; \
          remaining: {:?}",
         result
@@ -286,7 +290,7 @@ fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
     let applied: Vec<_> = result.applied_fixes().collect();
     let e002_applied: Vec<_> = applied
         .iter()
-        .filter(|f| f.rule.predicate_id() == "E002")
+        .filter(|f| f.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
         .collect();
     assert_eq!(e002_applied.len(), 1, "E002 must apply once: {applied:?}");
 
@@ -353,7 +357,7 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     let applied: Vec<_> = result.applied_fixes().collect();
     let e002_applied: Vec<_> = applied
         .iter()
-        .filter(|f| f.rule.predicate_id() == "E002")
+        .filter(|f| f.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
         .collect();
     assert!(
         e002_applied.is_empty(),

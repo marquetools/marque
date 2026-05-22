@@ -164,7 +164,7 @@ fn strict_path_aea_rd_drives_e021() {
     let e021 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.predicate_id() == "E021");
+        .find(|d| d.rule.predicate_id() == "portion.aea.rd-frd-requires-noforn");
     let e021 = e021.unwrap_or_else(|| {
         panic!(
             "E021 (RD requires NOFORN) must fire on strict-path \
@@ -196,7 +196,7 @@ fn cia_rdp96_fixture_emits_no_e015() {
     let e015: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.predicate_id() == "E015")
+        .filter(|d| d.rule.predicate_id() == "portion.classification.non-us-requires-dissem")
         .collect();
     assert_eq!(
         e015.len(),

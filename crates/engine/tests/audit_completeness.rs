@@ -170,13 +170,19 @@ fn sub_threshold_proposals_never_in_applied() {
         );
     }
 
-    // E002 should remain in remaining_diagnostics.
+    // E002 (post-T044: `portion.dissem.rel-to-missing-usa`) should
+    // remain in remaining_diagnostics.
     assert!(
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.predicate_id() == "E002"),
-        "E002 should remain as a suggestion in remaining_diagnostics"
+            .any(|d| d.rule.predicate_id() == "portion.dissem.rel-to-missing-usa"),
+        "E002 should remain as a suggestion in remaining_diagnostics; got: {:?}",
+        result
+            .remaining_diagnostics
+            .iter()
+            .map(|d| d.rule.to_string())
+            .collect::<Vec<_>>()
     );
 }
 

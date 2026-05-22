@@ -102,7 +102,7 @@ fn diags_summary(diags: &[Diagnostic<CapcoScheme>]) -> Vec<(String, Severity)> {
 /// for these tests.
 fn find_r001(diags: &[Diagnostic<CapcoScheme>]) -> Option<&Diagnostic<CapcoScheme>> {
     diags.iter().find(|d| {
-        d.rule.predicate_id() == "R001"
+        d.rule.predicate_id() == "recognition.decoder-recognized"
             && d.fix
                 .as_ref()
                 .is_some_and(|f| matches!(f.source, FixSource::DecoderPosterior))
@@ -293,7 +293,7 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
         let r001_decoder_count = applied
             .iter()
             .filter(|a| {
-                a.rule.predicate_id() == "R001" && matches!(a.source, FixSource::DecoderPosterior)
+                a.rule.predicate_id() == "recognition.decoder-recognized" && matches!(a.source, FixSource::DecoderPosterior)
             })
             .count();
         assert_eq!(
@@ -366,7 +366,7 @@ fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
         1,
         "exactly one AppliedFix should land (the R001 decoder fix)",
     );
-    assert_eq!(applied[0].rule.predicate_id(), "R001");
+    assert_eq!(applied[0].rule.predicate_id(), "recognition.decoder-recognized");
     assert!(matches!(applied[0].source, FixSource::DecoderPosterior));
 }
 
@@ -405,7 +405,7 @@ fn fgi_fvey_ownership_token_emits_e008_no_decoder_route() {
     assert!(
         lint.diagnostics
             .iter()
-            .any(|d| d.rule.predicate_id() == "E008" && d.severity == Severity::Error),
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token" && d.severity == Severity::Error),
         "expected E008 (unrecognized token) at Error severity; got {:?}",
         diags_summary(&lint.diagnostics),
     );
@@ -430,7 +430,7 @@ fn fgi_deux_unknown_tetragraph_emits_e008_no_decoder_route() {
     assert!(
         lint.diagnostics
             .iter()
-            .any(|d| d.rule.predicate_id() == "E008" && d.severity == Severity::Error),
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token" && d.severity == Severity::Error),
         "expected E008 (unrecognized token) at Error severity; got {:?}",
         diags_summary(&lint.diagnostics),
     );

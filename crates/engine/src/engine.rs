@@ -5156,28 +5156,34 @@ fn build_severity_tables(
     // (`rule.additional_emitted_ids()`). The override map's keys
     // canonicalize against this superset; everything not in it would
     // have been rejected by `canonicalize_rule_overrides`.
+    // T044: include both the wire-string form (Agent A's
+    // `additional_emitted_ids` first col, `bridge_emitted_rule_ids`
+    // first col) AND the predicate-id slice — the canonicalize step
+    // reduces wire strings to predicate-id at registration time, so
+    // the canonical intern stored in `overrides` is the predicate-id
+    // half. Both must appear in `known_ids` for the Pass 2 `.expect()`
+    // to hold across the transitional period while Agent A's
+    // `bridge_emitted_rule_ids` rename is mid-flight.
     let mut known_ids: HashSet<&'static str> = HashSet::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
             known_ids.insert(rule.id().predicate_id());
             for (catalog_id, _catalog_name) in rule.additional_emitted_ids() {
                 known_ids.insert(catalog_id);
+                if let Some(predicate) = predicate_id_of_wire(catalog_id) {
+                    known_ids.insert(predicate);
+                }
             }
         }
     }
     // Bridge-emitted IDs (E058 / E059) are valid override keys too,
     // registered through `bridge_emitted_rule_ids` in the
-    // canonicalizer. They have no corresponding registered `Rule`
-    // impl, but `Engine::lint_inner` emits diagnostics under them
-    // from the constraint-bridge path; Sites C/D need their overrides
-    // in `emitted_id_overrides`. The caller passes the same bridge
-    // IDs slice it handed to `canonicalize_rule_overrides`, making
-    // the coupling explicit and ruling out future divergence if
-    // `CapcoScheme::bridge_emitted_rule_ids()` ever becomes
-    // non-deterministic or differs across `CapcoScheme` instances
-    // (both reviewers' HIGH).
+    // canonicalizer.
     for (bridge_id, _bridge_name) in bridge_rule_ids {
         known_ids.insert(bridge_id);
+        if let Some(predicate) = predicate_id_of_wire(bridge_id) {
+            known_ids.insert(predicate);
+        }
     }
 
     // Pass 2: walk the canonicalized override map. The map's keys are
@@ -5261,6 +5267,38 @@ fn build_severity_tables(
 /// a user writing both `E001 = "warn"` and `portion-mark-in-banner =
 /// "warn"` (intentionally or via copy-paste across config layers) gets
 /// the expected behavior.
+/// Slice the predicate-id half out of a wire-string form
+/// `"<scheme>:<predicate_id>"`. Returns `None` when `s` is not in
+/// wire-string shape (no colon). Used by `canonicalize_rule_overrides`
+/// to reduce wire-string config keys + walker `additional_emitted_ids`
+/// wire-string entries to their predicate-id intern.
+///
+/// Slicing a `&'static str` returns a `&'static str` — the result is
+/// usable as a HashMap key without allocation.
+#[inline]
+fn predicate_id_of_wire(s: &'static str) -> Option<&'static str> {
+    s.find(':').map(|pos| &s[pos + 1..])
+}
+
+/// Return the wire-string form `"<scheme>:<predicate_id>"` for the
+/// given rule id when both halves trace back to known `&'static str`
+/// interns. Unlike `predicate_id_of_wire`, this needs to construct a
+/// `String` because Rust cannot concat two distinct `&'static str` into
+/// a single `&'static str` at runtime. Used by the canonicalize step
+/// to register every registered-rule wire-string form as a config-key
+/// alias. The returned `String` is intentionally leaked to obtain a
+/// `&'static str` (the alternative — owning the canonical map's keys —
+/// inflates the HashMap key shape across every lookup site).
+///
+/// Bounded by the number of registered rules (one leak per rule's
+/// wire-string alias at `Engine::new` time, in the tens for the
+/// current CAPCO rule set). The same leak pattern is used by
+/// `marque_capco::vocabulary` for the per-token name interns.
+fn wire_string_of(id: marque_rules::RuleId) -> Option<&'static str> {
+    let leaked: &'static str = Box::leak(format!("{}", id).into_boxed_str());
+    Some(leaked)
+}
+
 fn canonicalize_rule_overrides(
     config: &mut Config,
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
@@ -5284,40 +5322,63 @@ fn canonicalize_rule_overrides(
     // `UnknownRuleOverride`. The per-emitted-id severity-override
     // path at lint time then resolves the override against the
     // diagnostic's emitted `rule` field.
+    // T044: the override key universe MUST cover three user-facing
+    // forms per PM-decisions OD-6 / OD-7:
+    //   1. Wire-string form: `"capco:banner.banner-rollup.sar-portions-roll-up"`
+    //      (what `Display` produces, what users type in
+    //      `.marque.toml [rules]` keys).
+    //   2. Predicate-id alone: `"banner.banner-rollup.sar-portions-roll-up"`
+    //      (legacy alias; what `RuleId::predicate_id()` returns; what
+    //      `Engine::emitted_id_overrides` keys on internally).
+    //   3. Descriptive alias: `"sar-banner-rollup"` (Rule::name() or
+    //      the second column of `additional_emitted_ids` /
+    //      `bridge_emitted_rule_ids`).
+    //
+    // All three forms canonicalize to the predicate-id intern (form 2)
+    // because the runtime lookup path
+    // (`emitted_id_overrides.get(rule_id.predicate_id())`) uses form 2.
+    // The wire-string form is sliced down to predicate-id at registration
+    // time — slicing a `&'static str` preserves the static lifetime so
+    // the canonical intern stays `&'static`.
     let mut known: HashMap<&'static str, &'static str> = HashMap::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
-            let id_str = rule.id().predicate_id();
+            let predicate = rule.id().predicate_id();
             let name = rule.name();
-            known.insert(id_str, id_str);
-            known.insert(name, id_str);
-            // Catalog IDs / names from dispatcher walkers — each
-            // entry maps to itself so config that names the catalog
-            // ID directly resolves to that ID (not the walker's
-            // bookkeeping ID), preserving per-row override scope.
+            // Predicate-id form (the canonical) maps to itself.
+            known.insert(predicate, predicate);
+            known.insert(name, predicate);
+            // Also accept the wire-string form
+            // (`"<scheme>:<predicate_id>"`) the user types.
+            if let Some(wire) = wire_string_of(rule.id()) {
+                known.insert(wire, predicate);
+            }
+            // Catalog IDs / names from dispatcher walkers — Agent A's
+            // pattern makes `catalog_id` the wire-string form
+            // (`"capco:banner..."`); we reduce it to its predicate-id
+            // half so config keys typed as the wire string resolve to
+            // the same intern as the runtime emit-site predicate id.
             for (catalog_id, catalog_name) in rule.additional_emitted_ids() {
-                known.insert(catalog_id, catalog_id);
-                known.insert(catalog_name, catalog_id);
+                let canonical = predicate_id_of_wire(catalog_id).unwrap_or(catalog_id);
+                known.insert(catalog_id, canonical);
+                known.insert(canonical, canonical);
+                known.insert(catalog_name, canonical);
             }
         }
     }
-    // PR 3c.B Commit 7.3 + 7.4: rule IDs emitted by the engine's
-    // constraint-catalog bridge that have no corresponding registered
-    // `Rule` impl. The bridge folds `E058/...` / `class-floor/...`
-    // constraint labels to `Diagnostic.rule = "E058"` (the
-    // ConstraintViolation envelope path), and emits
-    // `Diagnostic.rule = "E059"` from the direct
-    // `bridge_sci_per_system_diagnostics` path. Both walker `Rule`s
-    // that used to advertise these IDs retired in 7.3 and 7.4, so
-    // the canonicalizer needs an explicit handle on the bridge-
-    // emitted ID set or `[rules] E058 = "off"` / `[rules] E059 = "off"`
-    // configs fail `UnknownRuleOverride`. Same shape as
-    // `Rule::additional_emitted_ids` — the bridge is just a
-    // non-`Rule` emitter that participates in the same registration
-    // convention.
+    // Bridge-emitted IDs (post-T044: the catalog row's `name` field IS
+    // the predicate id — see the bridge no-op pass-through at
+    // `bridge_constraint_diagnostic`). `scheme.bridge_emitted_rule_ids`
+    // still returns `(legacy_capco_label, descriptive_alias)` pairs
+    // because Agent A's rename of that surface is mid-flight at PR
+    // authorship time; canonicalize accepts both via the same wire-
+    // string → predicate-id reduction so `.marque.toml` configs that
+    // already typed either form continue to resolve.
     for (bridge_id, bridge_name) in scheme.bridge_emitted_rule_ids() {
-        known.insert(bridge_id, bridge_id);
-        known.insert(bridge_name, bridge_id);
+        let canonical = predicate_id_of_wire(bridge_id).unwrap_or(bridge_id);
+        known.insert(bridge_id, canonical);
+        known.insert(canonical, canonical);
+        known.insert(bridge_name, canonical);
     }
 
     // Walk the raw overrides; resolve each key to its canonical ID, and
@@ -7377,66 +7438,96 @@ mod tests {
     // `UnknownRuleOverride`. These tests pin the four key forms +
     // canonical-ID resolution so the bridge path can't silently regress.
 
+    // T044: post-Agent-A `bridge_emitted_rule_ids` returns
+    // `(wire_string, descriptive_alias)` pairs; the legacy
+    // `("E058", "class-floor-catalog")` aggregate is retired. Each
+    // bridged catalog row now has its own per-row wire string. The
+    // tests below pin the four key forms — wire string, predicate-id
+    // alone, descriptive alias, and a representative class-floor /
+    // sci-per-system row — using a representative bridge entry from
+    // Agent A's renamed surface.
+    //
+    // Pick one row from the SCI per-system catalog
+    // (`marking.sci.hcs-o-companions`) and one from the class-floor
+    // catalog (`banner.classification.floor-hcs-comp-sub`) as the
+    // representative entries. Future bridge-row additions should
+    // re-verify the canonicalize round-trip via this pattern.
+
     #[test]
-    fn canonicalize_accepts_bridge_emitted_e058_id() {
-        let mut config = config_with_overrides(&[("E058", "warn")]);
+    fn canonicalize_accepts_bridge_emitted_wire_string_form() {
+        // T044 / OD-7: users type the wire-string form
+        // `"capco:marking.sci.hcs-o-companions"` in `.marque.toml`;
+        // canonicalize reduces to the predicate-id intern.
+        let mut config =
+            config_with_overrides(&[("capco:marking.sci.hcs-o-companions", "warn")]);
         let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
-            .expect("bridge-emitted E058 ID must be accepted");
+            .expect("bridge-emitted wire-string form must be accepted");
         assert_eq!(
-            config.rules.overrides.get("E058"),
+            config.rules.overrides.get("marking.sci.hcs-o-companions"),
             Some(&"warn".to_owned()),
-            "E058 bridge ID resolves to itself as canonical"
+            "wire-string config key canonicalizes to predicate-id intern"
         );
     }
 
     #[test]
-    fn canonicalize_accepts_bridge_emitted_e058_name_alias() {
-        let mut config = config_with_overrides(&[("class-floor-catalog", "error")]);
+    fn canonicalize_accepts_bridge_emitted_predicate_id_form() {
+        // The predicate-id alone (no `capco:` prefix) is also a valid
+        // config key form — it's what `RuleId::predicate_id()` returns
+        // and what shows up in audit-log searches.
+        let mut config = config_with_overrides(&[("marking.sci.hcs-o-companions", "off")]);
         let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
-            .expect("bridge-emitted `class-floor-catalog` name alias must be accepted");
+            .expect("bridge-emitted predicate-id form must be accepted");
         assert_eq!(
-            config.rules.overrides.get("E058"),
-            Some(&"error".to_owned()),
-            "name-alias `class-floor-catalog` canonicalizes to `E058`"
-        );
-        assert!(
-            !config.rules.overrides.contains_key("class-floor-catalog"),
-            "pre-canonicalization name key must not survive"
-        );
-    }
-
-    #[test]
-    fn canonicalize_accepts_bridge_emitted_e059_id() {
-        let mut config = config_with_overrides(&[("E059", "off")]);
-        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
-        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
-            .expect("bridge-emitted E059 ID must be accepted");
-        assert_eq!(
-            config.rules.overrides.get("E059"),
+            config.rules.overrides.get("marking.sci.hcs-o-companions"),
             Some(&"off".to_owned()),
-            "E059 bridge ID resolves to itself as canonical"
+            "predicate-id config key resolves to itself"
         );
     }
 
     #[test]
-    fn canonicalize_accepts_bridge_emitted_e059_name_alias() {
-        let mut config = config_with_overrides(&[("sci-per-system-catalog", "warn")]);
+    fn canonicalize_accepts_bridge_emitted_descriptive_alias() {
+        // The descriptive alias (second column of
+        // `bridge_emitted_rule_ids`) is a third permissible config-key
+        // form. It canonicalizes to the predicate-id intern.
+        let mut config =
+            config_with_overrides(&[("sci-per-system-hcs-o-companions", "error")]);
         let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
-            .expect("bridge-emitted `sci-per-system-catalog` name alias must be accepted");
+            .expect("bridge-emitted descriptive alias must be accepted");
         assert_eq!(
-            config.rules.overrides.get("E059"),
-            Some(&"warn".to_owned()),
-            "name-alias `sci-per-system-catalog` canonicalizes to `E059`"
+            config.rules.overrides.get("marking.sci.hcs-o-companions"),
+            Some(&"error".to_owned()),
+            "descriptive-alias config key canonicalizes to predicate-id intern"
         );
         assert!(
             !config
                 .rules
                 .overrides
-                .contains_key("sci-per-system-catalog"),
-            "pre-canonicalization name key must not survive"
+                .contains_key("sci-per-system-hcs-o-companions"),
+            "pre-canonicalization alias key must not survive"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_class_floor_wire_string() {
+        // Same round-trip for a class-floor catalog row (per Agent A's
+        // rename to wire-string form in `bridge_emitted_rule_ids`).
+        let mut config = config_with_overrides(&[(
+            "capco:banner.classification.floor-hcs-comp-sub",
+            "off",
+        )]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("class-floor wire-string form must be accepted");
+        assert_eq!(
+            config
+                .rules
+                .overrides
+                .get("banner.classification.floor-hcs-comp-sub"),
+            Some(&"off".to_owned()),
+            "class-floor wire-string canonicalizes to predicate-id intern"
         );
     }
 
@@ -8669,10 +8760,12 @@ mod tests {
             source: FixSource::BuiltinRule,
             migration_ref: None,
         };
+        // T044: keep the test's `(rule, span)` matching invariant by
+        // using a synthetic `"test"`-scheme id on both the diagnostic
+        // and the audit line — the assembler's filter key is
+        // `(rule, span)` so both ends must agree on rule identity.
         let diag_with_fix = Diagnostic::with_fix(
-            // T044: legacy E006 → predicate id
-            // `marking.deprecation.deprecated-dissem-control`.
-            RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
+            RuleId::new("test", "E006"),
             Severity::Error,
             Span::new(8, 14),
             stub_message(),
