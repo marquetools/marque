@@ -9,7 +9,13 @@ version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "WASM target for marque — web worker and browser integration"
-repository.workspace = true
+# Inlined (not `repository.workspace = true`) — wasm-pack 0.15.0+ parses
+# the manifest with a TOML reader that doesn't resolve Cargo's workspace
+# inheritance for `package.repository` and fails with
+# `invalid type: map, expected a string for key 'package.repository'`.
+# Other inherited fields (`edition`, `rust-version`) are not affected.
+# Keep the value in lock-step with workspace `Cargo.toml [workspace.package].repository`.
+repository = "https://github.com/marquetools/marque"
 license-file = "LICENSE.md"
 include = [
   "Cargo.toml",
