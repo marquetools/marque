@@ -6,8 +6,12 @@
 //!
 //! The types in this module are the lattice-form counterparts to the
 //! structural types [`marque_ism::SciMarking`], [`marque_ism::SarMarking`],
-//! and [`marque_ism::FgiMarker`] — newtype wrappers that implement
-//! [`Lattice`] so CAPCO's structural categories compose through the
+//! and [`marque_ism::FgiMarker`] — newtype wrappers that implement the
+//! [`marque_scheme`] semilattice traits ([`marque_scheme::JoinSemilattice`]
+//! universally; [`marque_scheme::MeetSemilattice`] on the full-lattice
+//! types only — see the PR #502 / issue #456 split, which made join-only
+//! `DissemSet` / `JointSet` / `DisplayOnlyBlock` non-`Lattice`-satisfying
+//! by design) so CAPCO's structural categories compose through the
 //! generic engine machinery. Post-PR-4b-E (this module's
 //! `*::from_attrs_iter` constructors + free helpers like
 //! [`sci_controls_from_markings`]) these helpers ARE the production
@@ -30,7 +34,8 @@
 //! Callers that need a different interpretation — primarily the Phase
 //! C constraint-evaluator asking "do these two portions share any SCI
 //! compartment?" — use [`SciSet::overlaps`] and
-//! [`SciSet::common_compartments`] rather than `Lattice::meet`.
+//! [`SciSet::common_compartments`] rather than
+//! [`marque_scheme::MeetSemilattice::meet`].
 //!
 //! # SCI storage canonicalization
 //!

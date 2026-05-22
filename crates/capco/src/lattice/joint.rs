@@ -42,9 +42,9 @@ use std::collections::BTreeSet;
 ///   resurrect to `UnanimousProducers` regardless of subsequent
 ///   joins.
 ///
-/// The transitions on `Lattice::join` are structural operations on
+/// The transitions on `JoinSemilattice::join` are structural operations on
 /// the deterministic state space — NOT "normalization" in the
-/// `Lattice` module-docs Gotcha-1 sense — and the property test
+/// `JoinSemilattice` module-docs Gotcha-1 sense — and the property test
 /// `joint_disunity_lattice_laws` exhausts the state-space cube to
 /// verify assoc/comm/idem.
 ///

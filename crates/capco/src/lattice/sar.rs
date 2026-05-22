@@ -107,8 +107,9 @@ impl MeetSemilattice for SarSet {
 // program identifiers are agency-assigned codewords, an open set. An
 // "empty" top would violate the `BoundedLattice::top ⊔ a = top`
 // contract on any non-empty `a`. Use [`SarSet::empty`] /
-// [`SarSet::default`] when you need the bottom, and [`Lattice::join`]
-// / [`Lattice::meet`] for composition.
+// [`SarSet::default`] when you need the bottom, and
+// [`JoinSemilattice::join`] / [`MeetSemilattice::meet`] for
+// composition.
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -211,7 +211,8 @@ impl MeetSemilattice for SciSet {
 // universe). An "empty" top would violate the
 // `BoundedLattice::top ⊔ a = top` contract on any non-empty `a`. Use
 // [`SciSet::empty`] / [`SciSet::default`] when you need the bottom,
-// and [`Lattice::join`] / [`Lattice::meet`] for composition. Schemes
+// and [`JoinSemilattice::join`] / [`MeetSemilattice::meet`] for
+// composition. Schemes
 // that want a bounded variant should wrap `SciSet` with an explicit
 // sentinel top.
 

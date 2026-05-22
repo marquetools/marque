@@ -254,7 +254,7 @@ impl MeetSemilattice for FgiSet {
 
 // `FgiSet` deliberately does NOT implement `BoundedLattice` (B-1, PR 4b-B
 // 8th-pass follow-up). Although `SourceConcealed` is a valid syntactic
-// supersession-top for the `Lattice::join` operation (it dominates every
+// supersession-top for the `JoinSemilattice::join` operation (it dominates every
 // non-concealed state), the `CountryCode` axis underneath
 // `Present { concealed: false, countries: BTreeSet<CountryCode> }` is
 // **open-vocabulary** — new trigraphs and tetragraphs land per ISMCAT

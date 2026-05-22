@@ -459,4 +459,5 @@ impl MeetSemilattice for AeaSet {
 // top would violate the `BoundedLattice::top ⊔ a = top` contract on
 // any input carrying a SIGMA number outside the assumed top's set.
 // Use [`AeaSet::empty`] / [`AeaSet::default`] when you need the
-// bottom, and [`Lattice::join`] / [`Lattice::meet`] for composition.
+// bottom, and [`JoinSemilattice::join`] / [`MeetSemilattice::meet`]
+// for composition.
