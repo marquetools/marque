@@ -222,27 +222,73 @@ fn decoder_latency_benchmark(c: &mut Criterion) {
 /// Rules disabled in the `lint_off_heavy_config` bench. Chosen to maximize
 /// the number of pre-resolved Off entries the lint hot loop's Site A
 /// short-circuits past, while avoiding the rules the bench fixture is
-/// known to exercise (E031, the banner-roll-up walker; E002, the
-/// missing-USA-trigraph rule that doesn't actually fire on this fixture
-/// since `REL TO USA, GBR` already contains USA).
+/// known to exercise (`capco:banner.banner-rollup.sar-portions-roll-up`
+/// — the banner-roll-up walker formerly known as E031;
+/// `capco:portion.dissem.rel-to-missing-usa` — the missing-USA-trigraph
+/// rule formerly known as E002 that doesn't actually fire on this
+/// fixture since `REL TO USA, GBR` already contains USA).
 ///
-/// Source set: the 38 registered rule IDs pinned by
-/// `crates/capco/tests/post_3b_registration_pin.rs::EXPECTED_RULE_IDS`.
-/// The picks below cover the long-tail of rules the bench fixture
-/// doesn't trigger — every PR 9a-era addition (E061-E065), the
-/// PR 9c.1 / 9c.2 NATO additions (E066, S007), the warning suite, and
-/// the rare-fire dissem / SCI rules. Together they exercise the
-/// Site A fast-path Off-skip on every candidate (~10 per 10KB).
+/// Source set: the registered rule IDs pinned by
+/// `crates/capco/tests/post_3b_registration_pin.rs::EXPECTED_RULE_IDS`
+/// (32 at T044 cutover) and the dyadic-collapse predicate IDs exposed
+/// through `CapcoScheme::bridge_emitted_rule_ids` (the rules retired
+/// into declarative `Constraint::Custom` rows at PR 3b.A et al.). The
+/// picks below cover the long-tail the bench fixture doesn't trigger —
+/// the SCI suggest/long-form rules, the NATO and dyadic-classification
+/// rules, the warning suite, and the rare-fire dissem / SCI / AEA
+/// per-axis rules. Together they exercise the Site A fast-path
+/// Off-skip on every candidate (~10 per 10KB).
+///
+/// IDs use the canonical wire-string form (`<scheme>:<predicate_id>`)
+/// the override resolver accepts at `Engine::new` post-T044. The
+/// override resolver also accepts the bare predicate-id form and the
+/// rule's descriptive alias, but the wire string matches what users
+/// type in `.marque.toml [rules]` keys and what `RuleId::Display`
+/// emits, so the bench pins that form.
+///
+/// Pre-T044 archaeology (see `docs/refactor-006/legacy-rule-id-map.md`)
+/// for the rename history:
+/// - SCI suggest/long-form ↔ E061-E065
+/// - NATO recanonicalize / bare-NATO ↔ E066, S007
+/// - Warning suite ↔ W003, W034
+/// - Style suggestions ↔ S003, S004, S005
+/// - Dyadic-classification (declarative-collapsed, bridge-emitted) ↔
+///   E010, E012, E014, E015, E016, E036
+/// - AEA dyadic (declarative-collapsed, bridge-emitted) ↔ E021, E024
+/// - Misc rare-fire ↔ E005, E006, E007, E008
 const OFF_RULES: &[&str] = &[
-    // PR 9a additions (very rare in clean fixture).
-    "E061", "E062", "E063", "E064", "E065", // PR 9c.1 / 9c.2 NATO additions.
-    "E066", "S007", // PR 9c.1 / 9c.2 NATO additions (don't fire in this fixture).
-    "W003", "W034", // Style suggestions. (W002 retired in PR closing #470.)
-    "S003", "S004", "S005",
-    // Dissem / SCI / SAR per-axis rules outside the fixture's coverage.
-    "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016",
-    // Misc rare-fire rules.
-    "E021", "E024", "E036",
+    // SCI suggest / long-form (very rare in clean fixture).
+    "capco:portion.sci.hcs-bare-at-confidential-legacy-remark", // ex-E061
+    "capco:portion.sci.hcs-bare-suggest-subcompartment",        // ex-E062
+    "capco:portion.sci.rsv-bare-requires-compartment",          // ex-E063
+    "capco:portion.dissem.eyes-only-convert-to-rel-to",         // ex-E064
+    "capco:portion.sci.deprecated-long-form",                   // ex-E065
+    // NATO recanonicalize / bare-NATO (don't fire in this fixture).
+    "capco:marking.recanonicalize.legacy-nato-compound", // ex-E066
+    "capco:portion.nato.bare-nato-requires-rel-to-usa-nato", // ex-S007
+    // Warning suite. (W002 retired in PR closing #470.)
+    "capco:page.dissem.non-ic-dissem-in-classified-banner", // ex-W003
+    "capco:portion.sci.unpublished-custom-control",         // ex-W034
+    // Style suggestions.
+    "capco:portion.classification.joint-usa-first-style", // ex-S003
+    "capco:portion.dissem.rel-to-trigraph-suggest",       // ex-S004
+    "capco:page.dissem.rel-to-uncertain-reduction",       // ex-S005
+    // Misc rare-fire (registered, not bridge-emitted).
+    "capco:portion.declassification.declassify-on-misplaced", // ex-E005
+    "capco:marking.deprecation.deprecated-dissem-control",    // ex-E006
+    "capco:portion.metadata.x-shorthand-date-pattern",        // ex-E007
+    "capco:marking.metadata.unrecognized-token",              // ex-E008
+    // Dyadic classification / SCI (declarative-collapsed; routed
+    // through `CapcoScheme::bridge_emitted_rule_ids`).
+    "capco:portion.sci.hcs-system-constraints", // ex-E010
+    "capco:portion.classification.dual-classification", // ex-E012
+    "capco:portion.classification.joint-requires-rel-to-coverage", // ex-E014
+    "capco:portion.classification.non-us-requires-dissem", // ex-E015
+    "capco:portion.classification.joint-conflicts-restricted", // ex-E016
+    "capco:portion.classification.joint-conflicts-hcs", // ex-E036
+    // AEA dyadic (declarative-collapsed; bridge-emitted).
+    "capco:portion.aea.rd-frd-requires-noforn", // ex-E021
+    "capco:portion.aea.rd-precedence",          // ex-E024
 ];
 
 fn lint_default_config_benchmark(c: &mut Criterion) {
