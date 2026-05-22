@@ -26,26 +26,42 @@
 //! confirm engine-level decoder dispatch fires and produces the
 //! expected diagnostic.
 //!
-//! This test family pins the **actual** engine-level behavior, which
-//! diverges from the #280 issue-body claim in two places:
+//! This test family pins the **actual** engine-level behavior across
+//! the migration trail:
 //!
-//! 1. SAR lowercase inputs DO reach the decoder and DO emit R001 with
-//!    `FixSource::DecoderPosterior` — but at `Severity::Suggest`, not
-//!    `Severity::Fix`. `Suggest` is a human-judgment channel and does
-//!    NOT auto-apply, so `engine.fix(...)` returns the original bytes
-//!    unchanged. The #280 claim of "auto-fix" overstates today's
-//!    behavior; pinning this here so a future decoder-severity
-//!    revision is a visible, considered change rather than silent
-//!    drift.
-//! 2. FGI category-mismatch tetragraphs (`FVEY`, `DEUX`) do NOT
-//!    reach the decoder under the default dispatcher — the strict
-//!    parser surfaces enough partial structure (the literal `FGI`
-//!    marker) that the dispatcher treats the strict result as
-//!    non-trivial and skips the decoder fallback. The user-visible
-//!    diagnostic is `E008` ("unrecognized token inside marking") at
-//!    `Severity::Error`. This is the correct end-user signal — "this
-//!    isn't a valid FGI ownership token" — even though it doesn't
-//!    route through R001.
+//! 1. SAR lowercase inputs DO reach the decoder and DO emit R001
+//!    with `FixSource::DecoderPosterior`.
+//!
+//!    // pre-#472 — decoder posterior on SAR-shape recovery fell below
+//!    // `confidence_threshold = 0.95`, demoting R001 to
+//!    // `Severity::Suggest`. `engine.fix(...)` returned the original
+//!    // bytes; no `AppliedFix` landed.
+//!    // post-#472 — null hypothesis sums over **observed** bytes
+//!    // (`TS`, `SAR`, `FK`) instead of the canonical token set. The
+//!    // observed-bytes null is materially more negative, runner-up
+//!    // drops, recognition_score clears 0.95, and R001 emits at
+//!    // `Severity::Fix`. `engine.fix(...)` auto-applies and writes
+//!    // the canonical uppercase bytes. The #280 "auto-fix via R001"
+//!    // claim is now structurally accurate.
+//!
+//! 2. FGI category-mismatch tetragraphs (`FVEY`, `DEUX`) do NOT reach
+//!    the decoder under the default dispatcher — the strict parser
+//!    surfaces enough partial structure (the literal `FGI` marker)
+//!    that the dispatcher treats the strict result as non-trivial and
+//!    skips the decoder fallback.
+//!
+//!    // pre-#501 — user-visible diagnostic was generic E008
+//!    // ("unrecognized token inside marking") at `Severity::Error`.
+//!    // Correct end-user signal but category-agnostic; an FVEY user
+//!    // saw the same diagnostic shape as a `(S//XYZZY)` typo.
+//!    // post-#501 — `FgiInvalidOwnershipTokenRule` (E073) emits a
+//!    // category-specific Error diagnostic at `Severity::Error`
+//!    // citing CAPCO-2016 §H.7 p123 (FGI ownership grammar). E008
+//!    // is suppressed via `is_fgi_invalid_ownership_token` so the
+//!    // user sees only the actionable category-specific diagnostic.
+//!    // No `text_correction` or `FixIntent` is offered (no single
+//!    // right replacement: FVEY is a 5-country coalition tetragraph;
+//!    // DEUX is shape-wrong rather than a typo for DEU).
 //!
 //! The lowercase-trigraph case (`(S//FGI deu)`) does work end-to-end:
 //! decoder fires R001 at `Severity::Fix`, auto-applies, and the
@@ -54,9 +70,10 @@
 //!
 //! Authority: this file is a regression-guard, not a primary-source
 //! grammar test. The underlying §-citations live on the rules and
-//! predicates these tests exercise — see #280's parent commits and
+//! predicates these tests exercise — see #280's parent commits,
 //! `crates/core/tests/fgi_silent_skip_guard.rs` for the strict-parse
-//! anchors.
+//! anchors, and `crates/capco/tests/e073_fgi_invalid_ownership_token.rs`
+//! for the post-#501 E073 surface contract.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
@@ -111,13 +128,19 @@ fn find_r001(diags: &[Diagnostic<CapcoScheme>]) -> Option<&Diagnostic<CapcoSchem
 
 // ============================================================================
 // SAR fixtures — strict parser rejects (post-#280); dispatcher falls through
-// to decoder; decoder emits R001 with DecoderPosterior at Severity::Suggest.
+// to decoder; decoder emits R001 with DecoderPosterior.
 //
-// Pinning today's actual behavior: R001 present, FixSource::DecoderPosterior,
-// Severity::Suggest, NO auto-fix. The #280 issue body asserts "the decoder
-// path already produces correct canonical uppercase fixes" — partially true
-// (R001 fires) and partially false (severity is Suggest, not Fix; no
-// `AppliedFix` lands).
+// // pre-#472 — Severity::Suggest, no auto-fix. R001 fired but the engine's
+// // confidence-threshold gate demoted it; `engine.fix(...)` returned the
+// // original bytes unchanged. The #280 issue body's "auto-fix via R001"
+// // claim was structurally false at that point.
+// // post-#472 — Severity::Fix, auto-applies. The null hypothesis now sums
+// // over the observed bytes (SAR identifiers are absent from prose priors,
+// // making the null materially more negative); the recognition_score
+// // clears 0.95 and R001 emits at Fix. `engine.fix(...)` writes the
+// // canonical uppercase bytes; an `AppliedFix` lands. The #280 claim is
+// // now structurally accurate for SAR. See per-test bodies for the
+// // detailed migration markers.
 // ============================================================================
 
 #[test]
@@ -376,26 +399,28 @@ fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
 
 // ============================================================================
 // FGI category-mismatch — wrong-shape ownership tokens that the dispatcher
-// does NOT route to the decoder. Pinning E008 ("unrecognized token") as the
-// observed end-user signal so a future decoder-routing change is a visible,
-// considered shift.
+// does NOT route to the decoder.
+//
+// pre-#501 — these tests pinned E008 ("unrecognized token") as the observed
+// end-user signal. Correct severity, wrong category specificity.
+// post-#501 — `FgiInvalidOwnershipTokenRule` (E073) emits the category-
+// specific Error diagnostic citing CAPCO-2016 §H.7 p123, and E008 is
+// suppressed on the same span via `is_fgi_invalid_ownership_token` so the
+// user sees only the actionable category-specific diagnostic. Detailed
+// surface contract: `crates/capco/tests/e073_fgi_invalid_ownership_token.rs`.
 // ============================================================================
 
 #[test]
-fn fgi_fvey_ownership_token_emits_e008_no_decoder_route() {
+fn fgi_fvey_ownership_token_emits_e073_category_diagnostic() {
     // `(S//FGI FVEY)` — FVEY is a valid REL TO tetragraph (members
     // = USA/GBR/CAN/AUS/NZL) but is semantically wrong as an FGI
     // ownership token. CountryCode::admits_fgi_ownership_token rejects
     // it post-#280.
     //
-    // Observed: the dispatcher does NOT route to the decoder. The
-    // user-visible diagnostic is E008 at Severity::Error. This is the
-    // correct end-user signal ("FVEY is not a valid FGI ownership
-    // token"), even though it lands through the rule pipeline rather
-    // than through R001. If a future PR routes this through the
-    // decoder, the change should produce a different category-specific
-    // diagnostic (e.g., "FGI ownership tokens must be sovereign or
-    // NATO") rather than a generic R001 canonicalization.
+    // post-#501 — the strict-path rejection routes through E073
+    // (FgiInvalidOwnershipTokenRule) instead of the generic E008
+    // surface. Dispatcher still does NOT route to the decoder; the
+    // user-visible diagnostic is now category-specific.
     let engine = build_engine();
     let input = b"(S//FGI FVEY)";
     let lint = engine.lint(input);
@@ -408,19 +433,28 @@ fn fgi_fvey_ownership_token_emits_e008_no_decoder_route() {
     );
     assert!(
         lint.diagnostics.iter().any(|d| d.rule.predicate_id()
-            == "marking.metadata.unrecognized-token"
+            == "marking.fgi.invalid-ownership-token"
             && d.severity == Severity::Error),
-        "expected E008 (unrecognized token) at Error severity; got {:?}",
+        "post-#501 expected E073 (fgi-invalid-ownership-token) at Error severity; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    assert!(
+        !lint
+            .diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token"),
+        "post-#501 E008 must NOT co-fire on FGI-marker span (suppressed via \
+         `is_fgi_invalid_ownership_token`); got {:?}",
         diags_summary(&lint.diagnostics),
     );
 }
 
 #[test]
-fn fgi_deux_unknown_tetragraph_emits_e008_no_decoder_route() {
+fn fgi_deux_unknown_tetragraph_emits_e073_category_diagnostic() {
     // `(S//FGI DEUX)` — 4-byte uppercase token that's not a registered
     // CountryCode tetragraph (`DEUX` is intentionally not FVEY/ACGU/
-    // NATO/AUSTRALIA_GROUP/…). Same dispatcher path as FVEY: E008
-    // surfaces; the decoder is not invoked.
+    // NATO/AUSTRALIA_GROUP/…). Same dispatcher path as FVEY: post-#501
+    // E073 surfaces, E008 is suppressed, the decoder is not invoked.
     let engine = build_engine();
     let input = b"(S//FGI DEUX)";
     let lint = engine.lint(input);
@@ -433,9 +467,18 @@ fn fgi_deux_unknown_tetragraph_emits_e008_no_decoder_route() {
     );
     assert!(
         lint.diagnostics.iter().any(|d| d.rule.predicate_id()
-            == "marking.metadata.unrecognized-token"
+            == "marking.fgi.invalid-ownership-token"
             && d.severity == Severity::Error),
-        "expected E008 (unrecognized token) at Error severity; got {:?}",
+        "post-#501 expected E073 (fgi-invalid-ownership-token) at Error severity; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    assert!(
+        !lint
+            .diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token"),
+        "post-#501 E008 must NOT co-fire on FGI-marker span (suppressed via \
+         `is_fgi_invalid_ownership_token`); got {:?}",
         diags_summary(&lint.diagnostics),
     );
 }
