@@ -4758,12 +4758,29 @@ fn check_bare_rel_portion_divergence(
             continue;
         }
         // Portion's explicit list diverges from what bare-REL portions imply.
-        let span = portion
+        //
+        // Parser invariant (verified against `parse_rel_to_with_spans`, the
+        // sole producer of `rel_to` entries): every push into `rel_to` is
+        // immediately preceded by a `TokenKind::RelToBlock` `TokenSpan` push
+        // at the two call sites in `marque-core::parser`. The
+        // `portion.rel_to.is_empty()` guard above means we reach this site
+        // only when `rel_to` is non-empty, therefore the `find()` MUST
+        // succeed. The `else` arm is defense-in-depth against future parser
+        // changes that would violate the invariant; mirrors S010's pattern.
+        let Some(block) = portion
             .token_spans
             .iter()
             .find(|t| t.kind == TokenKind::RelToBlock)
-            .map(|t| t.span)
-            .unwrap_or(ctx.candidate_span);
+        else {
+            debug_assert!(
+                false,
+                "E072: portion with non-empty rel_to has no RelToBlock token span \
+                 (parser invariant violation; see parse_rel_to_with_spans call sites \
+                 in marque-core::parser)"
+            );
+            continue;
+        };
+        let span = block.span;
         diagnostics.push(Diagnostic::new(
             RuleId::new("capco", "page.dissem.bare-rel-portion-divergence"),
             Severity::Warn,
@@ -5101,20 +5118,36 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
             return vec![];
         }
 
-        // Point at the first RelToBlock (or RelToTrigraph) span so the
-        // user sees exactly where the offending REL TO is.
-        let span = attrs
+        // Point at the first RelToBlock span so the user sees exactly where
+        // the offending REL TO is.
+        //
+        // Parser invariant (verified against `parse_rel_to_with_spans`, the
+        // sole producer of `rel_to` entries): every push into `rel_to` is
+        // immediately preceded by a `TokenKind::RelToBlock` `TokenSpan` push
+        // at the two call sites in `marque-core::parser`. The
+        // `attrs.rel_to.is_empty()` guard above means we reach this site
+        // only when `rel_to` is non-empty, therefore the `find()` MUST
+        // succeed. The `else` arm is defense-in-depth against future parser
+        // changes that would violate the invariant; mirrors S010's pattern.
+        // The previous `unwrap_or(Span::new(0, 0))` fallback produced a
+        // zero-length boundary anchor that pointed at byte 0 — meaningless
+        // to users. The `.or_else()` lookup for `RelToTrigraph` was likewise
+        // unreachable since `RelToTrigraph` spans are pushed only inside
+        // `parse_rel_to_with_spans`, which always pushes `RelToBlock` first.
+        let Some(block) = attrs
             .token_spans
             .iter()
             .find(|t| t.kind == TokenKind::RelToBlock)
-            .or_else(|| {
-                attrs
-                    .token_spans
-                    .iter()
-                    .find(|t| t.kind == TokenKind::RelToTrigraph)
-            })
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0));
+        else {
+            debug_assert!(
+                false,
+                "E039: candidate with non-empty rel_to has no RelToBlock token span \
+                 (parser invariant violation; see parse_rel_to_with_spans call sites \
+                 in marque-core::parser)"
+            );
+            return vec![];
+        };
+        let span = block.span;
 
         vec![Diagnostic::new(
             self.id(),
