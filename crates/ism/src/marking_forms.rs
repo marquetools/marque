@@ -203,7 +203,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     // not the longer Marking Title, so same-form semantics apply and rules
     // do not fire a no-op substitution fix when the abbreviation appears in
     // either position. The Marking Title (`title`) remains the long-form
-    // recognise-only string: `title_to_banner("SI-ECRU")` → `Some("SI-EU")`,
+    // recognize-only string: `title_to_banner("SI-ECRU")` → `Some("SI-EU")`,
     // enabling S001 to suggest the abbreviated form when the Title appears
     // verbatim in a banner line.
     MarkingForm {
