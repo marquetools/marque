@@ -1,5 +1,5 @@
 {
-  "_note": "Issue #677: IMC (portion form) appears in a banner line; canonical banner abbreviation is IMCON. CAPCO-2016 §D.1 p27 line 560 + §G.1 Table 4 p38. E058 floor-imcon also fires on IMCON above its class floor — second diagnostic.",
+  "_note": "Issue #677: IMC (portion form) appears in a banner line; canonical banner abbreviation is IMCON. CAPCO-2016 §D.1 p27 line 560 + §G.1 Table 4 p38. Only the form-mismatch diagnostic applies for SECRET//IMC: capco:banner.dissem.floor-imcon has policy AtLeast(SECRET), so the class-floor walker does NOT fire on SECRET (at-the-floor input). For a sub-SECRET IMC input the floor-imcon diagnostic WOULD fire alongside the form-mismatch.",
   "diagnostics": [
     {"rule": {"scheme": "capco", "predicate_id": "banner.metadata.uses-portion-form"}, "span": {"start": 8, "end": 11}}
   ]

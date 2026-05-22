@@ -230,6 +230,65 @@ fn canonical_portion_with_ns() {
 }
 
 // ---------------------------------------------------------------------------
+// Title-form fallback canonical-no-fire regression — Copilot R2
+// Finding B. After the `find_banner_form_in_portion` walker grew a
+// `title_to_portion` fallback for Marking Title forms (e.g.,
+// `TALENT KEYHOLE` in portion → fix to `TK`), the canonical SCI portion
+// form `TK` must NOT regress: `banner_to_portion("TK")` returns `None`
+// (row has `banner == portion`); `title_to_portion("TK")` returns `None`
+// (no MARKING_FORMS row has `title == "TK"`). Both paths return `None`,
+// so the walker correctly produces no diagnostic. Authority: §H.4 p85.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn canonical_portion_with_tk_no_title_fallback_regression() {
+    // `(TS//TK)` — canonical SCI portion form. Must not regress
+    // when the title-form fallback is wired up.
+    assert_no_form_mismatch("(TS//TK)");
+}
+
+#[test]
+fn canonical_portion_with_oc_no_title_fallback_regression() {
+    // `(S//OC)` — canonical IC dissem portion form. Must not regress
+    // when the title-form fallback is wired up;
+    // `title_to_portion("OC")` returns `None` (no row has
+    // `title == "OC"`).
+    assert_no_form_mismatch("(S//OC)");
+}
+
+#[test]
+fn canonical_portion_with_nf_no_title_fallback_regression() {
+    // `(S//NF)` — canonical FD&R portion form. Must not regress
+    // when the title-form fallback is wired up.
+    assert_no_form_mismatch("(S//NF)");
+}
+
+// ---------------------------------------------------------------------------
+// EYES title-form non-emit regression — Copilot R2 Finding B. The
+// `title_to_portion("EYES ONLY")` lookup returns `None` because the
+// EYES row has `title == banner == "EYES ONLY"` (the title==banner
+// gate inside `title_to_portion` short-circuits). The banner-direction
+// `find_portion_form_in_banner` walker keeps its `text == "EYES"` /
+// `text == "EYES ONLY"` suppression (E064 owns the FVEY conversion).
+// The portion-direction walker has no EYES suppression by design
+// (§H.8 p158 says the trigraph list must be carried forward from the
+// source banner — Marque cannot synthesize one from a portion alone),
+// so `(S//EYES ONLY)` MAY fire form-mismatch via the original
+// `banner_to_portion` branch — but the title-form fallback must NOT
+// be an additional source of EYES double-emit on the portion side.
+// This test pins the bottom-line behavior: the canonical portion form
+// `EYES` produces zero form-mismatch diagnostics.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn canonical_portion_with_eyes_no_title_fallback_regression() {
+    // `(S//EYES)` — canonical Five Eyes portion form (§H.8 p157).
+    // Both `banner_to_portion("EYES")` and `title_to_portion("EYES")`
+    // return `None`; no diagnostic.
+    assert_no_form_mismatch("(S//EYES)");
+}
+
+// ---------------------------------------------------------------------------
 // EYES suppression negative test — banner direction.
 // ---------------------------------------------------------------------------
 

@@ -1027,13 +1027,19 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
             // `capco:banner.metadata.uses-portion-form` +
             // `capco:portion.metadata.uses-banner-form` per #677. The
             // historical `is_abbreviation_expansion` guard here was
-            // dead-code-by-construction: `MIGRATIONS` holds only
-            // `25X1-` / `50X1-` declass-shorthand entries, and
-            // `is_dissem_replacement` above filters both BEFORE reaching
-            // this point — see the doc-comment at
-            // `crates/ism/build.rs` over the `MIGRATIONS` table for
-            // T035c-4's documented retirement of the former form-pair
-            // entries.
+            // dead-code-by-construction: the `MIGRATIONS` table in
+            // `marque_ism::generated::migrations` carries only declass
+            // shorthand entries today (`25X1-` / `50X1-` X-shorthand
+            // patterns per CAPCO-2016 §E.6 p34), and the
+            // `is_dissem_replacement` filter above rejects every one of
+            // them BEFORE reaching this point. No form-pair entry has
+            // existed in `MIGRATIONS` since T035c-4 (legacy IDs E001 /
+            // E009, now migrated to the wire strings cited above).
+            // Tracked as a follow-up: the `MIGRATIONS` doc-comment in
+            // `crates/ism/build.rs` still references the legacy E001 /
+            // E009 rule IDs and the removed `is_abbreviation_expansion`
+            // guard; updating that doc is engine-crate territory under
+            // Constitution VII §IV and cannot land in this CAPCO PR.
             // Constitution V Principle V (G13): the original document
             // bytes (`token.text`) and the canonical replacement
             // (`entry.replacement`) do NOT flow into the typed
@@ -7061,9 +7067,14 @@ impl Rule<CapcoScheme> for PortionFormInBannerRule {
     }
 }
 
-/// `capco:portion.metadata.uses-banner-form` — banner-form (Marking
-/// Title or Banner Abbreviation that differs from the Portion Mark)
-/// token appearing in a portion-mark marking. CAPCO-2016 §C.1 p25.
+/// `capco:portion.metadata.uses-banner-form` — Authorized Banner Line
+/// Marking Title OR Authorized Banner Line Abbreviation (i.e., either
+/// column 1 or column 2 of §G.1 Table 4 p38) appearing in portion-mark
+/// position where the canonical portion form per column 3 differs.
+///
+/// Authority: CAPCO-2016 §C.1 p25 (portion marks are Register-closed)
+/// + §G.1 Table 4 p38 (the three columns are the authoritative
+///   Title/Abbreviation/Portion-Mark surface).
 struct BannerFormInPortionRule;
 
 /// Citations `BannerFormInPortionRule` may emit on diagnostics. See
@@ -7128,12 +7139,20 @@ impl Rule<CapcoScheme> for BannerFormInPortionRule {
 /// reachable when both rules would otherwise produce overlapping
 /// intents on the same span.
 fn find_portion_form_in_banner(attrs: &CanonicalAttrs) -> Option<Span> {
-    use marque_ism::MarkingClassification;
     // Classification branch — US classifications carry portion forms
     // (S/TS/C/U/R) NOT in `MARKING_FORMS` (per the table's
     // doc-comment carve-out; classification mapping lives on
     // `Classification::banner_str` / `portion_str`).
-    if let Some(MarkingClassification::Us(level)) = attrs.classification.as_ref() {
+    //
+    // Read the US level via `CanonicalAttrs::us_classification()` so the
+    // branch covers both `MarkingClassification::Us(_)` AND
+    // `MarkingClassification::Conflict { us, .. }`. §D.1 p27 ("The
+    // classification level must be in English without abbreviation")
+    // applies to the US classification token regardless of whether the
+    // banner also carries a NATO or JOINT side — the Conflict variant
+    // is what the parser emits for those compound banners, and the
+    // US-side token is still in banner position.
+    if let Some(level) = attrs.us_classification() {
         let portion = level.portion_str();
         let banner = level.banner_str();
         if portion != banner {
@@ -7162,28 +7181,77 @@ fn find_portion_form_in_banner(attrs: &CanonicalAttrs) -> Option<Span> {
 }
 
 /// Mirror of [`find_portion_form_in_banner`] for the portion-mark
-/// direction. Returns the span of the first banner-form token. Does
-/// NOT skip EYES — E064 does not fire on bare-EYES in portion context
-/// (§H.8 p158 says "carry forward the trigraph codes listed in the
-/// source document banner line", which Marque cannot synthesize from
-/// a portion alone), so the modest improvement of canonicalizing
-/// `(S//EYES ONLY)` → `(S//EYES)` via the portion-form re-render is
-/// strictly better than silent acceptance.
+/// direction. Returns the span of the first banner-form token, where
+/// "banner form" means either an Authorized Banner Abbreviation
+/// (§G.1 Table 4 p38 column 2, e.g., `NOFORN`, `IMCON`) OR an
+/// Authorized Marking Title (§G.1 Table 4 p38 column 1, e.g.,
+/// `TALENT KEYHOLE`, `ORIGINATOR CONTROLLED`,
+/// `NOT RELEASABLE TO FOREIGN NATIONALS`) that has a distinct
+/// portion form per column 3. The portion-mark Register surface is
+/// closed (§C.1 p25 — "An authorized portion mark is listed for
+/// each classification and control marking entry in the Register"),
+/// so anything that maps to a different portion canonical via
+/// either lookup is a form mismatch.
 ///
-/// US classification banner forms (`SECRET`, `TOP SECRET`, etc.) are
-/// NOT in `MARKING_FORMS`, and `Classification::banner_str` returns
-/// `&'static str` not a `TokenId` — but the parser's classification
-/// recognizer accepts these long forms in either position and
-/// canonicalizes `attrs.classification` regardless. The portion rule
-/// does not surface "long-form classification in portion" today
-/// because there is no MARKING_FORMS row to drive the
-/// `banner_to_portion` lookup; that case is the symmetric gap to the
-/// banner-direction classification branch above, deferred to a
-/// follow-up if needed (the more common direction is the
+/// Two lookups are consulted in order:
+///
+/// 1. [`marque_ism::marking_forms::banner_to_portion`] covers the
+///    `MARKING_FORMS.banner` column (Authorized Abbreviation column
+///    of §G.1 Table 4). Catches `NOFORN`/`ORCON`/`IMCON`/etc. in
+///    portion position.
+/// 2. [`marque_ism::marking_forms::title_to_portion`] covers the
+///    `MARKING_FORMS.title` column (Marking Title column). Catches
+///    long-title forms like `TALENT KEYHOLE` (title) in portion
+///    position where the canonical portion form is `TK`. The
+///    `banner_to_portion` lookup misses these because its row gate
+///    is `f.banner != f.portion`, and TALENT-KEYHOLE-class rows
+///    have `f.banner == f.portion` (the Authorized Abbreviation
+///    column matches the Portion Mark column — they happen to be
+///    the same canonical bytes); only the Marking Title column
+///    differs.
+///
+/// Does NOT skip EYES — E064 does not fire on bare-EYES in portion
+/// context (§H.8 p158 says "carry forward the trigraph codes listed
+/// in the source document banner line", which Marque cannot
+/// synthesize from a portion alone), so the modest improvement of
+/// canonicalizing `(S//EYES ONLY)` → `(S//EYES)` via the
+/// portion-form re-render is strictly better than silent
+/// acceptance. The `title_to_portion` lookup returns `None` for
+/// `EYES ONLY` because its row has `title == banner`, so the
+/// fallback is not a new source of EYES double-emit.
+///
+/// US classification banner forms (`SECRET`, `TOP SECRET`, etc.)
+/// are NOT in `MARKING_FORMS`, and `Classification::banner_str`
+/// returns `&'static str` not a `TokenId` — but the parser's
+/// classification recognizer accepts these long forms in either
+/// position and canonicalizes `attrs.classification` regardless.
+/// The portion rule does not surface "long-form classification in
+/// portion" today because there is no MARKING_FORMS row to drive
+/// the `banner_to_portion` lookup; that case is the symmetric gap
+/// to the banner-direction classification branch above, deferred to
+/// a follow-up if needed (the more common direction is the
 /// abbreviation-in-banner case PM-4 names).
 fn find_banner_form_in_portion(attrs: &CanonicalAttrs) -> Option<Span> {
     for token in attrs.token_spans.iter() {
-        if marque_ism::marking_forms::banner_to_portion(token.text.as_ref()).is_some() {
+        let text = token.text.as_ref();
+        // Banner Abbreviation column — `NOFORN`/`ORCON`/`IMCON`/etc.
+        if marque_ism::marking_forms::banner_to_portion(text).is_some() {
+            return Some(token.span);
+        }
+        // Marking Title column — `TALENT KEYHOLE`/`ORIGINATOR CONTROLLED`/
+        // `NOT RELEASABLE TO FOREIGN NATIONALS`/etc. Only fires when the
+        // Title column differs from the Authorized Abbreviation column
+        // (the `title != banner` gate inside `title_to_portion`), so
+        // same-form-as-banner titles (e.g., `DEA SENSITIVE` where
+        // `title == banner == "DEA SENSITIVE"`) cannot double-emit:
+        // `banner_to_portion("DEA SENSITIVE")` returns `Some("DSEN")`
+        // above and short-circuits; `title_to_portion("DEA SENSITIVE")`
+        // returns `None` and would never reach here anyway. Authority:
+        // §C.1 p25 (portion mark must be the listed Register entry) +
+        // §G.1 Table 4 p38 (Register-closed-set governs both column 1
+        // Marking Title and column 2 Banner Abbreviation as the
+        // authorized banner forms — neither is the portion form).
+        if marque_ism::marking_forms::title_to_portion(text).is_some() {
             return Some(token.span);
         }
     }

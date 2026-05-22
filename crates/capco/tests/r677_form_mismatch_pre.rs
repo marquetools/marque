@@ -267,6 +267,99 @@ fn banner_with_classification_abbrev_fires_form_mismatch() {
 }
 
 // ---------------------------------------------------------------------------
+// Marking Title in portion position — Copilot R2 Finding B coverage. The
+// `find_banner_form_in_portion` walker checks both the Authorized
+// Banner Abbreviation column (`MARKING_FORMS.banner`) via
+// `banner_to_portion` AND the Marking Title column (`MARKING_FORMS.title`)
+// via `title_to_portion`. SCI rows like TALENT KEYHOLE have
+// `title="TALENT KEYHOLE"` ≠ `banner="TK"` == `portion="TK"` — the
+// `banner_to_portion("TALENT KEYHOLE")` lookup misses (gated on
+// `banner != portion`, which fails here), but `title_to_portion`
+// catches it. Authority: CAPCO-2016 §C.1 p25 (portion mark is the
+// Register Portion Mark column) + §G.1 Table 4 p38 (Register
+// closed-set governs all three columns). Re-verified at authorship
+// per Constitution VIII.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn portion_with_sci_title_fires_form_mismatch() {
+    // TALENT KEYHOLE is the Marking Title (§H.4 p85) for TK; the
+    // Register Portion Mark is `TK`. Pre-fix this case silently
+    // passed because `banner_to_portion("TALENT KEYHOLE")` returns
+    // `None` (the row has `banner == portion == "TK"`); the
+    // `title_to_portion` fallback catches it post-fix.
+    let diags = lint("(TS//TALENT KEYHOLE)");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        !hits.is_empty(),
+        "(TS//TALENT KEYHOLE) must produce at least one form-mismatch diagnostic; got {diags:?}",
+    );
+}
+
+#[test]
+fn portion_with_orcon_title_fires_form_mismatch() {
+    // ORIGINATOR CONTROLLED is the Marking Title (§H.8 p136) for
+    // ORCON; the Register Portion Mark is `OC`. ORCON has
+    // `title != banner` AND `banner != portion`, so the original
+    // `banner_to_portion` lookup ALSO catches `(S//ORCON)`. This
+    // test asserts the title-form fallback catches the long-title
+    // variant cleanly. Authority: §H.8 p136 + §G.1 Table 4 p38.
+    let diags = lint("(S//ORIGINATOR CONTROLLED)");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        !hits.is_empty(),
+        "(S//ORIGINATOR CONTROLLED) must produce at least one form-mismatch \
+         diagnostic; got {diags:?}",
+    );
+}
+
+#[test]
+fn portion_with_noforn_title_fires_form_mismatch() {
+    // NOT RELEASABLE TO FOREIGN NATIONALS is the Marking Title
+    // (§H.8 p145) for NOFORN; the Register Portion Mark is `NF`.
+    // Authority: §H.8 p145 + §G.1 Table 4 p38.
+    let diags = lint("(S//NOT RELEASABLE TO FOREIGN NATIONALS)");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        !hits.is_empty(),
+        "(S//NOT RELEASABLE TO FOREIGN NATIONALS) must produce at least one \
+         form-mismatch diagnostic; got {diags:?}",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Abbreviated US classification in a Conflict banner — Copilot R2
+// Finding D coverage. `MarkingClassification::Conflict { us, foreign }`
+// is what the parser emits for compound banners that carry both a US
+// classification and a NATO classification (e.g.,
+// `SECRET//NATO SECRET//NOFORN`). §D.1 p27 line 555 ("The
+// classification level must be in English without abbreviation")
+// applies to the US side regardless of the foreign companion — so an
+// abbreviated US class token (`S` rather than `SECRET`) in a
+// Conflict banner is still a form mismatch. The pre-fix branch read
+// `MarkingClassification::Us(_)` only and silently passed Conflict;
+// post-fix the branch reads via `CanonicalAttrs::us_classification()`
+// which covers both variants per its accessor doc.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn banner_with_us_abbrev_in_conflict_fires_form_mismatch() {
+    // `S//NATO SECRET//NOFORN` parses as `Conflict { us: Secret,
+    // foreign: NatoSecret }` (verified by
+    // `crates/core/src/parser.rs::conflict_us_and_nato`). The US
+    // token `S` is a portion-form classification in banner position
+    // — must fire form-mismatch even though the classification
+    // variant is `Conflict`, not `Us`. Authority: §D.1 p27 line 555.
+    let diags = lint("S//NATO SECRET//NOFORN");
+    let hits = form_mismatch_diags(&diags);
+    assert!(
+        !hits.is_empty(),
+        "S//NATO SECRET//NOFORN must produce at least one form-mismatch \
+         diagnostic (Conflict variant); got {diags:?}",
+    );
+}
+
+// ---------------------------------------------------------------------------
 // One-diagnostic-per-marking regression guard — dual-defective banner.
 // ---------------------------------------------------------------------------
 
