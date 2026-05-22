@@ -197,7 +197,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: None,
     },
     // §H.4 SCI compound forms where the Authorized Banner Line Abbreviation
-    // equals the Authorized Portion Mark. CAPCO §D.1 p27 line 560 authorizes
+    // equals the Authorized Portion Mark. CAPCO §D.1 p27 authorizes
     // EITHER the Marking Title OR the Authorized Abbreviation in the banner
     // line — `banner` is set to the Authorized Abbreviation (== portion),
     // not the longer Marking Title, so same-form semantics apply and rules
@@ -207,10 +207,10 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     // enabling S001 to suggest the abbreviated form when the Title appears
     // verbatim in a banner line.
     MarkingForm {
-        // CAPCO-2016 §H.4 p78 line 1790: Marking Title "SI-ECRU".
-        // §H.4 p78 line 1792: Authorized Banner Line Abbreviation "SI-EU".
-        // §H.4 p78 line 1794: Authorized Portion Mark "SI-EU".
-        // §D.1 p27 line 560: banner may use either Marking Title or
+        // CAPCO-2016 §H.4 p78: Marking Title "SI-ECRU".
+        // §H.4 p78: Authorized Banner Line Abbreviation "SI-EU".
+        // §H.4 p78: Authorized Portion Mark "SI-EU".
+        // §D.1 p27: banner may use either Marking Title or
         // Authorized Abbreviation; Authorized Abbreviation chosen here.
         //
         // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-EU` is the
@@ -224,10 +224,10 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: Some("ECRU"),
     },
     MarkingForm {
-        // CAPCO-2016 §H.4 p83 line 1940: Marking Title "SI-NONBOOK".
-        // §H.4 p83 line 1942: Authorized Banner Line Abbreviation "SI-NK".
-        // §H.4 p83 line 1944: Authorized Portion Mark "SI-NK".
-        // §D.1 p27 line 560: banner may use either Marking Title or
+        // CAPCO-2016 §H.4 p83: Marking Title "SI-NONBOOK".
+        // §H.4 p83: Authorized Banner Line Abbreviation "SI-NK".
+        // §H.4 p83: Authorized Portion Mark "SI-NK".
+        // §D.1 p27: banner may use either Marking Title or
         // Authorized Abbreviation; Authorized Abbreviation chosen here.
         //
         // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-NK` is the
@@ -684,8 +684,8 @@ mod tests {
         assert_eq!(banner_to_portion("NATO RESTRICTED"), Some("NR"));
         assert_eq!(banner_to_portion("NATO UNCLASSIFIED"), Some("NU"));
         // §H.4 SCI compounds — banner == portion (same-form) after the
-        // Authorized Abbreviation fix (§H.4 p78 line 1792, §H.4 p83 line 1942,
-        // §D.1 p27 line 560). The helpers return None for same-form entries.
+        // Authorized Abbreviation fix (§H.4 p78, §H.4 p83,
+        // §D.1 p27). The helpers return None for same-form entries.
         assert_eq!(banner_to_portion("SI-EU"), None);
         assert_eq!(banner_to_portion("SI-NK"), None);
         // The old title form is no longer a `banner` field value.
@@ -721,7 +721,7 @@ mod tests {
         assert_eq!(portion_to_banner("NR"), Some("NATO RESTRICTED"));
         assert_eq!(portion_to_banner("NU"), Some("NATO UNCLASSIFIED"));
         // §H.4 SCI compounds — banner == portion (same-form); helpers return None.
-        // CAPCO-2016 §H.4 p78 line 1792, §H.4 p83 line 1942, §D.1 p27 line 560.
+        // CAPCO-2016 §H.4 p78, §H.4 p83, §D.1 p27.
         assert_eq!(portion_to_banner("SI-EU"), None);
         assert_eq!(portion_to_banner("SI-NK"), None);
         // §H.8 EYES ONLY — inverse direction. CVE portion `EYES` → bare
@@ -772,7 +772,7 @@ mod tests {
             "TK",
             // §H.4 SCI compound abbreviations (same-form after Authorized
             // Abbreviation fix: banner == portion == abbreviation).
-            // CAPCO-2016 §H.4 p78 line 1792, §H.4 p83 line 1942.
+            // CAPCO-2016 §H.4 p78, §H.4 p83.
             "SI-EU",
             "SI-NK",
             // §H.6 AEA bare forms (same-form-with-distinct-title).
@@ -866,7 +866,7 @@ mod tests {
         // Mark even though `banner` was corrected to the abbreviation (PR #702:
         // `banner: "SI-ECRU"` → `"SI-EU"`, `banner: "SI-NONBOOK"` → `"SI-NK"`).
         // Guards S001 long-form detection semantics against future table edits.
-        // CAPCO-2016 §H.4 p78 line 1794, §H.4 p83 line 1944.
+        // CAPCO-2016 §H.4 p78, §H.4 p83.
         assert_eq!(title_to_portion("SI-ECRU"), Some("SI-EU"));
         assert_eq!(title_to_portion("SI-NONBOOK"), Some("SI-NK"));
     }
@@ -892,7 +892,7 @@ mod tests {
         // abbreviation (PR #702: `banner: "SI-ECRU"` → `"SI-EU"`,
         // `banner: "SI-NONBOOK"` → `"SI-NK"`). Guards S001 long-form
         // detection semantics against future table edits.
-        // CAPCO-2016 §H.4 p78 line 1792, §H.4 p83 line 1942, §D.1 p27 line 560.
+        // CAPCO-2016 §H.4 p78, §H.4 p83, §D.1 p27.
         assert_eq!(title_to_banner("SI-ECRU"), Some("SI-EU"));
         assert_eq!(title_to_banner("SI-NONBOOK"), Some("SI-NK"));
     }
