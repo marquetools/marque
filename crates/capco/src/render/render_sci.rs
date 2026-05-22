@@ -72,8 +72,17 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
     // Inline-4 covers typical SCI usage (SI/TK/HCS/G as the four bare
     // control systems); inline-4 for compartments/sub-compartments
     // matches the SCI hierarchy ceiling in observed CAPCO markings.
+    //
+    // The three sorts below pass named `fn`-item comparators
+    // (`cmp_sci_marking_system` file-local; `super::cmp_sci_compartment_ident`
+    // and `super::cmp_str_numeric_then_alpha` shared) for closure-axis
+    // monomorphization collapse — R1 WASM-cut per issue #689 and the
+    // PR #585 precedent at `crate::lattice::sort_smolstrs_by_sar`.
+    // `cmp_sci_marking_system` stays file-local because it reaches into
+    // `system_text`, which is the SCI-axis private encoding of the
+    // `SciControlSystem` variants and not shared by other axes.
     let mut sorted: SmallVec<[&SciMarking; 4]> = markings.iter().collect();
-    sorted.sort_by(|a, b| numeric_then_alpha_cmp(system_text(&a.system), system_text(&b.system)));
+    sorted.sort_by(cmp_sci_marking_system);
 
     let mut first = true;
     for marking in sorted {
@@ -84,7 +93,7 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
         out.write_str(system_text(&marking.system))?;
         // Compartments numeric-then-alpha within the system.
         let mut comps: SmallVec<[_; 4]> = marking.compartments.iter().collect();
-        comps.sort_by(|a, b| numeric_then_alpha_cmp(&a.identifier, &b.identifier));
+        comps.sort_by(cmp_sci_compartment_ident);
         for comp in comps {
             out.write_char('-')?;
             out.write_str(&comp.identifier)?;
@@ -92,7 +101,7 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
             // compartment, space-separated.
             let mut subs: SmallVec<[&str; 4]> =
                 comp.sub_compartments.iter().map(|s| s.as_ref()).collect();
-            subs.sort_by(|a, b| numeric_then_alpha_cmp(a, b));
+            subs.sort_by(cmp_str_numeric_then_alpha);
             for sub in subs {
                 out.write_char(' ')?;
                 out.write_str(sub)?;
@@ -100,6 +109,18 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
         }
     }
     Ok(())
+}
+
+/// Compare two `&&SciMarking` references on the textual encoding of
+/// their `system` field via [`super::numeric_then_alpha_cmp`].
+///
+/// File-local — reaches into [`system_text`], the SCI-axis encoding
+/// of the `SciControlSystem` variant tag, which is not shared across
+/// axes. Named `fn`-item (not closure) for closure-axis mono collapse
+/// per R1 / issue #689. Mirrors the cross-file shape of the
+/// `super::cmp_*_ident` family.
+fn cmp_sci_marking_system(a: &&SciMarking, b: &&SciMarking) -> core::cmp::Ordering {
+    super::numeric_then_alpha_cmp(system_text(&a.system), system_text(&b.system))
 }
 
 fn render_cve_only(controls: &[marque_ism::SciControl], out: &mut dyn fmt::Write) -> fmt::Result {
@@ -124,12 +145,12 @@ fn system_text(system: &SciControlSystem) -> &str {
     }
 }
 
-/// Numeric tokens sort before alphabetic tokens; within each bucket
-/// lex order. This is the §A.6 p15-16 ordering ("ascending sort order
-/// with all numbered values first, then followed by alphabetic
-/// values"). A numeric token is one whose first character is an ASCII
-/// digit; mixed alphanumerics like `BLFH` are alphabetic. CAPCO-2016
-/// example p16: `123` (numeric) sorts before `SI-G` (alpha).
-///
-/// Shared with the SAR / AEA axes — see [`super::numeric_then_alpha_cmp`].
-use super::numeric_then_alpha_cmp;
+// Shared named-fn-item comparators imported from `super` — see the
+// "Named-fn-item comparators" section of `crate::render::mod` for the
+// R1 mono-collapse rationale (issue #689; extends PR #585's
+// `sort_smolstrs_by_sar`).
+//
+// `numeric_then_alpha_cmp` is re-imported for use by the file-local
+// `cmp_sci_marking_system` above (which needs it under a `&str` slot,
+// not a `&&str` slot the cross-file comparator provides).
+use super::{cmp_sci_compartment_ident, cmp_str_numeric_then_alpha};

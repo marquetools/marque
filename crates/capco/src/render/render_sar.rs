@@ -85,8 +85,14 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
     // covers the typical SAR cardinality (single program common; up to
     // ~4 programs in compound markings); compartments/sub-compartments
     // similarly cap at ~4 per program in observed §H.5 markings.
+    //
+    // The three sorts below pass named `fn`-item comparators
+    // (`super::cmp_sar_*` / `super::cmp_str_numeric_then_alpha`) for
+    // closure-axis monomorphization collapse — R1 WASM-cut per
+    // issue #689 and the PR #585 precedent at
+    // `crate::lattice::sort_smolstrs_by_sar`.
     let mut programs: SmallVec<[_; 4]> = sar.programs.iter().collect();
-    programs.sort_by(|a, b| numeric_then_alpha_cmp(&a.identifier, &b.identifier));
+    programs.sort_by(cmp_sar_program_ident);
 
     let mut first_prog = true;
     for prog in programs {
@@ -98,7 +104,7 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
 
         // Compartments ascending alpha (numeric first), `-`-separated.
         let mut comps: SmallVec<[_; 4]> = prog.compartments.iter().collect();
-        comps.sort_by(|a, b| numeric_then_alpha_cmp(&a.identifier, &b.identifier));
+        comps.sort_by(cmp_sar_compartment_ident);
         for comp in comps {
             out.write_char('-')?;
             out.write_str(&comp.identifier)?;
@@ -107,7 +113,7 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
             // space-separated.
             let mut subs: SmallVec<[&str; 4]> =
                 comp.sub_compartments.iter().map(|s| s.as_ref()).collect();
-            subs.sort_by(|a, b| numeric_then_alpha_cmp(a, b));
+            subs.sort_by(cmp_str_numeric_then_alpha);
             for sub in subs {
                 out.write_char(' ')?;
                 out.write_str(sub)?;
@@ -117,7 +123,8 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
     Ok(())
 }
 
-/// Numeric tokens sort before alphabetic; within each bucket, lex
-/// order. Same convention as the SCI axis (§A.6 p15-16). Shared helper
-/// imported from `super` — see [`super::numeric_then_alpha_cmp`].
-use super::numeric_then_alpha_cmp;
+// Shared named-fn-item comparators imported from `super` — see the
+// "Named-fn-item comparators" section of `crate::render::mod` for the
+// R1 mono-collapse rationale (issue #689; extends PR #585's
+// `sort_smolstrs_by_sar`).
+use super::{cmp_sar_compartment_ident, cmp_sar_program_ident, cmp_str_numeric_then_alpha};

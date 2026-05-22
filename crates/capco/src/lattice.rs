@@ -75,6 +75,47 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
     slice.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
 }
 
+/// Compare two `&str` references by `marque_ism::sar_sort_key`, with a
+/// lexicographic tiebreaker on the raw text for stable total ordering
+/// when two distinct strings produce the same `(bool, u64, &str)` triple
+/// (e.g., two numeric identifiers that both overflow `u64::MAX` via
+/// `unwrap_or(u64::MAX)` in `sar_sort_key`).
+///
+/// Used by [`HierarchicalTreeSet::sorted_entries`] for both `K =
+/// SystemKey` (SCI rendering) and `K = SmolStr` (SAR rendering) — the
+/// closure body collapses into one named `fn`-item so the
+/// `sort_by` callsite still monomorphizes per-K but the comparator
+/// body is shared. R1 WASM-cut per issue #689; extends the PR #585
+/// precedent at [`sort_smolstrs_by_sar`].
+///
+/// Deliberately NOT `#[inline]` — see the [`sort_smolstrs_by_sar`]
+/// doc-comment for the rationale (inlining defeats the consolidation).
+fn cmp_sar_key_with_lex_tiebreak(a: &str, b: &str) -> std::cmp::Ordering {
+    marque_ism::sar_sort_key(a)
+        .cmp(&marque_ism::sar_sort_key(b))
+        .then_with(|| a.cmp(b))
+}
+
+/// Compare two `&CountryCode` references with trigraphs (length 3)
+/// before tetragraphs and any opaque longer codes, alphabetical within
+/// each bucket — the CAPCO-2016 §H.8 p164 DISPLAY ONLY LIST ordering
+/// (also §A.6 p17 separator alphabet).
+///
+/// Used by [`DisplayOnlyBlock::to_vec`]. Single callsite at present;
+/// extracted to a named `fn`-item to (a) make the sort semantic
+/// reviewable separately from the cross-axis lattice machinery, and
+/// (b) match the closure-axis-collapse pattern of the other R1
+/// helpers (issue #689 / PR #585 precedent). The single-site mono
+/// "collapse" is from 1 → 1 here; the win is consistency of pattern.
+fn cmp_country_code_trigraph_first(a: &CountryCode, b: &CountryCode) -> std::cmp::Ordering {
+    let a_is_trigraph = a.as_str().len() == 3;
+    let b_is_trigraph = b.as_str().len() == 3;
+    a_is_trigraph
+        .cmp(&b_is_trigraph)
+        .reverse()
+        .then_with(|| a.as_str().cmp(b.as_str()))
+}
+
 // ---------------------------------------------------------------------------
 // HierarchicalTreeSet — shared 3-level tree storage primitive
 // ---------------------------------------------------------------------------
@@ -226,13 +267,12 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
         key_text: impl Fn(&K) -> &str,
     ) -> SmallVec<[(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>); 4]> {
         let mut entries: SmallVec<[_; 4]> = self.inner.iter().collect();
-        entries.sort_by(|a, b| {
-            let ta = key_text(a.0);
-            let tb = key_text(b.0);
-            marque_ism::sar_sort_key(ta)
-                .cmp(&marque_ism::sar_sort_key(tb))
-                .then_with(|| ta.cmp(tb))
-        });
+        // The closure still exists (it captures `key_text` which is
+        // generic-per-K), but the comparator body is delegated to the
+        // named `fn`-item `cmp_sar_key_with_lex_tiebreak` so the body
+        // is code-gen'd once across all `K` instantiations — R1 WASM-
+        // cut per issue #689; extends PR #585's `sort_smolstrs_by_sar`.
+        entries.sort_by(|a, b| cmp_sar_key_with_lex_tiebreak(key_text(a.0), key_text(b.0)));
         entries
     }
 }
@@ -3986,14 +4026,12 @@ impl DisplayOnlyBlock {
             Self::Bottom | Self::Empty | Self::NofornSuperseded => Vec::new(),
             Self::Lattice { countries } => {
                 let mut codes: Vec<CountryCode> = countries.iter().copied().collect();
-                codes.sort_by(|a, b| {
-                    let a_is_trigraph = a.as_str().len() == 3;
-                    let b_is_trigraph = b.as_str().len() == 3;
-                    a_is_trigraph
-                        .cmp(&b_is_trigraph)
-                        .reverse()
-                        .then_with(|| a.as_str().cmp(b.as_str()))
-                });
+                // Named `fn`-item comparator (`cmp_country_code_trigraph_first`)
+                // for closure-axis monomorphization collapse — R1 WASM-cut per
+                // issue #689 and the PR #585 precedent at
+                // [`sort_smolstrs_by_sar`]. §H.8 p164 + §A.6 p17 ordering
+                // (trigraphs first, tetragraphs after, alpha within bucket).
+                codes.sort_by(cmp_country_code_trigraph_first);
                 codes
             }
         }
