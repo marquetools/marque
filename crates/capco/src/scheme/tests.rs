@@ -1113,19 +1113,23 @@ fn hot1_pipeline_semantics_preserved_for_orcon_trigger() {
 
 /// Post-#704 FD&R supersession at the project() boundary:
 /// `project(Page)` on a bare US classified marking WITH NOFORN
-/// already present is a no-op on the dissem axis. The closure()
-/// layer now adds RELIDO unconditionally (Row 9 is purely additive
-/// post-#704 — the previous `MASK_RELIDO_US_CLASS_SUPPRESSORS`
-/// suppressor moved to `CapcoScheme::apply_supersession_overlays`).
-/// The supersession overlay observes NOFORN in the post-closure
-/// dissem axis and strips RELIDO per §H.8 p145, restoring the
-/// `{NOFORN}` end state.
+/// already present is a no-op on the dissem axis. Post-#704
+/// `default_fill::row9_should_fill`'s gate `(post_close ∩
+/// US_COLLATERAL_CLASSIFIED != 0) ∧ (post_close ∩
+/// MASK_RELIDO_US_CLASS_SUPPRESSORS == 0)` SKIPS when NOFORN is
+/// in the input — NOFORN is in `MASK_RELIDO_US_CLASS_SUPPRESSORS`
+/// per §B.3.a p19. RELIDO is never injected; the supersession
+/// overlay's NOFORN-dominates-RELIDO strip is a no-op (nothing
+/// to strip). End state: input `{NOFORN}` → output `{NOFORN}`.
 ///
-/// Authority: §H.8 p145 (NOFORN dominates REL TO / RELIDO / DISPLAY
-/// ONLY / EYES); §B.3 Table 2 p21 (US-collateral defaulting rule
-/// drives Row 9 firing).
+/// Authority: §B.3 paragraph b p19 ("not marked previously" gate
+/// applies to default_fill Row 9); §B.3.a p19 (NOFORN is canonical
+/// FD&R, in MASK_FDR_DOMINATORS and therefore in
+/// MASK_RELIDO_US_CLASS_SUPPRESSORS); §H.8 p145 (NOFORN dominates
+/// RELIDO, irrelevant on this input because no RELIDO is ever
+/// added).
 #[test]
-fn project_noop_on_classified_with_noforn_via_overlay() {
+fn project_noop_on_classified_with_noforn_via_default_fill_gate() {
     use marque_scheme::Scope;
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs(); // US(Secret)
@@ -1135,8 +1139,10 @@ fn project_noop_on_classified_with_noforn_via_overlay() {
     assert_eq!(
         before.0.dissem_us, after.0.dissem_us,
         "project must converge to `{{NOFORN}}` when NOFORN is already \
-         present (closure adds RELIDO via Row 9; overlay strips it per \
-         §H.8 p145)"
+         present (default_fill::row9_should_fill SKIPS because NOFORN \
+         is in MASK_RELIDO_US_CLASS_SUPPRESSORS per §B.3.a p19 — \
+         RELIDO is never added so the §H.8 p145 supersession overlay \
+         has nothing to strip)"
     );
 }
 
