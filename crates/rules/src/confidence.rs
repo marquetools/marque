@@ -2,15 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Confidence — Phase D audit-provenance payload.
+//! Confidence — audit-provenance payload.
 //!
-//! Every [`FixProposal`](crate::FixProposal) carries a `Confidence`
-//! record describing how the engine arrived at the proposal. The
-//! record stores two primary scalar confidence axes —
-//! `recognition` and `rule` — plus optional auxiliary fields
-//! (`region` and `runner_up_ratio`) and a list of named feature
-//! contributions. Together they reconstruct the decoder's scoring
-//! path so an auditor can verify *why* a given fix was promoted.
+//! Every fix proposal carries a `Confidence` record describing how the
+//! engine arrived at the proposal. The record stores two primary scalar
+//! confidence axes — `recognition` and `rule` — plus optional auxiliary
+//! fields (`region` and `runner_up_ratio`) and a list of named feature
+//! contributions. Together they reconstruct the decoder's scoring path
+//! so an auditor can verify *why* a given fix was promoted.
 //!
 //! The engine's current threshold-facing combined score is
 //! `recognition * rule` as exposed by [`Confidence::combined`].
@@ -25,32 +24,19 @@
 //! All scores are `f32`. The decoder scores in `f64` internally
 //! (log-priors and posteriors accumulate across many features), but
 //! the emitted `Confidence` downcasts once at the boundary so the
-//! audit record stays compact and byte-stable. This matches the
-//! foundational-plan invariant line 739-757.
+//! audit record stays compact and byte-stable.
 //!
 //! ## `features` is closed
 //!
-//! [`FeatureId`] is a non-`#[non_exhaustive]` closed enum. The
-//! on-the-wire contract is the `as_str()` table plus the
-//! `feature_id_as_str_matches_audit_contract` pinned-strings test;
-//! both update in lock-step when a variant is added.
-//!
-//! Pre-1.0 the project carries no downstream audit-record
+//! [`FeatureId`] is a closed enum. The on-the-wire contract is the
+//! `as_str()` table plus the `feature_id_as_str_matches_audit_contract`
+//! pinned-strings test; both update in lock-step when a variant is
+//! added. Pre-1.0 the project carries no downstream audit-record
 //! consumers, so the `MARQUE_AUDIT_SCHEMA` pin (in
-//! `crates/engine/build.rs`) is performative — extending
-//! `FeatureId` does not currently require a schema bump.
-//!
-//! **TODO(marque-1.0)**: re-tighten the schema-bump contract
-//! before GA. The atomic `marque-mvp-3 → marque-1.0` cutover
-//! landed at PR 3c.2.D (Canonical wired into audit emit, BLAKE3
-//! audit-record digesting, closed `MessageTemplate` JSON
-//! serialization, `AppliedFix` v2 + `AppliedTextCorrection` split);
-//! PR 3c.2.E retired the transitional `from_parsed_unchecked`
-//! adapter and lifted the structural rename into the
-//! `MarkingScheme::canonicalize` trait override. The accept-list
-//! is the single source of truth post-cutover; the doc comment
-//! above SHOULD be rewritten to "any new variant requires a
-//! coordinated schema bump" once a new `FeatureId` variant lands.
+//! `crates/engine/build.rs`) is performative — extending `FeatureId`
+//! does not currently require a schema bump. Re-tighten the
+//! schema-bump contract to "any new variant requires a coordinated
+//! schema bump" before GA.
 //!
 //! ## `features` storage
 //!
@@ -58,8 +44,8 @@
 //! Strict-path fixes record zero features and never allocate; decoder-
 //! path fixes record 1–4 features per the empirical distribution of
 //! the corpus, which fits inline. The inline-4 bound matches the
-//! existing `MessageArgs::feature_ids` / `FixIntent::feature_ids`
-//! pattern — same cardinality, same audit-record proximity. The
+//! `MessageArgs::feature_ids` / `FixIntent::feature_ids` pattern —
+//! same cardinality, same audit-record proximity. The
 //! `SmallVec` storage is an implementation detail; the field iterates
 //! and indexes the same as a `Vec`, so consumers that only read the
 //! contributions are unaffected. Struct-literal construction must use
@@ -89,8 +75,7 @@ use smallvec::SmallVec;
 ///   where posterior mass came from.
 ///
 /// Construction happens via [`Confidence::strict`] (for rules that
-/// bypass the decoder) or the decoder's scoring path (Phase 4 / task
-/// T061).
+/// bypass the decoder) or the decoder's scoring path.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Confidence {
     /// Recognizer posterior in `[0.0, 1.0]`.
@@ -137,7 +122,7 @@ impl Confidence {
 
     /// Product of `recognition` and `rule`. The engine's
     /// confidence-threshold gate compares this combined score against
-    /// the configured threshold (FR-016).
+    /// the configured threshold.
     #[inline]
     pub fn combined(&self) -> f32 {
         self.recognition * self.rule
@@ -212,7 +197,7 @@ pub struct FeatureContribution {
 
 /// Closed enumeration of features the decoder can record.
 ///
-/// Adding ANY variant requires a coordinated bump of
+/// Adding any variant requires a coordinated bump of
 /// `MARQUE_AUDIT_SCHEMA` (in `crates/engine/build.rs`) once Marque has
 /// audit-record consumers. Pre-1.0, the audit-schema pin is performative
 /// — there are no downstream readers yet — so the contract is the
@@ -233,7 +218,7 @@ pub enum FeatureId {
     /// The candidate's base rate in the target corpus dominates the
     /// posterior (common-marking prior).
     BaseRateCommonMarking,
-    /// Strict-context classification floor (FR-011) applied — e.g.,
+    /// Strict-context classification floor applied — e.g.,
     /// banner at TOP SECRET forces a strict posterior for
     /// classification tokens at ≥ that level on the same page.
     StrictContextClassification,
