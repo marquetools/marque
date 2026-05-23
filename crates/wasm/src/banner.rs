@@ -65,13 +65,10 @@ pub fn compute_banner_native(text: &str) -> Result<String, String> {
             continue;
         }
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
-            // PR 3c.2.B B3 (PM-B-1, PM-B-3): canonicalization seam
-            // migrated to the `MarkingScheme::canonicalize` trait
-            // method. `scheme` was constructed above;
-            // reuse — no new allocation. This function is documented
-            // as "Does NOT run the rules engine" (callers reach for it
-            // when they want banner roll-up without rule dispatch);
-            // the migration preserves that behavior byte-for-byte.
+            // Canonicalize via the scheme, reusing the `scheme` built
+            // above (no new allocation). This function does NOT run the
+            // rules engine — callers use it for banner roll-up without
+            // rule dispatch.
             let attrs = scheme.canonicalize(parsed.attrs);
             markings.push(CapcoMarking::new(attrs));
         }
@@ -130,16 +127,13 @@ pub fn generate_cab_native(
 
     // Scan text and accumulate per-portion `CanonicalAttrs` along with
     // (a) the first declassify_on date observed (CAB-specific — first
-    // wins by historical contract, NOT the lattice MaxDate semantic),
+    // wins, NOT the lattice MaxDate semantic),
     // (b) the first declass_exemption observed (CAB-specific — first
     // wins, NOT the page-rollup last-observed semantic), and
-    // (c) the last-observed exemption as a fallback for the
-    // `page_context.expected_declass_exemption` migration path
-    // (which used last-observed). The double accumulator preserves
-    // the pre-PR-4b-E semantics exactly: `found_declass_exemption`
-    // (first-wins) is consulted first; the last-observed fallback
-    // fires only when no portion carried an explicit value and the
-    // page is otherwise classified.
+    // (c) the last-observed exemption as a fallback.
+    // `found_declass_exemption` (first-wins) is consulted first; the
+    // last-observed fallback fires only when no portion carried an
+    // explicit value and the page is otherwise classified.
     let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
@@ -147,26 +141,20 @@ pub fn generate_cab_native(
     let mut markings: Vec<CapcoMarking> = Vec::new();
     let mut found_declass_date: Option<String> = None;
     let mut found_declass_exemption: Option<String> = None;
-    // PR 4b-E (OQ-1 option a): inline per-portion accumulator for the
-    // last-observed declass_exemption (formerly via
-    // `page_context.expected_declass_exemption()`). CAB-only fields
-    // (`declass_exemption`, `classified_by`, `derived_from`,
-    // `token_spans`) stay excluded from `ProjectedMarking` by design
-    // (see `crates/ism/src/projected.rs` "page aggregate, not a CAB"
-    // contract). The architect plan defers a dedicated `CabProjection`
-    // type to a future PR; for now we inline the 3-line accumulator
-    // at the only consumer. If a second CAB consumer arrives,
-    // promote to a `CabProjection` type in `marque-ism`.
+    // Inline per-portion accumulator for the last-observed
+    // declass_exemption. CAB-only fields (`declass_exemption`,
+    // `classified_by`, `derived_from`, `token_spans`) stay excluded
+    // from `ProjectedMarking` by design (see `crates/ism/src/projected.rs`
+    // "page aggregate, not a CAB" contract). With a single CAB consumer
+    // the accumulator lives inline here; promote to a `CabProjection`
+    // type in `marque-ism` if a second consumer arrives.
     let mut last_observed_exemption: Option<marque_ism::DeclassExemption> = None;
 
     for candidate in &candidates {
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
-            // PR 3c.2.B B3 (PM-B-1, PM-B-3): canonicalization seam
-            // migrated to the `MarkingScheme::canonicalize` trait
-            // method. `scheme` was constructed above;
-            // reuse — no new allocation. CAB-line generation runs
-            // outside the rules engine by design; the migration
-            // preserves that behavior byte-for-byte.
+            // Canonicalize via the scheme, reusing the `scheme` built
+            // above (no new allocation). CAB-line generation runs
+            // outside the rules engine by design.
             let attrs = scheme.canonicalize(parsed.attrs);
             if found_declass_date.is_none() {
                 if let Some(date) = &attrs.declassify_on {
@@ -187,20 +175,18 @@ pub fn generate_cab_native(
             // `DeclassExemptionAccumulator::from_attrs_iter`'s
             // last-wins semantic.
             //
-            // M-4 (PR 4b-E review fix-up): the dual-accumulator
-            // asymmetry here is intentional. `last_observed_exemption`
-            // is portion-kind-gated because that's the accumulator the
-            // CAB fallback ladder uses when no explicit `declass_*`
-            // CAB-line field appears in the input (and the §E.3 pp
-            // 32-33 "longest period of protection" semantics is what
-            // the Phase-3 successor will produce). `found_*` above are
-            // first-wins across ALL candidate kinds (banner / CAB /
-            // portion) — they're capturing the explicit CAB-line
-            // values when present, which can appear in a banner-or-CAB
-            // candidate that is NOT itself a portion. The two
-            // accumulators feed different rungs of the fallback ladder
-            // (see the `let declass = ...` below) per OQ-1 option (a) /
-            // architect plan §3 Decision 1.
+            // The dual-accumulator asymmetry here is intentional.
+            // `last_observed_exemption` is portion-kind-gated because
+            // that's the accumulator the CAB fallback ladder uses when
+            // no explicit `declass_*` CAB-line field appears in the
+            // input (a duration-aware "longest period of protection"
+            // comparator per §E.3 pp 32-33 is still to come). `found_*`
+            // above are first-wins across ALL candidate kinds (banner /
+            // CAB / portion) — they capture the explicit CAB-line values
+            // when present, which can appear in a banner-or-CAB candidate
+            // that is NOT itself a portion. The two accumulators feed
+            // different rungs of the fallback ladder (see the
+            // `let declass = ...` below).
             if candidate.kind == MarkingType::Portion {
                 if let Some(ex) = attrs.declass_exemption {
                     last_observed_exemption = Some(ex);
@@ -215,14 +201,11 @@ pub fn generate_cab_native(
     // UNCLASSIFIED banner (with or without dissem controls) carries no
     // "Classified By", "Derived From", or "Declassify On" fields.
     //
-    // PR 4b-E: `page_context.is_classified()` migrated to a
-    // projected-marking read. The scheme's `project(Scope::Page, ...)`
-    // composes the per-axis lattice projection of which classification
-    // is one component; the predicate is the same — "effective
-    // classification level above Unclassified."
+    // Classification check reads the projected marking. The scheme's
+    // `project(Scope::Page, ...)` composes the per-axis lattice
+    // projection, of which classification is one component; the
+    // predicate is "effective classification level above Unclassified."
     // No portions → no classification, treat as Unclassified.
-    // (Same fall-through behavior as the pre-PR-4b-E
-    // `page_context.is_classified()` over an empty accumulator.)
     if markings.is_empty() {
         return Ok(String::new());
     }
@@ -238,12 +221,10 @@ pub fn generate_cab_native(
 
     // Determine the declassification marking.
     //
-    // PR 4b-E (OQ-1 option a resolved): the third-priority fallback
-    // formerly went through `page_context.expected_declass_exemption()`;
-    // it now reads `last_observed_exemption` accumulated inline above.
-    // Same last-observed semantic; same Phase-3 TODO carries over on
-    // `DeclassExemptionAccumulator` for a duration-aware comparator
-    // (§E.3 pp 32-33 "longest period of protection").
+    // The third-priority fallback reads `last_observed_exemption`
+    // accumulated inline above (last-observed semantic). A
+    // duration-aware comparator for `DeclassExemptionAccumulator`
+    // (§E.3 pp 32-33 "longest period of protection") is still to come.
     let declass = if let Some(date) = found_declass_date {
         date
     } else if let Some(ex) = found_declass_exemption {

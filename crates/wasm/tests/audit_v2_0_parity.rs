@@ -2,24 +2,19 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T088 / SC-008 — `marque-2.0` audit-record byte-identity parity.
+//! `marque-2.0` audit-record byte-identity parity.
 //!
-//! PR 3c.2.D / D5 binding constraint: the CLI's
-//! `marque::render::render_audit_line` and the WASM crate's
+//! The CLI's `marque::render::render_audit_line` and the WASM crate's
 //! `audit_line_to_json_v1_0` MUST produce byte-identical NDJSON for
 //! every `AuditLine<CapcoScheme>` value the engine emits. This test
 //! exercises the WASM-side projection through every variant of the
 //! v2.0 shape — strict / decoder discriminants, AppliedFix /
 //! TextCorrection arms, optional-field null-emit, MessageArgs
-//! partial-emit — and validates the contract-shape invariants per
-//! `specs/006-engine-rule-refactor/contracts/audit-record.md`
-//! §107-178 (AppliedFix) + §388-402 (TextCorrection).
+//! partial-emit — and validates the contract-shape invariants.
 //!
-//! T044: schema-version cutover `marque-1.0` → `marque-2.0` carries
-//! the 2-tuple `RuleId` shape. The `rule` field on the wire is now
-//! a structured `{scheme, predicate_id}` object per PM OD-2. The
-//! file is renamed from `audit_v1_0_parity.rs` to track the schema
-//! label.
+//! The `marque-2.0` schema carries the 2-tuple `RuleId` shape: the
+//! `rule` field on the wire is a structured `{scheme, predicate_id}`
+//! object.
 //!
 //! Test-fixture construction uses [`marque_rules::AppliedFix::__engine_promote`]
 //! and [`marque_rules::audit::AppliedTextCorrection::__engine_promote_text_correction`]
@@ -52,20 +47,14 @@ use marque_scheme::{CategoryId, ReplacementIntent, Scope};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
-// T044: `RuleId` constants used across the parity tests. Pre-T044
-// these were flat `&'static str` rule-ID labels (`"E002"`, `"R001"`,
-// `"E006"`, `"C001"`); post-T044 they are 2-tuple values per
-// `docs/refactor-006/legacy-rule-id-map.md`.
-//
-// Defined at module scope so each test reads as a one-liner like
+// `RuleId` constants used across the parity tests, defined at module
+// scope so each test reads as a one-liner like
 // `synth_applied_fix(RULE_E002, ...)` rather than re-spelling the
 // tuple at every call site. `RuleId` is `Copy` so passing by value
 // has no cost.
 //
-// **Reserved-scheme note**: `R001` historically named an engine-minted
-// decoder-recognition diagnostic; under T044 its canonical 2-tuple is
-// `("engine", "recognition.decoder-recognized")` per the
-// `legacy-rule-id-map.md` §7 reserved-scheme convention. The parity
+// Reserved-scheme note: the decoder-recognition diagnostic's canonical
+// 2-tuple is `("engine", "recognition.decoder-recognized")`. The parity
 // fixture below preserves the engine-scheme identity since the audit
 // record's provenance routes through the `Discriminant::Decoder` arm
 // regardless of which `(scheme, predicate_id)` carries it.
@@ -90,7 +79,7 @@ const RULE_R001_DECODER: RuleId = RuleId::new("engine", "recognition.decoder-rec
 /// `audit_completeness` test, not modeled here). Issue #709 fixed the prior
 /// bug where every fixture hardcoded `BannerRollupMismatch` regardless of rule.
 ///
-/// Production sources of truth (PR T044 schema):
+/// Production sources of truth:
 ///
 /// - `RULE_E002` (`portion.dissem.rel-to-missing-usa`) →
 ///   `NonCanonicalOrder` — see `crates/capco/src/rules/rel_to.rs`
@@ -118,11 +107,11 @@ fn template_for_rule(rule: RuleId) -> MessageTemplate {
 /// Build the synthetic `FixIntent<CapcoScheme>` for a Recanonicalize fix
 /// carrying the production-side `MessageTemplate` for `rule`.
 ///
-/// Issue #709: prior to this refactor the helper hardcoded
-/// `MessageTemplate::BannerRollupMismatch` on every fixture regardless of
-/// rule, mislabeling the synthetic audit records. Each rule now carries
-/// its own production template via [`template_for_rule`] (E006
-/// `SupersededToken`, R001 `DecoderRecognized`, etc.).
+/// Each rule carries its own production template via
+/// [`template_for_rule`] (deprecation → `SupersededToken`,
+/// decoder-recognition → `DecoderRecognized`, etc.) rather than a single
+/// hardcoded template, so the synthetic audit records are not mislabeled
+/// (issue #709).
 fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
     FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
@@ -142,9 +131,9 @@ fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
 /// synthetic audit-record fixtures inside integration-test contexts
 /// to exercise renderers, never commingled with engine output.
 ///
-/// T044: the `rule` parameter is a constructed [`RuleId`] (2-tuple
-/// `(scheme, predicate_id)`) rather than a flat `&'static str` so each
-/// call site shows the structured shape explicitly.
+/// The `rule` parameter is a constructed [`RuleId`] (2-tuple
+/// `(scheme, predicate_id)`) so each call site shows the structured
+/// shape explicitly.
 fn synth_applied_fix(
     rule: RuleId,
     source: FixSource,
@@ -156,12 +145,11 @@ fn synth_applied_fix(
     intent.source = source;
     // Build canonical via EngineConstructor (the open-vocab path the
     // engine uses at promotion). CategoryId::MARKING since the intent
-    // is Recanonicalize (whole-marking scope per PR 3c.2.D's
-    // CategoryId resolution).
+    // is Recanonicalize (whole-marking scope).
     //
     // Test-fixture carve-out per Constitution V Principle V — synthetic
-    // fixture builder for the SC-008 parity test; never reaches an
-    // engine audit stream.
+    // fixture builder for the parity test; never reaches an engine
+    // audit stream.
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();
     let canonical: Canonical<CapcoScheme> =
         constructor.build_open_vocab(CategoryId::MARKING, Box::from("(S)"), Scope::Portion);
@@ -193,8 +181,7 @@ fn synth_text_correction(
     // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
     AppliedTextCorrection::__engine_promote_text_correction(
-        // T044: `C001` → `("capco", "marking.correction.token-typo")`
-        // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+        // Corrections-map typo fix predicate.
         RuleId::new("capco", "marking.correction.token-typo"),
         Severity::Fix,
         Span::new(0, 6),
@@ -233,7 +220,7 @@ fn validate_contract_shape(value: &serde_json::Value, expected_type: &str) {
 
 #[test]
 fn applied_fix_strict_discriminant_full_context() {
-    // FixSource::BuiltinRule routes to Discriminant::Strict per PM-D-7.
+    // FixSource::BuiltinRule routes to Discriminant::Strict.
     let fix = synth_applied_fix(
         RULE_E002,
         FixSource::BuiltinRule,
@@ -244,7 +231,7 @@ fn applied_fix_strict_discriminant_full_context() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     validate_contract_shape(&v, "applied_fix");
-    // T044 PM OD-2: structured-object `rule` shape on the wire.
+    // Structured-object `rule` shape on the wire.
     assert_eq!(v["rule"]["scheme"], "capco");
     assert_eq!(
         v["rule"]["predicate_id"],
@@ -290,7 +277,7 @@ fn applied_fix_decoder_classification_heuristic_routes_to_decoder() {
 
 #[test]
 fn applied_fix_migration_table_routes_to_strict() {
-    // FixSource::MigrationTable also maps to "strict" per PM-D-7.
+    // FixSource::MigrationTable also maps to "strict".
     let fix = synth_applied_fix(RULE_E006, FixSource::MigrationTable, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
@@ -441,7 +428,7 @@ fn applied_fix_message_populated_args_round_trip() {
     // Test-fixture carve-out per Constitution V Principle V — the
     // EngineConstructor / EnginePromotionToken / AuditAppliedFix mints
     // below fabricate the populated-MessageArgs round-trip fixture for
-    // this SC-008 parity test and never reach an engine audit stream.
+    // this parity test and never reach an engine audit stream.
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();
     let canonical: Canonical<CapcoScheme> =
         constructor.build_open_vocab(CategoryId::MARKING, Box::from("(S)"), Scope::Portion);
@@ -449,7 +436,7 @@ fn applied_fix_message_populated_args_round_trip() {
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V Principle V (continued).
     let fix = AuditAppliedFix::<CapcoScheme>::__engine_promote(
-        // T044: see `RULE_E006` const above.
+        // See `RULE_E006` const above.
         RULE_E006,
         Severity::Warn,
         Span::new(0, 5),
@@ -485,7 +472,7 @@ fn text_correction_arm_round_trip_full_context() {
     let line = AuditLine::TextCorrection(tc);
     let v = project(&line);
     validate_contract_shape(&v, "text_correction");
-    // T044 PM OD-2: structured-object `rule` shape on the wire.
+    // Structured-object `rule` shape on the wire.
     assert_eq!(v["rule"]["scheme"], "capco");
     assert_eq!(v["rule"]["predicate_id"], "marking.correction.token-typo");
     assert_eq!(v["severity"], "fix");
@@ -555,9 +542,9 @@ fn project_preserves_record_kind_dispatch() {
 
 #[test]
 fn fix_record_carries_original_digest_blake3_prefix() {
-    // Constitution V Principle V — G13 invariant. The audit record's
-    // original_digest field MUST be "blake3:<hex>"; bytes themselves
-    // never appear in the audit output.
+    // Constitution V Principle V — audit content-ignorance. The audit
+    // record's original_digest field MUST be "blake3:<hex>"; bytes
+    // themselves never appear in the audit output.
     let fix = synth_applied_fix(RULE_E002, FixSource::BuiltinRule, None, false, None);
 
     let line = AuditLine::AppliedFix(fix);

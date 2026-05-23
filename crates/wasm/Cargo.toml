@@ -170,14 +170,12 @@ wasm-opt = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# PR 3c.2.D / D5: `blake3::Hash` is the wire type for the `marque-1.0`
-# audit-record `original_digest` / `bytes_digest` fields. The WASM
-# renderer formats `blake3:<hex>` per `contracts/audit-record.md`
-# §137 / §151, byte-identical to the CLI surface. The workspace pin
-# carries `default-features = false, features = ["pure"]` so the
-# WASM build path is pure-Rust (no SIMD asm); Constitution III
-# WASM-safety preserved. Constitution VII / R-D-1: WASM size delta
-# measured at PR open per PM-D-16.
+# `blake3::Hash` is the wire type for the `marque-1.0` audit-record
+# `original_digest` / `bytes_digest` fields. The WASM renderer formats
+# `blake3:<hex>` byte-identical to the CLI surface. The workspace pin
+# carries `default-features = false, features = ["pure"]` so the WASM
+# build path is pure-Rust (no SIMD asm); Constitution III WASM-safety
+# preserved.
 blake3 = { workspace = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 humantime = { workspace = true }
@@ -221,7 +219,7 @@ wasm-bindgen = { workspace = true }
 # and inherit into dev-dep scope automatically. Test files
 # (tests/*.rs) reference them via the [dependencies] entries; no
 # duplicate dev-dep declarations needed.
-# T088 — `wasm-pack test --node` parity harness uses wasm-bindgen-test
+# The `wasm-pack test --node` parity harness uses wasm-bindgen-test
 # to drive `lint_native` from inside the wasm32 target. Native parity
 # (`tests/native_parity.rs`) covers algorithmic equivalence; this
 # dev-dep enables byte-equal NDJSON parity across the actual WASM
@@ -240,14 +238,16 @@ wasm-bindgen-test = "=0.3.70"
 # The .cargo/config.toml entry sets `-C target-feature=+simd128` for wasm32-unknown-unknown,
 # which activates SIMD code paths in memchr and other SIMD-aware crates at compile time.
 #
-# Phase-C–E boundary: the `corpus-override` feature MUST NOT be declared
-# here, and `marque-engine` above is pinned to `default-features = false`,
-# so the override codepath cannot reach this artifact. Enforced further at
-# T067 with a `compile_error!` guard under
+# The `corpus-override` feature MUST NOT be declared here, and
+# `marque-engine` above is pinned to `default-features = false`, so the
+# override codepath cannot reach this artifact. Enforced further by a
+# `compile_error!` guard under
 # `#[cfg(all(target_arch = "wasm32", feature = "corpus-override"))]` in
 # `src/lib.rs` — redundant with the missing-feature-declaration path, but
 # closes the door a second time so an inadvertent future commit cannot
-# drift this invariant silently (Constitution III + FR-013 + T3).
+# drift this invariant silently (Constitution III WASM-safety: WASM
+# cannot accept runtime config that expands the engine's semantic
+# surface, e.g. decoder priors).
 default = ["web"]
 
 # Single-threaded allocator: WasmDynamicTalc grows via memory.grow, no spinlock overhead.
