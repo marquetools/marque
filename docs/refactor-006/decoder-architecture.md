@@ -167,7 +167,7 @@ scorer penalties.
 
 | Sub-module | Responsibility |
 |-----------|---------------|
-| `mod.rs` | Re-export hub + cross-file constants (`K_MAX_CANDIDATES`, `UNAMBIGUOUS_LOG_MARGIN`, `NULL_HYPOTHESIS_LOG_MARGIN`) + legacy test block (deferred per-sub-file split) |
+| `mod.rs` | Re-export hub + cross-file constants (`K_MAX_CANDIDATES`, `UNAMBIGUOUS_LOG_MARGIN`, `NULL_HYPOTHESIS_LOG_MARGIN`) + small cross-cutting tests (Send/Sync). Per-sub-file tests live alongside their owning sub-module; oversized groups are pulled in via `#[path = "tests/..."] #[cfg(test)] mod tests;`. |
 | `types.rs` | `ScoredCandidate`, `FeatureEntry`, `CanonicalAttempt`, `feature_entry_to_evidence` |
 | `shape.rs` | Shape predicates — `infer_marking_type`, `is_cab_head`, fast-path helpers, `is_nontrivial_marking` (pub), `strict_parse_is_complete` |
 | `candidates.rs` | `generate_candidate_bytes` (master orchestrator) + `diagnostic_canonical_attempts` (`decoder-harness`-gated) |
