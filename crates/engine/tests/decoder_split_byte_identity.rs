@@ -162,11 +162,11 @@ fn decoder_recovers_sar_indicator_repair_usar_prefix() {
 
 #[test]
 fn decoder_recovers_stray_char_slash_recovery() {
-    // S/X/NF — stray X wedged between S and NF.
+    // S/X/NF — stray X wedged between S and NF. The collapse-stray
+    // pass strips the X and the scorer reaches Unambiguous(Secret +
+    // NOFORN) cleanly; the runner-up margin is wide enough that the
+    // null gate does not need to intervene.
     let parsed = run_decoder("(S/X/NF)");
-    // The collapse-stray pass should emit at least one candidate that
-    // parses to Secret + NF; even if the gate doesn't reach Unambiguous,
-    // a non-empty Ambiguous result is acceptable here.
     let Parsed::Unambiguous(m) = parsed else {
         panic!("expected Unambiguous; got {parsed:?}");
     };
