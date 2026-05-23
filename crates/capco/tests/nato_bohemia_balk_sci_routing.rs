@@ -145,7 +145,7 @@ fn has_nato_sap(attrs: &marque_ism::CanonicalAttrs, expected: NatoSap) -> bool {
 /// BOHEMIA. After PR 9c.1 the parser emits CTS on the classification
 /// axis and `NatoSap::Bohemia` on the SCI axis.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (portion-form column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// COSMIC TOP SECRET BOHEMIA); §G.2 p40 (Table 5 registers BOHEMIA);
 /// §H.7 p127 (BOHEMIA worked example in SCI block position).
 #[test]
@@ -171,7 +171,7 @@ fn legacy_cts_b_canonicalizes_to_cts_plus_bohemia() {
 /// BALK. After PR 9c.1 the parser emits CTS on the classification
 /// axis and `NatoSap::Balk` on the SCI axis.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (portion-form column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// COSMIC TOP SECRET BALK); §G.2 p40 (Table 5 registers BALK).
 #[test]
 fn legacy_cts_balk_canonicalizes_to_cts_plus_balk() {
@@ -200,7 +200,7 @@ fn legacy_cts_balk_canonicalizes_to_cts_plus_balk() {
 /// `//COSMIC TOP SECRET-BOHEMIA` — legacy banner form for the same
 /// composite. Parser canonicalizes the same way the portion form does.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (banner-title column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (banner-title column for
 /// COSMIC TOP SECRET BOHEMIA); §G.2 p40.
 #[test]
 fn legacy_banner_cosmic_top_secret_bohemia_canonicalizes() {
@@ -225,7 +225,7 @@ fn legacy_banner_cosmic_top_secret_bohemia_canonicalizes() {
 
 /// `//COSMIC TOP SECRET-BALK` — legacy banner form. Same shape.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (banner-title column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (banner-title column for
 /// COSMIC TOP SECRET BALK); §G.2 p40.
 #[test]
 fn legacy_banner_cosmic_top_secret_balk_canonicalizes() {

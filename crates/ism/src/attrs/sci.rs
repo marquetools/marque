@@ -113,7 +113,7 @@ pub enum NatoSap {
 
 impl NatoSap {
     /// Canonical name as used in both banner and portion forms
-    /// (CAPCO-2016 §G.1 Table 4 p38 row "ATOMAL/BALK/BOHEMIA" — same-
+    /// (CAPCO-2016 §G.1 Table 4 p37 row "ATOMAL/BALK/BOHEMIA" — same-
     /// form across title, banner-abbrev, and portion columns).
     pub fn as_str(self) -> &'static str {
         match self {

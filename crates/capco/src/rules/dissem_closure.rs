@@ -251,7 +251,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         //
         // Authority: §H.8 p154 (RELIDO grammar — US-originated
         // content scope); §H.7 p123 (FGI foreign-equity bar);
-        // §H.3 p56 (JOINT co-ownership grammar); §G.1 Table 4 p38
+        // §H.3 p56 (JOINT co-ownership grammar); §G.1 Table 4 p37
         // (NATO classification).
         match attrs.classification {
             Some(marque_ism::MarkingClassification::Nato(_))
