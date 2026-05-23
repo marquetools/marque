@@ -47,3 +47,7 @@ pub(crate) mod text_handling;
 
 pub use crate::rules_legacy::CapcoRuleSet;
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod citation_cross_refs_tests;
