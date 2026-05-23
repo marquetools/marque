@@ -31,6 +31,7 @@
 pub(crate) mod banner;
 pub(crate) mod dissem;
 pub(crate) mod helpers;
+pub(crate) mod text_handling;
 
 pub use crate::rules_legacy::CapcoRuleSet;
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
