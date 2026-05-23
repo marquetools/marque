@@ -120,21 +120,30 @@ pub(super) const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 /// (`preceded_by_whitespace = false`) suppresses the much more
 /// common `letter(s)` / `function(c)` cases independently.
 ///
-/// **This margin applies to single-letter portion candidates only.**
-/// `(s)`, `(c)`, `(u)`, `(r)` are the prose-glyph overlap cases —
-/// plural-suffix, copyright, pronoun, etc. — where short-token
-/// marking-vs-prose priors collide directly with English usage.
-/// Multi-letter portion candidates (`(NU)`, `(NC)`, `(NR)`, `(TS)`,
-/// `(SI)`, ...) and banner-form candidates (`UNCLASSIFIED`,
-/// `CONFIDENTIAL`, etc.) bypass the null filter entirely: their
-/// shapes are long enough that English prose doesn't fabricate them
-/// by glyph coincidence, and pinning any positive margin on them
-/// would reject legitimate NATO/IC abbreviation recovery (NU at
-/// marking `-8.43`, prose `-8.34`, delta `-0.09`; NC at marking
-/// `-8.43`, prose `-5.89`, delta `-2.54`) where the marking
-/// stratum has zero examples but the strict grammar still
-/// recognizes the token. The strict parser + scanner provide the
-/// structural discrimination they need.
+/// **Where the gate applies.** The recognizer applies this margin to
+/// every `MarkingType::Portion` input EXCEPT:
+///
+/// - portions containing `//` (`has_double_slash`): the category
+///   separator is a marking-grammar signal English prose does not
+///   produce, so the marking interpretation is the only plausible
+///   reading.
+/// - portions whose inner content is exactly a canonical
+///   classification token (`is_bare_classification_shape`): the
+///   whitelist is `(U)`, `(C)`, `(S)`, `(TS)`, `(R)` plus the NATO
+///   abbreviations `(NU)`, `(NR)`, `(NC)`, `(NS)`, `(CTS)`. Pinning
+///   a positive margin on these would reject legitimate NATO/IC
+///   abbreviation recovery (NU at marking `-8.43`, prose `-8.34`,
+///   delta `-0.09`; NC at marking `-8.43`, prose `-5.89`, delta
+///   `-2.54`) where the marking stratum has zero examples but the
+///   strict grammar still recognizes the token.
+///
+/// Banner and CAB shapes bypass the filter entirely — their forms
+/// are long enough that English prose doesn't fabricate them by
+/// glyph coincidence. Multi-letter Portion candidates outside the
+/// classification whitelist (e.g., `(SI)`, `(HCS)`) ARE subject to
+/// the margin; the structural discrimination the strict parser
+/// provides is not by itself sufficient when prose can produce the
+/// same token by glyph coincidence.
 pub(super) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
 
 // ---------------------------------------------------------------------------
