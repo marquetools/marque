@@ -4,13 +4,18 @@
 
 //! REL TO category rules.
 //!
-//! - [`MissingUsaTrigraphRule`] (`capco:portion.dissem.rel-to-missing-usa`)
-//! - [`PreferTetragraphCollapseRule`]
-//!   (`capco:page.dissem.prefer-tetragraph-collapse`)
-//! - [`CollapseUniformRelPortionsRule`]
-//!   (`capco:page.dissem.collapse-uniform-rel-portions`)
-//! - [`BareRelPortionDivergenceRule`]
-//!   (`capco:page.dissem.bare-rel-portion-divergence`)
+//! - [`MissingUsaTrigraphRule`] — REL TO list missing USA; fix the
+//!   list to lead with USA.
+//! - [`PreferTetragraphCollapseRule`] — page-level Suggest to
+//!   collapse explicit-member REL TO lists into a tetragraph.
+//! - [`CollapseUniformRelPortionsRule`] — page-level Suggest to
+//!   collapse uniform per-portion REL TO into the compact `REL`
+//!   form.
+//! - [`BareRelPortionDivergenceRule`] — page-level Warn when bare
+//!   REL and explicit-REL-TO portions diverge.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use std::collections::HashSet;
 

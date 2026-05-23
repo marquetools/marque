@@ -6,10 +6,16 @@
 //! migration, unknown-token surfacing, and corrections-map typo
 //! replacements.
 //!
-//! - [`DeclassifyMisplacedRule`] (`capco:portion.declassification.misplaced-in-portion-or-banner`)
-//! - [`XShorthandDateRule`] (`capco:portion.metadata.x-shorthand-date-pattern`)
-//! - [`UnknownTokenRule`] (`capco:portion.metadata.unrecognized-token`)
-//! - [`CorrectionsMapRule`] (`capco:portion.metadata.corrections-map-typo`)
+//! - [`DeclassifyMisplacedRule`] — declassify-on token misplaced in
+//!   portion or banner.
+//! - [`XShorthandDateRule`] — deprecated `X1` / `X2` date shorthand
+//!   migration.
+//! - [`UnknownTokenRule`] — generic unrecognized-token surface.
+//! - [`CorrectionsMapRule`] — user-configured `[corrections]` map
+//!   typo replacements.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{CanonicalAttrs, Span, TokenKind};

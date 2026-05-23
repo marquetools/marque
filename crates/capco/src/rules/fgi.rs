@@ -4,13 +4,15 @@
 
 //! FGI ownership-axis rules.
 //!
-//! - [`FgiOwnershipTrigraphSuggestRule`]
-//!   (`capco:portion.fgi.ownership-trigraph-suggest`) — suggest-channel
-//!   FGI ownership trigraph hint; architectural twin of S004.
-//! - [`FgiInvalidOwnershipTokenRule`] (E073;
-//!   `capco:portion.fgi.invalid-ownership-token`) — category-specific
-//!   diagnostic for FGI ownership-list tokens that fail
+//! - [`FgiOwnershipTrigraphSuggestRule`] — suggest-channel FGI
+//!   ownership trigraph hint; architectural twin of
+//!   [`RelToTrigraphSuggestRule`](crate::rules::rel_to_suggest::RelToTrigraphSuggestRule).
+//! - [`FgiInvalidOwnershipTokenRule`] — category-specific diagnostic
+//!   for FGI ownership-list tokens that fail
 //!   `CountryCode::admits_fgi_ownership_token`.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::{CanonicalAttrs, CountryCode, Span, TokenKind, TokenSpan};
 use marque_rules::{
@@ -25,7 +27,7 @@ use crate::rules::rel_to_suggest::{
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Rule: capco:portion.fgi.ownership-trigraph-suggest (issue #545)
+// Rule: FgiOwnershipTrigraphSuggestRule (issue #545)
 // ---------------------------------------------------------------------------
 
 /// FGI ownership-trigraph-suggest rule.
@@ -38,8 +40,7 @@ use crate::scheme::CapcoScheme;
 /// [`marque_ism::CountryCode::admits_fgi_ownership_token`].
 ///
 /// This is the FGI-ownership twin of [`RelToTrigraphSuggestRule`]
-/// (S004, `capco:portion.dissem.rel-to-trigraph-suggest`). The
-/// architectural shape is intentionally identical:
+/// (S004). The architectural shape is intentionally identical:
 ///
 /// 1. Walk the country list for tokens that fail [`CapcoTokenSet::is_trigraph`]
 ///    (unregistered tokens; "admits=true ∧ is_trigraph=false" — but

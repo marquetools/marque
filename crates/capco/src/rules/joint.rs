@@ -4,9 +4,13 @@
 
 //! JOINT-classification rules.
 //!
-//! - [`JointUsaFirstRule`] (`capco:portion.joint.usa-first-style`)
-//! - [`JointDisunityCollapseRule`]
-//!   (`capco:page.joint.joint-disunity-collapse-to-fgi`)
+//! - [`JointUsaFirstRule`] — USA-first style convention for JOINT
+//!   country lists (Info severity by default).
+//! - [`JointDisunityCollapseRule`] — page-level JOINT-disunity →
+//!   FGI collapse Warn diagnostic.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::{CanonicalAttrs, MarkingClassification, TokenKind};
 use marque_rules::{

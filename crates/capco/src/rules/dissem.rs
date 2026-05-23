@@ -4,11 +4,13 @@
 
 //! Dissemination-control rules.
 //!
-//! - [`DeprecatedDissemRule`] (`capco:marking.deprecation.deprecated-dissem-control`)
-//!   — walks the MIGRATIONS table for deprecated dissem entries.
-//! - [`NonIcInClassifiedBannerRule`]
-//!   (`capco:page.dissem.non-ic-dissem-in-classified-banner`)
-//!   — flags SBU / LIMDIS in classified banners.
+//! - [`DeprecatedDissemRule`] — walks the MIGRATIONS table for
+//!   deprecated dissem entries.
+//! - [`NonIcInClassifiedBannerRule`] — flags SBU / LIMDIS in
+//!   classified banners.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};

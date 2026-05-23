@@ -2,11 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! [`RelidoImpliedByClosureRule`] — S008 (`capco:portion.dissem.relido-implied-by-closure`).
+//! [`RelidoImpliedByClosureRule`] — RELIDO-implied-by-closure
+//! Suggest rule.
 //!
 //! Byte-surfacing twin of the lattice-layer `CLOSURE_RELIDO_SCI` /
 //! `CLOSURE_RELIDO_US_CLASS` closure rules. Authority:
-//! CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17.
+//! CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17. The wire predicate
+//! ID lives on `RuleId::new(...)` — the single source of truth.
 
 use marque_ism::{CanonicalAttrs, MarkingType};
 use marque_rules::{

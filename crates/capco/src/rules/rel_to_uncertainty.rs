@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! [`RelToOpaqueUncertainReductionSuggestRule`] — S005
-//! (`capco:page.dissem.rel-to-membership-uncertain-reduction`).
+//! [`RelToOpaqueUncertainReductionSuggestRule`] — REL TO opaque
+//! membership-uncertain reduction Suggest rule.
 //!
 //! Suggest-channel rule that fires when an `is_decomposable == None`
 //! tetragraph drops out of the page-level REL TO atom-semantics
@@ -11,7 +11,9 @@
 //!
 //! Issue #206; PR #488 collapsed the original S005/S006 Suggest/Info
 //! split into one Suggest-severity rule under `Phase::PageFinalization`.
-//! Authority: CAPCO-2016 §H.8 + §D.2 Table 3 rule 21.
+//! Authority: CAPCO-2016 §H.8 + §D.2 Table 3 rule 21. The wire
+//! predicate ID lives on `RuleId::new(...)` — the single source of
+//! truth.
 
 use marque_ism::CanonicalAttrs;
 use marque_rules::{

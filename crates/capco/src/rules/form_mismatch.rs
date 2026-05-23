@@ -6,8 +6,14 @@
 //! banner form, per CAPCO-2016 §G.1 Table 4 p38 (closed authorized
 //! form pairs).
 //!
-//! - [`PortionFormInBannerRule`] (`capco:banner.metadata.uses-portion-form`)
-//! - [`BannerFormInPortionRule`] (`capco:portion.metadata.uses-banner-form`)
+//! - [`PortionFormInBannerRule`] — banner-context detection of a
+//!   portion-form token (e.g. `SECRET//NF` instead of
+//!   `SECRET//NOFORN`).
+//! - [`BannerFormInPortionRule`] — portion-context detection of a
+//!   banner-form token (e.g. `(S//NOFORN)` instead of `(S//NF)`).
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::{CanonicalAttrs, MarkingType, Span, TokenKind};
 use marque_rules::{

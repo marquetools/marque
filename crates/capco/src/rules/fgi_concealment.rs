@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! [`FgiExplicitWithTrigraphRule`] — E071
-//! (`capco:portion.fgi.explicit-with-trigraph`).
+//! [`FgiExplicitWithTrigraphRule`] — FGI concealment vs.
+//! acknowledgment conflict detector.
 //!
 //! Fires when an FGI marking with an explicit trigraph contradicts
 //! the surrounding REL TO countries (concealment-vs-acknowledgment
-//! conflict). Authority: CAPCO-2016 §H.7 p124.
+//! conflict). Authority: CAPCO-2016 §H.7 p124. The wire predicate
+//! ID lives on `RuleId::new(...)` — the single source of truth.
 
 use marque_ism::{CanonicalAttrs, CountryCode, MarkingClassification, MarkingType, TokenKind};
 use marque_rules::{

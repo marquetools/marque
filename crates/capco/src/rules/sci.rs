@@ -4,13 +4,19 @@
 
 //! SCI (Sensitive Compartmented Information) rules.
 //!
-//! - [`SciCustomControlInfoRule`] (`capco:marking.sci.custom-control-audit-visibility`)
-//! - [`HcsBareAtConfidentialLegacyRemarkRule`] (`capco:portion.sci.hcs-bare-at-confidential-legacy`)
-//! - [`HcsBareSuggestSubcompartmentRule`] (`capco:portion.sci.hcs-bare-suggest-subcompartment`)
-//! - [`RsvBareRequiresCompartmentRule`] (`capco:portion.sci.rsv-bare-requires-compartment`)
+//! - [`SciCustomControlInfoRule`] — Info diagnostic for unpublished
+//!   custom SCI controls (audit-visibility).
+//! - [`HcsBareAtConfidentialLegacyRemarkRule`] — bare HCS at
+//!   Confidential, legacy-remark Info diagnostic.
+//! - [`HcsBareSuggestSubcompartmentRule`] — suggest a sub-compartment
+//!   on bare HCS at S/TS.
+//! - [`RsvBareRequiresCompartmentRule`] — bare RSV requires a
+//!   compartment.
 //!
 //! Plus the [`sci_system_text`] / [`render_sci_block`] shared helpers
-//! consumed by the SCI banner-rollup evaluator in `rules/banner/eval_sci.rs`.
+//! consumed by the SCI banner-rollup evaluator in
+//! `rules/banner/eval_sci.rs`. Predicate IDs live on each rule's
+//! `RuleId::new(...)` — the wire string is the single source of truth.
 
 use marque_ism::{CanonicalAttrs, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan};
 use marque_rules::{

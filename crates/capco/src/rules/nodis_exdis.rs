@@ -4,10 +4,13 @@
 
 //! NODIS / EXDIS rules (CAPCO-2016 §H.9).
 //!
-//! - [`NodisExdisClearsBannerRelToRule`]
-//!   (`capco:banner.dissem.nodis-exdis-clears-rel-to`)
-//! - [`NodisSupersedesExdisInPortionRule`]
-//!   (`capco:portion.dissem.nodis-supersedes-exdis-in-portion`)
+//! - [`NodisExdisClearsBannerRelToRule`] — page-level: NODIS / EXDIS
+//!   clears the banner REL TO axis.
+//! - [`NodisSupersedesExdisInPortionRule`] — portion-level: NODIS
+//!   supersedes EXDIS when both appear in the same portion.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::{CanonicalAttrs, TokenKind, TokenSpan};
 use marque_rules::{

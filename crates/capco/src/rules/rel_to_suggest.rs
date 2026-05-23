@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! [`RelToTrigraphSuggestRule`] — S004
-//! (`capco:portion.dissem.rel-to-trigraph-suggest`).
+//! [`RelToTrigraphSuggestRule`] — REL TO trigraph fuzzy-match
+//! Suggest rule.
 //!
 //! First consumer of the suggest-don't-fix channel; surfaces
 //! corpus-rare trigraphs with a corpus-common neighbor within edit
-//! distance.
+//! distance. The wire predicate ID lives on `RuleId::new(...)` — the
+//! single source of truth.
 
 use marque_ism::{CanonicalAttrs, TokenKind, TokenSpan};
 use marque_rules::{

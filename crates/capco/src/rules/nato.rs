@@ -4,8 +4,14 @@
 
 //! NATO-specific rules.
 //!
-//! - [`BareNatoRequiresRelToRule`] (`capco:portion.nato.bare-nato-requires-rel-to`)
-//! - [`LegacyNatoCompoundRemarkRule`] (`capco:portion.nato.legacy-compound-remark`)
+//! - [`BareNatoRequiresRelToRule`] — bare NATO classification in a
+//!   US-classified document should carry `REL TO USA, NATO`
+//!   (Suggest channel).
+//! - [`LegacyNatoCompoundRemarkRule`] — legacy NATO compound text
+//!   (CTSA / CTS-A / etc.) emits a `Recanonicalize` fix.
+//!
+//! Predicate IDs live on each rule's `RuleId::new(...)` — the wire
+//! string is the single source of truth.
 
 use marque_ism::{CanonicalAttrs, CountryCode, MarkingClassification, TokenKind};
 use marque_rules::{
