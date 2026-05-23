@@ -31,6 +31,13 @@ use crate::lattice::JoinSemilattice;
 /// with this primitive because the superseding and superseded tokens
 /// live in different category storage. That's what `PageRewrite`
 /// (in `marque-scheme`) exists for.
+///
+/// # Table consistency requirement
+///
+/// All values joined in the same category must carry the same
+/// `supersession` table pointer. Mixing values built from different
+/// tables violates the assumptions required for commutativity and
+/// associativity, even if the element payload type matches.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupersessionSet<T: Ord + Clone + 'static> {
     set: Vec<T>,

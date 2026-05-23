@@ -53,6 +53,13 @@ pub use product::Product;
 pub use set::{FlatSet, IntersectSet};
 pub use supersession::SupersessionSet;
 
+/// Merge two sorted, de-duplicated slices into a sorted union.
+///
+/// # Preconditions
+///
+/// `left` and `right` must each already be sorted ascending and free of
+/// duplicates. If callers violate those invariants, the output ordering
+/// and uniqueness guarantees no longer hold.
 fn merge_sorted_union<T: Ord + Clone>(left: &[T], right: &[T]) -> Vec<T> {
     let mut out: Vec<T> = Vec::with_capacity(left.len() + right.len());
     let (mut i, mut j) = (0, 0);
