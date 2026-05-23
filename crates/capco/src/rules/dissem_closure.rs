@@ -254,8 +254,8 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         // in input, only to be stripped by the overlay), causing S008
         // to suggest RELIDO that the page projection would immediately
         // strip. `project(Scope::Page, &[marking])` over a single-
-        // portion page exercises the full pipeline (join +
-        // closure + supersession overlay + page rewrites) and gives
+        // portion page exercises the full pipeline (join + closure +
+        // default_fill + supersession overlay + page rewrites) and gives
         // S008 the canonical observable post-projection state.
         let marking = CapcoMarking::new(attrs.clone());
         let projected = SCHEME.project(Scope::Page, &[marking]);

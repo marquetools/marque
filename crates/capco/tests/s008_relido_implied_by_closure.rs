@@ -133,8 +133,8 @@ fn silent_when_display_only_present() {
         !fires_s008(b"(S//DISPLAY ONLY GBR)\n"),
         "S008 must not fire when DISPLAY ONLY is present — \
          post-#713 silence flows via Clause 3's projection-based \
-         check, with default_fill::row{{8,9}}_should_fill skipping \
-         because MASK_FDR_OR_RELIDO_INCOMPAT / \
+         check, with default_fill::row8_should_fill / row9_should_fill \
+         skipping because MASK_FDR_OR_RELIDO_INCOMPAT / \
          MASK_RELIDO_US_CLASS_SUPPRESSORS include the DISPLAY ONLY \
          bit (post-#618 the closure correctly recognizes both \
          `dissem_iter()` and `display_only_to` axes)",
