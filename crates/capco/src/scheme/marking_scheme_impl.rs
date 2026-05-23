@@ -326,8 +326,7 @@ impl MarkingScheme for CapcoScheme {
 
     /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
     /// predicate body. Delegates to `evaluate_custom_by_attrs`, the
-    /// name→helper router that the fast-path
-    /// [`Self::evaluate_named_constraint`] uses.
+    /// name→helper router shared with the engine-bridge fast path.
     fn evaluate_custom(
         &self,
         name: &'static str,

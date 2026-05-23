@@ -68,7 +68,7 @@ use marque_scheme::{
 //   sibling files: `marking.rs` (the `CapcoMarking` type + impls + the
 //   `join_via_lattice` lattice-path composer), `adapter.rs`
 //   (`CapcoScheme` + ctors + `CapcoParseError` + the
-//   `evaluate_named_constraint` / `fix_intent_by_name` /
+//   `fix_intent_by_name` / `message_by_name` /
 //   `has_diagnostic_constraints` / `bridge_emitted_rule_ids` /
 //   `bridge_sci_per_system_diagnostics` block),
 //   `marking_scheme_impl.rs` (`impl MarkingScheme for CapcoScheme`),

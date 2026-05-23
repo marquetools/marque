@@ -39,7 +39,7 @@ use super::tier1_mask::{
 // directly to avoid forcing callers on the fast path to wrap in
 // `CapcoMarking` (which would require cloning the attributes). The
 // trait impls on `CapcoScheme` delegate to them, and the fast-path
-// inherent method `CapcoScheme::evaluate_named_constraint` uses them
+// the named-constraint router `evaluate_custom_by_attrs` uses them
 // directly to dispatch a single named constraint without walking
 // the whole catalog.
 
@@ -500,13 +500,14 @@ pub(crate) fn evaluate_custom_by_attrs(
 
 /// Free-function form of [`CapcoScheme::iter_present_tokens`] that
 /// works directly on `&CanonicalAttrs`. Used by the trait impl above
-/// AND by [`CapcoScheme::evaluate_named_constraint`]'s
+/// AND by [`evaluate_custom_by_attrs`]'s
 /// `ConflictsWithFamily` dispatch (which receives raw attrs, not a
 /// `CapcoMarking` — so it cannot call the trait method that wraps
 /// `&marking.0`).
 ///
-/// Per Copilot PR review on PR 3.7 (`evaluate_named_constraint` was
-/// silently treating `ConflictsWithFamily` as a no-op): the fast-path
+/// Per Copilot PR review on PR 3.7 (the named-constraint dispatch — now
+/// `evaluate_custom_by_attrs` — was silently treating
+/// `ConflictsWithFamily` as a no-op): the fast-path
 /// dispatch must emit one violation per (LHS, present_token) pair
 /// where the family predicate holds — same algorithm as
 /// `marque_scheme::constraint::evaluate`'s `ConflictsWithFamily` arm.
