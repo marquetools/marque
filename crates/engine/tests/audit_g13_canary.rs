@@ -1,31 +1,25 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T055 — G13 content-ignorance canary (PR 3c.2.D / D8).
+//! Audit content-ignorance canary.
 //!
 //! Constitution V Principle V requires that no document content
 //! appears verbatim in any audit-record NDJSON output. The audit
-//! envelope is closed-typed by construction at the v1.0 boundary:
-//! marking-side records carry a sealed [`Canonical<S>`] payload
-//! (rendered token canonicals, not document bytes) plus BLAKE3
-//! digests of the original-bytes and canonical-bytes; text-correction
-//! records carry only corpus-derived [`SmolStr`] replacements (on
-//! Constitution V's permitted-identifier list). The marque-1.0
-//! NDJSON projection emits a closed set of named fields; no
+//! envelope is closed-typed by construction: marking-side records carry
+//! a sealed [`Canonical<S>`] payload (rendered token canonicals, not
+//! document bytes) plus BLAKE3 digests of the original-bytes and
+//! canonical-bytes; text-correction records carry only corpus-derived
+//! [`SmolStr`] replacements (on Constitution V's permitted-identifier
+//! list). The NDJSON projection emits a closed set of named fields; no
 //! `format!`-interpolated content channel reaches the wire.
 //!
 //! This canary is the empirical sweep that proves the type-level
 //! invariant survives end-to-end: every fixture under
 //! `tests/corpus/{valid,invalid,prose,lattice}/` is fed through
 //! [`Engine::fix`] and every emitted [`AuditLine`] is rendered to its
-//! v1.0 NDJSON line; the canary scans each line for any contiguous
-//! ≥4-byte sequence from the input that appears anywhere outside the
+//! NDJSON line; the canary scans each line for any contiguous ≥4-byte
+//! sequence from the input that appears anywhere outside the
 //! permitted-identifier list.
-//!
-//! See `specs/006-engine-rule-refactor/contracts/audit-record.md`
-//! §"Content-ignorance canary" (§327-348) for the formal spec and
-//! §"Permitted identifier types" (§354-373) for the closed-set
-//! identifier catalog.
 //!
 //! # Permitted-identifier check strategy
 //!
@@ -96,7 +90,7 @@ const MIN_LEAK_LEN: usize = 4;
 /// separately.
 const PERMITTED_STRING_KEYS: &[&str] = &[
     "rule",
-    // T044: the `rule` field renders as a structured 2-tuple
+    // The `rule` field renders as a structured 2-tuple
     // `{"scheme": ..., "predicate_id": ...}`; both string-valued
     // leaves are permitted identifier types (the scheme name is
     // a closed enum, the predicate id is a closed-set surface +
@@ -148,9 +142,9 @@ fn test_engine() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-/// Render an [`AuditLine`] to its v1.0 NDJSON line via the CLI
+/// Render an [`AuditLine`] to its NDJSON line via the CLI
 /// renderer in `marque::render`. The CLI emitter is the load-bearing
-/// projection path (SC-008 parity test pins WASM byte-identity to
+/// projection path (the CLI/WASM parity test pins WASM byte-identity to
 /// it), so testing against this projection covers both wire-format
 /// surfaces.
 ///
@@ -163,17 +157,17 @@ fn render_audit_line_to_json(
     line: &AuditLine<CapcoScheme>,
 ) -> Option<String> {
     // The CLI renderer lives in the `marque` bin crate; integration
-    // tests cannot reach it. Reproduce the v1.0 projection inline
+    // tests cannot reach it. Reproduce the projection inline
     // via `serde_json::to_string` against the same shape — the
     // canary's job is to scan the wire bytes, and any structural
     // drift between the inline projection and the CLI emit would
     // surface as a separate test failure in `audit_v1_0_parity.rs`.
     use serde_json::json;
-    // T044: the `"rule"` field renders as the structured 2-tuple
-    // `{"scheme": ..., "predicate_id": ...}` per `contracts/audit-record.md`
-    // and OD-2. The canary's `PERMITTED_STRING_KEYS` includes both
-    // `"scheme"` and `"predicate_id"` so the structured value bytes
-    // are permitted-identifier types.
+    // The `"rule"` field renders as the structured 2-tuple
+    // `{"scheme": ..., "predicate_id": ...}`. The canary's
+    // `PERMITTED_STRING_KEYS` includes both `"scheme"` and
+    // `"predicate_id"` so the structured value bytes are
+    // permitted-identifier types.
     let rule_id_json = |r: &marque_rules::RuleId| {
         json!({
             "scheme": r.scheme(),
@@ -237,7 +231,7 @@ fn render_audit_line_to_json(
             "classifier_id": tc.classifier_id.as_deref(),
             "dry_run": tc.dry_run,
         }),
-        // **Parallel-update requirement** (PR 3c.2.D fixup F-10).
+        // **Parallel-update requirement.**
         // When a new `AuditLine` variant lands in
         // `marque-rules::audit`, three call sites MUST add a
         // corresponding arm in lockstep: the CLI renderer at
@@ -374,7 +368,7 @@ fn corpus_subdir_fixtures(subdir: &str) -> Vec<PathBuf> {
 }
 
 // ---------------------------------------------------------------------------
-// T055 corpus sweep — every fixture must emit canary-clean NDJSON.
+// Corpus sweep — every fixture must emit canary-clean NDJSON.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -446,7 +440,7 @@ fn canary_passes_on_full_corpus() {
 }
 
 // ---------------------------------------------------------------------------
-// T055 self-test — fabricated leak fires the canary.
+// Self-test — fabricated leak fires the canary.
 // ---------------------------------------------------------------------------
 
 /// Synthetic input bytes the self-test embeds in a fabricated audit
@@ -477,9 +471,9 @@ fn canary_fires_on_synthetic_regression() {
     // regression. The renderer doesn't expose a custom-template
     // path, so we synthesize the NDJSON directly here to exercise
     // the canary's check function in isolation.
-    // T044: `"rule"` renders as the structured `{scheme, predicate_id}`
-    // 2-tuple post-cutover. The fixture below carries the same
-    // shape that the canary's `rule_id_json` helper produces.
+    // `"rule"` renders as the structured `{scheme, predicate_id}`
+    // 2-tuple. The fixture below carries the same shape that the
+    // canary's `rule_id_json` helper produces.
     let synthetic_ndjson = format!(
         r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":10}},
@@ -548,11 +542,11 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
     // fabricated record is engine-promotion-shaped but never flows
     // into an Engine::fix audit stream.
     AppliedTextCorrection::__engine_promote_text_correction(
-        // T044: synthetic test fixture for the G13 canary self-test.
-        // Reserved `"test"` scheme per the legacy-rule-id-map §10
-        // entry for `R999`. The NDJSON literals at lines 462 and 591
-        // below are kept in lockstep so the canary tests the
-        // structured `{scheme, predicate_id}` shape end-to-end.
+        // Synthetic test fixture for the canary self-test, in the
+        // reserved `"test"` scheme. The synthetic-NDJSON literals in the
+        // self-test functions are kept in lockstep with this shape so
+        // the canary tests the structured `{scheme, predicate_id}` form
+        // end-to-end.
         RuleId::new("test", "synthetic.r999-fixture"),
         Severity::Info,
         Span::new(0, leak.len()),
@@ -575,9 +569,8 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
 
 #[test]
 fn canary_fires_on_synthetic_text_correction_regression() {
-    // PR 3c.2.D fixup F-11 / Security L-001: exercise the
-    // `AuditLine::TextCorrection` arm symmetrically with the
-    // existing `canary_fires_on_synthetic_regression` (which only
+    // Exercise the `AuditLine::TextCorrection` arm symmetrically with
+    // the `canary_fires_on_synthetic_regression` test (which only
     // exercises the inline-NDJSON path for the AppliedFix shape).
     // Two-part regression:
     //
@@ -585,10 +578,9 @@ fn canary_fires_on_synthetic_text_correction_regression() {
     //      construct an `AppliedTextCorrection` via the
     //      `__engine_promote_text_correction` carve-out. This pins
     //      that the engine-promotion seal AND its test-fixture
-    //      carve-out (Constitution V Principle V) survive the type-
-    //      level reshape in PR 3c.2.D. A future refactor that breaks
-    //      the carve-out fails this test at compile time, not at
-    //      audit-log diff time.
+    //      carve-out (Constitution V Principle V) survive. A future
+    //      refactor that breaks the carve-out fails this test at
+    //      compile time, not at audit-log diff time.
     //
     //   2. A synthetic TextCorrection-shape NDJSON with a leak in a
     //      non-permitted field (`bogus_text_corr_field`, structurally
@@ -613,9 +605,8 @@ fn canary_fires_on_synthetic_text_correction_regression() {
 
     // Part 2: synthetic TextCorrection-shape NDJSON with a leak in a
     // non-permitted field. Mirrors `canary_fires_on_synthetic_regression`
-    // for the `applied_fix` shape.
-    //
-    // T044: `"rule"` is the structured 2-tuple shape post-cutover.
+    // for the `applied_fix` shape. `"rule"` is the structured 2-tuple
+    // shape.
     let synthetic_ndjson = format!(
         r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":43}},
