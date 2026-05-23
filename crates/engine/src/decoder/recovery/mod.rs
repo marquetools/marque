@@ -3,6 +3,18 @@
 //! Each sub-module owns one recovery pass. `candidates.rs` invokes
 //! them in series via the `pub(in crate::decoder) use` re-exports below;
 //! the per-pass entry points stay scoped to the decoder module tree.
+//!
+//! # Visibility note
+//!
+//! The re-exports below use `pub(in crate::decoder)` rather than
+//! `pub(super)`. The consumer (`decoder/candidates.rs`) lives at the
+//! `decoder/` scope, not under `recovery/`, so the re-exported items
+//! must be reachable from `decoder/` itself. `pub(super)` from
+//! `recovery/X.rs` would only reach `recovery/mod.rs` — the chain
+//! stops there and `candidates.rs` cannot see the symbol. A future
+//! contributor "tightening" these to `pub(super)` will break the
+//! build; the precise-scope form is the minimum visibility that
+//! satisfies the re-export.
 
 // Sub-modules and their re-exported entry points sit at
 // `pub(in crate::decoder)` visibility — wide enough that `candidates.rs`

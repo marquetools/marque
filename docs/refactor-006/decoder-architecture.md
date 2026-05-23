@@ -195,8 +195,11 @@ identifiers):
 
 1. Add `decoder/recovery/persona.rs` mirroring the existing recovery
    files.
-2. Add the new function's `pub(crate) use` re-export to
-   `decoder/recovery/mod.rs`.
+2. Add the new function's `pub(in crate::decoder) use` re-export to
+   `decoder/recovery/mod.rs`. Use `pub(in crate::decoder)` —
+   visibility precisely scoped to the `decoder/` subtree;
+   `pub(super)` would only reach `recovery/`'s parent and won't
+   satisfy the re-export consumed by `decoder/candidates.rs`.
 3. Add the corresponding `if let Some(persona_repaired) = ...` block
    to `generate_candidate_bytes` in `decoder/candidates.rs` between
    the existing recovery dispatches.
