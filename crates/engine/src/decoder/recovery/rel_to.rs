@@ -779,3 +779,17 @@ pub(crate) fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, Fe
 
     out
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+//
+// Tests live in `../tests/rel_to_recovery_tests.rs`. They were carved
+// out of this file to keep the combined production + test surface
+// within the 800-line gate.
+
+#[path = "../tests/rel_to_recovery_tests.rs"]
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests;

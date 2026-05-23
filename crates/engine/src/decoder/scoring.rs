@@ -512,3 +512,17 @@ pub(crate) fn is_hard_splitter(token: &str) -> bool {
             | "LIMDIS"
     )
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+//
+// Tests live in `tests/scoring_tests.rs`. They were carved out of
+// this file to keep the combined production + test surface within
+// the 800-line gate.
+
+#[path = "tests/scoring_tests.rs"]
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests;

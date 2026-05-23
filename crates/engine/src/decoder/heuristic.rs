@@ -310,3 +310,353 @@ pub(crate) fn try_1char_classification_heuristic(token: &str) -> Option<&'static
         _ => None,
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use marque_capco::{CapcoMarking, CapcoScheme};
+    use marque_core::Parser;
+    use marque_ism::{
+        CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+        span::{MarkingCandidate, MarkingType, Span},
+    };
+    use marque_rules::confidence::FeatureId;
+    use marque_scheme::MarkingScheme;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
+    use smallvec::SmallVec;
+
+    use super::*;
+    use crate::decoder::DecoderRecognizer;
+    use crate::decoder::test_helpers::{TEST_SCHEME, deep_cx};
+
+    #[test]
+    fn heuristic_2char_ts_cluster() {
+        // T-cluster + S-cluster → TS. Cover the full 6×5 = 30
+        // combinations that should fire, plus a couple that shouldn't.
+        for first in &['T', 'R', 'Y', 'H', 'G', 'F'] {
+            for second in &['A', 'W', 'E', 'Z', 'S'] {
+                let token: String = [*first, *second].iter().collect();
+                assert_eq!(
+                    try_2char_classification_heuristic(&token),
+                    Some("TS"),
+                    "{token:?} should heuristic-fix to TS"
+                );
+            }
+        }
+        // Lowercase variants normalize via the helper's
+        // to_ascii_uppercase.
+        assert_eq!(try_2char_classification_heuristic("ys"), Some("TS"));
+        assert_eq!(try_2char_classification_heuristic("Ys"), Some("TS"));
+    }
+
+    #[test]
+    fn heuristic_2char_no_match_outside_clusters() {
+        // First char outside T-cluster → no match.
+        for token in &["AS", "WS", "ZS", "BS", "DS", "QS"] {
+            assert_eq!(
+                try_2char_classification_heuristic(token),
+                None,
+                "{token:?} should not heuristic-fix"
+            );
+        }
+        // Second char outside S-cluster → no match.
+        for token in &["TR", "RY", "HG", "GH", "FB"] {
+            assert_eq!(
+                try_2char_classification_heuristic(token),
+                None,
+                "{token:?} should not heuristic-fix"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_1char_s_cluster() {
+        // S-key neighbors → S. Bare S is canonical and excluded by
+        // the upstream `is_canonical_short_classification` guard, so
+        // the helper returns Some("S") for S-key neighbors and the
+        // outer logic suppresses the no-op case.
+        for token in &["A", "W", "E", "Z"] {
+            assert_eq!(
+                try_1char_classification_heuristic(token),
+                Some("S"),
+                "{token:?} should heuristic-fix to S"
+            );
+        }
+        // X is between C and S; defaults to S per the design note.
+        assert_eq!(try_1char_classification_heuristic("X"), Some("S"));
+    }
+
+    #[test]
+    fn heuristic_1char_c_cluster() {
+        // C-key neighbors → C.
+        for token in &["V", "F"] {
+            assert_eq!(
+                try_1char_classification_heuristic(token),
+                Some("C"),
+                "{token:?} should heuristic-fix to C"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_1char_no_match_outside_clusters() {
+        // Letters not in any heuristic cluster.
+        for token in &["B", "D", "G", "K", "M", "N", "Q", "T", "Y"] {
+            assert_eq!(
+                try_1char_classification_heuristic(token),
+                None,
+                "{token:?} should not heuristic-fix"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_skips_canonical_classifications() {
+        // Bare canonical short forms must not produce a heuristic
+        // fix — the strict parser already accepts them.
+        for canonical in &["U", "R", "C", "S", "TS"] {
+            assert!(
+                is_canonical_short_classification(canonical),
+                "{canonical:?} should be recognized as canonical"
+            );
+        }
+        // And the wrapper helper short-circuits these.
+        assert_eq!(try_classification_heuristic_fix("(S//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(TS//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(C//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn heuristic_fixes_portion_form() {
+        assert_eq!(
+            try_classification_heuristic_fix("(YS//NF)").as_deref(),
+            Some("(TS//NF)")
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("(W//NF)").as_deref(),
+            Some("(S//NF)")
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("(F//NF)").as_deref(),
+            Some("(C//NF)")
+        );
+        // Lowercase first token (inside parens).
+        assert_eq!(
+            try_classification_heuristic_fix("(ys//NF)").as_deref(),
+            Some("(TS//NF)")
+        );
+    }
+
+    #[test]
+    fn heuristic_fixes_banner_form() {
+        // Banner shapes don't have parens but otherwise behave the
+        // same — leading classification token in the first segment.
+        assert_eq!(
+            try_classification_heuristic_fix("RS//NOFORN").as_deref(),
+            Some("TS//NOFORN")
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("X//NOFORN").as_deref(),
+            Some("S//NOFORN")
+        );
+    }
+
+    #[test]
+    fn heuristic_skips_cab_shape() {
+        // CAB lines don't have a leading classification token. The
+        // `is_cab_head` short-circuit at the top of the helper should
+        // catch every CAB-keyword prefix.
+        assert_eq!(try_classification_heuristic_fix("Classified By: foo"), None);
+        assert_eq!(try_classification_heuristic_fix("Derived From: bar"), None);
+        assert_eq!(try_classification_heuristic_fix("Declassify On: baz"), None);
+    }
+
+    #[test]
+    fn heuristic_skips_long_token() {
+        // 4+ char tokens fall through the length match arm — the
+        // vocab fuzzy path handles them. 3-char tokens are mostly
+        // handled by the vocab path too (now that PR 8 added bare
+        // `TOP` to `EXTENDED_CORRECTION_VOCAB`, shapes like `TPP`
+        // and `UOP` correct via dist-1 fuzzy); the 3-char heuristic
+        // is intentionally narrow (only `OTP` → `TOP`) so unrelated
+        // 3-char tokens like `YES` return None.
+        assert_eq!(try_classification_heuristic_fix("(YES//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(SECT//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn heuristic_recovers_otp_to_top_via_3char_rule() {
+        // OTP → TOP: T↔O transposition. Standard Levenshtein dist 2
+        // blocked by the vocab fuzzy path's `MIN_USEFUL_CONFIDENCE`
+        // floor; the targeted 3-char heuristic is the recovery path.
+        let cases: &[(&str, &str)] = &[
+            ("OTP SECRET//NOFORN", "TOP SECRET//NOFORN"),
+            ("(OTP//NF)", "(TOP//NF)"),
+            ("OTP SECRET//SI//NOFORN", "TOP SECRET//SI//NOFORN"),
+        ];
+        for (input, expected) in cases {
+            let result = try_classification_heuristic_fix(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should heuristic-fix to {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_3char_classification_heuristic_only_matches_otp() {
+        // The 3-char heuristic is intentionally narrow (a single
+        // hardcoded `OTP → TOP` mapping). Any other 3-char input
+        // returns None and falls through to other recovery paths.
+        // Pinned because the dense 3-char trigraph vocab (TON, TUR,
+        // TWN, …) means a wider rule would generate too many false
+        // positives.
+        assert_eq!(try_3char_classification_heuristic("OTP"), Some("TOP"));
+        for not_a_match in &["TON", "TPP", "UOP", "TIP", "TPO", "TOO", "ABC", "YES"] {
+            assert_eq!(
+                try_3char_classification_heuristic(not_a_match),
+                None,
+                "3-char heuristic must not fire on {not_a_match:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_recovers_tp_and_to_to_top_via_2char_rule() {
+        // PR 8 extended the 2-char heuristic to map `TP`/`TO` → `TOP`.
+        // These are corpus-attested classification typos where the
+        // middle `O` (`TP`) or trailing `P` (`TO`) was elided. They
+        // must not collide with the TS rule because neither `P` nor
+        // `O` is in the S-cluster.
+        let cases: &[(&str, &str)] = &[
+            ("TP SECRET//NOFORN", "TOP SECRET//NOFORN"),
+            ("TO SECRET//NOFORN", "TOP SECRET//NOFORN"),
+            ("(TP//NF)", "(TOP//NF)"),
+            ("(TO//NF)", "(TOP//NF)"),
+        ];
+        for (input, expected) in cases {
+            let result = try_classification_heuristic_fix(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should heuristic-fix to {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_2char_classification_heuristic_ts_rule_takes_precedence() {
+        // The TS rule (T-cluster + S-cluster pair) is checked first;
+        // the TP/TO → TOP rule is a fallback. None of the TP/TO
+        // characters are in the S-cluster (P, O), so there's no
+        // ambiguity in practice — but pinning the precedence here
+        // keeps a future widening of the TP/TO rule from silently
+        // overriding the TS rule.
+        // Pure T-cluster + S-cluster → TS.
+        assert_eq!(try_2char_classification_heuristic("TS"), Some("TS"));
+        assert_eq!(try_2char_classification_heuristic("RS"), Some("TS"));
+        assert_eq!(try_2char_classification_heuristic("YS"), Some("TS"));
+        // T + non-S-cluster → TOP (only for P/O).
+        assert_eq!(try_2char_classification_heuristic("TP"), Some("TOP"));
+        assert_eq!(try_2char_classification_heuristic("TO"), Some("TOP"));
+        // T + other non-S-cluster → still None (don't broaden).
+        assert_eq!(try_2char_classification_heuristic("TI"), None);
+        assert_eq!(try_2char_classification_heuristic("TX"), None);
+    }
+
+    #[test]
+    fn is_canonical_short_classification_recognizes_top() {
+        // PR 8 added bare `TOP` to the canonical-short set so the
+        // classification heuristic doesn't fire on already-canonical
+        // `TOP SECRET//...` input (whose first whitespace-token is
+        // `TOP`). Pre-PR-8 this was a no-op because the length-3
+        // heuristic always returned None; PR 8's OTP rule made it
+        // load-bearing.
+        assert!(is_canonical_short_classification("TOP"));
+        // Existing canonical short forms still recognized.
+        for s in &["U", "R", "C", "S", "TS"] {
+            assert!(
+                is_canonical_short_classification(s),
+                "{s:?} must be recognized as canonical short classification",
+            );
+        }
+        // Non-canonical or wrong-case forms still return false.
+        assert!(!is_canonical_short_classification("TPP"));
+        assert!(!is_canonical_short_classification("top")); // case-sensitive
+        assert!(!is_canonical_short_classification("TOPS"));
+    }
+
+    #[test]
+    fn heuristic_skips_unknown_first_char() {
+        // First char isn't in any heuristic cluster → no fix.
+        assert_eq!(try_classification_heuristic_fix("(B//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(QS//NF)"), None);
+    }
+
+    #[test]
+    fn heuristic_skips_lone_inputs() {
+        // Issue #133 PR 4 / #176 lone-input safety guard. The
+        // heuristic must NOT fire on inputs without marking-shape
+        // signals beyond the leading token — auto-applying lone-case
+        // fixes would surface as false positives on parenthetical
+        // refs like `(A)`, `(W)`, `(F)` that are common in business
+        // prose. The corpus measurement at PR 4 found `A` alone has
+        // 214,539 unrestricted body-text occurrences in the Enron
+        // corpus vs 168 in marking-context — the lone-case FP rate
+        // is ~3 orders of magnitude higher than the in-context rate.
+        //
+        // Form-field input (caller asserts the input IS a marking
+        // attempt) should still fire; tracking via #176 — when the
+        // input-source signal lands, this guard becomes conditional.
+        for lone in &[
+            "(YS)",  // 2-char trigger, parens, nothing else
+            "(W)",   // 1-char trigger
+            "(F)",   // 1-char trigger
+            "(X)",   // 1-char trigger
+            "YS",    // banner-shape lone
+            "W",     // bare lone token
+            "(YS )", // trailing whitespace only
+        ] {
+            assert_eq!(
+                try_classification_heuristic_fix(lone),
+                None,
+                "lone input {lone:?} must not fire heuristic (#133 PR 4 / #176 lone-input guard)"
+            );
+        }
+    }
+
+    #[test]
+    fn heuristic_fires_when_marking_signal_present() {
+        // Counterpart to `heuristic_skips_lone_inputs`. The guard is
+        // about LONE inputs only; inputs with ANY marking content
+        // beyond the leading token (a `//` separator OR another
+        // whitespace-separated token in the first segment) still
+        // fire normally.
+        let cases: &[(&str, &str)] = &[
+            ("(YS//NF)", "(TS//NF)"), // `//` separator after token
+            ("(YS NF)", "(TS NF)"),   // whitespace + another token
+            ("YS//NOFORN", "TS//NOFORN"),
+            ("W//NF", "S//NF"),
+        ];
+        for (input, expected) in cases {
+            let result = try_classification_heuristic_fix(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should heuristic-fix to {expected:?} \
+                 (marking signal present); got {result:?}"
+            );
+        }
+    }
+}

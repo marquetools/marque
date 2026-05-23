@@ -371,3 +371,153 @@ pub(crate) fn marking_classification(marking: &CapcoMarking) -> Option<Classific
         .as_ref()
         .map(|c| c.effective_level())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use marque_capco::{CapcoMarking, CapcoScheme};
+    use marque_core::Parser;
+    use marque_ism::{
+        CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+        span::{MarkingCandidate, MarkingType, Span},
+    };
+    use marque_rules::confidence::FeatureId;
+    use marque_scheme::MarkingScheme;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
+    use smallvec::SmallVec;
+
+    use super::*;
+    use crate::decoder::DecoderRecognizer;
+    use crate::decoder::test_helpers::{TEST_SCHEME, deep_cx};
+
+    #[test]
+    fn try_canonical_reorder_swaps_dissem_first_banner() {
+        assert_eq!(
+            try_canonical_reorder("NOFORN//SECRET"),
+            Some("SECRET//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn try_canonical_reorder_returns_none_when_already_canonical() {
+        assert_eq!(try_canonical_reorder("SECRET//NOFORN"), None);
+    }
+
+    #[test]
+    fn classify_segment_treats_sci_as_other_not_dissem() {
+        // HCS and SI are SCI controls per CAPCO §A.6, not dissem.
+        // Regression guard for PR #114 review — previously HCS was
+        // in `DISSEMS`, which caused `try_canonical_reorder` to
+        // move an HCS segment to the very end of the banner/portion
+        // (past the dissem block) and corrupt canonicalization.
+        // SCI segments must fall through to `SegmentClass::Other`
+        // so the reorder helper places them between classification
+        // and dissem per §A.6.
+        assert_eq!(classify_segment("HCS"), SegmentClass::Other);
+        assert_eq!(classify_segment("HCS-P"), SegmentClass::Other);
+        assert_eq!(classify_segment("SI"), SegmentClass::Other);
+        assert_eq!(classify_segment("SI-G"), SegmentClass::Other);
+        assert_eq!(classify_segment("TK"), SegmentClass::Other);
+    }
+
+    #[test]
+    fn classify_segment_non_ic_dissem_tokens() {
+        // §H.9 abbreviations and long-title forms must classify as Dissem so
+        // try_canonical_reorder places them after SCI, not in Other.
+        // Regression guard for PR #256.
+        for tok in &[
+            "DS", "XD", "ND", "SBU", "SBU-NF", "LES", "LES-NF", "SSI", "LIMDIS", "EXDIS", "NODIS",
+        ] {
+            assert_eq!(
+                classify_segment(tok),
+                SegmentClass::Dissem,
+                "classify_segment({tok:?}) should be Dissem"
+            );
+        }
+        // Multi-word long-title forms.
+        assert_eq!(
+            classify_segment("LIMITED DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("EXCLUSIVE DISTRIBUTION"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(classify_segment("NO DISTRIBUTION"), SegmentClass::Dissem);
+        assert_eq!(
+            classify_segment("LAW ENFORCEMENT SENSITIVE"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE BUT UNCLASSIFIED"),
+            SegmentClass::Dissem
+        );
+        assert_eq!(
+            classify_segment("SENSITIVE SECURITY INFORMATION"),
+            SegmentClass::Dissem
+        );
+    }
+
+    #[test]
+    fn classify_segment_restricted_data_is_not_classification() {
+        // "RESTRICTED DATA" (AEA, §H.6) must not be mistaken for the NATO
+        // RESTRICTED classification even though "RESTRICTED" is in CLASSIFICATIONS.
+        // Bare "RESTRICTED" (NATO classification) must still be Classification.
+        // Regression guard for PR #256.
+        assert_eq!(classify_segment("RESTRICTED DATA"), SegmentClass::Other);
+        assert_eq!(
+            classify_segment("RESTRICTED DATA-CNWDI"),
+            SegmentClass::Other
+        );
+        assert_eq!(classify_segment("RESTRICTED"), SegmentClass::Classification);
+    }
+
+    #[test]
+    fn try_canonical_reorder_places_sci_between_classification_and_dissem() {
+        // Dissem-first with an SCI segment in the middle — correct
+        // canonical order is classification → SCI → dissem.
+        assert_eq!(
+            try_canonical_reorder("NOFORN//HCS-P//SECRET"),
+            Some("SECRET//HCS-P//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn meets_classification_floor_rejects_below_floor() {
+        // Synthesize a marking via the decoder and check the floor
+        // predicate directly.
+        //
+        // Issue #258: pre-#258 this used `(U)` (portion form), but
+        // single-letter portions are now suppressed by the prose null
+        // hypothesis. Switch to `UNCLASSIFIED` (banner form) — the
+        // prose-side prior for the full word is at the Laplace floor
+        // (zero hits in 134M prose-corpus words), so the marking-y
+        // delta is huge and the candidate resolves cleanly. The unit
+        // under test is `meets_classification_floor`, not the decoder
+        // dispatch, so the choice of input shape is incidental.
+        let rx = DecoderRecognizer::new();
+        let Parsed::Unambiguous(u_marking) =
+            rx.recognize(b"UNCLASSIFIED", 0, &*TEST_SCHEME, &deep_cx())
+        else {
+            panic!("UNCLASSIFIED should decode to unambiguous UNCLASSIFIED");
+        };
+        // U below S floor → rejected.
+        assert!(!meets_classification_floor(
+            &u_marking,
+            Classification::Secret as u8
+        ));
+        // U meets U floor.
+        assert!(meets_classification_floor(
+            &u_marking,
+            Classification::Unclassified as u8
+        ));
+    }
+}

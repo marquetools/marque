@@ -224,3 +224,350 @@ pub(crate) fn match_sar_missing_hyphen(bytes: &[u8], i: usize) -> Option<usize> 
     }
     Some(j)
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use marque_capco::{CapcoMarking, CapcoScheme};
+    use marque_core::Parser;
+    use marque_ism::{
+        CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+        span::{MarkingCandidate, MarkingType, Span},
+    };
+    use marque_rules::confidence::FeatureId;
+    use marque_scheme::MarkingScheme;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
+    use smallvec::SmallVec;
+
+    use super::*;
+    use crate::decoder::DecoderRecognizer;
+    use crate::decoder::test_helpers::{TEST_SCHEME, deep_cx};
+
+    #[test]
+    fn sar_indicator_repair_strips_one_letter_prefix() {
+        // The canonical USAR-BP shape from the mangled corpus.
+        assert_eq!(
+            try_sar_indicator_repair(
+                "SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN"
+            ),
+            Some("SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_strips_multi_letter_prefix() {
+        // Two- and three-letter prefixes are still in the structural
+        // window. `XYZ` isn't a CAPCO token or trigraph.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//ABSAR-BP//NOFORN"),
+            Some("SECRET//SAR-BP//NOFORN".to_owned())
+        );
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//XYZSAR-BP//NOFORN"),
+            Some("SECRET//SAR-BP//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_strips_even_capco_token_prefix() {
+        // The prefix-strip pass intentionally does NOT defend
+        // against prefixes that spell a CAPCO token in isolation
+        // (`U`, `S`, `R`, `C`, `TS`, `SI`, `USA`, …). Canonical
+        // CAPCO never glues a classification token, SCI control,
+        // or trigraph directly to `SAR-` without a `//` separator,
+        // so the apparent prefix at a `//`/`(`/start boundary is
+        // OCR/transcription drift regardless of whether the bytes
+        // happen to spell a known token. An earlier defensive check
+        // that refused to strip such prefixes broke the central
+        // `USAR-` recovery case (`U` is the UNCLASSIFIED portion
+        // form). Pinned here so a future "be more conservative"
+        // PR reviews the rationale before re-adding the guard.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//USASAR-BP//NOFORN"),
+            Some("SECRET//SAR-BP//NOFORN".to_owned()),
+            "must strip USA at boundary even though USA is a trigraph",
+        );
+        assert_eq!(
+            try_sar_indicator_repair("(USAR-BP)"),
+            Some("(SAR-BP)".to_owned()),
+            "boundary `(` must also trigger the strip pass",
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_inserts_missing_hyphen_two_char_id() {
+        // The canonical SARBP missing-hyphen shape.
+        assert_eq!(
+            try_sar_indicator_repair("TOP SECRET//SARBP//NOFORN"),
+            Some("TOP SECRET//SAR-BP//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_inserts_missing_hyphen_three_char_id() {
+        // 3-char alphanumeric program identifier per §H.5 p100.
+        assert_eq!(
+            try_sar_indicator_repair("TOP SECRET//SARABC//NOFORN"),
+            Some("TOP SECRET//SAR-ABC//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_inserts_missing_hyphen_before_compound() {
+        // `SARBP-J12` → `SAR-BP-J12`. The 2-char alnum run BP
+        // terminates at the `-` delimiter; that's the missing-hyphen
+        // pattern. The trailing `-J12` is preserved verbatim.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//SARBP-J12 J54//NOFORN"),
+            Some("SECRET//SAR-BP-J12 J54//NOFORN".to_owned())
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_no_op_on_canonical() {
+        // Canonical SAR shapes must pass through with `None`.
+        let cases: &[&str] = &[
+            "SECRET//SAR-BP//NOFORN",
+            "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
+            "TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
+            "SECRET//NOFORN",
+        ];
+        for input in cases {
+            assert_eq!(
+                try_sar_indicator_repair(input),
+                None,
+                "canonical input {input:?} must not be repaired"
+            );
+        }
+    }
+
+    #[test]
+    fn sar_indicator_repair_skips_non_boundary_sar() {
+        // `SAR` embedded mid-token (no boundary char before `S`)
+        // is not the indicator — could be a SAR program identifier
+        // happening to contain the letters. Don't touch.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//FOO-USAR-BP"),
+            None,
+            "non-boundary SAR is not the indicator keyword"
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_skips_long_alnum_run() {
+        // 4+ alphanumeric chars after SAR don't match the §H.5 p100
+        // 2-3 char Abbrev-form identifier. The helper refuses to
+        // insert a hyphen — inserting `SAR-ABCD` would be inventing
+        // a malformed identifier.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//SARABCD//NOFORN"),
+            None,
+            "4-char alnum run violates §H.5 p100 2-3 char identifier"
+        );
+    }
+
+    #[test]
+    fn sar_indicator_repair_returns_none_when_no_sar_substring() {
+        // Pre-check fast path: if `SAR` doesn't appear in the input
+        // at all, no repair is possible.
+        assert_eq!(
+            try_sar_indicator_repair("TOP SECRET//SI-G ABCD//NOFORN"),
+            None
+        );
+        assert_eq!(try_sar_indicator_repair(""), None);
+        assert_eq!(try_sar_indicator_repair("UNCLASSIFIED"), None);
+    }
+
+    #[test]
+    fn match_sar_prefix_detects_one_to_three_letter_prefix() {
+        assert_eq!(match_sar_prefix(b"USAR-BP", 0), Some((1, 5)));
+        assert_eq!(match_sar_prefix(b"ABSAR-BP", 0), Some((2, 6)));
+        assert_eq!(match_sar_prefix(b"XYZSAR-BP", 0), Some((3, 7)));
+    }
+
+    #[test]
+    fn match_sar_prefix_rejects_no_prefix_or_no_sar() {
+        assert_eq!(match_sar_prefix(b"SAR-BP", 0), None);
+        assert_eq!(match_sar_prefix(b"USAR", 0), None);
+        assert_eq!(match_sar_prefix(b"USARBP", 0), None);
+    }
+
+    #[test]
+    fn match_sar_missing_hyphen_detects_2_3_char_id() {
+        assert_eq!(match_sar_missing_hyphen(b"SARBP/", 0), Some(5));
+        assert_eq!(match_sar_missing_hyphen(b"SARABC ", 0), Some(6));
+        // End-of-string also counts as a delim.
+        assert_eq!(match_sar_missing_hyphen(b"SARBP", 0), Some(5));
+    }
+
+    #[test]
+    fn match_sar_missing_hyphen_rejects_canonical_and_too_long() {
+        // `SAR-` already canonical (alnum run is 0).
+        assert_eq!(match_sar_missing_hyphen(b"SAR-BP", 0), None);
+        // 4-char alnum run is outside the §H.5 p100 2-3 window.
+        assert_eq!(match_sar_missing_hyphen(b"SARABCD/", 0), None);
+        // 1-char alnum run is also outside the window.
+        assert_eq!(match_sar_missing_hyphen(b"SARB/", 0), None);
+    }
+
+    #[test]
+    fn match_sar_missing_hyphen_rejects_non_delim_following_char() {
+        // Alnum run is in the §H.5 p100 2-3 window, but the byte
+        // immediately after the run is non-alphanumeric AND not in
+        // the delimiter set (`-`, `/`, ` `, `\t`, `\n`, `\r`).
+        // Every non-delim non-alnum byte triggers the
+        // `next_is_delim = false` branch and the helper returns
+        // `None` — refusing to repair grammatically-suspicious
+        // shapes (a SAR identifier doesn't terminate at `,`, `)`,
+        // `;`, etc.). Direct-helper test because the higher-level
+        // pinning in `try_sar_indicator_repair` only exercises a
+        // subset of these via the boundary check upstream.
+        let cases: &[&[u8]] = &[
+            b"SARBP)",  // closing paren — same byte that ends a portion mark
+            b"SARBP,",  // comma — common typo separator
+            b"SARBP;",  // semicolon
+            b"SARBP*",  // asterisk
+            b"SARBP=",  // equals
+            b"SARABC.", // period after 3-char id
+            b"SARABC?", // question mark
+        ];
+        for input in cases {
+            assert_eq!(
+                match_sar_missing_hyphen(input, 0),
+                None,
+                "input {:?} has non-delim follower; helper must refuse repair",
+                std::str::from_utf8(input).unwrap_or("<non-utf8>"),
+            );
+        }
+    }
+
+    #[test]
+    fn sar_indicator_repair_skips_pattern_b_with_non_delim_follower() {
+        // End-to-end pinning of the same `next_is_delim = false`
+        // rejection through `try_sar_indicator_repair`. `SARBP)`
+        // appears at a `//` boundary (so `at_boundary` is true and
+        // Pattern B is attempted), the alnum run is 2, but `)` isn't
+        // in the delim set — the helper falls through to the
+        // verbatim-copy default. Without the rejection branch we'd
+        // emit `SAR-BP)`, silently inventing a hyphen for a
+        // grammatically-suspicious input.
+        assert_eq!(
+            try_sar_indicator_repair("SECRET//SARBP)//NOFORN"),
+            None,
+            "Pattern B must refuse to fire when the post-alnum char isn't a delim",
+        );
+    }
+
+    #[test]
+    fn decoder_recovers_usar_prefix_via_sar_indicator_repair() {
+        // End-to-end recognizer test: the canonical USAR-BP fixture
+        // shape from the mangled corpus must resolve unambiguously
+        // to a SECRET marking with a SAR block. Pinned per
+        // `tests/fixtures/mangled/typo/d04f45f7a4f5a8b4.json`.
+        let rx = DecoderRecognizer::new();
+        let Parsed::Unambiguous(marking) = rx.recognize(
+            b"SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
+            0,
+            &*TEST_SCHEME,
+            &deep_cx(),
+        ) else {
+            panic!("USAR-BP-... must resolve via SAR indicator repair");
+        };
+        assert_eq!(
+            marking
+                .0
+                .classification
+                .as_ref()
+                .map(|c| c.effective_level()),
+            Some(Classification::Secret),
+        );
+        assert!(
+            marking.0.sar_markings.is_some(),
+            "SAR block must be present after USAR→SAR repair; attrs = {:?}",
+            marking.0,
+        );
+        assert!(
+            marking
+                .0
+                .dissem_iter()
+                .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
+            "NOFORN must survive; attrs = {:?}",
+            marking.0,
+        );
+    }
+
+    #[test]
+    fn decoder_recovers_sarbp_missing_hyphen_via_sar_indicator_repair() {
+        // End-to-end: `SARBP` (no hyphen) → `SAR-BP` (canonical) per
+        // §H.5 p100. Pinned per
+        // `tests/fixtures/mangled/typo/fbf5ed813c109c14.json`.
+        let rx = DecoderRecognizer::new();
+        let Parsed::Unambiguous(marking) =
+            rx.recognize(b"TOP SECRET//SARBP//NOFORN", 0, &*TEST_SCHEME, &deep_cx())
+        else {
+            panic!("SARBP must resolve via SAR indicator repair");
+        };
+        assert_eq!(
+            marking
+                .0
+                .classification
+                .as_ref()
+                .map(|c| c.effective_level()),
+            Some(Classification::TopSecret),
+        );
+        let sar = marking
+            .0
+            .sar_markings
+            .as_ref()
+            .expect("SAR block must be present");
+        assert_eq!(sar.programs.len(), 1, "exactly one program; got {sar:?}");
+        assert_eq!(
+            &*sar.programs[0].identifier, "BP",
+            "program identifier must be `BP` after hyphen insertion; got {sar:?}",
+        );
+    }
+
+    #[test]
+    fn decoder_recovers_spcial_via_extended_correction_vocab() {
+        // `SPCIAL` (typo in `SPECIAL`) — issue #133 PR 6 vocab
+        // addition. The fuzzy matcher now finds `SPECIAL` at edit
+        // distance 1, the strict SAR parser then matches the
+        // `SPECIAL ACCESS REQUIRED-BUTTER POPCORN` indicator
+        // literally. Pinned per
+        // `tests/fixtures/mangled/typo/1f75ddd89b432949.json`.
+        let rx = DecoderRecognizer::new();
+        let Parsed::Unambiguous(marking) = rx.recognize(
+            b"TOP SECRET//SPCIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
+            0,
+            &*TEST_SCHEME,
+            &deep_cx(),
+        ) else {
+            panic!("SPCIAL must fuzzy-correct to SPECIAL");
+        };
+        assert_eq!(
+            marking
+                .0
+                .classification
+                .as_ref()
+                .map(|c| c.effective_level()),
+            Some(Classification::TopSecret),
+        );
+        let sar = marking
+            .0
+            .sar_markings
+            .as_ref()
+            .expect("SAR block must be present");
+        assert_eq!(
+            &*sar.programs[0].identifier, "BUTTER POPCORN",
+            "Full-form program identifier must round-trip; got {sar:?}",
+        );
+    }
+}

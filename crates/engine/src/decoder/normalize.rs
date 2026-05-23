@@ -365,3 +365,65 @@ pub(crate) fn scan_token(text: &str) -> usize {
 ///   Special Intelligence (SI) control system is no longer valid.")
 ///   inside §H.4 SCI Control System Markings.
 const SUPERSEDED_TOKEN_MAP: &[(&str, &str)] = &[("COMINT", "SI")];
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use marque_capco::{CapcoMarking, CapcoScheme};
+    use marque_core::Parser;
+    use marque_ism::{
+        CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+        span::{MarkingCandidate, MarkingType, Span},
+    };
+    use marque_rules::confidence::FeatureId;
+    use marque_scheme::MarkingScheme;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
+    use smallvec::SmallVec;
+
+    use super::*;
+    use crate::decoder::DecoderRecognizer;
+    use crate::decoder::test_helpers::{TEST_SCHEME, deep_cx};
+
+    #[test]
+    fn normalize_delimiters_collapses_garbled_slash() {
+        let (out, _) = normalize_delimiters_and_case("S ∕∕ NOFORN");
+        assert_eq!(out, "S//NOFORN");
+    }
+
+    #[test]
+    fn normalize_delimiters_handles_double_spaced_slashes() {
+        // PR #463 Copilot regression: pre-fix table-ordering left `"/ / "`
+        // (4 byte) ahead of `" / / "` (5 byte), so the 4-byte rule consumed
+        // the inner spaces before the 5-byte rule could match. Output was
+        // `"S //NF"`. With longest-first ordering the 5-byte rule fires
+        // first and collapses to canonical form.
+        let (out, _) = normalize_delimiters_and_case("S / / NF");
+        assert_eq!(out, "S//NF");
+    }
+
+    #[test]
+    fn normalize_delimiters_converges_in_two_passes() {
+        // PR #463 Copilot regression follow-up: even with longest-first
+        // ordering, some inputs require a second pass. `"S / /NF"` first
+        // matches the 3-byte `"/ /"` (positions 2-4) and yields
+        // `"S //NF"`; the leading-space variant `" //"` only matches on
+        // the next iteration. The fixpoint loop catches this.
+        let (out, _) = normalize_delimiters_and_case("S / /NF");
+        assert_eq!(out, "S//NF");
+    }
+
+    #[test]
+    fn scan_token_captures_compound_with_hyphen() {
+        assert_eq!(scan_token("SI-G ABCD"), 4); // "SI-G"
+        assert_eq!(scan_token("HCS-P"), 5);
+        assert_eq!(scan_token("SECRET//"), 6);
+    }
+}

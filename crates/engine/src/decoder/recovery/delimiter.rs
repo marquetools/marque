@@ -248,3 +248,169 @@ pub(crate) fn is_classification_continuation(next_token: &str, prev_token: Optio
     }
     is_classification_token(next_token)
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_insert_delimiter_inserts_before_long_form_dissem() {
+        // Hard-splitter rule: long-form dissem after whitespace.
+        let cases: &[(&str, &str)] = &[
+            ("SECRET//NOFORN EXDIS", "SECRET//NOFORN//EXDIS"),
+            ("SECRET//NOFORN ORCON", "SECRET//NOFORN//ORCON"),
+            ("SECRET//SI ORCON", "SECRET//SI//ORCON"),
+        ];
+        for (input, expected) in cases {
+            let result = try_insert_delimiter(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should produce {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_insert_delimiter_classification_boundary() {
+        // Rule 1: classification → next segment.
+        let cases: &[(&str, &str)] = &[
+            (
+                "SECRET REL TO USA, AUS, GBR",
+                "SECRET//REL TO USA, AUS, GBR",
+            ),
+            ("SECRET NOFORN", "SECRET//NOFORN"),
+            ("TOP SECRET NOFORN", "TOP SECRET//NOFORN"),
+        ];
+        for (input, expected) in cases {
+            let result = try_insert_delimiter(input);
+            assert_eq!(
+                result.as_deref(),
+                Some(*expected),
+                "input {input:?} should produce {expected:?}; got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_insert_delimiter_does_not_split_top_secret() {
+        // TOP SECRET is the only multi-word classification — the
+        // helper must not insert `//` between TOP and SECRET.
+        // The first rule fires only on the first NON-classification
+        // token; SECRET after TOP is a classification continuation.
+        let result = try_insert_delimiter("TOP SECRET//NF");
+        // No insertion needed at all (input is already canonical).
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn try_insert_delimiter_does_not_split_sbu_noforn() {
+        // SBU NOFORN is the non-IC dissem banner long form for
+        // SbuNf — must remain a single multi-word atom.
+        let result = try_insert_delimiter("SECRET//SBU NOFORN");
+        assert_eq!(result, None, "SBU NOFORN must not be split; got {result:?}");
+    }
+
+    #[test]
+    fn try_insert_delimiter_does_not_split_les_noforn() {
+        // LES NOFORN is the non-IC dissem banner long form for
+        // LesNf — must remain a single multi-word atom.
+        let result = try_insert_delimiter("SECRET//LES NOFORN");
+        assert_eq!(result, None, "LES NOFORN must not be split; got {result:?}");
+    }
+
+    #[test]
+    fn try_insert_delimiter_no_op_on_canonical() {
+        // Already-canonical inputs produce None (no insertion).
+        for input in &[
+            "SECRET//NOFORN",
+            "TOP SECRET//SI//NOFORN",
+            "(S//NF)",
+            "UNCLASSIFIED",
+        ] {
+            let result = try_insert_delimiter(input);
+            assert_eq!(
+                result, None,
+                "input {input:?} is canonical; should produce None, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn try_insert_delimiter_capped_at_max_insertions() {
+        // Pathological input with many splitters — the cap should
+        // limit insertions. Hard cap is `MAX_DELIMITER_INSERTIONS`
+        // (4 today); 6 splitters in the input should produce at
+        // most 4 insertions in the output.
+        let input = "SECRET NOFORN ORCON PROPIN IMCON RELIDO RSEN";
+        let result = try_insert_delimiter(input);
+        assert!(result.is_some());
+        let inserted = result.unwrap();
+        let inserted_count = inserted.matches("//").count();
+        assert!(
+            inserted_count <= MAX_DELIMITER_INSERTIONS,
+            "must not exceed MAX_DELIMITER_INSERTIONS={MAX_DELIMITER_INSERTIONS}; \
+             got {inserted_count} insertions in {inserted:?}"
+        );
+    }
+
+    #[test]
+    fn try_insert_delimiter_preserves_existing_double_slash() {
+        // Existing `//` separators must be preserved verbatim.
+        let result = try_insert_delimiter("SECRET//NOFORN EXDIS");
+        let s = result.expect("should insert");
+        // Two `//` total: one preserved in SECRET//NOFORN, plus one
+        // inserted for NOFORN//EXDIS.
+        let count = s.matches("//").count();
+        assert_eq!(
+            count, 2,
+            "expected 2 `//` total (1 preserved + 1 inserted), got {count} in {s:?}"
+        );
+    }
+
+    #[test]
+    fn try_insert_delimiter_preserves_non_ascii_characters_verbatim() {
+        // Regression guard for PR #175 review: the helper used to do
+        // `result.push(bytes[i] as char)` for non-token, non-`/`,
+        // non-whitespace characters, which corrupts multi-byte UTF-8
+        // sequences by emitting each byte as a separate Latin-1
+        // codepoint (e.g., `∕` → 3 garbage codepoints). The fix
+        // walks `text[i..].chars()` to take one full character and
+        // advances `i` by `ch.len_utf8()`, preserving the original
+        // UTF-8 byte sequence in the output.
+        //
+        // The fixture below has a stray `∕` (U+2215, 3 bytes in
+        // UTF-8) that the upstream delimiter normalizer didn't catch.
+        // The helper must echo the original bytes verbatim into the
+        // output (no insertion would happen here — there's no
+        // splitter token after the `∕`), and the round-trip must
+        // preserve the `∕` character intact.
+        let input = "SECRET ∕∕ NOFORN";
+        let result = try_insert_delimiter(input);
+        // Whether or not the helper emits a result depends on the
+        // tokenization — what matters is that NO character in the
+        // output corrupts the `∕` UTF-8 sequence. Test the result
+        // (or the input passthrough if None).
+        let was_some = result.is_some();
+        let s = result.unwrap_or_else(|| input.to_string());
+        assert!(
+            s.is_char_boundary(s.len()),
+            "output {s:?} must end on a char boundary"
+        );
+        // The `∕` character (U+2215) must survive intact in the
+        // output. If the old `bytes[i] as char` shape was still in
+        // play, the 3-byte UTF-8 sequence [0xE2, 0x88, 0x95] would
+        // be emitted as three separate codepoints (U+00E2 U+0088
+        // U+0095), and the original `∕` would not appear.
+        assert!(
+            !was_some || s.contains('∕'),
+            "output {s:?} must preserve the U+2215 character when the \
+             helper emitted any output"
+        );
+    }
+}

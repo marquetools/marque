@@ -547,3 +547,17 @@ pub(crate) fn compute_context_features(
 
     out
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+//
+// Tests live in `tests/null_hypothesis_tests.rs`. They were carved out
+// of this file to keep the combined production + test surface within
+// the 800-line gate.
+
+#[path = "tests/null_hypothesis_tests.rs"]
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests;

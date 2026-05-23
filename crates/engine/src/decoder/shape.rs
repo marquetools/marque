@@ -321,3 +321,225 @@ pub(super) fn strict_parse_is_complete(marking: &CapcoMarking, kind: MarkingType
         _ => is_nontrivial_marking(marking),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unused_imports)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use marque_capco::{CapcoMarking, CapcoScheme};
+    use marque_core::Parser;
+    use marque_ism::{
+        CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+        span::{MarkingCandidate, MarkingType, Span},
+    };
+    use marque_rules::confidence::FeatureId;
+    use marque_scheme::MarkingScheme;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
+    use smallvec::SmallVec;
+
+    use super::*;
+    use crate::decoder::DecoderRecognizer;
+    use crate::decoder::test_helpers::{TEST_SCHEME, deep_cx};
+
+    #[test]
+    fn fast_path_parses_simple_us_class_and_dissem_shape() {
+        let canonical = try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(SECRET//NF)")
+            .expect("canonical simple portion should hit decoder fast-path");
+        assert_eq!(
+            canonical.0.classification,
+            Some(MarkingClassification::Us(Classification::Secret))
+        );
+        assert_eq!(canonical.0.dissem_us.as_ref(), &[DissemControl::Nf]);
+        assert!(canonical.0.token_spans.is_empty());
+
+        // Intentional typo: the fast-path preserves strict-parser behavior for
+        // unknown classification tokens by keeping `classification = None`
+        // while still retaining known dissem controls.
+        let marking = try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(SERCET//NF)")
+            .expect("simple portion should hit decoder fast-path");
+        assert_eq!(marking.0.classification, None);
+        assert_eq!(marking.0.dissem_us.as_ref(), &[DissemControl::Nf]);
+        assert!(marking.0.token_spans.is_empty());
+    }
+
+    #[test]
+    fn fast_path_rejects_complex_or_mixed_category_shapes() {
+        assert!(
+            try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(S//SI/NF)").is_none(),
+            "mixed SCI/dissem slash block must fall back to full strict parser",
+        );
+        assert!(
+            try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(S//REL TO USA, GBR)")
+                .is_none(),
+            "REL TO block must fall back to full strict parser",
+        );
+    }
+
+    #[test]
+    fn strict_parse_is_complete_rejects_unknown_classification() {
+        // This is the regression-guard for PR #114 review comment
+        // on decoder.rs:946 — strict parse of `(SERCET//NOFORN)`
+        // recognizes NOFORN but leaves `classification: None` because
+        // SERCET doesn't resolve to any `Classification` variant.
+        // Without the `strict_parse_is_complete` check, the
+        // dispatcher would accept this as a complete strict result
+        // and never fall through to the decoder.
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 16),
+            kind: MarkingType::Portion,
+        };
+        let parsed = parser
+            .parse(&candidate, b"(SERCET//NOFORN)")
+            .expect("strict parser should accept (SERCET//NOFORN) leniently");
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
+        assert!(
+            is_nontrivial_marking(&marking),
+            "NOFORN survives as a dissem control → marking is nontrivial"
+        );
+        assert!(
+            !strict_parse_is_complete(&marking, MarkingType::Portion),
+            "SERCET left `classification: None` → strict parse is incomplete; \
+             dispatcher must fall back to decoder. attrs = {:?}",
+            marking.0,
+        );
+    }
+
+    #[test]
+    fn strict_parse_is_complete_accepts_clean_marking() {
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 7),
+            kind: MarkingType::Portion,
+        };
+        let parsed = parser
+            .parse(&candidate, b"(S//NF)")
+            .expect("canonical portion must strict-parse");
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
+        assert!(
+            strict_parse_is_complete(&marking, MarkingType::Portion),
+            "canonical (S//NF) must be accepted as complete; attrs = {:?}",
+            marking.0,
+        );
+    }
+
+    #[test]
+    fn strict_parse_is_complete_rejects_trailing_unknown_token() {
+        // `(S//FRBN)` — classification parses (`S` → Secret) but the
+        // tail token `FRBN` lands in an `Unknown` span. The
+        // dispatcher must fall back so the decoder can resolve
+        // `FRBN` → `NF` (or reject).
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
+        let token_set = CapcoTokenSet;
+        let parser = Parser::new(&token_set);
+        let candidate = MarkingCandidate {
+            span: Span::new(0, 9),
+            kind: MarkingType::Portion,
+        };
+        let parsed = parser
+            .parse(&candidate, b"(S//FRBN)")
+            .expect("strict parser accepts (S//FRBN) leniently");
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
+        // `S` resolved, so classification is Some — but the
+        // Unknown-tail check still fires.
+        assert!(
+            !strict_parse_is_complete(&marking, MarkingType::Portion),
+            "`FRBN` is Unknown-kind → strict parse is incomplete; attrs = {:?}",
+            marking.0,
+        );
+    }
+
+    #[test]
+    fn is_bare_classification_shape_recognizes_whitelist() {
+        // Issue #472: the 10-entry closed whitelist covers every
+        // canonical CAPCO portion classification token. All entries
+        // must match byte-exact.
+        for s in &[
+            b"(U)" as &[u8],
+            b"(C)",
+            b"(S)",
+            b"(TS)",
+            b"(R)",
+            b"(NU)",
+            b"(NR)",
+            b"(NC)",
+            b"(NS)",
+            b"(CTS)",
+        ] {
+            assert!(
+                is_bare_classification_shape(s),
+                "whitelist entry {:?} must match",
+                std::str::from_utf8(s).unwrap_or("<bytes>"),
+            );
+        }
+
+        // Non-whitelist 3-letter all-caps acronyms — the prose-acronym
+        // false-positive surface the gate is designed to suppress.
+        for s in &[
+            b"(CMS)" as &[u8],
+            b"(MD)",
+            b"(SI)",
+            b"(CTs)", // mixed case — case-fold happens later, the gate runs on raw bytes
+            b"(c)",   // lowercase fails the byte-exact match
+            b"(s)",
+            b"(u)",
+            b"(C//NF)", // has `//`
+            b"( C )",   // interior whitespace fails byte-exact
+            b"(CT)",    // not on the canonical token set
+        ] {
+            assert!(
+                !is_bare_classification_shape(s),
+                "non-whitelist input {:?} must not match",
+                std::str::from_utf8(s).unwrap_or("<bytes>"),
+            );
+        }
+    }
+
+    #[test]
+    fn is_bare_classification_shape_is_byte_exact() {
+        // Interior whitespace inside the parens (`( C )`, `(C )`,
+        // `( C)`) does not match — that's intentional. Whitespace
+        // tolerance happens elsewhere (the strict recognizer strips
+        // leading whitespace on portion candidates), but this gate
+        // operates on the raw observed bytes. Any whitespace-bearing
+        // shape goes through the null-hypothesis filter so a
+        // prose-shaped `( C )` mid-prose is correctly tested against
+        // the observed prose prior.
+        assert!(!is_bare_classification_shape(b"( C)"));
+        assert!(!is_bare_classification_shape(b"(C )"));
+        assert!(!is_bare_classification_shape(b"( C )"));
+        assert!(!is_bare_classification_shape(b" (C)"));
+        assert!(!is_bare_classification_shape(b"(C) "));
+    }
+
+    #[test]
+    fn has_double_slash_detects_slash_slash() {
+        // True cases: any input containing `//` anywhere.
+        assert!(has_double_slash(b"(S//NF)"));
+        assert!(has_double_slash(b"S//REL"));
+        assert!(has_double_slash(b"//"));
+        assert!(has_double_slash(b"prefix//suffix"));
+        assert!(has_double_slash(b"SECRET//NOFORN"));
+
+        // False cases: no `//` sequence.
+        assert!(!has_double_slash(b"/"));
+        assert!(!has_double_slash(b"(S)"));
+        assert!(!has_double_slash(b"(S/NF)"));
+        assert!(!has_double_slash(b""));
+        assert!(!has_double_slash(b"/foo/bar/"));
+    }
+}
