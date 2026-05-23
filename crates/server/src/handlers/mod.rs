@@ -56,9 +56,9 @@ pub(crate) fn query_carries_corpus_override(query: &str) -> bool {
 /// intentional: callers always pair both functions, and each one
 /// owns exactly one stage of the request lifecycle.
 ///
-/// Visibility is `pub(crate)`: the documented pairing is enforceable
-/// only inside this crate, and the only call sites are the lint and
-/// fix handlers.
+/// Visibility is `pub(super)`: the documented pairing is enforceable
+/// within the `handlers` module, and the only call sites are the lint
+/// and fix handlers.
 ///
 /// Returns `Err(StatusCode::BAD_REQUEST)` on any positive signal.
 /// Logs the channel but never the payload contents (Constitution V

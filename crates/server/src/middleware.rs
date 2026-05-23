@@ -4,7 +4,10 @@
 
 use axum::{Router, http::header};
 
-pub(crate) fn apply_default_layers(router: Router) -> Router {
+pub(crate) fn apply_default_layers<S>(router: Router<S>) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     router
         .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
             header::X_CONTENT_TYPE_OPTIONS,

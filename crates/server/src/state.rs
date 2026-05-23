@@ -12,10 +12,9 @@ pub struct AppState {
     pub engine: Arc<Engine>,
     /// Upper bound for a caller-supplied `X-Marque-Deadline` header
     /// (spec 005 §10.2). When the caller omits the header, each
-    /// endpoint applies its own default —
-    /// [`DEFAULT_ENDPOINT_DEADLINE_MS`] for lint and fix in MVP — so
-    /// this field is only consulted when the header is present and
-    /// must be range-checked.
+    /// endpoint applies its own default — 30 s for lint and fix in
+    /// MVP — so this field is only consulted when the header is
+    /// present and must be range-checked.
     pub deadline_cap: Duration,
 }
 
