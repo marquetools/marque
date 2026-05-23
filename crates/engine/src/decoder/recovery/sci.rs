@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! SCI delimiter recovery.
 //!
 //! Insert the `-` separator between an SCI control system and its
