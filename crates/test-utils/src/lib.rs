@@ -73,24 +73,18 @@ pub fn prose_fixtures() -> Vec<PathBuf> {
 
 /// Expected rule identifier from a `.expected.json` sidecar file.
 ///
-/// T044 (post-PR-10 FR-049 unfreeze) reshaped `RuleId` from the
-/// legacy 1-tuple `&'static str` form into the canonical
-/// `(scheme, predicate_id)` 2-tuple. The structured JSON shape
-/// (object form, never a flattened string) makes the rule identity
-/// human-readable in audit-record fixtures: a 2030 auditor reading
-/// a 2026 sidecar can see `{"scheme": "capco", "predicate_id":
-/// "portion.dissem.noforn-conflicts-rel-to"}` directly and trace it
-/// to the CAPCO §-citation without consulting a glossary.
+/// `RuleId` has the canonical `(scheme, predicate_id)` 2-tuple form.
+/// The structured JSON shape (object form, never a flattened string)
+/// makes the rule identity human-readable in audit-record fixtures: a
+/// 2030 auditor reading a 2026 sidecar can see `{"scheme": "capco",
+/// "predicate_id": "portion.dissem.noforn-conflicts-rel-to"}` directly
+/// and trace it to the CAPCO §-citation without consulting a glossary.
 ///
 /// Owned `String` storage (rather than `&'static str`) because the
 /// values come from runtime JSON deserialization — corpus fixtures
-/// are read at test-execution time. The audit-record contract at
-/// `specs/006-engine-rule-refactor/contracts/audit-record.md`
-/// carries the same `(scheme, predicate_id)` JSON shape; this type
-/// is the fixture-side mirror used by the corpus regression
-/// harness.
-///
-/// Refs: T044, FR-026, FR-044, OD-2, OD-3
+/// are read at test-execution time. The audit-record contract carries
+/// the same `(scheme, predicate_id)` JSON shape; this type is the
+/// fixture-side mirror used by the corpus regression harness.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ExpectedRuleId {
     pub scheme: String,
@@ -99,10 +93,7 @@ pub struct ExpectedRuleId {
 
 /// Expected diagnostic from a `.expected.json` sidecar file.
 ///
-/// The `rule` field carries the structured 2-tuple shape after T044
-/// (was a flat `String` pre-T044). Sidecars rewrite in Wave 2 of the
-/// T044 migration; see `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
-/// §2.10 for the mechanical rewrite.
+/// The `rule` field carries the structured 2-tuple shape.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExpectedDiagnostic {
     pub rule: ExpectedRuleId,
@@ -286,12 +277,10 @@ mod tests {
 
     #[test]
     fn expected_diagnostic_carries_structured_rule_id() {
-        // T044: the legacy flat-string `"rule": "E007"` shape is
-        // structurally rejected — JSON consumers that haven't been
-        // updated to the 2-tuple shape get a parse error at the
-        // boundary, not a silent string mismatch later. This pin
-        // makes Wave 2's corpus-fixture rewrite a hard build-break
-        // until every sidecar moves to the structured shape.
+        // The flat-string `"rule": "E007"` shape is structurally
+        // rejected — JSON consumers that aren't on the 2-tuple shape
+        // get a parse error at the boundary, not a silent string
+        // mismatch later. Every sidecar must use the structured shape.
         let json = r#"{
             "rule": {
                 "scheme": "capco",
@@ -313,11 +302,10 @@ mod tests {
 
     #[test]
     fn expected_diagnostic_rejects_legacy_flat_string_rule() {
-        // The legacy `"rule": "E007"` shape MUST NOT deserialize
-        // through the new structured field. If a stray sidecar
-        // survives Wave 2's rewrite, the corpus runner fails fast
-        // at fixture-load time with a parse error rather than
-        // continuing with a partially-migrated fixture set.
+        // The flat `"rule": "E007"` shape MUST NOT deserialize
+        // through the structured field. A stray flat-string sidecar
+        // makes the corpus runner fail fast at fixture-load time with
+        // a parse error rather than continuing with a malformed fixture.
         let json = r#"{
             "rule": "E007",
             "span": {"start": 8, "end": 13}
