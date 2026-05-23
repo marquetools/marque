@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T037 — cross-crate smoke test for [`marque_rules::FixIntent`].
+//! Cross-crate smoke test for [`marque_rules::FixIntent`].
 //!
 //! Verifies that the rule-emission API is reachable and constructible
 //! from outside `marque-rules` (the same surface a downstream rule
 //! crate like `marque-capco` or a future `marque-cui` would see). The
 //! richer per-variant unit tests live in `src/fix_intent.rs::tests`.
 //!
-//! PR 3c.B Commit 2 reshaped the variant set:
-//! `Cve` / `Render` / `Delete` retired in favor of the bag-of-tokens
-//! `FactAdd` / `FactRemove` / `Recanonicalize` vocabulary. See
+//! The variant set is the bag-of-tokens `FactAdd` / `FactRemove` /
+//! `Recanonicalize` vocabulary. See
 //! `specs/006-engine-rule-refactor/architecture.md` "What fixes
 //! are."
 

@@ -6,8 +6,8 @@
 //!
 //! Takes [`MarkingCandidate`] spans from the scanner and produces
 //! [`marque_ism::ParsedAttrs`]. The engine then runs
-//! `MarkingScheme::canonicalize` — the trait route, sole production
-//! path per FR-043; for CAPCO that is
+//! `MarkingScheme::canonicalize` — the trait route, the sole
+//! production path; for CAPCO that is
 //! `marque_capco::CapcoScheme::canonicalize` — to land owned
 //! [`marque_ism::CanonicalAttrs`] for rule consumption.
 //!
@@ -50,7 +50,7 @@ use std::str::FromStr;
 /// Carries a borrow into the original source bytes via `attrs` (each
 /// `Parsed*<'src>` wrapper retains its source slice). Short-lived: the
 /// engine immediately canonicalizes to `CanonicalAttrs` via
-/// `MarkingScheme::canonicalize` (sole production path per FR-043;
+/// `MarkingScheme::canonicalize` (the sole production path;
 /// the CAPCO override lives in `CapcoScheme::canonicalize`).
 #[derive(Debug)]
 pub struct ParsedMarking<'src> {
@@ -63,8 +63,8 @@ pub struct ParsedMarking<'src> {
 pub struct Parser<'t> {
     tokens: &'t dyn TokenSet,
     /// IC dissem attribution fallback for portions with no
-    /// classification axis. PR 9b (T132) wired the post-parse
-    /// `attribute_dissems` pass; CAPCO callers leave this at the
+    /// classification axis. The post-parse `attribute_dissems` pass
+    /// uses it; CAPCO callers leave this at the
     /// default ([`DefaultOrigin::Us`]) so that no-context portions
     /// attribute their dissems to `dissem_us`. A future
     /// foreign-origin-dominant scheme can override via
@@ -190,7 +190,7 @@ impl<'t> Parser<'t> {
     ) -> Result<ParsedMarking<'src>, CoreError> {
         // CAB is line-structured: "Classified By: ...\nDerived From: ...\nDeclassify On: ..."
         // CAB markings borrow `&'src str` for free-text fields directly so the
-        // canonicalizer's round-trip property (FR-019) sees the bytes the
+        // canonicalizer's round-trip property sees the bytes the
         // parser actually consumed.
         let mut classified_by: Option<&'src str> = None;
         let mut derived_from: Option<&'src str> = None;
@@ -221,10 +221,6 @@ impl<'t> Parser<'t> {
                         // `s.as_ptr() >= text.as_ptr()` for a slice
                         // relationship that holds by the construction
                         // chain `text.lines() → strip_prefix → trim`.
-                        // PR 3c may switch to an offset-tracking iterator
-                        // if any consumer needs sub-line provenance; for
-                        // PR 3a the byte position is recoverable from
-                        // `bytes` itself when needed.
                         let abs_start =
                             candidate.span.start + (s.as_ptr() as usize - text.as_ptr() as usize);
                         declassify_on = Some(ParsedDeclassifyOn::new(

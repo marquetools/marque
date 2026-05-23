@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T131 — within-category separator span emission (issue #106).
+//! Within-category separator span emission (issue #106).
 //!
-//! After PR 9a Commit 1, the parser emits `TokenKind::Separator` spans for
+//! The parser emits `TokenKind::Separator` spans for
 //! both between-category `//` and within-category `/` byte sequences. The
 //! `text` field discriminates: `"//"` for between-category, `"/"` for
 //! within-category. No new `TokenKind` variant was introduced.
@@ -74,7 +74,7 @@ fn separators(spans: &[TokenSpan]) -> Vec<&TokenSpan> {
 }
 
 // -----------------------------------------------------------------------
-// Within-category `/` separator emission — the core T131 contract.
+// Within-category `/` separator emission — the core contract.
 // -----------------------------------------------------------------------
 
 #[test]
@@ -203,8 +203,8 @@ fn banner_within_category_separator_emitted() {
 fn mixed_category_slash_block_emits_no_within_separator() {
     // §A.6 p16: `/` separates entries within a single category; using it
     // between categories (e.g., SCI + dissem in `SI/NF`) is a structural
-    // error. The parser keeps the pre-T131 behavior here — emit the
-    // whole block as Unknown so E004 (missing `//`) can fire — and does
+    // error. The parser emits the whole block as Unknown so E004
+    // (missing `//`) can fire — and does
     // NOT emit within-category Separator spans for the bogus `/`.
     let src = "(S//SI/NF)";
     let spans = parse_portion(src);
@@ -219,15 +219,16 @@ fn mixed_category_slash_block_emits_no_within_separator() {
 }
 
 // -----------------------------------------------------------------------
-// Bidirectional whitespace coverage — PR 9a Copilot R2 Fix 1.
+// Bidirectional whitespace coverage.
 //
-// Before the fix, `split_slash_with_separator_offsets` only extended the
-// separator span over whitespace *after* the `/`. For input `OC /NF`,
-// the leading space at byte 6 was owned by neither the `OC` token (3..5)
-// nor the separator (6..7 — the bare `/`) nor the `NF` token (7..9), so
-// the byte range between adjacent tokens had a gap. Downstream
-// byte-precise text-correction splices could produce audit records with
-// uncovered bytes. The fix walks leading whitespace BEFORE the `/`,
+// `split_slash_with_separator_offsets` must extend the separator span
+// over whitespace on BOTH sides of the `/`. For input `OC /NF`, if the
+// span only covered whitespace after the `/`, the leading space at byte
+// 6 would be owned by neither the `OC` token (3..5) nor the separator
+// (6..7 — the bare `/`) nor the `NF` token (7..9), leaving a gap.
+// Downstream byte-precise text-correction splices could then produce
+// audit records with uncovered bytes. Walking leading whitespace
+// BEFORE the `/`,
 // bounded by the end of the previous emitted token so the separator
 // span never overlaps token bytes. Both sides are now covered.
 // -----------------------------------------------------------------------

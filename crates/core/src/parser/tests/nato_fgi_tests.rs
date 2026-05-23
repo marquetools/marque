@@ -50,7 +50,7 @@ fn assert_nato_companion(parsed: &CanonicalParsed, expected: ExpectedCompanion) 
     }
 }
 
-/// PR 9c.1 T134: legacy compound NATO classification text (e.g.,
+/// Legacy compound NATO classification text (e.g.,
 /// `COSMIC TOP SECRET ATOMAL`) is canonicalized at parse time to
 /// bare class + companion AEA/SCI write per CAPCO-2016 §H.7 p122 +
 /// §G.2 p40 + §H.7 p127. The class axis carries only the bare
@@ -121,7 +121,7 @@ fn nato_banner_parses_all_variants() {
     }
 }
 
-/// PR 9c.1 T134: portion-form legacy compounds (`CTSA`, `CTS-A`,
+/// Portion-form legacy compounds (`CTSA`, `CTS-A`,
 /// `CTS-B`, `CTS-BALK`, `NSAT`, `NS-A`, `NCA`, `NC-A`) canonicalize
 /// to bare class + companion AEA/SCI per CAPCO-2016 §G.1 Table 4
 /// p38 (portion-form column) + §G.2 p40 (Table 5: ARH by Registered
@@ -397,7 +397,7 @@ fn fgi_marker_bare_is_source_concealed() {
     assert!(matches!(marker, FgiMarker::SourceConcealed));
 }
 
-// ---- T088 + T093: FR-015 / FR-016 closure for parse_fgi_marker ----
+// ---- Admission closure for parse_fgi_marker ----
 //
 // GH #280 retired the transitional `unwrap_or(SourceConcealed)`
 // fallback. These tests pin the three lawful cases per CAPCO-2016
@@ -433,12 +433,11 @@ fn fgi_marker_multi_country_acknowledged() {
 
 #[test]
 fn fgi_marker_lowercase_token_no_marker() {
-    // Lowercase fails `admits_fgi_trigraph`; the previous
-    // transitional behavior would have silently dropped the
-    // token, producing an empty country list and falling back to
-    // `SourceConcealed`. Post-T088: the parser returns `None`,
-    // so `attrs.fgi_marker` is unset (CAPCO §H.7 p122 disallows
-    // a degraded lawful form on shape failure).
+    // Lowercase fails `admits_fgi_trigraph`. A degraded fallback
+    // would silently drop the token, produce an empty country list,
+    // and fall back to `SourceConcealed`; instead the parser returns
+    // `None`, so `attrs.fgi_marker` is unset (CAPCO §H.7 p122
+    // disallows a degraded lawful form on shape failure).
     let parsed = parse_banner("SECRET//FGI deu//NOFORN");
     assert!(
         parsed.attrs.fgi_marker.is_none(),
@@ -483,11 +482,9 @@ fn fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it() {
     // parser. So `XYZ` parses as an Acknowledged country code
     // and a downstream rule flags the unknown trigraph.
     //
-    // This pins the boundary: shape vs. registry. The earlier
-    // (pre-T088) implementation also accepted `XYZ` because
-    // `CountryCode::try_new` succeeds on 3 ASCII upper, so this
-    // is not a regression — it's a confirmation that the gate's
-    // semantics are scoped correctly.
+    // This pins the boundary: shape vs. registry. `XYZ` is accepted
+    // here because `CountryCode::try_new` succeeds on 3 ASCII upper;
+    // the gate's semantics are scoped to shape, not registry membership.
     let parsed = parse_banner("SECRET//FGI XYZ//NOFORN");
     let marker = parsed
         .attrs
@@ -538,13 +535,13 @@ fn fgi_marker_direct_three_cases() {
     // Case 3: empty input → None
     assert!(parse_fgi_marker("").is_none());
 
-    // Case 3: lowercase token → None (FR-016 closure)
+    // Case 3: lowercase token → None (closure invariant)
     assert!(parse_fgi_marker("FGI deu").is_none());
 
     // Case 2 (mixed shapes per §H.7 p122): trigraph + tetragraph
-    // → Some(Acknowledged) with both countries. PR #311 review
-    // caught the prior trigraph-only narrowing; post-fix
-    // admission accepts the spec-canonical example.
+    // → Some(Acknowledged) with both countries. Admission accepts
+    // the spec-canonical example rather than narrowing to trigraphs
+    // only (PR #311).
     match parse_fgi_marker("FGI GBR JPN NATO") {
         Some(FgiMarker::Acknowledged { countries, .. }) => {
             assert_eq!(countries.len(), 3);

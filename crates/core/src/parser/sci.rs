@@ -96,8 +96,8 @@ pub(super) fn parse_sci_block(
             return None;
         }
 
-        // Deprecated SCI long-form per-chunk recognition (PR 9a Copilot R4,
-        // PR #416). When the chunk matches a deprecated long-form
+        // Deprecated SCI long-form per-chunk recognition (PR #416).
+        // When the chunk matches a deprecated long-form
         // (`HUMINT`, `COMINT`, `KDK-BLUEFISH`, `ECI ABC`, ...), route it
         // through the canonical-system enum path BEFORE the structural
         // CVE-bare / custom-control checks below — otherwise:
@@ -178,8 +178,8 @@ pub(super) fn parse_sci_block(
             continue;
         }
 
-        // NATO SAP per-chunk recognition (PR 9c.1 R1 — canonical-form
-        // round-trip closure). BOHEMIA / BALK render standalone in the
+        // NATO SAP per-chunk recognition (canonical-form round-trip
+        // closure). BOHEMIA / BALK render standalone in the
         // SCI block with no compartments per §G.2 p40 + §H.7 p127. The
         // bare token IS the chunk (no `-` separator, no compartments),
         // so we recognize it here BEFORE the `SciControlBare::parse` /

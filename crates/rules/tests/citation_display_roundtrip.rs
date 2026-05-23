@@ -2,29 +2,27 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Golden + property tests for [`marque_scheme::Citation`] `Display`
-//! (PR 10.A.1 moved `Citation` from `marque-rules` to `marque-scheme`
-//! so the scheme-level catalog rows can carry typed citations without
-//! inverting the crate dependency graph).
+//! Golden + property tests for [`marque_scheme::Citation`] `Display`.
+//! `Citation` lives in `marque-scheme` so the scheme-level catalog
+//! rows can carry typed citations without inverting the crate
+//! dependency graph.
 //!
-//! Lands in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-//! PM-7. The golden tests pin the exact citation-lint regex shape
-//! against representative CAPCO citation forms; the property test
-//! asserts that `format!("{citation}")` matches the citation-lint
-//! regex shape for arbitrary valid `Citation` constructions.
+//! The golden tests pin the exact citation-lint regex shape against
+//! representative CAPCO citation forms; the property test asserts that
+//! `format!("{citation}")` matches the citation-lint regex shape for
+//! arbitrary valid `Citation` constructions.
 //!
 //! Citation-lint at `tools/citation-lint/` is the load-bearing
-//! consumer: PR 3c.2.C migrates `Diagnostic.citation: &'static str` to
-//! `Diagnostic.citation: Citation` and citation-lint's AST scanner
-//! reads the structured value. If `Display` ever drifts from the
-//! citation-lint expected shape, the round-trip property test fails
-//! before C ever reaches CI.
+//! consumer: `Diagnostic.citation` is a typed `Citation` and
+//! citation-lint's AST scanner reads the structured value. If
+//! `Display` ever drifts from the citation-lint expected shape, the
+//! round-trip property test fails.
 //!
 //! # CAPCO §-citation verification
 //!
 //! Every literal CAPCO §-reference below was re-verified against
-//! `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.A authorship per
-//! Constitution Principle VIII. The verifications:
+//! `crates/capco/docs/CAPCO-2016.md` per Constitution Principle VIII.
+//! The verifications:
 //!
 //! - §H.4 p61 — SCI grammar reminder per CAPCO-2016 §H.4 p61
 //!   (compartment 2–3 alpha, sub-compartment 4–6 alnum; multi-value
@@ -69,17 +67,16 @@ fn capco_with_table(letter: SectionLetter, sub: u8, table: u8, page: u16) -> Cit
 
 #[test]
 fn display_subsection_only_h4_p61() {
-    // Per CAPCO-2016 §H.4 p61 — SCI grammar reminder. Verified at PR
-    // 3c.2.A authorship.
+    // Per CAPCO-2016 §H.4 p61 — SCI grammar reminder.
     let c = capco(SectionLetter::H, 4, 61);
     assert_eq!(format!("{c}"), "§H.4 p61");
 }
 
 #[test]
 fn display_subsection_plus_table_b3_table_2_p21() {
-    // Per CAPCO-2016 §B.3 Table 2 p21 — caveated FD&R rule. Verified
-    // at PR 3c.2.A authorship; project memory
-    // `project_capco_p20_caveated_definition` anchors this exact form.
+    // Per CAPCO-2016 §B.3 Table 2 p21 — caveated FD&R rule. Project
+    // memory `project_capco_p20_caveated_definition` anchors this exact
+    // form.
     let c = capco_with_table(SectionLetter::B, 3, 2, 21);
     assert_eq!(format!("{c}"), "§B.3 Table 2 p21");
 }
@@ -88,24 +85,22 @@ fn display_subsection_plus_table_b3_table_2_p21() {
 fn display_capco_a6_p15_formatting() {
     // Per CAPCO-2016 §A.6 p15 — Figure 2 baseline (one of the most-
     // cited CAPCO sections in marque source per the citation index).
-    // Verified at PR 3c.2.A authorship.
     let c = capco(SectionLetter::A, 6, 15);
     assert_eq!(format!("{c}"), "§A.6 p15");
 }
 
 #[test]
 fn display_capco_h5_p99_sar_anchor() {
-    // Per CAPCO-2016 §H.5 p99 — SAR (Special Access Program) anchor.
-    // Verified at PR 3c.2.A authorship; cited in CLAUDE.md crate
-    // descriptions as the canonical SAR reference.
+    // Per CAPCO-2016 §H.5 p99 — SAR (Special Access Program) anchor;
+    // cited in CLAUDE.md crate descriptions as the canonical SAR
+    // reference.
     let c = capco(SectionLetter::H, 5, 99);
     assert_eq!(format!("{c}"), "§H.5 p99");
 }
 
 #[test]
 fn display_capco_h8_p134_fouo_eviction() {
-    // Per CAPCO-2016 §H.8 p134 — FOUO eviction rule. Verified at PR
-    // 3c.2.A authorship; project memory
+    // Per CAPCO-2016 §H.8 p134 — FOUO eviction rule. Project memory
     // `project_noforn_supremacy_composition` anchors this citation
     // (Pattern B — classification or any non-FD&R control evicts FOUO).
     let c = capco(SectionLetter::H, 8, 134);
@@ -252,10 +247,9 @@ fn arb_citation() -> impl Strategy<Value = Citation> {
 proptest! {
     /// `format!("{citation}")` MUST match the citation-lint regex form
     /// for any well-formed `Citation`. This is the load-bearing
-    /// round-trip with citation-lint: PR 3c.2.C's
-    /// `Diagnostic.citation: &'static str → Citation` migration relies
-    /// on `Display` output being shape-correct so the lint can scan
-    /// structured values rather than re-derive structure from a
+    /// round-trip with citation-lint: the typed `Diagnostic.citation`
+    /// relies on `Display` output being shape-correct so the lint can
+    /// scan structured values rather than re-derive structure from a
     /// regex.
     #[test]
     fn display_matches_citation_lint_form(c in arb_citation()) {

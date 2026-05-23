@@ -313,12 +313,12 @@ pub(super) fn parse_rel_to_with_spans<'src>(
                 // inner slash-tail loop — the boundary `/` is excluded
                 // from the comma-split scope and the DISPLAY ONLY
                 // suffix is parsed in one piece (with its own commas)
-                // after the REL TO loop completes. Copilot review on
-                // PR #445 caught that the previous in-entry handler
-                // misclassified the multi-country case
+                // after the REL TO loop completes. Handling DISPLAY
+                // ONLY inside this inner loop would misclassify the
+                // multi-country case
                 // `REL TO USA, IRQ/DISPLAY ONLY AFG, NATO` because the
-                // outer comma-split had already chopped NATO into a
-                // separate entry.
+                // outer comma-split would already have chopped NATO
+                // into a separate entry (see issue #445).
                 if let Some(ctrl) =
                     DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
                 {
@@ -459,10 +459,9 @@ fn find_display_only_slash_boundary(s: &str) -> Option<usize> {
         // Skip ASCII whitespace after the slash to tolerate
         // drift like `/ DISPLAY ONLY` or `/\tDISPLAY ONLY`.
         // Uses `is_ascii_whitespace` to match the parser's
-        // existing within-category-separator tolerance in
-        // [`split_slash_with_separator_offsets`] — Copilot
-        // review on PR #445 flagged that the prior
-        // literal-space-only check was inconsistent with the
+        // within-category-separator tolerance in
+        // [`split_slash_with_separator_offsets`]; a
+        // literal-space-only check would be inconsistent with the
         // rest of the parser's whitespace handling.
         let mut after_slash = slash_pos + 1;
         while after_slash < bytes.len() && bytes[after_slash].is_ascii_whitespace() {

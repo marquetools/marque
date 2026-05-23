@@ -23,8 +23,8 @@
 //! (pure-NATO portions like `(//CTS//OC/REL TO USA, NATO)`).
 //!
 //! Tokens that are NATO-only by spec (ATOMAL, BALK, BOHEMIA) are NOT
-//! dissems and route to the AEA / SCI axes per FR-047 — they never
-//! pass through this attribution code path.
+//! dissems and route to the AEA / SCI axes — they never pass through
+//! this attribution code path.
 //!
 //! # The decision
 //!

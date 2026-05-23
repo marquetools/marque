@@ -14,7 +14,7 @@ use super::Classification;
 /// Not everyone with a US clearance is cleared for NATO; many US systems
 /// are not approved for NATO information.
 ///
-/// # Canonical structural model (PR 9c.1 T134)
+/// # Canonical structural model
 ///
 /// Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking),
 /// ATOMAL / BOHEMIA / BALK are **registered NATO control markings,
@@ -75,10 +75,9 @@ impl NatoClassification {
 
     /// The base classification level, for ordering comparisons.
     ///
-    /// PR 9c.1 T134: `base_level` collapses to a trivial mapping
-    /// post-variant-retirement (each variant is its own base level),
-    /// but the indirection stays for API stability and as a hook
-    /// for any future sub-level distinctions.
+    /// `base_level` is a trivial mapping today (each variant is its own
+    /// base level), but the indirection stays for API stability and as
+    /// a hook for any future sub-level distinctions.
     pub fn base_level(self) -> NatoLevel {
         match self {
             Self::NatoUnclassified => NatoLevel::NatoUnclassified,

@@ -2,41 +2,37 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.2.C C6 — positive control proving [`marque_scheme::Citation`]
-//! is constructible only through structured construction.
+//! Positive control proving [`marque_scheme::Citation`] is
+//! constructible only through structured construction.
 //!
 //! The compile-fail proofs that no free-form constructor exists
 //! (`From<&str>`, `From<String>`, `Citation::from_str`) live as
 //! `compile_fail` doctests on the [`marque_scheme::Citation`] type
-//! itself (PR 10.A.1 moved `Citation` from `marque-rules` to
-//! `marque-scheme` so the scheme-level catalog rows can carry typed
-//! citations without inverting the crate dependency graph). This
-//! integration file pins the complementary positive case: structured
-//! construction via [`Citation::new`] and the three const-fn ergonomic
-//! helpers ([`capco`], [`capco_section`], [`capco_table`]) works from
-//! outside the `marque-scheme` crate. The test stays in the
-//! `marque-rules` integration tests directory because `marque-rules`
-//! is the load-bearing public consumer — `Diagnostic.citation` is
-//! a `marque_scheme::Citation` carried verbatim through this crate's
-//! public type surface (the `Citation` type itself moved to
-//! `marque-scheme` in PR 10.A.1 so the scheme-level catalog rows
-//! could carry typed citations without inverting the crate dependency
-//! graph; there is no `marque-rules` re-export). Verifying
-//! constructibility through this crate's transitive surface still
-//! covers the real-world consumer pattern.
+//! itself. `Citation` lives in `marque-scheme` so the scheme-level
+//! catalog rows can carry typed citations without inverting the crate
+//! dependency graph. This integration file pins the complementary
+//! positive case: structured construction via [`Citation::new`] and
+//! the three const-fn ergonomic helpers ([`capco`], [`capco_section`],
+//! [`capco_table`]) works from outside the `marque-scheme` crate. The
+//! test stays in the `marque-rules` integration tests directory
+//! because `marque-rules` is the load-bearing public consumer —
+//! `Diagnostic.citation` is a `marque_scheme::Citation` carried
+//! verbatim through this crate's public type surface (there is no
+//! `marque-rules` re-export). Verifying constructibility through this
+//! crate's transitive surface still covers the real-world consumer
+//! pattern.
 //!
-//! Companion to `crates/rules/tests/message_no_freeform_ctor.rs`
-//! (PR 3c.1 T033 — the [`Message`] equivalent). Together the two
-//! files exercise the closed-construction surface of the diagnostic
-//! emission types, which is the load-bearing G13 invariant for
-//! `Diagnostic.message` / `Diagnostic.citation` per Constitution V
-//! Principle V.
+//! Companion to `crates/rules/tests/message_no_freeform_ctor.rs` (the
+//! [`Message`] equivalent). Together the two files exercise the
+//! closed-construction surface of the diagnostic emission types, the
+//! load-bearing content-ignorance invariant for `Diagnostic.message` /
+//! `Diagnostic.citation` per Constitution V Principle V.
 //!
 //! # CAPCO §-citation verification
 //!
 //! Every literal §-reference below was re-verified against
-//! `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.C C6 authorship per
-//! Constitution Principle VIII propagation rule:
+//! `crates/capco/docs/CAPCO-2016.md` per Constitution Principle VIII
+//! propagation rule:
 //!
 //! - §H.4 p61 — SCI grammar reminder per CAPCO-2016 §H.4 p61.
 //! - §B.3 Table 2 p21 — caveated FD&R rule per CAPCO-2016 §B.3 Table

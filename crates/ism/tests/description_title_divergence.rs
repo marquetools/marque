@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3d (FR-053) — ODNI `<Description>` ↔ CAPCO `MarkingForm.title`
-//! divergence pin.
+//! ODNI `<Description>` ↔ CAPCO `MarkingForm.title` divergence pin.
 //!
 //! Walks every row in `MARKING_FORMS` and compares the row's
 //! `title` against the ODNI Description text fetched from
@@ -14,21 +13,17 @@
 //!
 //! ## Why a count pin and not a "≥1" assertion
 //!
-//! Per `project_odni_description_is_title` (PR 3d preflight): the
-//! ODNI XML `<Description>` element is flat text whose body is the
+//! The ODNI XML `<Description>` element is flat text whose body is the
 //! ODNI long form; there's no nested `<title>` sub-element.
 //! Comparing the trimmed Description against
 //! `MarkingForm.title` is a direct string compare.
 //!
-//! The PR 3d preflight note conjectured the divergence count was
-//! likely zero. Measurement contradicts that — the active
-//! ISM-v2022-DEC schema package surfaces nine divergent rows
-//! (Class A typos, Class B prose definitions, Class C casing/
+//! The active ISM-v2022-DEC schema package surfaces nine divergent
+//! rows (Class A typos, Class B prose definitions, Class C casing/
 //! abbreviation surface differences; see `EXPECTED_DIVERGENCES`
-//! doc-comment for the inventory). Per D5 of PR 3d's PM
-//! decisions, the test exact-count-pins the divergence so a
-//! schema bump that introduces (or removes) a divergent row lands
-//! deliberately, not silently.
+//! doc-comment for the inventory). The test exact-count-pins the
+//! divergence so a schema bump that introduces (or removes) a
+//! divergent row lands deliberately, not silently.
 //!
 //! ## What happens when a divergence appears
 //!
@@ -60,7 +55,7 @@ use marque_ism::marking_forms::MARKING_FORMS;
 /// disagrees with the ODNI ISM CVE `<Description>` for the matching
 /// canonical value.
 ///
-/// At PR 3d.3 this count must equal both
+/// This count must equal both
 /// `MARKING_FORMS.iter().filter(|f| f.description_title.is_some()).count()`
 /// (the data-shape pin asserted in
 /// `description_title_field_populated_for_every_divergence` below)
@@ -88,8 +83,8 @@ use marque_ism::marking_forms::MARKING_FORMS;
 /// concise title; ODNI's `<Description>` adds a regulatory citation
 /// or definition. The CAPCO transcription is correct per §G.1, but
 /// the ODNI surface form is admissible on input via the
-/// `FormKind::IsmDescriptionTitle` recognize-only channel once
-/// PR 3d's follow-on populates `recognized_aliases`:
+/// `FormKind::IsmDescriptionTitle` recognize-only channel when
+/// `recognized_aliases` is populated:
 /// - `FISA` (ODNI adds the "Foreign Intelligence Surveillance Act
 ///   ... unconsenting individuals ..." citation).
 /// - `SSI` (ODNI adds the 49 C.F.R. citation).
@@ -163,8 +158,8 @@ fn description_title_divergence_count_matches_pin() {
 
 #[test]
 fn description_title_field_populated_for_every_divergence() {
-    // PR 3d.3: closes the data-shape ↔ runtime-detection loop. The
-    // original `description_title_divergence_count_matches_pin` walks
+    // Closes the data-shape ↔ runtime-detection loop. The
+    // `description_title_divergence_count_matches_pin` test walks
     // `MARKING_FORMS` at runtime and compares each row's `title` to
     // the looked-up ODNI `<Description>`. This sibling test pins the
     // DATA SHAPE: every divergent row must carry

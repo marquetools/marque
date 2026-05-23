@@ -147,8 +147,7 @@ pub(super) fn parse_sar_category(
 /// # Shape gates
 ///
 /// Token admission goes through the documented `marque-ism`
-/// predicates rather than inline byte-class checks
-/// (FR-015 / CHK030):
+/// predicates rather than inline byte-class checks:
 ///
 /// - Program identifier (Abbrev): [`SarProgram::admits_program_id_abbrev`]
 ///   — 2-3 ASCII alnum.
@@ -163,11 +162,10 @@ pub(super) fn parse_sar_category(
 ///
 /// Routing the parser through the same predicates the
 /// `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm calls
-/// pins the parser's accept set to the documented vocabulary
-/// surface. This satisfies FR-015 (admission via documented
-/// vocabulary surface) and CHK030 (no inline `is_ascii_alphanumeric`
-/// byte-class checks). The same pattern is used at
-/// [`parse_fgi_marker`] for FGI trigraph admission.
+/// surface pins the parser's accept set to the documented vocabulary
+/// surface (admission via documented vocabulary, no inline
+/// `is_ascii_alphanumeric` byte-class checks). The same pattern is
+/// used at [`parse_fgi_marker`] for FGI trigraph admission.
 fn parse_sar_program(
     chunk: &str,
     base: usize,
@@ -191,14 +189,13 @@ fn parse_sar_program(
     if prog_id.is_empty() {
         return None;
     }
-    // FR-015 admission: route the program identifier shape gate
-    // through the canonical `marque-ism` predicates, one per
-    // indicator form. Both predicates are pure / allocation-free
-    // (Constitution Principle II) and carry their CAPCO-2016 §H.5
-    // citations alongside the predicate body — keeping the gate
-    // single-sited prevents drift between the parser and the
-    // `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` admission
-    // surface (CHK030). Mirrors the FGI marker site at
+    // Route the program identifier shape gate through the canonical
+    // `marque-ism` predicates, one per indicator form. Both predicates
+    // are pure / allocation-free (Constitution Principle II) and carry
+    // their CAPCO-2016 §H.5 citations alongside the predicate body —
+    // keeping the gate single-sited prevents drift between the parser
+    // and the `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)`
+    // admission surface. Mirrors the FGI marker site at
     // [`parse_fgi_marker`] which routes through
     // [`CountryCode::admits_country_token`].
     let prog_shape_ok = match indicator {
@@ -234,15 +231,14 @@ fn parse_sar_program(
         // Split segment on ` ` — first token is compartment, rest are subs.
         let mut parts = split_with_offsets(seg, ' ');
         let (comp_rel_off, comp_id) = parts.remove(0);
-        // FR-015 admission: compartment identifier shape gated
-        // through the canonical `marque-ism` predicate.
-        // CAPCO-2016 §H.5 pp 99-100: "SAR program identifiers are
-        // alphanumeric values"; the surrounding prose applies the
-        // same rule to compartments and sub-compartments. Length
-        // bound is ≥1 (manual silent on upper bound; marque admits
-        // length 1+, with the divergence documented at the
-        // predicate). Same predicate handles the sub-compartment
-        // case below (T090 / T091).
+        // Compartment identifier shape gated through the canonical
+        // `marque-ism` predicate. CAPCO-2016 §H.5 pp 99-100: "SAR
+        // program identifiers are alphanumeric values"; the
+        // surrounding prose applies the same rule to compartments and
+        // sub-compartments. Length bound is ≥1 (manual silent on upper
+        // bound; marque admits length 1+, with the divergence
+        // documented at the predicate). Same predicate handles the
+        // sub-compartment case below.
         if !SarCompartment::admits_identifier(comp_id.as_bytes()) {
             return None;
         }
@@ -258,12 +254,11 @@ fn parse_sar_program(
         // than 4 subs.
         let mut subs: SmallVec<[SmolStr; 4]> = SmallVec::new();
         for (sub_rel_off, sub_id) in parts {
-            // FR-015 admission: sub-compartment identifier shape
-            // gated through the same canonical predicate as the
-            // compartment slot. CAPCO-2016 §H.5 pp 99-100 places
-            // both grammar positions under one rule (alphanumeric
-            // values, no character-class or length distinction);
-            // a single predicate admits both correctly (T091).
+            // Sub-compartment identifier shape gated through the same
+            // canonical predicate as the compartment slot. CAPCO-2016
+            // §H.5 pp 99-100 places both grammar positions under one
+            // rule (alphanumeric values, no character-class or length
+            // distinction); a single predicate admits both correctly.
             if !SarCompartment::admits_identifier(sub_id.as_bytes()) {
                 return None;
             }

@@ -223,7 +223,7 @@ fn slash_separated_dissem_in_single_block_parses() {
     use marque_ism::DissemControl;
     let parsed = parse_banner("SECRET//SI//NF/RELIDO");
     // US-classified marking → all dissems attributed to dissem_us
-    // per CAPCO-2016 p41 reciprocity (PR 9b / FR-046).
+    // per CAPCO-2016 p41 reciprocity.
     let dissem: Vec<DissemControl> = parsed.attrs.dissem_iter().copied().collect();
     assert!(dissem.contains(&DissemControl::Nf), "must contain NF");
     assert!(
