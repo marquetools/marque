@@ -497,7 +497,7 @@ fn text_correction_to_audit_json_v1_0<'a>(
 /// Dispatch an [`AuditLine<CapcoScheme>`] to its v1.0 JSON projection.
 /// Mirrors the CLI's `audit_line_to_json_v1_0`.
 ///
-/// `pub` so the SC-008 parity test at `tests/audit_v1_0_parity.rs`
+/// `pub(crate)` so the SC-008 parity test at `tests/audit_v1_0_parity.rs`
 /// can compare byte-identity against the CLI's projection without
 /// reimplementing the helper in the test harness.
 pub fn audit_line_to_json_v1_0(
