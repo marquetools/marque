@@ -30,6 +30,7 @@
 
 pub(crate) mod banner;
 pub(crate) mod dissem;
+pub(crate) mod eyes;
 pub(crate) mod helpers;
 pub(crate) mod joint;
 pub(crate) mod rel_to;
