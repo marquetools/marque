@@ -1014,6 +1014,51 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// permitted-identifier list. Never carries original document
     /// bytes.
     pub text_correction: Option<TextCorrection>,
+    /// Decoder-recognized canonical bytes for the marking span.
+    ///
+    /// Issue #699: surface what the decoder recognized when the
+    /// `DecoderRecognizer` emits R001 (`engine:recognition.decoder-
+    /// recognized`) so users can see the canonical form in `marque
+    /// check` output without running `marque fix` and diffing bytes.
+    /// Populated by the engine's `build_decoder_diagnostic` helper from
+    /// `DecoderProvenance::canonical_bytes` after both the UTF-8-validity
+    /// and no-op-rewrite gates pass — implying every emitted R001
+    /// carries `Some(_)` and no other rule emission populates the
+    /// field today.
+    ///
+    /// # Surface scope
+    ///
+    /// This field is decoder-side by design. Other rules emitting
+    /// `Recanonicalize` intents (E064 EYES → REL TO, E065 deprecated
+    /// SCI long-form, E066 ATOMAL / NATO-SAP, E060 ordering) keep
+    /// `recognized_canonical: None`; their canonical bytes are
+    /// synthesized by the engine's intent-application path at
+    /// promotion time. A future PR may opt those rules in if there
+    /// is a concrete user-facing rendering need — but the entry
+    /// point is here, not in those rules' bodies.
+    ///
+    /// # Constitution Principle II
+    ///
+    /// Stored as [`secrecy::SecretSlice<u8>`] (the alias for the
+    /// unsized `SecretBox<[u8]>`) so the canonical bytes wipe on drop
+    /// and every readout site goes through `expose_secret()` —
+    /// greppable for security review, returning `&[u8]` directly.
+    /// This is the same wrapper that backs `FixResult.source`; the
+    /// lint and fix output surfaces use one shared content-bearing
+    /// type. Readout sites today: the CLI human renderer
+    /// (`render_human`), the CLI NDJSON projection
+    /// (`diagnostic_to_json`), and the WASM NDJSON mirror.
+    ///
+    /// # Constitution V Principle V (G13 audit-content-ignorance)
+    ///
+    /// The field is **lint-side only**. It MUST NOT be serialized
+    /// into `AppliedFix<S>` or any audit-record JSON projection;
+    /// audit records continue to carry the BLAKE3 digest of the
+    /// canonical bytes plus the structural `Recanonicalize` intent,
+    /// never the bytes themselves. The asymmetry is pinned by the
+    /// `lint_carries_recognized_canonical_fix_audit_does_not` test
+    /// in `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
+    pub recognized_canonical: Option<secrecy::SecretSlice<u8>>,
 }
 
 /// Payload for an engine-applied byte-substitution fix.
@@ -1046,6 +1091,21 @@ pub struct TextCorrection {
 // `Clone` by its own derive).
 impl<S: MarkingScheme> Clone for Diagnostic<S> {
     fn clone(&self) -> Self {
+        // `SecretSlice<u8>` blocks Clone by design (Constitution
+        // Principle II — content-bearing buffers must not silently
+        // duplicate without an auditable readout). We expose-and-rewrap:
+        // every Diagnostic clone is a sanctioned readout of the
+        // decoder-recognized canonical bytes, and the new SecretSlice
+        // wipes on drop just like the original.
+        let recognized_canonical = self.recognized_canonical.as_ref().map(|sb| {
+            // Principle II readout — Diagnostic clone path (issue #699).
+            // `expose_secret()` on a `SecretSlice<u8>` returns `&[u8]`;
+            // `Box::from(&[u8])` produces a fresh `Box<[u8]>`; and
+            // `SecretBox::new(Box<[u8]>)` wraps it back up. `SecretSlice<u8>`
+            // is the type alias for `SecretBox<[u8]>` — there is no
+            // separate `SecretSlice::new` constructor.
+            secrecy::SecretBox::new(Box::from(secrecy::ExposeSecret::expose_secret(sb)))
+        });
         Self {
             rule: self.rule,
             severity: self.severity,
@@ -1055,6 +1115,7 @@ impl<S: MarkingScheme> Clone for Diagnostic<S> {
             citation: self.citation,
             fix: self.fix.clone(),
             text_correction: self.text_correction.clone(),
+            recognized_canonical,
         }
     }
 }
@@ -1100,6 +1161,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             citation,
             fix,
             text_correction: None,
+            recognized_canonical: None,
         }
     }
 
@@ -1136,6 +1198,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             citation,
             fix: Some(fix),
             text_correction: None,
+            recognized_canonical: None,
         }
     }
 
@@ -1179,7 +1242,52 @@ impl<S: MarkingScheme> Diagnostic<S> {
                 confidence,
                 migration_ref,
             }),
+            recognized_canonical: None,
         }
+    }
+
+    /// Attach the decoder-recognized canonical bytes to this
+    /// diagnostic (issue #699 builder).
+    ///
+    /// Used exclusively by the engine's `build_decoder_diagnostic`
+    /// helper today; surfaced as a `pub` builder so a future rule
+    /// that needs to publish a recognized canonical form to the
+    /// user-facing renderers can opt in without re-touching the
+    /// struct's field initialization.
+    ///
+    /// # Constitution Principle II
+    ///
+    /// The argument is a [`secrecy::SecretSlice<u8>`] so the bytes
+    /// wipe on drop. Every `expose_secret()` readout site (CLI human
+    /// renderer, NDJSON projection, WASM mirror) is a grep target
+    /// for security review.
+    ///
+    /// # Constitution V Principle V (G13 audit-content-ignorance)
+    ///
+    /// Recognized-canonical bytes are **lint-side only**. The audit
+    /// envelope continues to carry the BLAKE3 digest of the canonical
+    /// form plus the structural `Recanonicalize` intent, never the
+    /// bytes themselves — `AppliedFix<S>` has no analogous field.
+    /// The asymmetry is pinned by
+    /// `lint_carries_recognized_canonical_fix_audit_does_not` in
+    /// `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
+    ///
+    /// # Replacement semantics
+    ///
+    /// This is a setter, not a merge. Passing `None` **clears** any
+    /// existing `Some` value the diagnostic held previously, and
+    /// passing `Some(_)` replaces any existing value. Callers
+    /// constructing a `Diagnostic` should typically pass `Some(_)`
+    /// once at construction time; the `None` form exists for the
+    /// "explicitly clear after a builder chain" case rather than as
+    /// a default.
+    #[must_use]
+    pub fn with_recognized_canonical(
+        mut self,
+        canonical: Option<secrecy::SecretSlice<u8>>,
+    ) -> Self {
+        self.recognized_canonical = canonical;
+        self
     }
 
     /// Construct an informational diagnostic that carries no fix
