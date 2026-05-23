@@ -329,13 +329,13 @@
       "name": "sci_canonical_subcompartments.txt",
       "category": "invalid",
       "input": "TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.sci.unpublished-custom-control\"},\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":15},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.sci.unpublished-custom-control\"},\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":15},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§H.4 p61\",\"fix\":null}\n"
     },
     {
       "name": "sci_custom_control_info.txt",
       "category": "invalid",
       "input": "TOP SECRET//99/SI//NOFORN\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.sci.unpublished-custom-control\"},\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":14},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.sci.unpublished-custom-control\"},\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":14},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§H.4 p61\",\"fix\":null}\n"
     },
     {
       "name": "sci_deprecated_endseal.txt",
@@ -383,7 +383,7 @@
       "name": "sci_system_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI/123//NOFORN\n",
-      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.sci.unpublished-custom-control\"},\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"portion.sci.unpublished-custom-control\"},\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§H.4 p61\",\"fix\":null}\n"
     },
     {
       "name": "sci_unclassified_si.txt",
