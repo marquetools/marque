@@ -144,6 +144,11 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
     let recognized = r001
         .recognized_canonical
         .as_ref()
+        // Principle II readout — lint-side G13 pin (issue #699).
+        // This call is the load-bearing "lint surface carries the
+        // bytes" half of the cross-channel asymmetry; the negative
+        // half (audit envelope contains only the digest) is asserted
+        // below.
         .map(|sb| sb.expose_secret().as_ref().to_vec())
         .expect("R001 must carry recognized_canonical");
     assert_eq!(

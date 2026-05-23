@@ -1095,6 +1095,12 @@ impl<S: MarkingScheme> Clone for Diagnostic<S> {
         // wipes on drop just like the original.
         let recognized_canonical = self.recognized_canonical.as_ref().map(|sb| {
             // Principle II readout — Diagnostic clone path (issue #699).
+            // `SecretBox::new` takes `Box<T>`; with `T = Box<[u8]>` the
+            // constructor argument is `Box<Box<[u8]>>`, hence the
+            // outer `Box::new(...)` wrapping the inner `Box<[u8]>`
+            // returned by `.clone()`. Looks redundant, isn't —
+            // see the parallel construction in
+            // `crates/engine/src/engine.rs::build_decoder_diagnostic`.
             secrecy::SecretBox::new(Box::new(secrecy::ExposeSecret::expose_secret(sb).clone()))
         });
         Self {
@@ -1262,6 +1268,16 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// The asymmetry is pinned by
     /// `lint_carries_recognized_canonical_fix_audit_does_not` in
     /// `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
+    ///
+    /// # Replacement semantics
+    ///
+    /// This is a setter, not a merge. Passing `None` **clears** any
+    /// existing `Some` value the diagnostic held previously, and
+    /// passing `Some(_)` replaces any existing value. Callers
+    /// constructing a `Diagnostic` should typically pass `Some(_)`
+    /// once at construction time; the `None` form exists for the
+    /// "explicitly clear after a builder chain" case rather than as
+    /// a default.
     #[must_use]
     pub fn with_recognized_canonical(
         mut self,

@@ -4348,15 +4348,23 @@ fn build_decoder_diagnostic(
     // asymmetry is intentional and pinned by
     // `lint_carries_recognized_canonical_fix_audit_does_not` — lint
     // shows the bytes; the audit envelope continues to carry only the
-    // BLAKE3 digest + structural intent. The `original` binding is
-    // dropped here; only `replacement` (the canonical form) flows
-    // forward, wrapped in a `SecretBox` (Constitution II — wipes on
-    // drop, every readout goes through `expose_secret()`).
-    let _ = original;
+    // BLAKE3 digest + structural intent.
+    //
+    // The `original` / `replacement` bindings above served the
+    // UTF-8-validity and no-op-rewrite gates only — both have already
+    // run by this point. The canonical bytes feeding
+    // `recognized_canonical` come directly from
+    // `provenance.canonical_bytes`, not from the gate-side `replacement`
+    // `&str`. The double-`Box` (`Box::new(Box::from(&[u8]))`) is
+    // load-bearing because `SecretBox::new` takes `Box<T>` and we want
+    // `T = Box<[u8]>` — the outer `Box::new` wraps the inner `Box<[u8]>`
+    // to match the constructor signature. Constitution II — the
+    // `SecretBox` wipes on drop; every readout goes through
+    // `expose_secret()`.
+    let _ = (original, replacement);
     let recognized_canonical = Some(secrecy::SecretBox::new(Box::new(Box::from(
         provenance.canonical_bytes.as_ref(),
     ))));
-    let _ = replacement;
     use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
