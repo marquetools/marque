@@ -1140,6 +1140,7 @@ dependencies = [
  "marque-ism",
  "marque-scheme",
  "proptest",
+ "secrecy",
  "serde",
  "smallvec",
  "smol_str",

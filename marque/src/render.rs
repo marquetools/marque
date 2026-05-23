@@ -243,6 +243,22 @@ pub fn render_human(
     // Citation footer
     writeln!(out, "{gutter} {eq} citation: {}", diag.citation)?;
 
+    // Recognized-canonical footer (issue #699). Decoder R001
+    // diagnostics carry the canonical bytes the decoder recognized
+    // for the marking span; surface them so the user can see what
+    // `marque check` would propose to fix without running `marque
+    // fix` and diffing the output.
+    //
+    // Principle II readout — the single sanctioned `expose_secret()`
+    // site in `render_human`. The `from_utf8` guard is defensive
+    // (the engine's `build_decoder_diagnostic` only populates this
+    // field after a UTF-8-validity gate).
+    if let Some(canonical) = diag.recognized_canonical.as_ref() {
+        if let Ok(text) = std::str::from_utf8(secrecy::ExposeSecret::expose_secret(canonical)) {
+            writeln!(out, "{gutter} {eq} recognized as: {text}")?;
+        }
+    }
+
     Ok(())
 }
 
@@ -333,6 +349,15 @@ pub struct DiagnosticJson<'a> {
     pub message: MessageJson<'a>,
     pub citation: String,
     pub fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form for the marking span (issue
+    /// #699). Populated only for R001 (`engine:recognition.decoder-
+    /// recognized`) diagnostics today; `skip_serializing_if` keeps the
+    /// field absent for every other rule so existing NDJSON consumers
+    /// see no shape change. Audit-side NDJSON does NOT mirror this
+    /// field — Constitution V Principle V / G13 (the audit envelope
+    /// carries only the BLAKE3 digest + structural intent).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recognized_canonical: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -370,6 +395,20 @@ pub struct FixJson<'a> {
 }
 
 pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — projecting the decoder-recognized
+    // canonical bytes into the lint-side NDJSON surface (issue #699).
+    // `expose_secret()` is the single sanctioned readout site; the
+    // resulting `&[u8]` borrow lives only for this function's
+    // call frame (the `&'a str` borrows out of `d.recognized_canonical`,
+    // not out of a local). Defensive `from_utf8` guard: the engine's
+    // `build_decoder_diagnostic` only populates this field after a
+    // UTF-8-validity gate, so a leak here is structurally impossible —
+    // but the renderer should fail soft (project to `None`) rather
+    // than `unwrap` if the invariant is ever violated.
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
         rule: (&d.rule).into(),
         severity: d.severity.as_str(),
@@ -398,6 +437,7 @@ pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
             }),
             (None, None) => None,
         },
+        recognized_canonical,
     }
 }
 
@@ -1467,6 +1507,75 @@ mod tests {
             fix_json.intent_kind,
             "FactAdd" | "FactRemove" | "Recanonicalize" | "TextCorrection"
         ));
+    }
+
+    // --- Issue #699: recognized_canonical surface ---
+
+    #[test]
+    fn human_format_emits_recognized_as_footer_line() {
+        // Construct a Diagnostic carrying recognized_canonical, drive
+        // it through render_human, and assert the new
+        // "= recognized as: <canonical>" footer appears. This pins the
+        // user-facing rendering contract: the decoder's recognized
+        // canonical form appears in `marque check` output without
+        // requiring the user to run `marque fix` and diff.
+        let src = b"(TS//SAR-fk)\n";
+        let span = Span::new(0, 12);
+        let diag = make_diagnostic(
+            RuleId::new("engine", "recognition.decoder-recognized"),
+            span,
+            "decoder recognized canonical form",
+            Some(make_intent_fix()),
+        )
+        .with_recognized_canonical(Some(secrecy::SecretBox::new(Box::from(
+            b"(TS//SAR-FK)".as_ref(),
+        ))));
+
+        let mut out = Vec::new();
+        render_human(&mut out, "portion.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).expect("rendered output is UTF-8");
+
+        assert!(
+            rendered.contains("= recognized as: (TS//SAR-FK)"),
+            "render_human must emit the recognized-as footer line; got:\n{rendered}",
+        );
+        // The footer must follow the citation footer (rustc-style
+        // gutter-aligned footers stack at the bottom of the snippet).
+        let citation_pos = rendered
+            .find("= citation:")
+            .expect("citation footer must appear");
+        let recognized_pos = rendered
+            .find("= recognized as:")
+            .expect("recognized-as footer must appear");
+        assert!(
+            recognized_pos > citation_pos,
+            "recognized-as footer must follow citation footer; got:\n{rendered}",
+        );
+    }
+
+    #[test]
+    fn human_format_omits_recognized_as_when_field_absent() {
+        // The companion negative case: when recognized_canonical is
+        // None (the universal case for every non-R001 diagnostic),
+        // the footer MUST NOT appear. Pre-#699 there was no footer
+        // at all; this pins the conditional shape.
+        let src = b"TOP SECRET//SI//NF\n";
+        let span = Span::new(16, 18);
+        let diag = make_diagnostic(
+            RuleId::new("capco", "banner.classification.usa-trigraph"),
+            span,
+            "banner uses abbreviated dissem control",
+            Some(make_intent_fix()),
+        );
+
+        let mut out = Vec::new();
+        render_human(&mut out, "banner.txt", src, &diag, false).unwrap();
+        let rendered = String::from_utf8(out).expect("rendered output is UTF-8");
+
+        assert!(
+            !rendered.contains("recognized as:"),
+            "non-R001 diagnostics must omit the recognized-as footer; got:\n{rendered}",
+        );
     }
 
     // --- Audit record tests ---

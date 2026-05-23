@@ -61,6 +61,10 @@ struct DiagnosticJson<'a> {
     message: MessageJson<'a>,
     citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors the
+    /// CLI and WASM emitters' `recognized_canonical` field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -109,6 +113,11 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
 }
 
 fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — deadline-parity mirror (issue #699).
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
         rule: (&d.rule).into(),
         severity: d.severity.as_str(),
@@ -142,6 +151,7 @@ fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_>
             }),
             (None, None) => None,
         },
+        recognized_canonical,
     }
 }
 
