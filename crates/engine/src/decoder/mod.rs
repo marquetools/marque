@@ -150,16 +150,11 @@ pub(super) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
 // Tests
 // ---------------------------------------------------------------------------
 //
-// The test block stays co-located with `mod.rs` post-split because
-// it spans every sub-module's surface and the cross-cutting helpers
-// (`TEST_SCHEME`, `deep_cx`) live here. Per-sub-file `#[cfg(test)] mod
-// tests` cohabitation is a refinement deferred to a follow-up: each
-// sub-file's relevant test group lifts out with `use super::*;` and
-// the necessary `use marque_…` lines, but the migration touches every
-// fn in the block and is out of scope for the engine-internal split
-// in #562. The test block exceeds the 800-line production gate
-// (`#[cfg(test)]` is excluded from the constitution's source-line
-// budget per Principle III §3 — test fixtures are exempt).
+// Per-sub-file test split landed in a follow-up commit; each sub-file
+// hosts a `#[cfg(test)] mod tests { use super::*; }` block exercising
+// its own private surface. The block below retains only cross-cutting
+// assertions (Send + Sync trait-object guarantees) that aren't owned
+// by any single sub-module.
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
