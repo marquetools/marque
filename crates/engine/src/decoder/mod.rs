@@ -72,7 +72,7 @@ pub use candidates::diagnostic_canonical_attempts;
 /// above 6 per the primary-source corpus analysis); lower K drops
 /// recall on multi-token reorderings. Tunable in-place — the bound is
 /// advisory, not a correctness invariant.
-pub(super) const K_MAX_CANDIDATES: usize = 8;
+pub(in crate::decoder) const K_MAX_CANDIDATES: usize = 8;
 
 /// Runner-up posterior-margin threshold gating `Unambiguous` vs.
 /// `Ambiguous` emission: top wins outright only when its posterior
@@ -85,7 +85,7 @@ pub(super) const K_MAX_CANDIDATES: usize = 8;
 ///
 /// See `docs/refactor-006/decoder-architecture.md` § "Scoring approach"
 /// for the corpus-derived derivation.
-pub(super) const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
+pub(in crate::decoder) const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 
 /// Per-candidate prose-null gate: a `MarkingType::Portion` candidate's
 /// marking-side posterior must beat its observed prose-side posterior
@@ -100,7 +100,7 @@ pub(super) const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 /// See `docs/refactor-006/decoder-architecture.md` §
 /// "Null-hypothesis dispatch" for the corpus-derived derivation,
 /// per-token measurements, and the full bypass / whitelist enumeration.
-pub(super) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
+pub(in crate::decoder) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
 
 // ---------------------------------------------------------------------------
 // Tests
