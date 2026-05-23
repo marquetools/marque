@@ -77,11 +77,15 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
     fn apply_supersession(set: Vec<T>, supersession: &'static [(T, T)]) -> Vec<T> {
         let mut drops: Vec<&T> = Vec::new();
         for (superseding, superseded) in supersession.iter() {
-            if set.iter().any(|u| u == superseding) {
+            if set.binary_search(superseding).is_ok() {
                 drops.push(superseded);
             }
         }
-        set.into_iter().filter(|t| !drops.contains(&t)).collect()
+        drops.sort_unstable();
+        drops.dedup();
+        set.into_iter()
+            .filter(|t| drops.binary_search_by(|probe| (*probe).cmp(t)).is_err())
+            .collect()
     }
 }
 

@@ -45,16 +45,16 @@ impl<A: MeetSemilattice, B: MeetSemilattice> MeetSemilattice for Product<A, B> {
     }
 }
 
-impl<A: JoinSemilattice + BoundedJoinSemilattice, B: JoinSemilattice + BoundedJoinSemilattice>
-    BoundedJoinSemilattice for Product<A, B>
+impl<A: BoundedJoinSemilattice, B: BoundedJoinSemilattice> BoundedJoinSemilattice
+    for Product<A, B>
 {
     fn bottom() -> Self {
         Self(A::bottom(), B::bottom())
     }
 }
 
-impl<A: MeetSemilattice + BoundedMeetSemilattice, B: MeetSemilattice + BoundedMeetSemilattice>
-    BoundedMeetSemilattice for Product<A, B>
+impl<A: BoundedMeetSemilattice, B: BoundedMeetSemilattice> BoundedMeetSemilattice
+    for Product<A, B>
 {
     fn top() -> Self {
         Self(A::top(), B::top())
