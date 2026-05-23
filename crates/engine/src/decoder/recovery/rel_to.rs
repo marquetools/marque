@@ -131,7 +131,7 @@ pub(crate) fn try_rel_to_structural_repair(text: &str) -> Option<String> {
 /// would match the substring `REL OT` even though the leading `X`
 /// makes the whole thing a single 6-character token, not a `REL`
 /// header at all.
-fn try_rel_to_header_normalize(text: &str) -> Option<String> {
+pub(crate) fn try_rel_to_header_normalize(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut result: Option<String> = None;
     let mut last_copied: usize = 0;
@@ -194,7 +194,7 @@ fn try_rel_to_header_normalize(text: &str) -> Option<String> {
 /// Both patterns require the corrected output to be a known trigraph
 /// (`CapcoTokenSet::is_trigraph`). The trigraph dictionary is the
 /// arbiter of "valid country code" — no fuzzy guessing.
-fn try_rel_to_entry_normalize(text: &str) -> Option<String> {
+pub(crate) fn try_rel_to_entry_normalize(text: &str) -> Option<String> {
     // Cheap pre-check: entry-level patterns 3 and 4 only fire inside a
     // `REL TO ` block, so `apply_rel_to_entry_pass` cannot match
     // without that anchor. Skip the `to_owned()` allocation entirely
@@ -232,7 +232,7 @@ fn try_rel_to_entry_normalize(text: &str) -> Option<String> {
 
 /// Single pass of REL TO entry normalization. Returns the rewritten
 /// text on first fix, or `None` if no pattern matched.
-fn apply_rel_to_entry_pass(text: &str, token_set: &CapcoTokenSet) -> Option<String> {
+pub(crate) fn apply_rel_to_entry_pass(text: &str, token_set: &CapcoTokenSet) -> Option<String> {
     let mut search_start = 0;
     while let Some(rel_pos) = text[search_start..].find("REL TO ") {
         let header_end = search_start + rel_pos + "REL TO ".len();
@@ -271,7 +271,7 @@ fn apply_rel_to_entry_pass(text: &str, token_set: &CapcoTokenSet) -> Option<Stri
 ///
 /// `local_offset` is the byte offset within `block` where the fix
 /// landed; reserved for future localized emit optimizations.
-fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, String)> {
+pub(crate) fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, String)> {
     // Collect entries with their byte offsets within the block so a
     // fix can be emitted with precise positioning.
     let mut entries: Vec<(usize, &str)> = Vec::new();

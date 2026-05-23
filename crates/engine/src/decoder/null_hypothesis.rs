@@ -119,7 +119,7 @@ const LOWERCASE_CONTEXT_PENALTY: f32 = -2.0;
 /// legitimate single-token mangled-marking recoveries
 /// (`(SERCET//NF)`) stay above it because the marking-side prior
 /// for `SECRET` dominates.
-const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
+pub(crate) const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
 
 /// Compute the prose-side log-prior sum for the input bytes (issue
 /// #472).
@@ -170,7 +170,7 @@ const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
 /// where it flows into the decoder's scoring math but never reaches
 /// `AppliedFix.proposal.original`, `proposal.replacement`, or the
 /// R001 diagnostic message (those channels were closed in PR #259).
-pub(super) fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
+pub(crate) fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
     let mut sum: f32 = 0.0;
     let mut seen: SmallVec<[[u8; 16]; 16]> = SmallVec::new();
     let mut seen_lens: SmallVec<[u8; 16]> = SmallVec::new();
@@ -308,7 +308,7 @@ pub(super) fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
 /// Trailing whitespace is stripped before evaluation; the prefix
 /// must end on a structural punctuation character that anchors the
 /// enumeration (`.`, `)`, `]`, `*`, `-`).
-fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
+pub(crate) fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
     /// Maximum length of any single alphanumeric run inside an
     /// enumeration body. `1B` (2), `12` (2), `123` (3) pass cleanly
     /// because they contain a digit. `iii` (3, Roman numeral) only
@@ -453,7 +453,7 @@ fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
 /// composed only of uppercase letters cannot be a lowercase prose
 /// glyph regardless of surrounding context, so the lowercase penalty
 /// is short-circuited (archival all-caps documents never trigger it).
-fn candidate_has_lowercase(bytes: &[u8]) -> bool {
+pub(crate) fn candidate_has_lowercase(bytes: &[u8]) -> bool {
     bytes.iter().any(|b| b.is_ascii_lowercase())
 }
 
@@ -471,7 +471,7 @@ fn candidate_has_lowercase(bytes: &[u8]) -> bool {
 /// capacity in lock-step — the const exists so the doc comment on
 /// `compute_context_features` and the storage shape can't drift
 /// independently.
-pub(super) const CONTEXT_FEATURE_MAX: usize = 2;
+pub(crate) const CONTEXT_FEATURE_MAX: usize = 2;
 
 /// Compute the context features that apply to every scored candidate
 /// at this byte position, regardless of canonical-token content.
@@ -513,7 +513,7 @@ pub(super) const CONTEXT_FEATURE_MAX: usize = 2;
 /// stays Unambiguous. The features are also recorded in the audit
 /// feature trace for every survivor regardless of dispatch
 /// behavior, so post-hoc analysis can see what the decoder saw.
-pub(super) fn compute_context_features(
+pub(crate) fn compute_context_features(
     kind: MarkingType,
     bytes: &[u8],
     cx: &ParseContext,

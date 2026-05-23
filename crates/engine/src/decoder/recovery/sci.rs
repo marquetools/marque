@@ -119,7 +119,7 @@ pub(crate) fn try_sci_delimiter_repair(text: &str) -> Option<String> {
 /// return `None` — no correctness impact, only a performance
 /// optimization for the overwhelmingly common case where the input has
 /// no SCI category at all.
-fn contains_any_sci_root(text: &str) -> bool {
+pub(crate) fn contains_any_sci_root(text: &str) -> bool {
     text.contains("HCS")
         || text.contains("KLM")
         || text.contains("MVL")
@@ -145,7 +145,7 @@ fn contains_any_sci_root(text: &str) -> bool {
 /// 2. Pattern C (token contains `-`, neither side is a registered
 ///    compound's compartment, both halves are bare CS)
 /// 3. Pattern B (no `-`, splits into two bare CS, unambiguous)
-fn repair_sci_token(token: &str) -> Option<String> {
+pub(crate) fn repair_sci_token(token: &str) -> Option<String> {
     if token.is_empty() {
         return None;
     }

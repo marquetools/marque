@@ -233,7 +233,7 @@ pub(crate) fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 /// mechanism ensuring semantic correctness per CAPCO-2016 §H.7. A
 /// `NATO X` token in the SCI/dissem slot indicates commingled US+NATO info
 /// that should transmute to FGI — not produce a NATO-axis canonical.
-fn fold_nato_segment(seg: &str, kind: MarkingType) -> Option<String> {
+pub(crate) fn fold_nato_segment(seg: &str, kind: MarkingType) -> Option<String> {
     let trimmed = seg.trim();
     // Segment-leading guard: the fold ONLY fires when the first
     // non-delimiter token is the literal keyword `NATO`.

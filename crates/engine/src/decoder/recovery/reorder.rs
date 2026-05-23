@@ -115,13 +115,13 @@ pub(crate) fn try_canonical_reorder(text: &str) -> Option<String> {
 /// (`NOFORN`, `NF`, `ORCON`, …). Otherwise Other (SCI/SAR/FGI
 /// sub-blocks, REL TO lists, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SegmentClass {
+pub(crate) enum SegmentClass {
     Classification,
     Dissem,
     Other,
 }
 
-fn classify_segment(seg: &str) -> SegmentClass {
+pub(crate) fn classify_segment(seg: &str) -> SegmentClass {
     let first_token = seg.split_whitespace().next().unwrap_or("");
     // Strip trailing commas.
     let first_token = first_token.trim_end_matches(',');
@@ -261,7 +261,7 @@ fn classify_segment(seg: &str) -> SegmentClass {
 /// Used by `try_canonical_reorder` to decide whether the reordered output
 /// needs a leading `//` (the empty US classification slot that signals the
 /// strict parser to take the non-US code path).
-fn is_non_us_classification_segment(seg: &str) -> bool {
+pub(crate) fn is_non_us_classification_segment(seg: &str) -> bool {
     const NATO_ABBREVS: &[&str] = &[
         "NS", "NC", "NU", "CTS", "CTSA", "NSAT", "NCA", "CTS-B", "CTS-BALK",
     ];
@@ -367,7 +367,7 @@ pub(crate) fn meets_classification_floor(marking: &CapcoMarking, floor: u8) -> b
 /// `Conflict`) by mapping each to the canonical [`Classification`]
 /// ladder. NATO levels map through
 /// [`NatoClassification::us_equivalent`](marque_ism::NatoClassification::us_equivalent).
-fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
+pub(crate) fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
     marking
         .0
         .classification

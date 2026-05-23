@@ -192,11 +192,11 @@ pub(crate) fn try_insert_delimiter(text: &str) -> Option<String> {
 /// have that many segments at all. The cap prevents the helper
 /// from rewriting non-marking prose that happens to contain
 /// splitter words.
-const MAX_DELIMITER_INSERTIONS: usize = 4;
+pub(crate) const MAX_DELIMITER_INSERTIONS: usize = 4;
 
 /// Decide whether to insert `//` at a whitespace gap before
 /// `next_token`. See [`try_insert_delimiter`] doc for the rules.
-fn decide_insert_delimiter(
+pub(crate) fn decide_insert_delimiter(
     prev_token: Option<&str>,
     next_token: &str,
     in_classification: bool,
@@ -223,7 +223,7 @@ fn decide_insert_delimiter(
 
 /// True when `token` is a classification short or long form that
 /// can appear in classification context.
-fn is_classification_token(token: &str) -> bool {
+pub(crate) fn is_classification_token(token: &str) -> bool {
     matches!(
         token,
         "U" | "R"
@@ -242,7 +242,7 @@ fn is_classification_token(token: &str) -> bool {
 /// `prev_token`. Specifically: `TOP SECRET` is the only multi-word
 /// classification CAPCO recognizes; `SECRET` after `TOP` continues
 /// the classification.
-fn is_classification_continuation(next_token: &str, prev_token: Option<&str>) -> bool {
+pub(crate) fn is_classification_continuation(next_token: &str, prev_token: Option<&str>) -> bool {
     if next_token == "SECRET" && prev_token == Some("TOP") {
         return true;
     }

@@ -110,6 +110,31 @@ pub use shape::is_nontrivial_marking;
 pub use candidates::diagnostic_canonical_attempts;
 
 // Cross-file constants — shared by multiple sub-modules.
+// Test-only re-exports so the legacy in-mod tests block can reach
+// items moved into sibling sub-modules. Production code (outside
+// `#[cfg(test)]`) MUST NOT import via these — use the explicit
+// sibling path instead.
+#[cfg(test)]
+#[allow(unused_imports)]
+use {
+    candidates::*,
+    dispatcher::*,
+    heuristic::*,
+    normalize::*,
+    null_hypothesis::*,
+    recognizer::*,
+    recovery::delimiter::*,
+    recovery::nato::*,
+    recovery::rel_to::*,
+    recovery::reorder::*,
+    recovery::sar::*,
+    recovery::sci::*,
+    recovery::stray::*,
+    scoring::*,
+    shape::*,
+    types::*,
+};
+
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
 ///
@@ -186,6 +211,17 @@ pub(super) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+//
+// The test block stays co-located with `mod.rs` post-split because
+// it spans every sub-module's surface and the cross-cutting helpers
+// (`TEST_SCHEME`, `deep_cx`) live here. Per-sub-file `#[cfg(test)] mod
+// tests` cohabitation is a refinement deferred to a follow-up: each
+// sub-file's relevant test group lifts out with `use super::*;` and
+// the necessary `use marque_…` lines, but the migration touches every
+// fn in the block and is out of scope for the engine-internal split
+// in #562. The test block exceeds the 800-line production gate
+// (`#[cfg(test)]` is excluded from the constitution's source-line
+// budget per Principle III §3 — test fixtures are exempt).
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -193,7 +229,17 @@ mod tests {
     use std::sync::LazyLock;
 
     use super::*;
-    use marque_scheme::recognizer::LinePrefix;
+    use marque_capco::{CapcoMarking, CapcoScheme};
+    use marque_core::Parser;
+    use marque_ism::{
+        CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+        span::{MarkingCandidate, MarkingType, Span},
+    };
+    use marque_rules::confidence::FeatureId;
+    use marque_scheme::MarkingScheme;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
+    use smallvec::SmallVec;
 
     /// Shared scheme instance for the test module. `CapcoScheme::new()`
     /// builds non-trivial `Vec` tables; constructing it once and

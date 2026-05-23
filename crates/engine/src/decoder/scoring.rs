@@ -31,7 +31,7 @@ use super::types::CanonicalAttempt;
 /// non-empty corpus: the Enron-derived values bottom out around
 /// `-11.7` for the most infrequent observed tokens (see
 /// `crates/capco/corpus/priors.json`).
-pub(super) const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
+pub(crate) const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 
 /// Posterior penalty applied when a candidate's strict parse buries a
 /// reserved dissem-control token (a hard splitter — see
@@ -210,7 +210,7 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// The `kind` parameter selects portion vs banner canonical token
 /// forms for the prior computation (e.g., `S` vs `SECRET`) so the
 /// marking-side lookup matches the input shape.
-pub(super) fn score_candidate(
+pub(crate) fn score_candidate(
     attempt: &CanonicalAttempt,
     marking: &CapcoMarking,
     kind: MarkingType,
@@ -284,7 +284,7 @@ pub(super) fn score_candidate(
 /// [`CUSTOM_SCI_MARKING_PENALTY`] for rationale, including why this
 /// discriminates on `sm.system` rather than on
 /// `sm.canonical_enum.is_none()`.
-fn custom_sci_marking_penalty(marking: &CapcoMarking) -> f32 {
+pub(crate) fn custom_sci_marking_penalty(marking: &CapcoMarking) -> f32 {
     let attrs = &marking.0;
     let custom_count = attrs
         .sci_markings
@@ -314,7 +314,7 @@ fn custom_sci_marking_penalty(marking: &CapcoMarking) -> f32 {
 /// `identifier: "BUTTER POPCORN NOFORN"`. Without the per-word
 /// check, the absorption pattern slips past the whole-string
 /// `is_hard_splitter` lookup.
-fn absorbs_hard_splitter_in_sar_or_sci(marking: &CapcoMarking) -> bool {
+pub(crate) fn absorbs_hard_splitter_in_sar_or_sci(marking: &CapcoMarking) -> bool {
     let attrs = &marking.0;
 
     if let Some(sar) = attrs.sar_markings.as_ref() {
@@ -359,7 +359,7 @@ fn absorbs_hard_splitter_in_sar_or_sci(marking: &CapcoMarking) -> bool {
 /// splitter token as a whitespace-separated word. The per-word check
 /// covers multi-word `Full` SAR program nicknames (`BUTTER POPCORN`)
 /// that absorbed a trailing dissem-control word.
-fn contains_hard_splitter_word(s: &str) -> bool {
+pub(crate) fn contains_hard_splitter_word(s: &str) -> bool {
     if is_hard_splitter(s) {
         return true;
     }
@@ -415,7 +415,7 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 /// dedup if double-counting matters. The previous `BTreeSet`-based
 /// implementation deduped internally; the caller-side dedup in
 /// [`score_candidate`] preserves the same per-distinct-token behavior.
-pub(super) fn for_each_canonical_token(
+pub(crate) fn for_each_canonical_token(
     marking: &CapcoMarking,
     kind: MarkingType,
     mut f: impl FnMut(&'static str),
@@ -503,7 +503,7 @@ pub(super) fn for_each_canonical_token(
 ///   appear in compartment context.
 /// - SAR prefixes (`SAR-*`) — handled in v2 with classification-
 ///   context lookahead.
-pub(super) fn is_hard_splitter(token: &str) -> bool {
+pub(crate) fn is_hard_splitter(token: &str) -> bool {
     matches!(
         token,
         "NOFORN"

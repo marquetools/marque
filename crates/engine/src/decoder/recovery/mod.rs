@@ -4,13 +4,17 @@
 //! them in series via the `pub(super) use` re-exports below; the
 //! per-pass entry points stay scoped to the decoder module tree.
 
-mod delimiter;
-mod nato;
-mod rel_to;
-mod reorder;
-mod sar;
-mod sci;
-mod stray;
+// Sub-modules are crate-visible so the legacy in-mod tests block in
+// `decoder/mod.rs` can reach internal helpers via wildcard re-export.
+// Production callers reach the recovery API through the `pub(super) use`
+// re-exports below, not these direct paths.
+pub(crate) mod delimiter;
+pub(crate) mod nato;
+pub(crate) mod rel_to;
+pub(crate) mod reorder;
+pub(crate) mod sar;
+pub(crate) mod sci;
+pub(crate) mod stray;
 
 pub(super) use delimiter::try_insert_delimiter;
 pub(super) use nato::try_nato_fold;
