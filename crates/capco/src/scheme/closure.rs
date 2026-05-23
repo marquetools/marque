@@ -226,7 +226,6 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// it lands here.
 pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[];
 
-
 // ---------------------------------------------------------------------------
 // Issue #525 — FISA / RAWFISA / PROPIN as CAVEATED triggers
 // ---------------------------------------------------------------------------

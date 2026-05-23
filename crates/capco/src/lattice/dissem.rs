@@ -461,12 +461,8 @@ mod with_fdr_dominance_stripped_tests {
     fn dissem_dominator_strips_relido() {
         // NOFORN + RELIDO + ORCON: per §H.8 p145 NOFORN strips
         // RELIDO. ORCON survives (not a dominated FD&R).
-        let stripped = raw(&[
-            DissemControl::Nf,
-            DissemControl::Relido,
-            DissemControl::Oc,
-        ])
-        .with_fdr_dominance_stripped();
+        let stripped = raw(&[DissemControl::Nf, DissemControl::Relido, DissemControl::Oc])
+            .with_fdr_dominance_stripped();
         assert!(stripped.as_set().contains(&DissemControl::Nf));
         assert!(stripped.as_set().contains(&DissemControl::Oc));
         assert!(!stripped.as_set().contains(&DissemControl::Relido));
@@ -485,8 +481,8 @@ mod with_fdr_dominance_stripped_tests {
     #[test]
     fn dissem_dominator_strips_displayonly() {
         // NOFORN + DISPLAY ONLY: §H.8 p145.
-        let stripped = raw(&[DissemControl::Nf, DissemControl::Displayonly])
-            .with_fdr_dominance_stripped();
+        let stripped =
+            raw(&[DissemControl::Nf, DissemControl::Displayonly]).with_fdr_dominance_stripped();
         assert!(stripped.as_set().contains(&DissemControl::Nf));
         assert!(!stripped.as_set().contains(&DissemControl::Displayonly));
     }
@@ -494,8 +490,7 @@ mod with_fdr_dominance_stripped_tests {
     #[test]
     fn dissem_dominator_strips_eyes() {
         // NOFORN + EYES: §H.8 p145.
-        let stripped =
-            raw(&[DissemControl::Nf, DissemControl::Eyes]).with_fdr_dominance_stripped();
+        let stripped = raw(&[DissemControl::Nf, DissemControl::Eyes]).with_fdr_dominance_stripped();
         assert!(stripped.as_set().contains(&DissemControl::Nf));
         assert!(!stripped.as_set().contains(&DissemControl::Eyes));
     }

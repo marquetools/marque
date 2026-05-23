@@ -274,8 +274,7 @@ fn project_preserves_orcon_plus_rel_to_input() {
         out.0.dissem_us
     );
     assert!(
-        rel_to_contains(&out, CountryCode::USA)
-            && rel_to_contains(&out, CountryCode::GBR),
+        rel_to_contains(&out, CountryCode::USA) && rel_to_contains(&out, CountryCode::GBR),
         "rel_to must survive — explicit REL TO is the author's release \
          decision; rel_to = {:?}",
         out.0.rel_to
@@ -1013,7 +1012,10 @@ fn closure_is_idempotent_on_bare_nato() {
     let once = scheme.closure(m);
     let twice = scheme.closure(once.clone());
 
-    assert_eq!(once, twice, "closure must be idempotent on bare-NATO inputs");
+    assert_eq!(
+        once, twice,
+        "closure must be idempotent on bare-NATO inputs"
+    );
 }
 
 /// Extensive: `closure(m) ⊒ m` over the dissem axis. Every fact

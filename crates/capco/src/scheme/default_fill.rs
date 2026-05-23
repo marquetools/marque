@@ -101,8 +101,8 @@
 use marque_ism::{CanonicalAttrs, CountryCode};
 
 use crate::fact_bitmask::{
-    apply_closed_bits_to, derive_bits, fact_bit, MASK_FDR_DOMINATORS,
-    MASK_FDR_OR_RELIDO_INCOMPAT, MASK_RELIDO_US_CLASS_SUPPRESSORS,
+    MASK_FDR_DOMINATORS, MASK_FDR_OR_RELIDO_INCOMPAT, MASK_RELIDO_US_CLASS_SUPPRESSORS,
+    apply_closed_bits_to, derive_bits, fact_bit,
 };
 use marque_scheme::FactBitmask;
 
@@ -209,8 +209,7 @@ fn row7_should_fill(post_close: u128) -> bool {
 /// inapplicable.
 #[inline]
 fn row8_should_fill(post_close: u128) -> bool {
-    (post_close & ROW8_SCI_PRESENT_TRIGGER) != 0
-        && (post_close & MASK_FDR_OR_RELIDO_INCOMPAT) == 0
+    (post_close & ROW8_SCI_PRESENT_TRIGGER) != 0 && (post_close & MASK_FDR_OR_RELIDO_INCOMPAT) == 0
 }
 
 /// Row 9 default-fill predicate.
