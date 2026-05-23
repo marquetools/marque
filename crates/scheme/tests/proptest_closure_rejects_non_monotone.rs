@@ -7,7 +7,7 @@
 //! Negative property test: non-monotone closure-catalog bugs produce
 //! an observable monotonicity violation.
 //!
-//! ## What this file actually tests (post-Copilot review)
+//! ## What this file actually tests
 //!
 //! Three tests exercise the negative property in increasing fidelity:
 //!
@@ -26,16 +26,11 @@
 //!    `closure({A, C}) = {A, C}` — a real monotonicity violation
 //!    produced by walking the synthetic scheme's `closure()` impl.
 //!
-//! The third test is the load-bearing one (per Copilot PR 3.7 review
-//! #8): the prior version of this file relied only on the hand-
-//! computed assertion at #2; #3 was added to exercise the negative
+//! The third test is the load-bearing one: it exercises the negative
 //! property through the closure operator itself rather than via
-//! hand-rolled bool arithmetic.
-//!
-//! Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
-//! finding R3 (architect-preflight): "negative proptest per architect-preflight
-//! R3 — synthetic closure rule with non-monotone suppressor; assert the
-//! closure operator's monotonicity property fails."
+//! hand-rolled bool arithmetic. The synthetic closure rule has a
+//! non-monotone suppressor, and the test asserts the closure operator's
+//! monotonicity property fails.
 
 use marque_scheme::{
     Category, Citation, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
@@ -509,10 +504,9 @@ fn non_monotone_synthetic_scheme_violates_monotonicity_observably() {
 }
 
 proptest! {
-    /// Property-based extension of the hardcoded-pair test above
-    /// (per Copilot PR 3.7 review pass 3: "the load-bearing
-    /// negative check uses one hard-coded pair of inputs and
-    /// imports no proptest strategies").
+    /// Property-based extension of the hardcoded-pair test above:
+    /// the hardcoded check uses one fixed pair of inputs and imports
+    /// no proptest strategies, so this generalizes it.
     ///
     /// For random `a` and `c` byte-pattern inputs constructed so
     /// `m1 = a_only` and `m2 = a_only | c_only` always satisfy
@@ -566,13 +560,13 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-D.0 derived-cone fixtures — exercise `ClosureRule::cone_derived`.
+// Derived-cone fixtures — exercise `ClosureRule::cone_derived`.
 //
 // These two schemes mirror `MonotoneScheme` and `NonMonotoneScheme` above but
-// route their cone facts through the new `cone_derived` callback shape from
-// PR 4b-D.0. They are load-bearing: without them, the PR 4b-D JOINT row
-// (the first production-side consumer of `cone_derived`) can ship with a
-// silent monotonicity defect because no test would exercise the derived path.
+// route their cone facts through the `cone_derived` callback shape. They are
+// load-bearing: without them, the JOINT row (the first production-side
+// consumer of `cone_derived`) could ship with a silent monotonicity defect
+// because no test would exercise the derived path.
 //
 // MonotoneDerivedScheme:
 //   Rule has a `cone_derived` fn that returns one fact per bit set in the
@@ -917,7 +911,7 @@ proptest! {
     /// `closure(m1).le(&closure(m2))` returns false — the violation surfaces
     /// through the operator, independent of the bit-OR join.
     ///
-    /// **For PR 4b-D's JOINT row**: this proptest already exercises the
+    /// **For a JOINT row**: this proptest already exercises the
     /// monotonicity violation through `closure()`, but on a bit-OR lattice.
     /// `JointSet` exposes a structurally different family of violations —
     /// `UnanimousProducers{A} ⊔ UnanimousProducers{B}` collapses to

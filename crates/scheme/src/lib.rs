@@ -16,9 +16,6 @@
 //! [`MarkingScheme`] against their own marking type; the engine
 //! operates on the trait.
 //!
-//! See `docs/plans/2026-04-17-marking-scheme-lattice-design.md` in
-//! the workspace root for the consolidated design document.
-//!
 //! ## Module layout
 //!
 //! - [`lattice`] — `JoinSemilattice`, `MeetSemilattice`,
@@ -31,49 +28,47 @@
 //!   packed Boolean characteristic-vector primitive (`u128`) for
 //!   closed-vocab atom sets. Domain-neutral storage shape;
 //!   per-scheme atom layouts live in the consuming crate
-//!   (`marque-capco` for CAPCO). (#371 PR-A)
+//!   (`marque-capco` for CAPCO) (#371).
 //! - [`template`] — structural templates for portion / banner / CAB.
 //! - [`projection`] — `Projection` trait and render-order helpers.
 //! - [`ambiguity`] — `Parsed<M>`, `Candidate`, `EvidenceFeature`.
 //! - [`scheme`] — the `MarkingScheme` trait.
 //! - [`page_rewrite`] — declarative `PageRewrite`, `CategoryAction`,
-//!   `CategoryPredicate` (Phase B).
-//! - [`scope`] — `Scope` enum for projection contexts (Phase B).
+//!   `CategoryPredicate`.
+//! - [`scope`] — `Scope` enum for projection contexts.
 //! - [`builtins`] — built-in lattice constructors `OrdMax`, `OrdMin`,
 //!   `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`,
-//!   `MaxDate`, `OptionalSingleton`, `Product` (Phase B).
+//!   `MaxDate`, `OptionalSingleton`, `Product`.
 //! - [`recognizer`] — `Recognizer<S>` trait + `ParseContext`
-//!   (Phase D / decoder dispatch).
+//!   (decoder dispatch).
 //! - [`render_context`] — `RenderContext { scope, emission_form,
 //!   schema_version }`, `EmissionForm` (Auto / Portion / BannerTitle /
-//!   BannerAbbreviation), `SchemaVersionId` (PR 3c.2.A scaffolding;
-//!   §G.1 Table 4 dispatch body lands at PR 3c.2.B).
+//!   BannerAbbreviation), `SchemaVersionId`. The §G.1 Table 4
+//!   emission-form dispatch body is future work.
 //! - [`vocabulary`] — `Vocabulary<S>` trait + `TokenMetadataFull`,
-//!   `Authority`, `OwnerProducer`, `PointOfContact`, `Deprecation`
-//!   (Phase E).
+//!   `Authority`, `OwnerProducer`, `PointOfContact`, `Deprecation`.
 //! - [`codec`] — `Codec<S>` trait + `CodecError` surface — pinned
-//!   for Phase G to implement against (Phase E).
+//!   for concrete XML/JSON impls to implement against.
 //! - [`canonical`] — `Canonical<S>`, `TokenSource`,
 //!   `CanonicalConstructor<S>` (sealed), `EngineConstructor<S>`.
 //!   The provenance-tagged single-token replacement type with a
 //!   sealed open-vocab construction path; the engine is the only
 //!   crate that can mint open-vocab `Canonical<S>` values, via the
 //!   sealed `CanonicalConstructor<S>` trait whose lone impl is
-//!   `EngineConstructor<S>`. Closes the G13 leak channel as a type
-//!   invariant for closed-CVE tokens (PR 3c.1; rule-API surface
-//!   `FixIntent<S>` lives in `marque-rules`). See source plan §8.1.
+//!   `EngineConstructor<S>`. Closes the audit content-ignorance leak
+//!   channel as a type invariant for closed-CVE tokens; the rule-API
+//!   surface `FixIntent<S>` lives in `marque-rules`.
 //!
 //! ## Status
 //!
-//! Phase E trait surface is complete. The lattice, projection,
-//! recognizer, vocabulary, and codec surfaces are pinned and
-//! consumed by `marque-capco` (the in-tree adapter). PR 3c.1 added
-//! the [`canonical`] module — the sealed-construction surface that
-//! PR 3c.2 will wire into rule emission and engine promotion. A
-//! second scheme can land in its own crate without touching this
-//! one — see `crates/scheme/tests/adoption_readiness.rs` for the
-//! SC-010 pre-verification (`StubScheme` builds against
-//! `marque_scheme::*` and `std::*` only).
+//! The lattice, projection, recognizer, vocabulary, and codec surfaces
+//! are pinned and consumed by `marque-capco` (the in-tree adapter). The
+//! [`canonical`] module is the sealed-construction surface for rule
+//! emission and engine promotion. A second scheme can land in its own
+//! crate without touching this one — see
+//! `crates/scheme/tests/adoption_readiness.rs` for the
+//! `StubScheme` pre-verification (builds against `marque_scheme::*` and
+//! `std::*` only).
 
 pub mod ambiguity;
 pub mod builtins;

@@ -24,17 +24,15 @@
 //! with any FD&R dominator), [`Constraint::ConflictsWithFamily`] expresses
 //! this as a [`FamilyPredicate`] over the right-hand side. The family form
 //! is distributively equivalent to one `Conflicts` row per matching token
-//! present in the marking (per `docs/plans/2026-05-13-pr3.7-lattice-
-//! resolution-gate-plan.md` §2, lattice-preflight M3).
+//! present in the marking.
 //!
-//! ## Citations (FR-021, Constitution VIII)
+//! ## Citations (Constitution VIII)
 //!
 //! Every variant carries a `label: Citation` holding the typed
 //! authoritative-source passage that defines the constraint (e.g.
 //! `capco(SectionLetter::H, 4, 61)`). When a constraint fires,
 //! [`ConstraintViolation::citation`] is populated by `Copy` from that
-//! field so the triggering passage travels with the diagnostic.
-//! Migrated from `&'static str` in PR 10.A.1 — see
+//! field so the triggering passage travels with the diagnostic. See
 //! `crates/scheme/src/citation.rs` for the closed-template surface.
 //!
 //! The engine iterates `MarkingScheme::constraints()` after parsing /
@@ -127,12 +125,12 @@ impl std::fmt::Debug for FamilyPredicate {
 /// - [`Supersedes`](Self::Supersedes): LHS supersedes RHS at banner scope.
 /// - [`Custom`](Self::Custom): scheme-specific n-ary predicate.
 ///
-/// Note: `Constraint::Implies` was retired in PR 3.7 (T108g, `decisions.md`
-/// D19 C). Fact-propagation is now handled by the closure operator
-/// ([`crate::closure::ClosureRule`] / [`MarkingScheme::closure_rules`]),
-/// which runs before constraint validation. After closure, implied facts are
-/// present in the marking before `Requires` checks evaluate, so "missing X"
-/// false positives disappear automatically.
+/// Note: there is no `Implies` variant. Fact-propagation is handled by the
+/// closure operator ([`crate::closure::ClosureRule`] /
+/// [`MarkingScheme::closure_rules`]), which runs before constraint
+/// validation. After closure, implied facts are present in the marking
+/// before `Requires` checks evaluate, so "missing X" false positives
+/// disappear automatically.
 ///
 /// See the module-level docs for the full rationale and Constitution
 /// VIII for citation discipline.
@@ -169,10 +167,6 @@ pub enum Constraint {
     /// rather than enumerating each dominator as a separate `Conflicts`
     /// row, a single `ConflictsWithFamily` row with an `is_fdr_dominator`
     /// predicate compacts the catalog.
-    ///
-    /// Per `specs/006-engine-rule-refactor/decisions.md` D17 +
-    /// `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
-    /// §2 T108b.
     ///
     /// [`MarkingScheme::iter_present_tokens`]: crate::scheme::MarkingScheme::iter_present_tokens
     ConflictsWithFamily {
@@ -237,8 +231,7 @@ impl Constraint {
 
     /// The authoritative-source citation for this constraint (e.g.
     /// `capco(SectionLetter::H, 4, 61)`). Returned by [`Copy`] regardless
-    /// of variant. Migrated from `&'static str` to [`Citation`] in
-    /// PR 10.A.1.
+    /// of variant.
     pub fn label(&self) -> Citation {
         match self {
             Constraint::Conflicts { label, .. }
@@ -266,24 +259,21 @@ impl Constraint {
 /// A constraint that fired against a marking.
 ///
 /// `citation` holds the triggering constraint's authoritative-source
-/// passage verbatim (FR-021 + Constitution VIII). `constraint_label`
-/// remains the short rule identifier used in diagnostic messages and
-/// log output.
+/// passage verbatim (Constitution VIII). `constraint_label` remains the
+/// short rule identifier used in diagnostic messages and log output.
 ///
 /// # Optional emission fields
 ///
-/// `span` and `severity` are `Option`-typed and were added in PR 3c.B
-/// Commit 7.1 to let the scheme-side constraint catalog produce
-/// diagnostics that today require a walker rule to decorate. The
-/// dyadic-constraint arms in [`evaluate`] (Conflicts / ConflictsWithFamily
-/// / Requires / Supersedes; `Implies` retired in PR 3.7 T108g) have no
+/// `span` and `severity` are `Option`-typed so the scheme-side constraint
+/// catalog can produce diagnostics that would otherwise require a walker
+/// rule to decorate. The dyadic-constraint arms in [`evaluate`]
+/// (Conflicts / ConflictsWithFamily / Requires / Supersedes) have no
 /// natural span or severity from the constraint declaration itself and
-/// continue to emit `None` for both fields;
-/// downstream engine layers treat `ConstraintViolation`s with `None`
-/// span or `None` severity as advisory and do NOT surface them as
-/// user-facing diagnostics. Schemes that want their `Custom` constraint
-/// catalog to be the end-state diagnostic-emission path (post PR 3c.B
-/// Commit 7) populate both fields from a catalog row.
+/// emit `None` for both fields; downstream engine layers treat
+/// `ConstraintViolation`s with `None` span or `None` severity as advisory
+/// and do NOT surface them as user-facing diagnostics. Schemes that want
+/// their `Custom` constraint catalog to be the end-state
+/// diagnostic-emission path populate both fields from a catalog row.
 ///
 /// (The `marque-scheme` crate is the workspace graph leaf and does not
 /// depend on the higher-layer rule / diagnostic types — the precise
@@ -333,13 +323,12 @@ pub struct ConstraintViolation {
 ///   [`MarkingScheme::evaluate_custom`] so the scheme owns its bespoke
 ///   predicate bodies.
 ///
-/// Note: `Constraint::Implies` was retired in PR 3.7 (T108g). Fact-
-/// propagation is now handled by the closure operator
-/// ([`crate::closure::ClosureRule`] / [`MarkingScheme::closure_rules`]),
-/// which runs before constraint validation, eliminating false "missing X"
-/// positives automatically.
+/// Note: there is no `Implies` variant. Fact-propagation is handled by the
+/// closure operator ([`crate::closure::ClosureRule`] /
+/// [`MarkingScheme::closure_rules`]), which runs before constraint
+/// validation, eliminating false "missing X" positives automatically.
 ///
-/// Contract (FR-007, Phase 3 US1):
+/// Contract:
 /// - **Deterministic**: same input returns identical output on every
 ///   call, regardless of thread or iteration order.
 /// - **Declaration-ordered**: the scheme's declared constraint order is

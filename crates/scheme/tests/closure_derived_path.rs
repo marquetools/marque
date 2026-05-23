@@ -4,7 +4,7 @@
 
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-//! Unit tests for the PR 4b-D.0 `ClosureRule::cone_derived` field.
+//! Unit tests for the `ClosureRule::cone_derived` field.
 //!
 //! Two scenarios:
 //!

@@ -9,14 +9,13 @@
 //! deprecation status, canonical portion/banner forms, and the full
 //! [`TokenMetadataFull`] record.
 //!
-//! Phase E wires every active ISM/CAPCO token to a `&'static`
+//! Every active ISM/CAPCO token maps to a `&'static`
 //! `TokenMetadataFull` entry generated at build time from the ODNI
-//! JSON sidecar (`marque-ism/build.rs`, task T080). Phase 2 ships the
-//! trait surface only; the impl lands in Phase 5 (tasks T080–T084).
+//! JSON sidecar (`marque-ism/build.rs`).
 //!
-//! ## Invariants (enforced by impl + tests in Phase 5)
+//! ## Invariants
 //!
-//! - Every return is `&'static` data — no runtime allocation (SC-008).
+//! - Every return is `&'static` data — no runtime allocation.
 //! - Active tokens populate every non-`Option` field, with one
 //!   documented carve-out: a scheme adapter MAY elide informational
 //!   `&'static str` fields (free-form names, descriptions, contact
@@ -27,8 +26,8 @@
 //!   the CAPCO adapter's `wasm32` elision of `Authority::source_name`,
 //!   `PointOfContact::name`/`email`, and `TokenMetadataEntry::description`.
 //! - Deprecated tokens additionally populate `deprecation`.
-//! - The FOUO → CUI migration is absent from the migration table
-//!   (FR-020): FOUO remains an active valid dissemination control.
+//! - The FOUO → CUI migration is absent from the migration table:
+//!   FOUO remains an active valid dissemination control.
 
 use crate::category::CategoryId;
 use crate::scheme::MarkingScheme;
@@ -64,7 +63,7 @@ pub struct Authority {
 /// Kind of owner/producer.
 ///
 /// The ODNI `CVEnumISMCATOwnerProducer` values split along these
-/// categories. Phase 5's build.rs derives this from the XML's union
+/// categories. `marque-ism/build.rs` derives this from the XML's union
 /// pattern (NATO prefix, trigraph enumeration, FGI marker).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnerProducerKind {
@@ -107,9 +106,9 @@ pub struct PointOfContact {
 
 /// Deprecation metadata for a retired or superseded token.
 ///
-/// `replacement = None` denotes the "no known replacement" case
-/// (FR-017). The decoder uses that signal to avoid silently rewriting
-/// a token into a replacement that does not exist.
+/// `replacement = None` denotes the "no known replacement" case.
+/// The decoder uses that signal to avoid silently rewriting a token
+/// into a replacement that does not exist.
 ///
 /// The `Token` parameter carries no bounds on the struct definition —
 /// the bounds live on the derives so downstream code doesn't inherit
@@ -117,14 +116,14 @@ pub struct PointOfContact {
 /// auto-implemented when `Token` satisfies them; consumers that only
 /// read via `&'static Deprecation<_>` get the type unconditionally.
 ///
-/// PR 3d (FR-054) adds `valid_from` / `valid_until` to carry the
-/// validity-window metadata schema needs for "evaluate as valid at
-/// time of authoring". Both are `Option<&'static str>` because the
-/// upstream sources (ODNI XSD annotations, JSON sidecars) carry
-/// version metadata at the file level, not per-token, so today every
-/// generated entry leaves them as `None`. The data plumbing is wired
-/// so a future ODNI revision that exposes per-term version info can
-/// populate them without a trait change.
+/// `valid_from` / `valid_until` carry the validity-window metadata
+/// needed for "evaluate as valid at time of authoring". Both are
+/// `Option<&'static str>` because the upstream sources (ODNI XSD
+/// annotations, JSON sidecars) carry version metadata at the file
+/// level, not per-token, so today every generated entry leaves them
+/// as `None`. The data plumbing is wired so a future ODNI revision
+/// that exposes per-term version info can populate them without a
+/// trait change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Deprecation<Token> {
     /// Schema version at which the token was deprecated, e.g.,
@@ -142,8 +141,7 @@ pub struct Deprecation<Token> {
     /// newly-authored documents.
     ///
     /// Defaults to `None` when the token has no successor in the
-    /// migration table (rare — FOUO-style "no replacement" cases per
-    /// FR-017).
+    /// migration table (rare — FOUO-style "no replacement" cases).
     pub valid_until: Option<&'static str>,
     /// Replacement token id, when one is defined.
     pub replacement: Option<Token>,
@@ -152,8 +150,7 @@ pub struct Deprecation<Token> {
 /// Full per-token metadata record.
 ///
 /// Baked as `&'static` into the generated tables by
-/// `marque-ism/build.rs` (task T080). Accessible through
-/// [`Vocabulary::metadata`].
+/// `marque-ism/build.rs`. Accessible through [`Vocabulary::metadata`].
 ///
 /// The `Token` parameter carries no bounds on the struct — see the
 /// note on [`Deprecation`] for rationale.
@@ -181,11 +178,11 @@ pub struct TokenMetadataFull<Token> {
     pub banner_abbreviation: Option<&'static str>,
 }
 
-/// Aggregated form-set for a single token (PR 3d, FR-053).
+/// Aggregated form-set for a single token.
 ///
-/// Replaces the closed-world "exactly three forms per token"
-/// assumption baked into the original per-form trait methods. Every
-/// scheme exposes a `&'static FormSet` per token via
+/// Models the open-world set of surface forms a token can take rather
+/// than a fixed "exactly three forms per token". Every scheme exposes
+/// a `&'static FormSet` per token via
 /// [`Vocabulary::forms`]; the per-form accessors
 /// ([`Vocabulary::portion_form`], [`Vocabulary::banner_form`],
 /// [`Vocabulary::banner_abbreviation`]) become default-method
@@ -247,14 +244,13 @@ pub enum FormKind {
 ///
 /// Every method returns `&'static` data so rule bodies can reference
 /// metadata without allocating. A scheme implements this alongside
-/// [`MarkingScheme`] — see `impl Vocabulary<CapcoScheme> for CapcoScheme`
-/// (task T084 in Phase 5).
+/// [`MarkingScheme`] — see `impl Vocabulary<CapcoScheme> for CapcoScheme`.
 ///
 /// The trait takes the token by reference (`&S::Token`) — no `Copy`
-/// bound is required. The Phase 5 CAPCO implementation uses the
-/// simple [`crate::category::TokenId`] (`u32`-wrapper, trivially
-/// `Copy`); schemes that prefer a richer non-`Copy` symbol type can
-/// still implement this trait without change. The metadata structs
+/// bound is required. The CAPCO implementation uses the simple
+/// [`crate::category::TokenId`] (`u32`-wrapper, trivially `Copy`);
+/// schemes that prefer a richer non-`Copy` symbol type can still
+/// implement this trait without change. The metadata structs
 /// ([`TokenMetadataFull`] and [`Deprecation`]) likewise carry no
 /// `Copy` bound on their `Token` parameter.
 ///
@@ -282,7 +278,7 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Deprecation metadata for `token`, or `None` if active.
     fn deprecation(&self, token: &S::Token) -> Option<&'static Deprecation<S::Token>>;
 
-    /// Aggregated form-set for `token` (PR 3d, FR-053).
+    /// Aggregated form-set for `token`.
     ///
     /// Returns `&'static FormSet` carrying portion / banner-title /
     /// banner-abbreviation / recognized-aliases. The per-form
@@ -376,9 +372,8 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     ///
     /// # Used by
     ///
-    /// `marque-capco`'s `Lattice<DissemSet>` impl (PR 4b — to be
-    /// wired) and the closure operator's Trio-1 implicit-NOFORN
-    /// propagation (PR 3.7 catalog rows).
+    /// `marque-capco`'s `Lattice<DissemSet>` impl and the closure
+    /// operator's implicit-NOFORN propagation.
     fn is_fdr_dissem(&self, token: &S::Token) -> bool {
         let _ = token;
         false
@@ -395,24 +390,21 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Qualified namespaced token label for audit-record `token_id` emission.
     ///
     /// Produces the namespaced `"Category.Token"` form (e.g.
-    /// `"classification.secret"`) that consumers see in the `marque-1.0`
-    /// audit NDJSON record's `replacement.canonical.token_id` field.
-    /// Required by `contracts/audit-record.md` so audit consumers can
-    /// resolve the canonical token's category without performing a
-    /// separate vocabulary lookup per record (self-describing
-    /// property).
+    /// `"classification.secret"`) that consumers see in the audit NDJSON
+    /// record's `replacement.canonical.token_id` field. Lets audit
+    /// consumers resolve the canonical token's category without
+    /// performing a separate vocabulary lookup per record
+    /// (self-describing property).
     ///
     /// # Default impl
     ///
     /// The default returns `Cow::Borrowed("unknown.unknown")` —
     /// deliberately unhelpful. A scheme that exposes ANY tokens MUST
     /// override this method to produce the real `Category.Token`
-    /// projection. The default is shaped to allow the trait to compile
-    /// without panicking when called against schemes that have not yet
-    /// migrated; PR 3c.2.D ships the CAPCO override but downstream
-    /// audit consumers reading from a scheme that has not overridden
-    /// this method will see `"unknown.unknown"` as a visible signal to
-    /// open a migration ticket.
+    /// projection. The default lets the trait compile without panicking
+    /// when called against a scheme that has not overridden it; such a
+    /// scheme's audit consumers see `"unknown.unknown"` as a visible
+    /// signal to open a migration ticket.
     ///
     /// # Return type
     ///
@@ -422,15 +414,11 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// pre-bake the namespaced string and return `Cow::Borrowed`).
     /// Audit emit happens off the lint/scan hot path so the per-call
     /// allocation of a short owned string (typically ≤32 bytes) is
-    /// acceptable. Track follow-up at the audit-record-contract
-    /// migration table.
+    /// acceptable.
     ///
-    /// # PM-D-10 (PR 3c.2.D)
-    ///
-    /// Added per `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`.
-    /// Constitution IV / VII preserved — the accessor is a wire-format
-    /// projection helper, NOT a new lattice surface; it does not
-    /// extend [`MarkingScheme`] or [`crate::Lattice`].
+    /// This accessor is a wire-format projection helper, NOT a new
+    /// lattice surface; it does not extend [`MarkingScheme`] or
+    /// [`crate::Lattice`] (Constitution IV / VII).
     fn qualified_token_label(&self, token: &S::Token) -> std::borrow::Cow<'static, str> {
         let _ = token;
         std::borrow::Cow::Borrowed("unknown.unknown")
@@ -463,8 +451,7 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     ///
     /// Implementations are total over `(CategoryId, &[u8])`: an
     /// unknown `category` MUST return `false` rather than panicking,
-    /// so callers (notably parser admission sites — see FR-015 of
-    /// `specs/006-engine-rule-refactor/spec.md`) can route every
+    /// so callers (notably parser admission sites) can route every
     /// open-vocabulary slot through this method without category
     /// existence checks. The empty byte slice MUST return `false`
     /// for every category — no token has zero length.
@@ -472,11 +459,11 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// # Performance contract
     ///
     /// `Arc<dyn Vocabulary<S>>` precludes cross-crate
-    /// devirtualization (FR-030), so implementations sit on the
-    /// parser hot path. Implementations MUST avoid heap allocation,
-    /// regex compilation, and UTF-8 decoding overhead beyond what
-    /// is required to identify the byte class. ASCII byte
-    /// comparisons are the expected operation set; anything richer
-    /// requires measurement against `SC-001`.
+    /// devirtualization, so implementations sit on the parser hot
+    /// path. Implementations MUST avoid heap allocation, regex
+    /// compilation, and UTF-8 decoding overhead beyond what is required
+    /// to identify the byte class. ASCII byte comparisons are the
+    /// expected operation set; anything richer requires measurement
+    /// against the interactive-latency benchmark.
     fn shape_admits(&self, category: CategoryId, bytes: &[u8]) -> bool;
 }
