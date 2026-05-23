@@ -80,7 +80,7 @@ use crate::decoder::scoring::is_hard_splitter;
 /// 2/17 failures pre-PR-5 were a SCORING contest, not a missing
 /// rewrite — handled by [`HARD_SPLITTER_ABSORPTION_PENALTY`] in
 /// [`score_candidate`], not here.
-pub(crate) fn try_insert_delimiter(text: &str) -> Option<String> {
+pub(in crate::decoder) fn try_insert_delimiter(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut result = String::with_capacity(text.len() + 8);
     let mut insertions = 0;
@@ -192,11 +192,11 @@ pub(crate) fn try_insert_delimiter(text: &str) -> Option<String> {
 /// have that many segments at all. The cap prevents the helper
 /// from rewriting non-marking prose that happens to contain
 /// splitter words.
-pub(crate) const MAX_DELIMITER_INSERTIONS: usize = 4;
+const MAX_DELIMITER_INSERTIONS: usize = 4;
 
 /// Decide whether to insert `//` at a whitespace gap before
 /// `next_token`. See [`try_insert_delimiter`] doc for the rules.
-pub(crate) fn decide_insert_delimiter(
+fn decide_insert_delimiter(
     prev_token: Option<&str>,
     next_token: &str,
     in_classification: bool,
@@ -223,7 +223,7 @@ pub(crate) fn decide_insert_delimiter(
 
 /// True when `token` is a classification short or long form that
 /// can appear in classification context.
-pub(crate) fn is_classification_token(token: &str) -> bool {
+fn is_classification_token(token: &str) -> bool {
     matches!(
         token,
         "U" | "R"
@@ -242,7 +242,7 @@ pub(crate) fn is_classification_token(token: &str) -> bool {
 /// `prev_token`. Specifically: `TOP SECRET` is the only multi-word
 /// classification CAPCO recognizes; `SECRET` after `TOP` continues
 /// the classification.
-pub(crate) fn is_classification_continuation(next_token: &str, prev_token: Option<&str>) -> bool {
+fn is_classification_continuation(next_token: &str, prev_token: Option<&str>) -> bool {
     if next_token == "SECRET" && prev_token == Some("TOP") {
         return true;
     }

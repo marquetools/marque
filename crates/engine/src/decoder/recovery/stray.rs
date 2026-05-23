@@ -59,7 +59,7 @@
 /// the surrounding context is structural punctuation, not a token —
 /// the recovery would be semantically meaningless there because
 /// there's no token to attach `X` to.
-pub(crate) fn try_collapse_stray_char_slash(text: &str) -> Vec<String> {
+pub(in crate::decoder) fn try_collapse_stray_char_slash(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut i = 0;
     while i + 3 <= bytes.len() {

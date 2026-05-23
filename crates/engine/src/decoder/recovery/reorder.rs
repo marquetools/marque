@@ -20,7 +20,7 @@ use marque_ism::{CapcoTokenSet, Classification, token_set::TokenSet as _};
 /// with dissem first — this helper swaps them into the canonical
 /// order. Returns `None` when the input is already in canonical order
 /// or when reordering doesn't apply (CAB lines, single-segment input).
-pub(crate) fn try_canonical_reorder(text: &str) -> Option<String> {
+pub(in crate::decoder) fn try_canonical_reorder(text: &str) -> Option<String> {
     // Only banner/portion-shaped input (contains `//`) is reorderable
     // with this heuristic. CABs use keyed authority lines, not
     // category ordering.
@@ -112,13 +112,13 @@ pub(crate) fn try_canonical_reorder(text: &str) -> Option<String> {
 /// (`NOFORN`, `NF`, `ORCON`, …). Otherwise Other (SCI/SAR/FGI
 /// sub-blocks, REL TO lists, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SegmentClass {
+enum SegmentClass {
     Classification,
     Dissem,
     Other,
 }
 
-pub(crate) fn classify_segment(seg: &str) -> SegmentClass {
+fn classify_segment(seg: &str) -> SegmentClass {
     let first_token = seg.split_whitespace().next().unwrap_or("");
     // Strip trailing commas.
     let first_token = first_token.trim_end_matches(',');
@@ -258,7 +258,7 @@ pub(crate) fn classify_segment(seg: &str) -> SegmentClass {
 /// Used by `try_canonical_reorder` to decide whether the reordered output
 /// needs a leading `//` (the empty US classification slot that signals the
 /// strict parser to take the non-US code path).
-pub(crate) fn is_non_us_classification_segment(seg: &str) -> bool {
+fn is_non_us_classification_segment(seg: &str) -> bool {
     const NATO_ABBREVS: &[&str] = &[
         "NS", "NC", "NU", "CTS", "CTSA", "NSAT", "NCA", "CTS-B", "CTS-BALK",
     ];
@@ -320,7 +320,7 @@ pub(crate) fn is_non_us_classification_segment(seg: &str) -> bool {
 /// cannot act on them because it requires at least two `//`-separated
 /// segments. Emitting `//NS`, `//JOINT S GBR USA`, etc. lets the strict
 /// parser recognize the non-US code path (CAPCO-2016 §A.6, parser block 1).
-pub(crate) fn try_add_non_us_prefix(text: &str) -> Option<String> {
+pub(in crate::decoder) fn try_add_non_us_prefix(text: &str) -> Option<String> {
     // Only act when there is no `//` at all — try_canonical_reorder
     // handles the has-// but missing-prefix case.
     if text.contains("//") {
@@ -350,7 +350,7 @@ pub(crate) fn try_add_non_us_prefix(text: &str) -> Option<String> {
 /// A marking with no classification info cannot clear a non-trivial
 /// floor — return `false` so the candidate is dropped when the floor
 /// is CONFIDENTIAL or above.
-pub(crate) fn meets_classification_floor(marking: &CapcoMarking, floor: u8) -> bool {
+pub(in crate::decoder) fn meets_classification_floor(marking: &CapcoMarking, floor: u8) -> bool {
     let Some(level) = marking_classification(marking) else {
         return floor == Classification::Unclassified as u8;
     };
@@ -364,7 +364,7 @@ pub(crate) fn meets_classification_floor(marking: &CapcoMarking, floor: u8) -> b
 /// `Conflict`) by mapping each to the canonical [`Classification`]
 /// ladder. NATO levels map through
 /// [`NatoClassification::us_equivalent`](marque_ism::NatoClassification::us_equivalent).
-pub(crate) fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
+pub(in crate::decoder) fn marking_classification(marking: &CapcoMarking) -> Option<Classification> {
     marking
         .0
         .classification

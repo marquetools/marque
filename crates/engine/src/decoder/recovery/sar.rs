@@ -71,7 +71,7 @@
 /// `SAR_STRUCTURAL_KEYWORDS`. A `Full`-form analogue can land if a
 /// future fixture surfaces with a stray prefix on
 /// `SPECIAL ACCESS REQUIRED-`.
-pub(crate) fn try_sar_indicator_repair(text: &str) -> Option<String> {
+pub(in crate::decoder) fn try_sar_indicator_repair(text: &str) -> Option<String> {
     // Cheap pre-check: if `SAR` doesn't appear at all, no repair is
     // possible. Saves the byte-walk cost on the overwhelmingly common
     // case where the input has no SAR block.
@@ -183,7 +183,7 @@ pub(crate) fn try_sar_indicator_repair(text: &str) -> Option<String> {
 /// most likely OCR/transcription drift, and stripping fewer characters
 /// is the lower-risk repair when the input is ambiguous between
 /// shorter and longer prefix interpretations.
-pub(crate) fn match_sar_prefix(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
+fn match_sar_prefix(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
     for prefix_len in 1..=3 {
         let sar_start = i + prefix_len;
         if sar_start + 4 > bytes.len() {
@@ -204,7 +204,7 @@ pub(crate) fn match_sar_prefix(bytes: &[u8], i: usize) -> Option<(usize, usize)>
 /// Returns `None` when the pattern doesn't match — including the
 /// canonical `SAR-` shape (alnum run is 0 because `-` stops the scan
 /// immediately after `SAR`).
-pub(crate) fn match_sar_missing_hyphen(bytes: &[u8], i: usize) -> Option<usize> {
+fn match_sar_missing_hyphen(bytes: &[u8], i: usize) -> Option<usize> {
     if i + 3 > bytes.len() || &bytes[i..i + 3] != b"SAR" {
         return None;
     }

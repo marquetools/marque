@@ -37,7 +37,7 @@ use super::types::FeatureEntry;
 /// normalized cleanly and also resolved its tokens via fuzzy
 /// correction will still outrank a candidate that arrived dirty,
 /// but a canonical-from-the-start candidate beats both.
-pub(crate) fn normalize_delimiters_and_case(
+pub(super) fn normalize_delimiters_and_case(
     text: &str,
 ) -> (Cow<'_, str>, SmallVec<[FeatureEntry; 4]>) {
     // Order matters: multi-char sequences first so the longer patterns
@@ -155,7 +155,7 @@ pub(crate) fn normalize_delimiters_and_case(
 /// Also consults [`SUPERSEDED_TOKEN_MAP`] for CAPCO-2016 retirement
 /// pairs (currently just `COMINT` → `SI`), recording the
 /// `SupersededToken` feature when triggered.
-pub(crate) fn fuzzy_correct_tokens<'a>(
+pub(super) fn fuzzy_correct_tokens<'a>(
     text: &'a str,
     matcher: &FuzzyVocabMatcher<'_>,
 ) -> (Cow<'a, str>, SmallVec<[FeatureEntry; 4]>) {
@@ -331,7 +331,7 @@ pub(crate) fn fuzzy_correct_tokens<'a>(
 
 /// Token characters: ASCII alphanumerics. `-` is handled by
 /// [`scan_token`] as an internal separator.
-pub(crate) fn is_token_char(c: char) -> bool {
+fn is_token_char(c: char) -> bool {
     c.is_ascii_alphanumeric()
 }
 
@@ -339,7 +339,7 @@ pub(crate) fn is_token_char(c: char) -> bool {
 /// bytes. A token is a run of alphanumerics, with internal `-` allowed
 /// between alphanumerics to support compounds like `SI-G` and
 /// `SAR-BP`.
-pub(crate) fn scan_token(text: &str) -> usize {
+fn scan_token(text: &str) -> usize {
     let bytes = text.as_bytes();
     let mut i = 0;
     while i < bytes.len() {

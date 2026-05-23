@@ -105,7 +105,7 @@ use super::shape::is_cab_head;
 /// Authority Block) — those are keyed authority lines, not
 /// classification-leading shapes, and the heuristic would emit
 /// nonsense if applied. The check mirrors `shape::is_cab_head`.
-pub(crate) fn try_classification_heuristic_fix(text: &str) -> Option<String> {
+pub(super) fn try_classification_heuristic_fix(text: &str) -> Option<String> {
     // Skip CAB shapes — they don't have a leading classification token.
     if is_cab_head(text.as_bytes()) {
         return None;
@@ -203,7 +203,7 @@ pub(crate) fn try_classification_heuristic_fix(text: &str) -> Option<String> {
 /// length-3 arm starts returning `Some`. Recognizing bare
 /// `TOP` as canonical short-circuits the heuristic on the
 /// already-correct case.
-pub(crate) fn is_canonical_short_classification(token: &str) -> bool {
+fn is_canonical_short_classification(token: &str) -> bool {
     matches!(token, "U" | "R" | "C" | "S" | "TS" | "TOP")
 }
 
@@ -222,7 +222,7 @@ pub(crate) fn is_canonical_short_classification(token: &str) -> bool {
 /// doesn't (so `TS` itself, which has T-cluster + S-cluster, would
 /// already be marked canonical by `is_canonical_short_classification`
 /// upstream and the heuristic doesn't run on it).
-pub(crate) fn try_2char_classification_heuristic(token: &str) -> Option<&'static str> {
+fn try_2char_classification_heuristic(token: &str) -> Option<&'static str> {
     let bytes = token.as_bytes();
     debug_assert_eq!(bytes.len(), 2);
     let first = bytes[0].to_ascii_uppercase();
@@ -275,7 +275,7 @@ pub(crate) fn try_2char_classification_heuristic(token: &str) -> Option<&'static
 /// Returns `None` for any other 3-char input — the heuristic is
 /// intentionally narrow to avoid false positives in the dense
 /// 3-char trigraph vocab (`TON`, `TUR`, `TWN`, …).
-pub(crate) fn try_3char_classification_heuristic(token: &str) -> Option<&'static str> {
+fn try_3char_classification_heuristic(token: &str) -> Option<&'static str> {
     let bytes = token.as_bytes();
     debug_assert_eq!(bytes.len(), 3);
     // Uppercase comparison is unnecessary here because the
@@ -296,7 +296,7 @@ pub(crate) fn try_3char_classification_heuristic(token: &str) -> Option<&'static
 /// 1-char keyboard-proximity rule. Maps to S, C per the §A.2 short-
 /// form classification ladder. See module-level table for the
 /// per-character mapping rationale.
-pub(crate) fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
+fn try_1char_classification_heuristic(token: &str) -> Option<&'static str> {
     let bytes = token.as_bytes();
     debug_assert_eq!(bytes.len(), 1);
     match bytes[0].to_ascii_uppercase() {
