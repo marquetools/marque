@@ -341,6 +341,135 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
 }
 
 // ============================================================================
+// SAR missing-hyphen at the program/compartment boundary (issue #710).
+// A space typed where the §H.5 p100 program→compartment hyphen belongs
+// (`SAR-BP XA5`) makes the strict parser reject the SAR block (the
+// 6-byte `BP XA5` token fails `SarProgram::admits_program_id_abbrev`);
+// the dispatcher falls through to the decoder, which inserts the
+// missing hyphen and recovers `SAR-BP-XA5`. Distinct from the #699
+// case-mismatch demangling exercised above.
+// ============================================================================
+
+#[test]
+fn sar_program_boundary_space_emits_r001_fix() {
+    // `(S//SAR-BP XA5)` — space at the program/compartment boundary.
+    // The strict parser rejects the SAR block; the decoder's
+    // program-boundary repair recovers `SAR-BP-XA5`. Same post-#472
+    // SAR-shape severity-escalation path as the case-mismatch fixtures
+    // above (SAR identifiers are absent from the prose priors, so the
+    // observed-bytes null clears the 0.95 threshold and R001 lands at
+    // Severity::Fix).
+    let engine = build_engine();
+    let input = b"(S//SAR-BP XA5)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on SAR \
+             program/compartment-boundary space; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(r001.severity, Severity::Fix);
+
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_ne!(fix.source.expose_secret(), input);
+    assert!(fix.applied_fixes().next().is_some());
+}
+
+#[test]
+fn sar_boundary_inputs_canonicalize_under_zero_threshold() {
+    // Companion canonical-bytes pin (mirrors
+    // `sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold`).
+    // Pins what the decoder actually writes for the #710 recovery,
+    // including the combined case-mismatch (#699) + missing-hyphen
+    // (#710) input. Reads bytes from `fix.source` (not a diagnostic
+    // message) per Constitution V Principle V audit-content-ignorance.
+    let engine = build_engine_threshold_zero();
+    let cases: &[(&[u8], &str)] = &[
+        // (input, expected_canonical_output)
+        (b"(S//SAR-BP XA5)", "(S//SAR-BP-XA5)"),
+        // Combined: lowercase + missing hyphen. Fuzzy-correction
+        // uppercases (`sar-bp xa5` → `SAR-BP XA5`) before the
+        // boundary repair inserts the hyphen.
+        (b"(s//sar-bp xa5)", "(S//SAR-BP-XA5)"),
+    ];
+    for (input, expected) in cases {
+        let display = std::str::from_utf8(input).unwrap_or("<bytes>");
+        let fix = engine.fix(input, FixMode::Apply);
+        let applied: Vec<_> = fix.applied_fixes().collect();
+        let r001_decoder_count = applied
+            .iter()
+            .filter(|a| {
+                a.rule.predicate_id() == "recognition.decoder-recognized"
+                    && matches!(a.source, FixSource::DecoderPosterior)
+            })
+            .count();
+        assert_eq!(
+            r001_decoder_count,
+            1,
+            "input {display:?} must produce exactly one R001 DecoderPosterior \
+             AppliedFix under the zero-threshold engine; applied = {:?}",
+            applied
+                .iter()
+                .map(|a| (a.rule.predicate_id(), a.source))
+                .collect::<Vec<_>>(),
+        );
+        let output = String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output");
+        assert_eq!(
+            output, *expected,
+            "decoder must canonicalize {display:?} to {expected:?}",
+        );
+    }
+}
+
+#[test]
+fn sar_canonical_boundary_not_redecoded() {
+    // The already-canonical `(S//SAR-BP-XA5)` parses on the strict
+    // path, so the dispatcher never reaches the decoder — no R001,
+    // and `engine.fix` returns the input unchanged.
+    let engine = build_engine();
+    let input = b"(S//SAR-BP-XA5)";
+    let lint = engine.lint(input);
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "canonical SAR input must not be re-decoded; diagnostics = {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_eq!(
+        fix.source.expose_secret(),
+        input,
+        "canonical SAR input must pass through unchanged",
+    );
+}
+
+#[test]
+fn sar_invalid_compartment_after_boundary_space_no_spurious_fix() {
+    // `(S//SAR-BP XA@)` — the program-boundary repair would produce
+    // `SAR-BP-XA@`, but `XA@` is not a lawful compartment identifier
+    // (`@` fails `SarCompartment::admits_identifier`), so the strict
+    // reparse still rejects it. No R001 SAR recovery must land — the
+    // strict reparse is the gate, and the repair never silently
+    // promotes a structurally-invalid marking.
+    let engine = build_engine();
+    let input = b"(S//SAR-BP XA@)";
+    let lint = engine.lint(input);
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "structurally-invalid compartment must not trigger a spurious \
+         SAR boundary repair; diagnostics = {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_eq!(
+        fix.source.expose_secret(),
+        input,
+        "no fix should be applied to an irrecoverable SAR compartment",
+    );
+}
+
+// ============================================================================
 // FGI lowercase trigraph — the only #280 case that fully realizes the
 // issue-body claim. Strict parser rejects `deu` (post-#280); dispatcher
 // falls through; decoder emits R001 at Severity::Fix; auto-applies.

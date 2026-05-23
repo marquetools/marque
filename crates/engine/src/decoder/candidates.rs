@@ -15,7 +15,7 @@ use super::recovery::{
     try_add_non_us_prefix, try_canonical_reorder, try_collapse_stray_char_slash,
     try_insert_delimiter, try_nato_fold, try_rel_to_fuzzy_trigraph_candidates,
     try_rel_to_structural_repair, try_rel_to_usa_injection_candidates, try_sar_indicator_repair,
-    try_sci_delimiter_repair,
+    try_sar_program_boundary_repair, try_sci_delimiter_repair,
 };
 use super::types::{CanonicalAttempt, FeatureEntry};
 
@@ -306,6 +306,31 @@ pub(super) fn generate_candidate_bytes(
         });
         emit(
             sar_repaired.into_bytes(),
+            features,
+            marque_rules::FixSource::DecoderPosterior,
+        );
+    }
+
+    // ---- SAR program/compartment-boundary missing-hyphen repair
+    //      (issue #710). Recovers `SAR-BP XA5` → `SAR-BP-XA5`, where a
+    //      user typed a space where the §H.5 p100 program→compartment
+    //      hyphen belongs. Distinct from `try_sar_indicator_repair`
+    //      above, which repairs the `SAR-` indicator keyword; this pass
+    //      operates one boundary further in. Runs on `fuzzy_corrected`
+    //      (so it composes with the case-mismatch demangling that
+    //      lands `sar-bp xa5` → `SAR-BP XA5` first, issue #699). Same
+    //      `BaseRateCommonMarking` provenance penalty as the sibling
+    //      SAR / delimiter repairs: a canonical-arrived-clean candidate
+    //      should outrank a repaired one with the same final shape.
+    if let Some(sar_boundary_repaired) = try_sar_program_boundary_repair(&fuzzy_corrected) {
+        let mut features = delim_features.clone();
+        features.extend(fuzzy_features.iter().copied());
+        features.push(FeatureEntry {
+            id: FeatureId::BaseRateCommonMarking,
+            delta: -0.3,
+        });
+        emit(
+            sar_boundary_repaired.into_bytes(),
             features,
             marque_rules::FixSource::DecoderPosterior,
         );
