@@ -19,12 +19,9 @@ use marque_scheme::{Citation, FactRef, ReplacementIntent, Scope, SectionLetter, 
 
 use crate::scheme::CapcoScheme;
 
-// of every `.message.contains` site to use `template()` / `args()`
-// accessors against the closed `MessageTemplate` set. Tracked as part
-// of the future inline-test-module re-enablement work.
-
 // ---------------------------------------------------------------------------
-// Rule: E071 — FGI explicit trigraph conflicts with concealment or acknowledgment
+// Rule: FgiExplicitWithTrigraphRule — FGI explicit trigraph conflicts with
+// concealment or acknowledgment
 // ---------------------------------------------------------------------------
 // CAPCO-2016 §H.7 p124: "Do not include country codes within the portion
 // marks where the specific government(s) must be concealed."
@@ -120,16 +117,17 @@ fn acknowledged_form(countries: &[CountryCode], level: marque_ism::Classificatio
 pub(super) struct FgiExplicitWithTrigraphRule;
 
 /// Citations the FGI-explicit-with-trigraph rule may emit on
-/// diagnostics. Primary authority is §H.7 p124 (the concealment-vs-
-/// acknowledgment grammar); §B.3 Table 2 p21 covers the
-/// caveated-content → NOFORN closure companion emitted in Case C and
-/// the partial-overlap branch of Case D. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
-/// contract.
-const FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES: &[Citation] = &[
-    capco(SectionLetter::H, 7, 124),
-    capco(SectionLetter::B, 3, 21),
-];
+/// diagnostics. The primary authority is §H.7 p124 (the
+/// concealment-vs-acknowledgment grammar). Case C and Case D's
+/// partial-overlap branch additionally emit `capco(SectionLetter::B,
+/// 3, 21)` companion citations on the NOFORN closure suggest —
+/// those are tracked through the closure-table rows
+/// (`scheme/closure_table.rs::capco_table(B, 3, 2, 21)`), not via
+/// this rule's primary `cited_authorities` declaration, so the F.1
+/// corpus-fidelity gate harvests them through the closure path
+/// instead. See [`Rule::cited_authorities`] for the gate contract.
+const FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES: &[Citation] =
+    &[capco(SectionLetter::H, 7, 124)];
 
 impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     fn id(&self) -> RuleId {

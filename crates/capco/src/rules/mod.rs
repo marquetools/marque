@@ -42,6 +42,15 @@ mod text_handling;
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
 pub use registry::CapcoRuleSet;
 
+// `helpers::sar_block_span` is intentionally NOT re-exported here.
+// Its only consumer is `rules::banner::eval_sar`, which reaches it
+// via `super::super::helpers::sar_block_span` (grandchild path).
+// No cross-`rules/` consumer exists; re-exporting at the `rules`
+// module surface would advertise an internal helper to other crate
+// modules with no caller. Promote to a `pub(crate) use` here if a
+// future scheme/render/audit-side consumer needs the SAR span
+// computation.
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod citation_cross_refs_tests;
