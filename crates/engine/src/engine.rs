@@ -4370,7 +4370,7 @@ fn build_decoder_diagnostic(
         confidence,
         feature_ids: SmallVec::new(),
         message: marque_rules::Message::new(
-            marque_rules::MessageTemplate::BannerRollupMismatch,
+            marque_rules::MessageTemplate::DecoderRecognized,
             marque_rules::MessageArgs::default(),
         ),
         source: fix_source,

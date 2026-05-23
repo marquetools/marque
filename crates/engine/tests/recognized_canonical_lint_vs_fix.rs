@@ -31,6 +31,7 @@ use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::FixSource;
+use marque_rules::MessageTemplate;
 use marque_rules::RuleSet;
 use marque_rules::audit::{AuditLine, discriminant_from_source};
 use secrecy::ExposeSecret as _;
@@ -141,6 +142,11 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
         .iter()
         .find(|d| d.rule.predicate_id() == "recognition.decoder-recognized")
         .expect("R001 must fire on SAR lowercase program id");
+    assert_eq!(
+        r001.message.template(),
+        MessageTemplate::DecoderRecognized,
+        "R001 lint diagnostic must use DecoderRecognized template",
+    );
     let recognized = r001
         .recognized_canonical
         .as_ref()
@@ -164,6 +170,20 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
         .iter()
         .find(|line| matches!(line, AuditLine::AppliedFix(a) if a.rule.predicate_id() == "recognition.decoder-recognized"))
         .expect("R001 must produce an AppliedFix audit line under threshold=0");
+    let applied_template = match r001_audit {
+        AuditLine::AppliedFix(a) => a.message.template(),
+        _ => unreachable!("search above guarantees AppliedFix"),
+    };
+    assert_eq!(
+        applied_template,
+        MessageTemplate::DecoderRecognized,
+        "R001 audit AppliedFix must use DecoderRecognized template",
+    );
+    assert_eq!(
+        applied_template,
+        r001.message.template(),
+        "lint and audit template labels must agree for R001",
+    );
 
     let audit_ndjson = render_audit_line(r001_audit).expect("audit line must serialize to NDJSON");
 
