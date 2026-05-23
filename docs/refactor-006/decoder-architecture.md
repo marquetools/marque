@@ -82,7 +82,8 @@ coordinated audit-schema bump (`MARQUE_AUDIT_SCHEMA`) per
 
 The top candidate wins when its posterior exceeds the runner-up by a
 configured ratio (`UNAMBIGUOUS_LOG_MARGIN = 1.6` in `decoder/mod.rs`
-— natural-log odds, ≈ 5× probability ratio); below that threshold
+— natural-log odds, ≈ 5× odds ratio `P(top)/P(runner_up)` — not a
+probability ratio); below that threshold
 the decoder returns `Parsed::Ambiguous { candidates }` so the engine
 can surface a diagnostic rather than auto-apply a close call.
 `Candidate::prior_log_odds` carries the prior alone (sum of token
@@ -248,16 +249,17 @@ identifiers):
    The `#[cfg_attr(coverage_nightly, coverage(off))]` line keeps the
    test bodies out of coverage measurement so they don't inflate the
    production-code denominator. Today only `recovery/rel_to.rs` uses
-   the externalized form; `recovery/rel_to_trigraph.rs` shares
-   `rel_to_recovery_tests.rs` via its sibling's `#[path]` declaration
-   rather than introducing a second file.
+   the externalized form; `recovery/rel_to_trigraph.rs` carries no
+   co-located tests at present and exercises through corpus fixtures
+   instead.
 5. Add a fixture to
    `crates/engine/tests/decoder_split_byte_identity.rs` if the new
    pass exercises a corpus pattern.
 
-Three small files touched (the new file, recovery/mod.rs,
-candidates.rs). The existing recovery files don't move; the existing
-tests don't move.
+Three small files touched for the default pattern (the new file,
+`recovery/mod.rs`, `candidates.rs`); the escape-valve path adds a
+fourth (`decoder/tests/<persona>_recovery_tests.rs`). The existing
+recovery files don't move; the existing tests don't move.
 
 ### REL TO recovery — historical archaeology
 
