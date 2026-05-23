@@ -965,6 +965,99 @@ impl CapcoScheme {
         self.project_attrs_pipeline(raw)
     }
 
+    /// Issue #704 — apply §H.8 p145 FD&R supersession to the
+    /// post-closure CanonicalAttrs.
+    ///
+    /// Runs unconditionally as part of [`Self::project_attrs_pipeline`]
+    /// between [`MarkingScheme::closure`] and the declarative
+    /// `PageRewrites`. The overlay is the lattice-layer answer to the
+    /// closure operator being purely additive post-#704: when an
+    /// explicit FD&R decision exists on the post-closure state, this
+    /// step strips the closure-added implicit defaults that conflict
+    /// with §H.8 p145.
+    ///
+    /// Two strips happen in order (the second consumes the first's
+    /// output):
+    ///
+    /// 1. **Dissem axis strip**
+    ///    ([`crate::lattice::dissem::DissemSet::with_fdr_dominance_stripped`]):
+    ///    if `Nf` is present in `attrs.dissem_us`, remove every
+    ///    dominated control (`Rel`, `Relido`, `Displayonly`, `Eyes`)
+    ///    per §H.8 p145.
+    ///
+    /// 2. **REL TO + DISPLAY ONLY country-list clear**
+    ///    ([`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`]):
+    ///    if `Nf` ended up in `attrs.dissem_us` (read after step 1),
+    ///    clear `attrs.rel_to` and `attrs.display_only_to`. §H.8 p145
+    ///    is symmetric across the dissem-axis tokens and the country-
+    ///    list axes — both sides of NOFORN's mutual exclusion list
+    ///    must be evicted.
+    ///
+    /// Idempotent: rerunning observes the post-strip state and finds
+    /// nothing to do. Read-only with respect to inputs that don't
+    /// carry an FD&R dominator.
+    ///
+    /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
+    /// RELIDO, EYES ONLY, or DISPLAY ONLY"); §B.3.a p19 (FD&R
+    /// dominator enumeration); §D.2 Table 3 rows 1-2 (NOFORN
+    /// dominates dominated FD&R at banner roll-up).
+    fn apply_supersession_overlays(attrs: &mut CanonicalAttrs) {
+        use crate::lattice::DissemSet;
+        use marque_ism::DissemControl;
+
+        // Step 1 — dissem-axis strip. Only run the BTreeSet
+        // round-trip when `Nf` is actually present; the common case
+        // (no NOFORN in the post-closure state) is a single
+        // `iter().any(...)` test that costs no allocations.
+        let has_noforn = attrs.dissem_us.iter().any(|d| *d == DissemControl::Nf);
+        if has_noforn {
+            // Build a DissemSet view, run the overlay, write back if
+            // changed. The DissemSet round-trip preserves the natural
+            // BTreeSet order — same shape `apply_closed_bits_to`
+            // produces on a Kleene-delta strip, so re-running this
+            // overlay over an already-stripped attrs is a no-op.
+            let before_len = attrs.dissem_us.len();
+            let view = DissemSet::from_attrs_iter(std::slice::from_ref(attrs));
+            // `from_attrs_iter` already applies the supersession
+            // overlay during construction, but it operates on a fresh
+            // BTreeSet built from per-portion `dissem_us` — its
+            // strip is byte-equivalent to `with_fdr_dominance_stripped`
+            // for single-portion input. Calling the overlay
+            // explicitly is the documented entry point for this
+            // strip (issue #704); it remains a no-op when the
+            // BTreeSet construction already stripped dominated
+            // tokens.
+            let stripped = view.with_fdr_dominance_stripped();
+            let next = stripped.into_boxed_slice();
+            if next.len() != before_len {
+                attrs.dissem_us = next;
+            }
+        }
+
+        // Step 2 — country-list clear. Re-check NOFORN presence; the
+        // dissem strip cannot have removed NOFORN (the strip only
+        // removes DOMINATED controls; NOFORN itself is the dominator
+        // and survives), so this re-check is the same boolean. Kept
+        // as a fresh inspection for clarity — the §H.8 p145 country-
+        // list clearing rule reads exactly "if NOFORN is present,
+        // strip rel_to and display_only_to."
+        if has_noforn {
+            if !attrs.rel_to.is_empty() {
+                attrs.rel_to = Box::new([]);
+            }
+            if !attrs.display_only_to.is_empty() {
+                attrs.display_only_to = Box::new([]);
+            }
+        }
+        // Note: the `RelToBlock::with_nato_implicit_stripped` lattice
+        // method is the typed surface for this strip. The CanonicalAttrs
+        // path above is the production write-back since project()
+        // operates on attrs after the lattice round-trip in
+        // `join_via_lattice`. The method exists for callers that
+        // want the typed overlay (test fixtures, future refactors
+        // that operate on RelToBlock directly).
+    }
+
     /// Shared body of the page-projection pipeline. Both
     /// [`MarkingScheme::project`] (trait entry, after a per-portion
     /// `.0.clone()`) and [`Self::project_from_attrs_slice`] (engine
@@ -1009,6 +1102,40 @@ impl CapcoScheme {
 
         let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(raw));
         let mut out = self.closure(joined);
+
+        // Issue #704 — FD&R supersession overlay (post-closure).
+        //
+        // The `CapcoScheme::closure` operator is purely additive (Kleene
+        // fixpoint over `CLOSURE_TABLE`; the `suppressor_mask` gate that
+        // previously prevented Trio 1 / Trio 2 / Trio 3 cones from firing
+        // when an FD&R dominator was already present was retired in
+        // issue #704 because it broke the closure operator's algebraic
+        // monotonicity property `a ⊑ b ⟹ Cl(a) ⊑ Cl(b)`).
+        //
+        // The §H.8 p145 NOFORN-dominates / §B.3.a p19 FD&R supersession
+        // semantics that the suppressors encoded move HERE — a per-axis
+        // supersession overlay that runs AFTER closure converges and
+        // resolves the conflict between (a) the closure's purely-additive
+        // implicit defaults and (b) explicit FD&R decisions on the
+        // post-closure state. Per
+        // `docs/plans/2026-05-01-lattice-design.md` §3 (e) supersession
+        // is a separate layer that runs after closure converges, not a
+        // suppressor inside the closure loop.
+        //
+        // Pipeline order post-#704:
+        //
+        //   1. join_via_lattice (existing per-axis overlays)
+        //   2. closure (purely additive Kleene fixpoint)
+        //   3. apply_supersession_overlays (THIS step — §H.8 p145 strip)
+        //   4. PageRewrites (declarative catalog below)
+        //
+        // The overlay is idempotent; `apply_closed_bits_to` already
+        // strips dominated controls when NOFORN is in the Kleene delta
+        // (closure added NOFORN), but does nothing when NOFORN was in
+        // the input and closure added e.g. RELIDO or REL_TO_USA. The
+        // overlay closes that gap unconditionally and is a no-op when
+        // there is nothing to strip.
+        Self::apply_supersession_overlays(&mut out.0);
 
         #[cfg(debug_assertions)]
         {
