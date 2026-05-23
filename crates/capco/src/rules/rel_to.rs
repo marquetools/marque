@@ -288,7 +288,27 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 },
                 confidence: Confidence::strict(0.97),
                 feature_ids: Default::default(),
-                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+                // The USA-missing branch uses `RequiredByPresence`
+                // (not the parent's `NonCanonicalOrder`): injecting
+                // `USA` is a "required companion is absent" event, not
+                // an ordering violation. It still carries
+                // `category: CAT_REL_TO` so the FixIntent's audit-record
+                // message keeps the REL TO axis context the parent
+                // diagnostic records — the same #748 / #739 intent that
+                // motivates mirroring on the `else` branch above.
+                // `MessageArgs` is a shared optional-field struct, so
+                // `RequiredByPresence` accepts `category`: the
+                // declarative `RequiredByPresence` catalog rows in
+                // `scheme/adapter.rs` set `category: Some(CAT_SCI)` /
+                // `Some(CAT_DISSEM)` the same way. G13: `CAT_REL_TO` is a
+                // `CategoryId` constant, not document content.
+                message: Message::new(
+                    MessageTemplate::RequiredByPresence,
+                    MessageArgs {
+                        category: Some(crate::scheme::CAT_REL_TO),
+                        ..MessageArgs::default()
+                    },
+                ),
                 source: FixSource::BuiltinRule,
                 migration_ref: None,
             }
@@ -299,7 +319,26 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 },
                 confidence: Confidence::strict(0.97),
                 feature_ids: Default::default(),
-                message: Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+                // Mirror the parent diagnostic's category-bearing
+                // `Message` so the REL TO axis context survives in the
+                // FixIntent's audit-record message (#748). Both describe
+                // the same REL TO ordering violation under the same
+                // `NonCanonicalOrder` template, so they share one
+                // (template, args) pair — matching the
+                // FixIntent-mirrors-parent convention that PR #745 (#739)
+                // applied to the analogous S003 case in `joint.rs`, and
+                // the `nato.rs` (`WrongTokenForm` + `token`) precedent.
+                // Dropping `category` from only the FixIntent message
+                // lost the REL TO axis context for any consumer reading
+                // `FixIntent.message` rather than the parent
+                // `Diagnostic.message`.
+                //
+                // G13 (Constitution V Principle V): `CAT_REL_TO` is a
+                // `CategoryId` constant — a permitted audit identifier,
+                // not document content. `MessageTemplate::NonCanonicalOrder`
+                // documents `category` as its arg ("which axis is out of
+                // order"), so the category is meant to flow through.
+                message: message.clone(),
                 source: FixSource::BuiltinRule,
                 migration_ref: None,
             }
