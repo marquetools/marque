@@ -630,4 +630,3 @@ fn day_accessor_all_variants() {
         Some(15)
     );
 }
-

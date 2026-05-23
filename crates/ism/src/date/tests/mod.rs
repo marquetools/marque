@@ -4,6 +4,6 @@
 
 pub(super) use super::*;
 
-mod core;
 mod comparisons;
+mod core;
 mod edge_cases;

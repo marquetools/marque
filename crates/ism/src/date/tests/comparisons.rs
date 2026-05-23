@@ -487,4 +487,3 @@ fn to_maxdate_str_february_leap_year() {
     // 1900 is NOT a leap year (divisible by 100 but not 400).
     assert_eq!(&*IsmDate::YearMonth(1900, 2).to_maxdate_str(), "19000228");
 }
-
