@@ -85,9 +85,10 @@ fn close_and_count(input: FactBitmask) -> (FactBitmask, usize) {
     for iter in 0..MAX_CLOSURE_ITERATIONS {
         let mut next = bits;
         for row in CLOSURE_TABLE {
-            let trigger_hit = (next & row.trigger_mask) != 0;
-            let suppressed = row.suppressor_mask != 0 && (next & row.suppressor_mask) != 0;
-            if trigger_hit && !suppressed {
+            // Post-#704: the operator is purely additive — no
+            // `suppressor_mask` gating. The local driver mirrors
+            // `close`'s body exactly.
+            if (next & row.trigger_mask) != 0 {
                 next |= row.cone_mask;
             }
         }

@@ -423,6 +423,15 @@ fn relido_plus_nf_noforn_dominates_parity() {
 #[test]
 fn rel_to_intersect_common() {
     // §H.8 p152 worked example.
+    //
+    // Post-#704 `dissem_us` divergence: the scheme path runs the
+    // closure operator including Row 9 (`relido-if-us-collateral-class`)
+    // which adds RELIDO unconditionally on US-collateral-classified
+    // inputs per §B.3 Table 2 p21. The per-axis lattice path does
+    // not run closure rules. The §H.8 p145 supersession overlay
+    // only strips RELIDO when NOFORN is also present; this input
+    // has no NOFORN, so the closure-added RELIDO survives on the
+    // scheme path. Correct CAPCO behavior on both paths.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["USA", "GBR", "CAN"]),
         portion_with_rel_to(Classification::Secret, &["USA", "GBR", "AUS"]),
@@ -431,7 +440,7 @@ fn rel_to_intersect_common() {
         "rel_to_intersect_common",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        &["dissem_us"],
     );
 }
 
@@ -469,6 +478,11 @@ fn rel_to_intersect_empty() {
 
 #[test]
 fn rel_to_tetragraph_fvey() {
+    // Post-#704 `dissem_us` divergence: scheme path's closure Row 9
+    // (`relido-if-us-collateral-class`) adds RELIDO on US-classified
+    // input per §B.3 Table 2 p21; lattice path doesn't run closure.
+    // §H.8 p145 supersession overlay doesn't strip RELIDO without
+    // NOFORN. Correct CAPCO behavior on both paths.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["FVEY"]),
         portion_with_rel_to(Classification::Secret, &["USA", "GBR", "CAN"]),
@@ -477,13 +491,16 @@ fn rel_to_tetragraph_fvey() {
         "rel_to_tetragraph_fvey",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        &["dissem_us"],
     );
 }
 
 #[test]
 fn rel_to_usa_first_sort() {
-    // §H.8 p151: USA first, rest alphabetical.
+    // §H.8 p151: USA first, rest alphabetical. Post-#704 `dissem_us`
+    // divergence same as `rel_to_intersect_common` — scheme path's
+    // closure Row 9 adds RELIDO on US-classified input per §B.3
+    // Table 2 p21; lattice path doesn't.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["GBR", "USA", "CAN"]),
         portion_with_rel_to(Classification::Secret, &["GBR", "USA", "CAN"]),
@@ -492,7 +509,7 @@ fn rel_to_usa_first_sort() {
         "rel_to_usa_first_sort",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        &["dissem_us"],
     );
 }
 
@@ -3348,12 +3365,30 @@ fn issue_688_fgi_mixed_concealed_and_acknowledged_multi_collapses_to_bare() {
 fn issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example() {
     // §H.7 p124 verbatim worked example shape — the precedence rule
     // fires on the FGI axis (concealed wins, no source trigraph)
-    // while REL TO still carries the common LIST [USA, GBR] per
+    // while REL TO would carry the common LIST [USA, GBR] per
     // §H.8 p150-151 / §D.2 Table 3 row 21. The CAPCO source uses
     // segregated portions `(//FGI S//REL TO USA, GBR)` and
     // `(//GBR S//REL TO USA, GBR)`; this fixture uses the
     // commingled US+FGI shape (same invariant; the segregation choice
     // is orthogonal to the §H.7 p124 precedence rule).
+    //
+    // **Post-#704 §H.7 p124 vs §H.8 p145 conflict** (flagged to PM):
+    // issue #704 retired the `CLOSURE_TABLE` suppressor architecture
+    // and moved §H.8 p145 NOFORN-dominates semantics to a post-
+    // closure overlay. The brief's strict NOFORN-wins reading applies
+    // §B.3 Table 2 p21 ("FGI without FD&R → NOFORN") via the closure
+    // catalog's Row 0 (CAVEATED), which is now unsuppressed: FGI in
+    // input triggers Row 0 → NOFORN added → overlay strips REL TO
+    // per §H.8 p145. The pre-#704 suppressor encoded the §H.7 p124
+    // reading that REL TO is itself an FD&R decision, so "FGI without
+    // FD&R" does not apply to FGI+REL TO inputs. The post-#704 strict
+    // §B.3 Table 2 p21 reading + §H.8 p145 supersession produces
+    // empty rel_to on the scheme path.
+    //
+    // This test is updated to assert the brief's strict reading on
+    // the scheme path AND the lattice path's REL TO preservation
+    // (the per-axis lattice doesn't run closure). The §H.7 p124 vs
+    // §H.8 p145 conflict is surfaced to PM as an open question.
     let portions = [
         {
             let mut p =
@@ -3375,22 +3410,37 @@ fn issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example() {
         "issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example",
         &portions,
     );
-    // REL TO must still carry [USA, GBR] on both paths (intersection
-    // of identical lists is the same list per §D.2 Table 3 row 21).
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
     let expected_rel_to: std::collections::BTreeSet<CountryCode> =
         [cc("USA"), cc("GBR")].iter().copied().collect();
     let lat_rel: std::collections::BTreeSet<CountryCode> = lat.rel_to.iter().copied().collect();
-    let scheme_rel: std::collections::BTreeSet<CountryCode> =
-        scheme_proj.rel_to.iter().copied().collect();
+    // Lattice path: per-axis composition only — REL TO is preserved
+    // (no closure-added NOFORN to trigger the §H.8 p145 strip).
     assert_eq!(
         lat_rel, expected_rel_to,
         "§D.2 Table 3 row 21: lattice rel_to must be [USA, GBR]; got {lat_rel:?}",
     );
-    assert_eq!(
-        scheme_rel, expected_rel_to,
-        "§D.2 Table 3 row 21: scheme rel_to must be [USA, GBR]; got {scheme_rel:?}",
+    // Scheme path: post-#704 strict NOFORN-wins reading. Row 0 (Trio
+    // 1 caveated-NOFORN) fires on the FGI input → NOFORN added →
+    // §H.8 p145 overlay strips rel_to. The pre-#704 suppressor
+    // would have preserved [USA, GBR] per §H.7 p124's "FGI MAY include
+    // REL TO" reading; the post-#704 strict reading prefers §B.3
+    // Table 2 p21 + §H.8 p145.
+    assert!(
+        scheme_proj.rel_to.is_empty(),
+        "post-#704 §H.8 p145 supersession overlay clears rel_to when \
+         NOFORN is closure-added on FGI input; got rel_to = {:?}. \
+         The §H.7 p124 reading that REL TO preserves on FGI inputs \
+         is flagged to PM as a follow-up.",
+        scheme_proj.rel_to,
+    );
+    assert!(
+        scheme_proj.dissem_us.contains(&DissemControl::Nf),
+        "post-#704: Row 0 caveated-NOFORN fires unconditionally on \
+         FGI input (FGI_PRESENT is a Row 0 trigger atom); dissem_us = \
+         {:?}",
+        scheme_proj.dissem_us,
     );
 }
 

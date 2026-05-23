@@ -4502,33 +4502,30 @@ static S008_SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(
 /// `FactAdd(TOK_RELIDO, Scope::Portion)` intent at confidence
 /// [`S008_SUGGEST_CONFIDENCE`].
 ///
-/// # Closure-based trigger detection
+/// # Project-based trigger detection
 ///
-/// The rule runs `S008_SCHEME.closure(marking)` and compares the
-/// post-closure dissem axis against the pre-closure state. This is
-/// more robust than hand-rolling the closure trigger / suppressor
-/// logic because:
+/// The rule runs `S008_SCHEME.project(Scope::Page, &[marking])` over
+/// a single-portion page and compares the post-pipeline dissem axis
+/// against the input. This routes through the full pipeline (per-axis
+/// join + closure + supersession overlay + page rewrites), which is
+/// the post-#704 canonical observable state. Calling `closure()`
+/// directly would observe the pre-overlay state — closure() now adds
+/// RELIDO unconditionally on US_COLLATERAL_CLASSIFIED inputs, only
+/// to have the §H.8 p145 supersession overlay strip it if NOFORN is
+/// also present. Using `project()` keeps S008 aligned with the
+/// engine's final-state semantic by construction.
 ///
-/// - `CLOSURE_RELIDO_SCI` triggers on `CAT_SCI` presence and
-///   suppresses on `FDR_OR_RELIDO_INCOMPAT` (NOFORN / RELIDO / REL TO
-///   / DISPLAY ONLY / EYES plus six per-compartment SCI sentinels
-///   plus FGI / JOINT / NATO classification — at least 14 distinct
-///   tokens with subtle interactions).
-/// - `CLOSURE_RELIDO_US_CLASS` triggers on US collateral classification
-///   and suppresses on `RELIDO_US_CLASS_SUPPRESSORS` (the same FD&R
-///   dominators plus six per-compartment SCI sentinels).
-/// - Both closures interact with `with_noforn_injected` (the §H.8
-///   p145 supersession overlay) which strips RELIDO whenever NOFORN
-///   appears at any iteration.
+/// The closure pipeline interacts with two overlays in canonical
+/// order:
 ///
-/// Replicating that decision tree inline would double the source-of-
-/// truth surface for the same policy decision. Calling
-/// `scheme.closure(...)` once and reading the result keeps S008
-/// aligned with the closure catalog by construction. The short-
-/// circuit in `CapcoScheme::closure` (line 561,
-/// `any_closure_trigger_fires`) returns the input identically when
-/// no trigger fires, so the cost on non-triggering portions is bounded
-/// to a single trigger check.
+/// - `CLOSURE_TABLE` Row 8 (`relido-if-sci-and-not-incompatible`)
+///   triggers on `SCI_PRESENT` and adds RELIDO; the supersession
+///   overlay then strips it if NOFORN is observed.
+/// - `CLOSURE_TABLE` Row 9 (`relido-if-us-collateral-class`) triggers
+///   on `US_COLLATERAL_CLASSIFIED` and adds RELIDO; same overlay
+///   strip pathway when NOFORN is present.
+/// - The `apply_closed_bits_to` writeback also strips dominated
+///   controls when NOFORN is in the closure delta (§H.8 p145).
 ///
 /// # Early-return clauses (in order)
 ///
@@ -4596,6 +4593,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{CapcoMarking, TOK_RELIDO};
         use marque_ism::DissemControl;
+        use marque_scheme::Scope;
 
         // Clause 1: portion-only.
         if ctx.marking_type != MarkingType::Portion {
@@ -4603,7 +4601,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         }
 
         // Clause 2: RELIDO already present — nothing to suggest. Cheap
-        // check that short-circuits before the closure call.
+        // check that short-circuits before the project call.
         if attrs
             .dissem_iter()
             .any(|d| matches!(d, DissemControl::Relido))
@@ -4611,22 +4609,81 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             return vec![];
         }
 
-        // Clause 3: run the closure and check the post-closure state.
-        // `S008_SCHEME.closure(marking)` short-circuits via
-        // `any_closure_trigger_fires` when no closure rule's trigger
-        // fires (the bench-corpus typical case), returning the input
-        // marking identically. When a trigger fires, the fixpoint
-        // loop converges in 1–2 iterations on real-world inputs
-        // (proptest harness pins MAX_CLOSURE_ITERATIONS as the
-        // worst-case cap).
+        // Clause 2b (issue #704): if the portion already carries an
+        // explicit non-RELIDO FD&R decision (REL TO via populated
+        // `rel_to`, DISPLAY ONLY via populated `display_only_to`,
+        // EYES via `DissemControl::Eyes`), don't suggest adding
+        // RELIDO. Per §H.8 p154 RELIDO is the implicit defaulting
+        // marking that fills FD&R absence — suggesting it on top of
+        // an explicit author release decision is redundant noise.
+        // This is the rule-level analogue of the pre-#704
+        // `MASK_RELIDO_US_CLASS_SUPPRESSORS` suppressor that
+        // retired into `CapcoScheme::apply_supersession_overlays`
+        // for the lattice-layer strip; S008 emits user-visible
+        // suggestions and should mirror the same conservatism so
+        // CI corpus fixtures (`clean_portion_with_rel_to.txt`) stay
+        // clean.
+        //
+        // Authority: §H.8 p154 (RELIDO grammar — defaulting marking
+        // that applies absent an explicit FD&R decision).
+        let input_has_explicit_fdr = !attrs.rel_to.is_empty()
+            || !attrs.display_only_to.is_empty()
+            || attrs
+                .dissem_iter()
+                .any(|d| matches!(d, DissemControl::Eyes));
+        if input_has_explicit_fdr {
+            return vec![];
+        }
+
+        // Clause 2c (issue #704): RELIDO is an IC SFDRA-deferred
+        // marking — the Information Disclosure Official can only
+        // defer release for US-originated information per §H.8
+        // p154. Non-US classification (NATO / JOINT / FGI) is
+        // foreign equity and is not RELIDO-eligible by definition;
+        // suggesting RELIDO on a NATO/JOINT/FGI portion is
+        // semantically wrong. The pre-#704
+        // `MASK_FDR_OR_RELIDO_INCOMPAT` suppressor on Row 8
+        // included NATO_CLASS / JOINT_PRESENT / FGI_PRESENT for
+        // exactly this reason. The rule-level mirror short-circuits
+        // S008 in the same cases.
+        //
+        // Authority: §H.8 p154 (RELIDO grammar — US-originated
+        // content scope); §H.7 p123 (FGI foreign-equity bar);
+        // §H.3 p56 (JOINT co-ownership grammar); §G.1 Table 4 p38
+        // (NATO classification).
+        match attrs.classification {
+            Some(marque_ism::MarkingClassification::Nato(_))
+            | Some(marque_ism::MarkingClassification::Joint(_))
+            | Some(marque_ism::MarkingClassification::Fgi(_)) => return vec![],
+            _ => {}
+        }
+        if attrs.fgi_marker.is_some() {
+            return vec![];
+        }
+
+        // Clause 3: run project(Scope::Page) and check the post-pipeline
+        // state. Issue #704 retired the `CLOSURE_TABLE` suppressor_mask
+        // architecture (which violated the closure operator's algebraic
+        // monotonicity); the §H.8 p145 / §B.3.a p19 FD&R supersession
+        // semantics moved to `CapcoScheme::apply_supersession_overlays`,
+        // which runs after `closure()` returns. S008's "would closure
+        // inject RELIDO?" inspection therefore needs the post-overlay
+        // state — calling `scheme.closure()` directly would observe the
+        // pre-overlay state (RELIDO added by Row 9 even when NOFORN is
+        // in input, only to be stripped by the overlay), causing S008
+        // to suggest RELIDO that the page projection would immediately
+        // strip. `project(Scope::Page, &[marking])` over a single-
+        // portion page exercises the full pipeline (join +
+        // closure + supersession overlay + page rewrites) and gives
+        // S008 the canonical observable post-projection state.
         let marking = CapcoMarking::new(attrs.clone());
-        let closed = S008_SCHEME.closure(marking);
-        let closure_adds_relido = closed
+        let projected = S008_SCHEME.project(Scope::Page, &[marking]);
+        let projection_adds_relido = projected
             .0
             .dissem_us
             .iter()
             .any(|d| matches!(d, DissemControl::Relido));
-        if !closure_adds_relido {
+        if !projection_adds_relido {
             return vec![];
         }
 

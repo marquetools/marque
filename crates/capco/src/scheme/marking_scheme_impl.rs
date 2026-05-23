@@ -579,11 +579,13 @@ impl MarkingScheme for CapcoScheme {
     /// Post-PR-D of the FactBitmask refactor, CAPCO's closure operator
     /// executes as a bitwise Kleene fixpoint over
     /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) — a 10-row
-    /// `(trigger_mask, suppressor_mask, cone_mask)` catalog over a
-    /// `u128` atom bitmask. The fn-pointer slice this trait method
-    /// returns is the **residual** catalog: rows whose cone cannot be
-    /// expressed as a static closed-vocab bit and therefore retain
-    /// fn-pointer form. Today that is exactly one row:
+    /// `(trigger_mask, cone_mask)` catalog over a `u128` atom bitmask
+    /// (the pre-#704 `suppressor_mask` was retired; see the
+    /// `closure_table.rs` module doc-comment for the architectural
+    /// rationale). The fn-pointer slice this trait method returns is
+    /// the **residual** catalog: rows whose cone cannot be expressed
+    /// as a static closed-vocab bit and therefore retain fn-pointer
+    /// form. Today that is exactly one row:
     ///
     /// | Rule key                                            | Why fn-pointer                                                                                                       |
     /// |-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
@@ -608,11 +610,15 @@ impl MarkingScheme for CapcoScheme {
     /// fields and the per-row doc-comments in
     /// [`super::closure_table`](super::closure_table).
     ///
-    /// Every surviving row is suppressed by `FDR_DOMINATORS` (any
-    /// present FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES,
-    /// DISPLAY ONLY) — see [`super::closure::FDR_DOMINATORS`] and
-    /// its bitmask projection
-    /// [`crate::fact_bitmask::MASK_FDR_DOMINATORS`]. All rows ship at
+    /// Post-#704: rows are no longer suppressed inside the Kleene
+    /// fixpoint — the closure operator is purely additive, and
+    /// `FDR_DOMINATORS`-based supersession (NOFORN dominates REL TO /
+    /// RELIDO / DISPLAY ONLY / EYES per §H.8 p145) runs as a separate
+    /// post-closure overlay in
+    /// [`CapcoScheme::apply_supersession_overlays`]. The
+    /// [`super::closure::FDR_DOMINATORS`] slice remains the canonical
+    /// FD&R enumeration consumed by `Vocabulary::is_fdr_dissem` and
+    /// the supersession overlays. All rows ship at
     /// [`Severity::Info`] per `decisions.md` D19 B (closure firings
     /// are silent lattice-layer fact propagation, not byte-level
     /// fixes); user-visible byte diffs ride on independent
@@ -689,11 +695,13 @@ impl MarkingScheme for CapcoScheme {
     ///    is set at iteration 0.
     /// 3. **Kleene fixpoint**: [`close`] runs a bitwise loop over
     ///    [`CLOSURE_TABLE`] — for each row, if
-    ///    `(next & trigger_mask) != 0 && (next & suppressor_mask) == 0`,
-    ///    OR `cone_mask` into `next`. Iterate until stable or panic at
-    ///    [`MAX_CLOSURE_ITERATIONS`] (= 16). The CAPCO catalog's
-    ///    longest causal chain is depth 2; typical inputs converge in
-    ///    1–3 iterations.
+    ///    `(next & trigger_mask) != 0`, OR `cone_mask` into `next`.
+    ///    Post-#704: the operator is purely additive — no per-row
+    ///    suppressor gate — so each row's firing predicate is the
+    ///    upward-closed presence check on its trigger atom. Iterate
+    ///    until stable or panic at [`MAX_CLOSURE_ITERATIONS`] (= 16).
+    ///    The CAPCO catalog's longest causal chain is depth 2;
+    ///    typical inputs converge in 1–3 iterations.
     /// 4. **Write-back**: [`apply_closed_bits_to`] materializes every
     ///    new bit in `closed_bits & !input_bits` to the corresponding
     ///    `CanonicalAttrs` axis (`dissem_us` push, `rel_to` insert,

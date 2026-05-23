@@ -115,14 +115,8 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
     let portion = CapcoMarking::new(attrs);
     let projected = scheme.project(Scope::Page, &[portion]);
 
-    // Page rollup composes namespaces independently. A pure-NATO
-    // portion contributes only to `dissem_nato`; `dissem_us`
-    // remains empty.
-    assert!(
-        projected.0.dissem_us.is_empty(),
-        "pure-NATO page rollup must leave dissem_us empty; got {:?}",
-        projected.0.dissem_us,
-    );
+    // ORCON in `dissem_nato` survives the projection (page rollup
+    // composes namespaces independently).
     assert!(
         projected
             .0
@@ -131,6 +125,32 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
             .any(|d| d == &DissemControl::Oc),
         "ORCON must survive page rollup in dissem_nato; got {:?}",
         projected.0.dissem_nato,
+    );
+
+    // Post-#704: the closure() Row 0 (caveated-default NOFORN) fires
+    // on ORCON regardless of which namespace it lives in
+    // (`derive_bits` reads `dissem_iter()` across both `dissem_us`
+    // and `dissem_nato`). The pre-#704 suppressor that blocked the
+    // injection when REL_TO_PRESENT was in the input was retired
+    // along with the rest of the `MASK_FDR_DOMINATORS` gate; the
+    // §H.8 p145 NOFORN-dominates supersession overlay then clears
+    // `rel_to` and strips dominated dissem at the project()
+    // boundary. Net effect on this pure-NATO portion: `dissem_us`
+    // ends up `[Nf]` (closure-injected, written to `dissem_us` per
+    // `apply_closed_bits_to`'s ALL-IC-dissem-axis-is-US convention),
+    // `dissem_nato` retains the input ORCON, `rel_to` is cleared.
+    //
+    // This is a deliberate behavioral change introduced by issue
+    // #704: pre-#704 the explicit `REL TO USA, NATO` in the input
+    // suppressed the implicit NOFORN default; post-#704 the §H.8
+    // p145 strict reading ("NOFORN cannot be used with REL TO")
+    // governs. Authority: §H.8 p145 (NOFORN dominates REL TO).
+    assert!(
+        projected.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
+        "post-#704 §H.8 p145 strict reading: closure injects NOFORN \
+         on the ORCON caveat trigger and the overlay does not strip \
+         NOFORN itself; got dissem_us = {:?}",
+        projected.0.dissem_us,
     );
 }
 

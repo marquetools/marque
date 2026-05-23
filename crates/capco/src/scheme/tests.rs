@@ -1068,20 +1068,32 @@ fn hot1_closure_semantics_preserved_for_orcon_trigger() {
     );
 }
 
-/// HOT-1: `closure()` is a no-op on a bare US classified marking WITH
-/// NOFORN already present — both RELIDO rules are suppressed.  The
-/// fixpoint exits after one iteration (changed = false); the output
-/// must be identical to the input.
+/// Post-#704 FD&R supersession at the project() boundary:
+/// `project(Page)` on a bare US classified marking WITH NOFORN
+/// already present is a no-op on the dissem axis. The closure()
+/// layer now adds RELIDO unconditionally (Row 9 is purely additive
+/// post-#704 — the previous `MASK_RELIDO_US_CLASS_SUPPRESSORS`
+/// suppressor moved to `CapcoScheme::apply_supersession_overlays`).
+/// The supersession overlay observes NOFORN in the post-closure
+/// dissem axis and strips RELIDO per §H.8 p145, restoring the
+/// `{NOFORN}` end state.
+///
+/// Authority: §H.8 p145 (NOFORN dominates REL TO / RELIDO / DISPLAY
+/// ONLY / EYES); §B.3 Table 2 p21 (US-collateral defaulting rule
+/// drives Row 9 firing).
 #[test]
-fn hot1_closure_noop_on_classified_with_noforn() {
+fn project_noop_on_classified_with_noforn_via_overlay() {
+    use marque_scheme::Scope;
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs(); // US(Secret)
     a.dissem_us = vec![DissemControl::Nf].into();
     let before = CapcoMarking::new(a);
-    let after = scheme.closure(before.clone());
+    let after = scheme.project(Scope::Page, &[before.clone()]);
     assert_eq!(
         before.0.dissem_us, after.0.dissem_us,
-        "closure must be a no-op when NOFORN already present (both RELIDO rules suppressed); HOT-1 must not add spurious facts"
+        "project must converge to `{{NOFORN}}` when NOFORN is already \
+         present (closure adds RELIDO via Row 9; overlay strips it per \
+         §H.8 p145)"
     );
 }
 

@@ -2,17 +2,35 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Static `(trigger_mask, suppressor_mask, cone_mask)` closure-rule catalog
-//! over [`FactBitmask`] + bitwise Kleene fixpoint [`close`].
+//! Static `(trigger_mask, cone_mask)` closure-rule catalog over
+//! [`FactBitmask`] + bitwise Kleene fixpoint [`close`].
 //!
 //! PR-C of the FactBitmask refactor (issue #371). This module owns the
 //! data + dispatch shape; PR-D rewires [`CapcoScheme::closure`] to call
-//! into it on the hot path. PR-C itself does NOT consume the table from
-//! the production pipeline — `CapcoScheme::closure` still walks the
-//! fn-pointer [`CAPCO_CLOSURE_RULES`] catalog. The PR-C deliverable is
-//! the table + the Kleene loop + the equivalence cross-check against
-//! the existing catalog (`tests/closure_table_equivalence.rs`) +
-//! P1-P4 proptests (`tests/proptest_closure_table.rs`).
+//! into it on the hot path.
+//!
+//! # Post-#704 architecture
+//!
+//! Issue #704 removed the `suppressor_mask` field from [`ClosureRow`]
+//! and the corresponding suppression branch from [`close`]. The
+//! suppressor gating was mathematically incompatible with the closure
+//! operator's algebraic **monotonicity** property
+//! (`a ⊑ b ⟹ Cl(a) ⊑ Cl(b)`): adding suppressor bits via `b_extra`
+//! blocked cones that fired for `a` alone, strictly losing bits from
+//! `close(b)`. The proptest at
+//! `crates/capco/tests/proptest_closure_table.rs::p3_monotonicity_realistic`
+//! shrinks to a one-line counterexample on the pre-#704 architecture.
+//!
+//! The §H.8 p145 NOFORN-dominates / §B.3.a p19 FD&R supersession
+//! semantics that the suppressors previously encoded move to
+//! [`CapcoScheme::apply_supersession_overlays`] — a per-axis overlay
+//! that runs AFTER [`close`] converges. Per
+//! `docs/plans/2026-05-01-lattice-design.md` §3 (e) supersession is a
+//! separate layer that runs after closure converges, not a suppressor
+//! inside the closure loop. See the
+//! [`crate::lattice::dissem::DissemSet::with_fdr_dominance_stripped`] and
+//! [`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`]
+//! doc-comments for the per-axis overlays.
 //!
 //! # Row inventory
 //!
@@ -36,12 +54,11 @@
 //! # Dispatch semantics
 //!
 //! [`close`] walks the catalog in order within each Kleene iteration,
-//! OR-ing the cone of any row whose trigger fires and whose suppressor
-//! does not. Mutation happens to the accumulated `next` value between
-//! rows, so an earlier row's cone is visible to a later row's
-//! suppressor check in the same iteration — matching the in-pass
-//! ordering invariant from `CAPCO_CLOSURE_RULES`'s catalog-order
-//! doc-comment.
+//! OR-ing the cone of any row whose trigger fires. Mutation happens to
+//! the accumulated `next` value between rows, so an earlier row's cone
+//! is visible to a later row's trigger check in the same iteration —
+//! matching the in-pass ordering invariant from
+//! `CAPCO_CLOSURE_RULES`'s catalog-order doc-comment.
 //!
 //! The Kleene loop runs at most [`MAX_CLOSURE_ITERATIONS`] = 16 passes;
 //! the CAPCO catalog's longest causal chain is depth 2 (per-marking
@@ -62,9 +79,7 @@
 
 use marque_scheme::{Citation, FactBitmask, SectionLetter, Severity, capco, capco_table};
 
-use crate::fact_bitmask::{
-    MASK_FDR_DOMINATORS, MASK_FDR_OR_RELIDO_INCOMPAT, MASK_RELIDO_US_CLASS_SUPPRESSORS, fact_bit,
-};
+use crate::fact_bitmask::fact_bit;
 
 // ---------------------------------------------------------------------------
 // Trigger masks
@@ -123,12 +138,12 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 
 /// A single bitmask-form closure rule.
 ///
-/// Mirrors [`marque_scheme::ClosureRule`] but stores trigger / suppressor /
-/// cone as raw `u128` masks instead of `&[TokenRef]` slices. The trade-off:
+/// Mirrors [`marque_scheme::ClosureRule`] but stores trigger / cone as
+/// raw `u128` masks instead of `&[TokenRef]` slices. The trade-off:
 /// the bitmask form has no notion of `AnyInCategory` (so any
 /// category-presence trigger must surface as a derived bit on
-/// [`fact_bit`]) but evaluates with a single `&` op per axis instead of
-/// an `iter().any()` walk per atom.
+/// [`fact_bit`]) but evaluates with a single `&` op per axis instead
+/// of an `iter().any()` walk per atom.
 ///
 /// Row 7 (`capco/rel-to-usa-nato-if-nato-classification`) is the only
 /// hybrid row in the catalog: its closed-vocab cone lives here
@@ -136,6 +151,18 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 /// applied by PR-D's `closure()` body via the
 /// [`marque_scheme::ClosureRule::cone_derived`] fn-pointer on the
 /// corresponding [`CAPCO_CLOSURE_RULES`](super::closure) entry.
+///
+/// # Post-#704 — no suppressor field
+///
+/// Issue #704 removed the pre-existing `suppressor_mask` field. The
+/// suppressor gating violated the closure operator's algebraic
+/// monotonicity property (`a ⊑ b ⟹ Cl(a) ⊑ Cl(b)`) — adding bits via
+/// `b_extra` could activate suppressors and strictly lose cone bits
+/// from `close(b)`. The §H.8 p145 / §B.3.a p19 FD&R supersession
+/// semantics the suppressors encoded moved to
+/// [`CapcoScheme::apply_supersession_overlays`], which runs after
+/// [`close`] converges and observes the post-closure state. See the
+/// module-level doc-comment for the architectural rationale.
 ///
 /// # Fields
 ///
@@ -154,11 +181,6 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 ///   Row 3 then triggers Row 0's ORCON entry, adding NOFORN in the
 ///   same iteration). The intra-iteration mutation pattern matches
 ///   the fn-pointer catalog's documented in-pass ordering invariant.
-/// - `suppressor_mask` — suppresses the row iff
-///   `(working.bits() & suppressor_mask) != 0` (same evolving state
-///   semantic — earlier rows' cones can activate suppressors for
-///   later rows in the same iteration). A mask of `0` means no
-///   suppressors (unconditional firing).
 /// - `cone_mask` — bits OR-ed into `working` when the row fires; the
 ///   updated `working` is what subsequent rows in the same iteration
 ///   read.
@@ -177,7 +199,6 @@ pub struct ClosureRow {
     pub label: Citation,
     pub default_severity: Severity,
     pub trigger_mask: u128,
-    pub suppressor_mask: u128,
     pub cone_mask: u128,
 }
 
@@ -211,7 +232,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco_table(SectionLetter::B, 3, 2, 21),
         default_severity: Severity::Info,
         trigger_mask: ROW0_NOFORN_IF_CAVEATED_TRIGGERS,
-        suppressor_mask: MASK_FDR_DOMINATORS,
         cone_mask: CONE_NOFORN,
     },
     // Row 1 — Per-marking: HCS-O → NOFORN + ORCON.
@@ -221,7 +241,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 4, 64),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_HCS_O,
-        suppressor_mask: 0,
         cone_mask: CONE_NOFORN | CONE_ORCON,
     },
     // Row 2 — Per-marking: HCS-P[sub] → NOFORN + ORCON.
@@ -231,7 +250,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 4, 68),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_HCS_P_SUB,
-        suppressor_mask: 0,
         cone_mask: CONE_NOFORN | CONE_ORCON,
     },
     // Row 3 — Per-marking: SI-G → ORCON (NOFORN intentionally NOT in
@@ -243,7 +261,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 4, 80),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_SI_G,
-        suppressor_mask: 0,
         cone_mask: CONE_ORCON,
     },
     // Row 4 — Per-marking: TK-BLFH → NOFORN.
@@ -253,7 +270,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 4, 87),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_BLFH,
-        suppressor_mask: 0,
         cone_mask: CONE_NOFORN,
     },
     // Row 5 — Per-marking: TK-IDIT → NOFORN.
@@ -263,7 +279,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 4, 91),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_IDIT,
-        suppressor_mask: 0,
         cone_mask: CONE_NOFORN,
     },
     // Row 6 — Per-marking: TK-KAND → NOFORN.
@@ -273,7 +288,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 4, 95),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_KAND,
-        suppressor_mask: 0,
         cone_mask: CONE_NOFORN,
     },
     // Row 7 — Trio 3: bare NATO classification → REL TO USA (+ NATO
@@ -284,7 +298,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 7, 127),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::NATO_CLASS,
-        suppressor_mask: MASK_FDR_DOMINATORS,
         cone_mask: CONE_REL_TO_USA,
     },
     // Row 8 — Trio 2: SCI presence → RELIDO unless FD&R-marked or
@@ -295,7 +308,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco(SectionLetter::H, 8, 154),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_PRESENT,
-        suppressor_mask: MASK_FDR_OR_RELIDO_INCOMPAT,
         cone_mask: CONE_RELIDO,
     },
     // Row 9 — Trio 2: US collateral classification → RELIDO unless
@@ -306,7 +318,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         label: capco_table(SectionLetter::B, 3, 2, 21),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::US_COLLATERAL_CLASSIFIED,
-        suppressor_mask: MASK_RELIDO_US_CLASS_SUPPRESSORS,
         cone_mask: CONE_RELIDO,
     },
 ];
@@ -339,7 +350,7 @@ pub const MAX_CLOSURE_ITERATIONS: usize = marque_scheme::MAX_CLOSURE_ITERATIONS;
 ///
 /// Walks the catalog in order within each iteration, OR-ing each
 /// firing row's `cone_mask` into the accumulating `next` value.
-/// Mutations from earlier rows are visible to later rows' suppressor
+/// Mutations from earlier rows are visible to later rows' trigger
 /// checks in the same iteration. Iterates until the bitmask stops
 /// changing or [`MAX_CLOSURE_ITERATIONS`] is reached.
 ///
@@ -350,20 +361,22 @@ pub const MAX_CLOSURE_ITERATIONS: usize = marque_scheme::MAX_CLOSURE_ITERATIONS;
 ///   (every input bit survives — `close` is purely additive on the
 ///   accumulator; rows OR cone bits in but never strip input bits).
 /// - **Monotonicity (P3)** — `a ⊑ b ⟹ close(a) ⊑ close(b)`. Holds
-///   because each row's firing predicate (`trigger ∧ ¬suppressor`)
-///   transforms monotonely with bit additions: a larger input can
-///   only (a) activate more triggers and (b) activate more
-///   suppressors. (a) strictly enlarges the cone-output set; (b)
-///   prevents *additional* cone additions on the larger input but
-///   never reverses a cone addition already made on the smaller
-///   input — `close` is purely additive (P2), so suppressor
-///   activation has no destructive effect. The intra-iteration walk
-///   order is monotonicity-preserving for the same reason: a row
-///   that fires on input `a` at row-index `i` and on input `b` at
-///   the same index sees a strict superset of the working state,
-///   so its decision can flip from fire-to-suppressed but never
-///   from suppressed-to-fire when starting from a state that
-///   already contained the suppressor bits.
+///   because the operator is **purely additive** post-#704: each
+///   row's firing predicate is the upward-closed presence check
+///   `(working & trigger_mask) != 0`, which is monotone in
+///   `working` (more bits → at least as many triggers fire), and
+///   the row body only OR-s `cone_mask` into `working` — never
+///   removes bits. Pre-#704 the table carried a
+///   `suppressor_mask` whose presence flipped the firing predicate
+///   to `trigger ∧ ¬suppressor`, which is anti-monotone in
+///   `working` and broke P3 (adding bits via `b_extra` could
+///   activate suppressors and strictly lose cone bits from
+///   `close(b)` vs `close(a)`). The §H.8 p145 / §B.3.a p19 FD&R
+///   supersession semantics that the suppressors encoded moved to
+///   [`CapcoScheme::apply_supersession_overlays`] — a post-closure
+///   overlay that observes the post-Kleene state and is composed
+///   with the purely-additive closure operator without breaking
+///   the closure layer's algebraic monotonicity.
 /// - **Convergence (P4)** — converges in ≤ [`MAX_CLOSURE_ITERATIONS`]
 ///   iterations. Each iteration is non-decreasing (cone_mask is OR'd
 ///   in); the bitmask state is bounded by `2^WIDTH`; the loop
@@ -381,9 +394,7 @@ pub fn close(input: FactBitmask) -> FactBitmask {
     for _ in 0..MAX_CLOSURE_ITERATIONS {
         let mut next = bits;
         for row in CLOSURE_TABLE {
-            let trigger_hit = (next & row.trigger_mask) != 0;
-            let suppressed = row.suppressor_mask != 0 && (next & row.suppressor_mask) != 0;
-            if trigger_hit && !suppressed {
+            if (next & row.trigger_mask) != 0 {
                 next |= row.cone_mask;
             }
         }
@@ -475,38 +486,6 @@ mod tests {
         }
     }
 
-    /// Per-marking rows (1-6) have no suppressor — they fire
-    /// unconditionally per `marque-applied.md` §4.7.5 ("Per-marking
-    /// unconditional implications").
-    #[test]
-    fn per_marking_rows_have_no_suppressor() {
-        for (i, row) in CLOSURE_TABLE.iter().enumerate().take(7).skip(1) {
-            assert_eq!(
-                row.suppressor_mask, 0,
-                "row {} ({}) must have no suppressor",
-                i, row.name,
-            );
-        }
-    }
-
-    /// Trio 1 / Trio 3 / Trio 2 rows MUST be suppressed by their
-    /// respective suppressor masks. Row 0 + Row 7 use
-    /// `MASK_FDR_DOMINATORS`; Row 8 uses `MASK_FDR_OR_RELIDO_INCOMPAT`;
-    /// Row 9 uses `MASK_RELIDO_US_CLASS_SUPPRESSORS`.
-    #[test]
-    fn row_suppressors_match_design() {
-        assert_eq!(CLOSURE_TABLE[0].suppressor_mask, MASK_FDR_DOMINATORS);
-        assert_eq!(CLOSURE_TABLE[7].suppressor_mask, MASK_FDR_DOMINATORS);
-        assert_eq!(
-            CLOSURE_TABLE[8].suppressor_mask,
-            MASK_FDR_OR_RELIDO_INCOMPAT
-        );
-        assert_eq!(
-            CLOSURE_TABLE[9].suppressor_mask,
-            MASK_RELIDO_US_CLASS_SUPPRESSORS,
-        );
-    }
-
     /// Every cone bit must be one of the four `APPLY_ELIGIBLE_MASK`
     /// atoms (NOFORN / ORCON / RELIDO / REL_TO_USA). The inverse
     /// projection silently drops any other cone bit, so a row with
@@ -541,6 +520,18 @@ mod tests {
 
     /// SI-G alone → adds ORCON via Row 3, then transitively NOFORN
     /// via Row 0 (ORCON is in Row 0's trigger list).
+    ///
+    /// Post-#704: Row 8 (`relido-if-sci-and-not-incompatible`) also
+    /// fires unconditionally on `SCI_PRESENT` because the
+    /// `suppressor_mask` gate was retired. The closure layer's job
+    /// is purely additive Kleene fixpoint; the §H.8 p145
+    /// NOFORN-dominates-RELIDO supersession that strips the
+    /// closure-added RELIDO lives in
+    /// `CapcoScheme::apply_supersession_overlays`, which runs in
+    /// `project()` after `closure()` returns. End-to-end
+    /// (project-level) tests in `closure_runtime.rs` continue to
+    /// assert RELIDO is absent on SI_G inputs; this test pins the
+    /// closure-layer purely-additive contract.
     #[test]
     fn close_si_g_chains_orcon_then_noforn() {
         let input = FactBitmask::EMPTY
@@ -549,9 +540,10 @@ mod tests {
         let closed = close(input);
         assert!(closed.is_set(fact_bit::ORCON));
         assert!(closed.is_set(fact_bit::NOFORN));
-        // Row 8 (RELIDO_SCI) must NOT fire — SI_G is in
-        // MASK_FDR_OR_RELIDO_INCOMPAT.
-        assert!(!closed.is_set(fact_bit::RELIDO));
+        // Post-#704: RELIDO IS in closure output (Row 8 fires on
+        // SCI_PRESENT; the §H.8 p145 strip happens in the
+        // supersession overlay, not in the closure layer).
+        assert!(closed.is_set(fact_bit::RELIDO));
     }
 
     /// US Secret alone (no caveats, no SCI) → Row 9 fires +RELIDO.
@@ -562,20 +554,6 @@ mod tests {
         assert!(closed.is_set(fact_bit::RELIDO));
         // Row 0 must NOT fire — no caveated trigger present.
         assert!(!closed.is_set(fact_bit::NOFORN));
-    }
-
-    /// FD&R presence (NOFORN) suppresses Row 0 + Row 9 + Row 7.
-    #[test]
-    fn fdr_presence_suppresses_caveated_relido_and_nato_rows() {
-        // ORCON + NOFORN + US Secret. Row 0 normally fires on ORCON,
-        // but NOFORN is in MASK_FDR_DOMINATORS so it's suppressed.
-        let input = FactBitmask::EMPTY
-            .with_bit(fact_bit::ORCON)
-            .with_bit(fact_bit::NOFORN)
-            .with_bit(fact_bit::US_COLLATERAL_CLASSIFIED);
-        let closed = close(input);
-        // Stable fixpoint: nothing new added.
-        assert_eq!(closed, input);
     }
 
     /// Idempotence — close(close(b)) == close(b). Spot-check with the
