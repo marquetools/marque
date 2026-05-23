@@ -4,10 +4,8 @@
 
 //! Phase-D probabilistic [`Recognizer`] — the "decoder".
 //!
-//! This module implements the deep-scan half of the strict/deep-scan
-//! recognizer split introduced in Phase 4 PR-2. When the engine is
-//! configured for deep-scan (batch reconciliation mode,
-//! rule-escalated region, `--deep-scan` CLI flag), and the strict
+//! The deep-scan half of the strict/deep-scan recognizer split. When
+//! the engine is configured for deep-scan mode and the strict
 //! recognizer returns zero candidates for a marking region, the
 //! engine falls back to the decoder to recover mangled markings that
 //! are one of a small set of canonical-shape deviations away from a
@@ -23,72 +21,27 @@
 //! The decoder never fabricates a marking where none exists. When the
 //! observed tokens fit no CAPCO grammar template, it returns
 //! `Parsed::Ambiguous { candidates: vec![] }` — the zero-candidate
-//! signal per foundational-plan line 609-612.
-//!
-//! ## Why this lives in `marque-engine`, not `marque-capco`
-//!
-//! Same Constitution VII rationale as `StrictRecognizer` (PR-2):
-//! `marque-capco` may not depend on `marque-core`, but the decoder
-//! needs core's fuzzy-vocab matcher and strict parser to materialize
-//! candidates. `marque-engine` is the sole crate where both chains
-//! converge. The original tasks.md T059/T061 placement is amended in
-//! tasks.md itself.
-//!
-//! ## Scoring approach (foundational-plan §5.2)
-//!
-//! For each candidate the decoder computes:
-//!
-//! ```text
-//! log_posterior(candidate | observed)
-//!   = log_prior(candidate)                      // baked corpus priors (PR-1)
-//!   + Σ log_likelihood(feature | candidate)     // enumerated scored features
-//! ```
-//!
-//! The decoder currently scores the candidate-shape features it
-//! records from the closed [`FeatureId`] enum:
-//! `EditDistance1`, `EditDistance2`, `TokenReorder`,
-//! `SupersededToken`, and `BaseRateCommonMarking`. Each contributes
-//! a fixed log-odds delta documented at the feature's call site.
-//!
-//! [`FeatureId::StrictContextClassification`] is part of the audit-
-//! schema enum but is **not** currently a scored-feature term:
-//! classification-level context is enforced through the separate
-//! [`ParseContext::classification_floor`] hard filter (FR-011),
-//! which rejects below-floor candidates before scoring rather than
-//! adding a likelihood term to the posterior. [`FeatureId::CorpusOverrideInEffect`]
-//! is reserved for PR-5 when corpus-override is wired; the decoder
-//! does not emit it today. Turning either into an actual scored
-//! contributor requires a coordinated audit-schema bump
-//! (`MARQUE_AUDIT_SCHEMA`) per `marque-rules/src/confidence.rs` doc.
-//!
-//! The top candidate wins when its posterior exceeds the runner-up by
-//! a configured ratio; below that threshold the decoder returns
-//! `Parsed::Ambiguous { candidates }` so the engine can surface a
-//! diagnostic rather than auto-apply. `Candidate::prior_log_odds`
-//! carries the prior alone (sum of token log-priors); the
-//! per-feature log-odds deltas live only in
-//! `Candidate::evidence[i].log_odds`, so a resolver that reconstructs
-//! `prior_log_odds + Σ evidence.log_odds` recovers the decoder's
-//! internal posterior exactly, without double-counting.
+//! signal per the foundational-plan dispatch contract.
 //!
 //! ## What this module is NOT
 //!
-//! - Not a full template-matching grammar engine. The MVP materializes
-//!   candidates by canonicalizing observed tokens and round-tripping
-//!   through the strict parser — the strict parser is the arbiter of
-//!   "is this a CAPCO-shape marking." If the canonicalized bytes
-//!   strict-parse, we have a candidate; if not, we discard.
-//! - Not a learning system. All priors are compile-time-baked `&'static`
-//!   tables from `marque_capco::priors` (Constitution III: no runtime
-//!   corpus override on WASM).
-//! - Not a fix applier. The decoder proposes `CapcoMarking` candidates;
-//!   the engine applies them through the normal `Diagnostic` /
-//!   `FixProposal` path with `FixSource::DecoderPosterior`.
-
-
-//! Decoder module — split into sub-files per item-cluster.
-//! See `docs/refactor-006/decoder-architecture.md` for the
-//! design rationale.
+//! - **Not a full template-matching grammar engine.** Candidates are
+//!   materialized by canonicalizing observed tokens and round-tripping
+//!   through the strict parser; the strict parser is the arbiter of
+//!   "is this a CAPCO-shape marking?".
+//! - **Not a learning system.** All priors are compile-time-baked
+//!   `&'static` tables from `marque_capco::priors`.
+//! - **Not a fix applier.** The decoder proposes `CapcoMarking`
+//!   candidates; the engine applies them through the normal
+//!   `Diagnostic` / `FixProposal` path with
+//!   `FixSource::DecoderPosterior`.
+//!
+//! ## Sub-module layout
+//!
+//! Per-item-cluster split (engine-internal refactor #562). See
+//! `docs/refactor-006/decoder-architecture.md` for the
+//! design rationale, scoring approach, crate-placement reasoning,
+//! and retired-mechanism notes (`LENIENT_REL_PREFIX_PENALTY`).
 
 mod candidates;
 mod dispatcher;

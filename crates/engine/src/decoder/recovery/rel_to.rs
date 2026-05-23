@@ -17,7 +17,7 @@ use marque_rules::confidence::FeatureId;
 use super::super::types::FeatureEntry;
 
 // ---------------------------------------------------------------------------
-// REL TO structural repair (issue #133 PR 9)
+// REL TO structural repair
 // ---------------------------------------------------------------------------
 
 /// REL TO structural repair.
@@ -389,7 +389,7 @@ pub(crate) fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option
 }
 
 // ---------------------------------------------------------------------------
-// REL TO trigraph fuzzy expansion (issue #233)
+// REL TO trigraph fuzzy expansion
 // ---------------------------------------------------------------------------
 
 /// Emit one canonical-byte alternate per fuzzy candidate for each
@@ -611,7 +611,7 @@ pub(crate) fn try_rel_to_fuzzy_trigraph_candidates(
 }
 
 // ---------------------------------------------------------------------------
-// REL TO USA-injection for short first entries (issue #234 PR-B)
+// REL TO USA-injection for short first entries
 // ---------------------------------------------------------------------------
 
 /// Emit one canonical-byte alternate per REL TO block whose first
@@ -736,7 +736,7 @@ pub(crate) fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, Fe
 
         // Skip if USA is already present elsewhere in the block —
         // a USA-injection candidate would create a duplicate, which
-        // E052 (issue #234 PR-B) would then need to dedup. Short-
+        // E052 would then need to dedup. Short-
         // circuit here rather than emit-and-redup.
         let already_has_usa = entries.iter().skip(1).any(|(_, e)| e.trim() == "USA");
         if already_has_usa {

@@ -142,20 +142,12 @@ const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// candidate (which projects no SCI) is unaffected.
 const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
-// (`LENIENT_REL_PREFIX_PENALTY` removed — under the current PR-9
-// architecture, `try_rel_to_structural_repair` runs as preprocessing
-// on the normalized text before any candidate is emitted, so
-// `RELT O ` / `REL OT ` patterns at a token boundary are rewritten
-// to canonical `REL TO ` before scoring sees them. The defense-in-
-// depth scorer penalty that PR 9 originally introduced was meant to
-// break a tie between competing raw vs. repaired *candidates* —
-// that tie no longer exists since the repair is no longer a
-// separate candidate. The accuracy harness
-// (`resolution_rate_at_0_85`, `resolution_rate_does_not_regress`,
-// per-class floors) is the load-bearing regression gate for this
-// recovery path. Issue #186 (REL TO trigraph corpus-weighted
-// recovery) is the followup that handles the remaining lenient-
-// header cases via priors rather than scorer penalties.)
+// (A `LENIENT_REL_PREFIX_PENALTY` scorer once lived here. It was
+// retired because `try_rel_to_structural_repair` runs as preprocessing
+// before any candidate is emitted, so the tie the penalty broke no
+// longer exists. See `docs/refactor-006/decoder-architecture.md` §
+// "Retired mechanisms" for the rationale and the gate that catches
+// regressions to this recovery path.)
 
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///

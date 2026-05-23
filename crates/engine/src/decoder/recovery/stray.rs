@@ -6,7 +6,7 @@
 //! upstream.
 
 // ---------------------------------------------------------------------------
-// Stray-character `/X/` recovery (issue #133 PR 7)
+// Stray-character `/X/` recovery
 // ---------------------------------------------------------------------------
 
 /// Walk `text` looking for the `<alnum>/<single_alnum_char>/<alnum>`

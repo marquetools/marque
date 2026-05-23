@@ -9,7 +9,7 @@
 use crate::decoder::scoring::is_hard_splitter;
 
 // ---------------------------------------------------------------------------
-// Missing-delimiter insertion (issue #133 PR 3)
+// Missing-delimiter insertion
 // ---------------------------------------------------------------------------
 
 /// Try to insert missing `//` segment separators at category-transition

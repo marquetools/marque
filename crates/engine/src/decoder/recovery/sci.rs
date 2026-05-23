@@ -7,7 +7,7 @@
 use marque_ism::{SciControl, SciControlBare};
 
 // ---------------------------------------------------------------------------
-// SCI delimiter recovery (issue #198 — #133 PR 10)
+// SCI delimiter recovery
 // ---------------------------------------------------------------------------
 
 /// SCI delimiter recovery preprocessing — issue #198, #133 PR 10.

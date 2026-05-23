@@ -8,7 +8,7 @@
 //! that follows.
 
 // ---------------------------------------------------------------------------
-// SAR indicator-keyword structural repair (issue #133 PR 6)
+// SAR indicator-keyword structural repair
 // ---------------------------------------------------------------------------
 
 /// Repair stray-prefix and missing-hyphen mangling around the SAR
