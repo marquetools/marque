@@ -900,82 +900,117 @@ impl CapcoScheme {
         self.project_attrs_pipeline(raw)
     }
 
-    /// Issue #704 — apply §H.8 p145 FD&R supersession to the
-    /// post-closure CanonicalAttrs.
+    /// Issue #704 — re-apply per-axis supersession overlays to the
+    /// post-`close()` / post-`apply_default_fill` CanonicalAttrs.
     ///
-    /// Runs unconditionally as part of [`Self::project_attrs_pipeline`]
-    /// between [`MarkingScheme::closure`] and the declarative
-    /// `PageRewrites`. The overlay is the lattice-layer answer to the
-    /// closure operator being purely additive post-#704: when an
-    /// explicit FD&R decision exists on the post-closure state, this
-    /// step strips the closure-added implicit defaults that conflict
-    /// with §H.8 p145.
+    /// Runs as part of [`Self::project_attrs_pipeline`] between
+    /// `apply_default_fill` and the declarative `PageRewrites`.
+    /// The post-#704 R2-1 refactor split this method into two
+    /// honest steps:
     ///
-    /// Two strips happen in order (the second consumes the first's
-    /// output):
+    /// 1. **Dissem-axis overlay re-application (unconditional)** —
+    ///    calls
+    ///    [`crate::lattice::dissem::DissemSet::with_all_overlays_reapplied`]
+    ///    which runs all three `DissemSet` overlays:
+    ///    - Overlay 1: OC > OC-USGOV supersession (§H.8 p140 +
+    ///      §H.8 p136). NOFORN-independent.
+    ///    - Overlay 2: RELIDO observed-unanimity (§H.8 pp155-156).
+    ///      NOFORN-independent.
+    ///    - Overlay 3: NOFORN-dominates supersession (§H.8 p145 +
+    ///      §B.3.a p19 + §D.2 Table 3 rows 1-2). NOFORN-dependent.
     ///
-    /// 1. **Dissem axis strip**
-    ///    ([`crate::lattice::dissem::DissemSet::with_fdr_dominance_stripped`]):
-    ///    if `Nf` is present in `attrs.dissem_us`, remove every
-    ///    dominated control (`Rel`, `Relido`, `Displayonly`, `Eyes`)
-    ///    per §H.8 p145.
+    ///    Pre-R2-1 this step was gated on `has_noforn` because it
+    ///    was framed as just the §H.8 p145 strip. The misframing
+    ///    silently disabled Overlays 1 + 2 for inputs whose
+    ///    close() / default_fill outputs would have triggered them.
+    ///    Post-R2-1 the step runs unconditionally; the
+    ///    `has_noforn` gate moved to Step 2 (the only NOFORN-
+    ///    dependent action).
     ///
-    /// 2. **REL TO + DISPLAY ONLY country-list clear**
-    ///    ([`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`]):
-    ///    if `Nf` ended up in `attrs.dissem_us` (read after step 1),
-    ///    clear `attrs.rel_to` and `attrs.display_only_to`. §H.8 p145
-    ///    is symmetric across the dissem-axis tokens and the country-
-    ///    list axes — both sides of NOFORN's mutual exclusion list
-    ///    must be evicted.
+    /// 2. **REL TO + DISPLAY ONLY country-list clear (NOFORN-gated)** —
+    ///    §H.8 p145 country-list strip: if `Nf` ended up in
+    ///    `attrs.dissem_us` after Step 1, clear `attrs.rel_to` and
+    ///    `attrs.display_only_to`. §H.8 p145 is symmetric across
+    ///    the dissem-axis tokens and the country-list axes — both
+    ///    sides of NOFORN's mutual exclusion list must be evicted.
+    ///    Mirrors
+    ///    [`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`]
+    ///    at the CanonicalAttrs boundary.
     ///
-    /// Idempotent: rerunning observes the post-strip state and finds
-    /// nothing to do. Read-only with respect to inputs that don't
-    /// carry an FD&R dominator.
+    /// Idempotent: rerunning observes the post-overlay state.
+    /// Step 1 is idempotent because each overlay strips strictly
+    /// (a second pass finds nothing to strip); Step 2 is
+    /// idempotent because cleared axes stay cleared.
     ///
-    /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
-    /// RELIDO, EYES ONLY, or DISPLAY ONLY"); §B.3.a p19 (FD&R
-    /// dominator enumeration); §D.2 Table 3 rows 1-2 (NOFORN
-    /// dominates dominated FD&R at banner roll-up).
+    /// Authority:
+    /// - §H.8 p140 + §H.8 p136 (OC > OC-USGOV — Overlay 1)
+    /// - §H.8 pp155-156 (RELIDO observed-unanimity — Overlay 2)
+    /// - §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO,
+    ///   EYES ONLY, or DISPLAY ONLY"); §B.3.a p19 (FD&R dominator
+    ///   enumeration); §D.2 Table 3 rows 1-2 (NOFORN dominates
+    ///   dominated FD&R at banner roll-up) — Overlay 3 + Step 2.
     fn apply_supersession_overlays(attrs: &mut CanonicalAttrs) {
         use crate::lattice::DissemSet;
         use marque_ism::DissemControl;
 
-        // Step 1 — dissem-axis strip. Only run the BTreeSet
-        // round-trip when `Nf` is actually present; the common case
-        // (no NOFORN in the post-closure state) is a single
-        // `iter().any(...)` test that costs no allocations.
-        let has_noforn = attrs.dissem_us.contains(&DissemControl::Nf);
-        if has_noforn {
-            // Build a DissemSet view, run the overlay, write back if
-            // changed. The DissemSet round-trip preserves the natural
-            // BTreeSet order — same shape `apply_closed_bits_to`
-            // produces on a Kleene-delta strip, so re-running this
-            // overlay over an already-stripped attrs is a no-op.
-            let before_len = attrs.dissem_us.len();
-            let view = DissemSet::from_attrs_iter(std::slice::from_ref(attrs));
-            // `from_attrs_iter` already applies the supersession
-            // overlay during construction, but it operates on a fresh
-            // BTreeSet built from per-portion `dissem_us` — its
-            // strip is byte-equivalent to `with_fdr_dominance_stripped`
-            // for single-portion input. Calling the overlay
-            // explicitly is the documented entry point for this
-            // strip (issue #704); it remains a no-op when the
-            // BTreeSet construction already stripped dominated
-            // tokens.
-            let stripped = view.with_fdr_dominance_stripped();
-            let next = stripped.into_boxed_slice();
-            if next.len() != before_len {
-                attrs.dissem_us = next;
-            }
+        // Step 1 — dissem-axis overlay re-application.
+        //
+        // **Runs unconditionally** post-#704 R2-1. Pre-R2-1 this
+        // step was gated on `has_noforn` because it was framed as
+        // "the §H.8 p145 NOFORN-dominates strip." Copilot R2's
+        // structural review caught the misframing: `DissemSet`
+        // carries THREE overlays (`apply_overlays` →
+        // `with_all_overlays_reapplied`), only one of which is
+        // NOFORN-dependent:
+        //
+        // - Overlay 1: OC > OC-USGOV supersession (§H.8 p140 +
+        //   §H.8 p136). NOFORN-independent: fires when both `Oc`
+        //   and `OcUsgov` are present in the post-close /
+        //   post-default-fill dissem state, regardless of NOFORN.
+        // - Overlay 2: RELIDO observed-unanimity (§H.8 pp155-156).
+        //   NOFORN-independent: drops `Relido` when not all
+        //   contributing portions carried it.
+        // - Overlay 3: NOFORN-dominates (§H.8 p145 + §B.3.a p19
+        //   + §D.2 Table 3 rows 1-2). NOFORN-dependent: only
+        //   fires when `Nf` is in the set.
+        //
+        // The pre-R2-1 `has_noforn` gate prevented Overlays 1 + 2
+        // from re-running when close() / default_fill added an
+        // Overlay-1- or Overlay-2-relevant bit that interacts with
+        // input bits. No production CAPCO row exposes the gap
+        // today (the gap is structural, not observable on the
+        // current 6-row CLOSURE_TABLE + 4-row default-fill
+        // catalog), but the defensive guard prevents future
+        // catalog edits from regressing the §H.8 p140 / pp155-156
+        // contracts.
+        //
+        // The unconditional rebuild cost is bounded by
+        // `attrs.dissem_us.len()` (typically 1-3 tokens) plus the
+        // `from_attrs_iter` BTreeSet round-trip — cheap enough
+        // that the defensive guard pays for itself even on the
+        // common (no-Nf) case.
+        let view = DissemSet::from_attrs_iter(std::slice::from_ref(attrs));
+        let rebuilt = view.with_all_overlays_reapplied();
+        let next = rebuilt.into_boxed_slice();
+        if next[..] != attrs.dissem_us[..] {
+            attrs.dissem_us = next;
         }
 
-        // Step 2 — country-list clear. Re-check NOFORN presence; the
-        // dissem strip cannot have removed NOFORN (the strip only
-        // removes DOMINATED controls; NOFORN itself is the dominator
-        // and survives), so this re-check is the same boolean. Kept
-        // as a fresh inspection for clarity — the §H.8 p145 country-
-        // list clearing rule reads exactly "if NOFORN is present,
-        // strip rel_to and display_only_to."
+        // Step 2 — country-list clear. NOFORN-conditional per
+        // §H.8 p145: "NOFORN cannot be used with REL TO, RELIDO,
+        // EYES ONLY, or DISPLAY ONLY". When NOFORN is present in
+        // the post-overlay dissem state, `rel_to` and
+        // `display_only_to` MUST be cleared. This is the only step
+        // that gates on `has_noforn` — Overlays 1 + 2 in Step 1
+        // are NOFORN-independent and ran unconditionally.
+        //
+        // Re-read `has_noforn` AFTER Step 1 because Step 1's
+        // overlay rebuild does not remove NOFORN (it only removes
+        // DOMINATED controls; NOFORN itself is the dominator that
+        // survives). Re-read is defensive: a future overlay edit
+        // that did remove NOFORN under some condition would be
+        // observable here.
+        let has_noforn = attrs.dissem_us.contains(&DissemControl::Nf);
         if has_noforn {
             if !attrs.rel_to.is_empty() {
                 attrs.rel_to = Box::new([]);

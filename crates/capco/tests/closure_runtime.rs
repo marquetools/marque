@@ -1239,3 +1239,44 @@ fn project_resolves_orcon_plus_noforn_no_relido() {
     // Length stable end-to-end: input {OC, NF}, output {OC, NF}.
     assert_eq!(out.0.dissem_us.len(), m.0.dissem_us.len());
 }
+
+/// R2-1 regression: end-to-end project() with input dissem_us = [Oc,
+/// OcUsgov] strips OcUsgov per §H.8 p140 Overlay 1, end-to-end.
+///
+/// Pre-#704-R2-1 the `apply_supersession_overlays` step gated its
+/// dissem-axis rebuild on `has_noforn`. The bug was structural: any
+/// close()/default_fill row that ADDED `Oc` to an `OcUsgov`-bearing
+/// post-close state (or vice versa) would have silently failed to
+/// strip the OcUsgov because the outer NOFORN gate prevented the
+/// rebuild from re-running. No current CAPCO row exposes the bug
+/// in production (the join layer already strips OcUsgov during
+/// `DissemSet::from_attrs_iter`), but post-R2-1 the rebuild runs
+/// unconditionally — this test pins end-to-end the §H.8 p140
+/// contract that OC > OC-USGOV holds regardless of NOFORN status.
+///
+/// Authority: §H.8 p140 ("ORCON takes precedence within the banner
+/// line" + "If a portion contains both ORCON and ORCON-USGOV
+/// information, ORCON takes precedence in the portion mark") —
+/// re-verified verbatim at this PR's authorship per Constitution
+/// VIII.
+#[test]
+fn project_strips_oc_usgov_without_noforn_r2_1_regression() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
+    assert!(
+        dissem_us_contains(&out, DissemControl::Oc),
+        "Oc must survive (ORCON precedence per §H.8 p140); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        !dissem_us_contains(&out, DissemControl::OcUsgov),
+        "OcUsgov must be stripped by Overlay 1 (§H.8 p140 — \
+         NOFORN-independent); end-to-end project() output must NOT \
+         carry OcUsgov regardless of NOFORN status. dissem_us = {:?}",
+        out.0.dissem_us
+    );
+}

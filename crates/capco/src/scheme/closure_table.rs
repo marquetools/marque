@@ -38,7 +38,7 @@
 //! The narrower §H.8 p145 NOFORN-dominates semantics that handle
 //! **input-explicit** FD&R contradictions (e.g., user marks
 //! `{S, NOFORN, REL TO USA}` explicitly — §H.8 p145 says strip REL TO)
-//! live in [`crate::lattice::dissem::DissemSet::with_fdr_dominance_stripped`]
+//! live in [`crate::lattice::dissem::DissemSet::with_all_overlays_reapplied`]
 //! and [`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`].
 //! Pipeline: `parse → join → close() (Rows 1-6) → apply_default_fill
 //! (Rows 0/7/8/9) → apply_supersession_overlays (§H.8 p145
