@@ -161,10 +161,22 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 // No block tagging (defensive: `attrs.rel_to` non-empty
                 // should imply at least one `RelToBlock` token). Emit
                 // diagnostic without a fix rather than risk mis-splice.
+                // Anchor to the candidate marking span (always a real
+                // in-source location) rather than a meaningless `(0, 0)`;
+                // fall back to the first token span if the candidate
+                // span is somehow degenerate.
+                let anchor = if ctx.candidate_span.end > ctx.candidate_span.start {
+                    ctx.candidate_span
+                } else {
+                    attrs
+                        .token_spans
+                        .first()
+                        .map_or(ctx.candidate_span, |t| t.span)
+                };
                 return vec![Diagnostic::new(
                     self.id(),
                     self.default_severity(),
-                    Span::new(0, 0),
+                    anchor,
                     message.clone(),
                     citation,
                     None,

@@ -258,11 +258,14 @@ pub(crate) fn is_fgi_invalid_ownership_token(text: &str) -> bool {
 
 /// Build the canonical `REL TO USA, <list>` replacement string.
 ///
-/// Per CAPCO-2016 §A.6 p16 + §H.8 p150-151 the country list begins
-/// with USA when USA is present; remaining codes are sorted
-/// alphabetically. The list separator is `, ` (comma-space) per
-/// §A.6 p16. (§H.3's USA-first rule applies to JOINT's own
-/// `[LIST]`, not to REL TO.)
+/// Per CAPCO-2016 §H.8 p150-151 ("USA must always appear first
+/// whenever the REL TO string is used to communicate release
+/// decisions either by the US or a Non-US entity") USA is the
+/// default originator, so the output **unconditionally prepends
+/// `REL TO USA`**, then appends the remaining (USA-filtered,
+/// deduplicated) codes sorted alphabetically. The list separator
+/// is `, ` (comma-space) per §A.6 p16. (§H.3's USA-first rule
+/// applies to JOINT's own `[LIST]`, not to REL TO.)
 ///
 /// Consumers: the EYES / EYES ONLY → REL TO conversion rule
 /// ([`EyesOnlyConvertToRelToRule`](super::eyes::EyesOnlyConvertToRelToRule))
