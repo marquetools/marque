@@ -5,7 +5,7 @@
 //! Byte-identity regression suite for the decoder split (#562).
 //!
 //! Pins the `Parsed<CapcoMarking>` output of both `DecoderRecognizer`
-//! and `StrictOrDecoderRecognizer` against a 20-fixture corpus
+//! and `StrictOrDecoderRecognizer` against an 18-fixture corpus
 //! covering each recovery pass + null-hypothesis suppression branch.
 //! Catches the case where the split changes behavior in a way that
 //! no other unit or integration test happens to exercise — the brief
@@ -194,11 +194,24 @@ fn decoder_recovers_rel_to_header_transposition() {
 
 #[test]
 fn decoder_recovers_sci_delimiter_hcsp_to_hcs_p() {
-    // HCSP → HCS-P via SCI delimiter insertion.
+    // HCSP → HCS-P via SCI delimiter insertion. The pass produces a
+    // repaired text but the scoring gate rejects every resulting
+    // candidate against the null hypothesis for this input shape, so
+    // the recognize call returns the zero-candidate Ambiguous form
+    // (no Unambiguous fix is auto-applied — this is FR-015: "we see
+    // signal, can't resolve"). Pin the observed shape so a future
+    // scoring tweak that changes the dispatch decision surfaces here.
     let parsed = run_decoder("SECRET//HCSP/NOFORN");
-    // The SCI delimiter pass might or might not emit a winning candidate
-    // depending on scoring against null gate; observability only.
-    let _ = parsed;
+    match parsed {
+        Parsed::Ambiguous { candidates } => {
+            assert!(
+                candidates.is_empty(),
+                "expected zero-candidate Ambiguous; got {} candidates",
+                candidates.len()
+            );
+        }
+        other => panic!("expected zero-candidate Ambiguous; got {other:?}"),
+    }
 }
 
 #[test]
@@ -234,10 +247,14 @@ fn decoder_recovers_nato_longhand_fold_banner() {
 #[test]
 fn decoder_recovers_canonical_reorder_noforn_secret() {
     // NOFORN//SECRET → SECRET//NOFORN via the canonical-reorder pass.
+    // The reorder pass produces a winning candidate that resolves to
+    // Unambiguous Secret + NF.
     let parsed = run_decoder("NOFORN//SECRET");
-    // The reorder pass might or might not produce a winning candidate
-    // depending on scoring; accept any non-empty result.
-    let _ = parsed;
+    let Parsed::Unambiguous(m) = parsed else {
+        panic!("expected Unambiguous after canonical reorder; got {parsed:?}");
+    };
+    assert_eq!(classification(&m), Some(Classification::Secret));
+    assert_eq!(dissem_us_count(&m), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -262,16 +279,24 @@ fn decoder_classification_heuristic_3char_otp_to_top() {
 
 #[test]
 fn decoder_classification_heuristic_2char_rs_to_ts() {
-    // RS//NF — RS→TS via 2-char heuristic.
+    // RS//NF — RS→TS via 2-char heuristic (R-cluster + S-cluster).
     let parsed = run_decoder("(RS//NF)");
-    let _ = parsed; // observability only; heuristic may or may not pass null gate
+    let Parsed::Unambiguous(m) = parsed else {
+        panic!("expected Unambiguous after 2-char RS→TS heuristic; got {parsed:?}");
+    };
+    assert_eq!(classification(&m), Some(Classification::TopSecret));
+    assert_eq!(dissem_us_count(&m), 1);
 }
 
 #[test]
 fn decoder_classification_heuristic_1char_x_to_s() {
-    // (X//NF) — X→S via 1-char heuristic.
+    // (X//NF) — X→S via 1-char heuristic (X-cluster).
     let parsed = run_decoder("(X//NF)");
-    let _ = parsed; // observability only
+    let Parsed::Unambiguous(m) = parsed else {
+        panic!("expected Unambiguous after 1-char X→S heuristic; got {parsed:?}");
+    };
+    assert_eq!(classification(&m), Some(Classification::Secret));
+    assert_eq!(dissem_us_count(&m), 1);
 }
 
 // ---------------------------------------------------------------------------
