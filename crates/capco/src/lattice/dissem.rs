@@ -329,19 +329,18 @@ impl DissemSet {
     /// Runs the same overlay chain as `from_attrs_iter` / `join`'s
     /// internal `apply_overlays(DISSEM_SUPERSESSION_TABLE)` call:
     ///
-    /// - **Overlay 1** — OC-USGOV supersession by ORCON (§H.8 p136
-    ///   + §H.8 p140). If both `Oc` and `OcUsgov` are present,
-    ///   drop `OcUsgov`. NOFORN-independent: fires regardless of
-    ///   whether NOFORN is in the set.
-    /// - **Overlay 2** — RELIDO observed-unanimity (§H.8
-    ///   pp155-156). If `Relido` is present but
-    ///   `relido_observed_unanimous` is false, drop `Relido`.
-    ///   NOFORN-independent.
-    /// - **Overlay 3** — NOFORN-dominates supersession (§H.8 p145
-    ///   + §B.3.a p19 + §D.2 Table 3 rows 1-2). If `Nf` is
-    ///   present, drop every dominated control (`Rel`, `Relido`,
-    ///   `Displayonly`, `Eyes`) per `DISSEM_SUPERSESSION_TABLE`.
-    ///   NOFORN-dependent.
+    /// **Overlay 1** — OC-USGOV supersession by ORCON (§H.8 p136 + §H.8 p140).
+    /// If both `Oc` and `OcUsgov` are present, drop `OcUsgov`.
+    /// NOFORN-independent: fires regardless of whether NOFORN is in the set.
+    ///
+    /// **Overlay 2** — RELIDO observed-unanimity (§H.8 pp155-156).
+    /// If `Relido` is present but `relido_observed_unanimous` is false,
+    /// drop `Relido`. NOFORN-independent.
+    ///
+    /// **Overlay 3** — NOFORN-dominates supersession (§H.8 p145 +
+    /// §B.3.a p19 + §D.2 Table 3 rows 1-2). If `Nf` is present, drop
+    /// every dominated control (`Rel`, `Relido`, `Displayonly`,
+    /// `Eyes`) per `DISSEM_SUPERSESSION_TABLE`. NOFORN-dependent.
     ///
     /// # Why all three (post-#704 R2-1 rename)
     ///
@@ -379,15 +378,13 @@ impl DissemSet {
     /// **Pure function.** Takes ownership and returns a new
     /// `DissemSet`; no `&mut self`.
     ///
-    /// Authority:
-    /// - §H.8 p136 + §H.8 p140 (OC > OC-USGOV — Overlay 1)
-    /// - §H.8 pp155-156 ("All portions must be marked as RELIDO
-    ///   for the RELIDO marking to appear in the banner line" —
-    ///   Overlay 2)
-    /// - §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO,
-    ///   EYES ONLY, or DISPLAY ONLY"); §B.3.a p19 (FD&R dominator
-    ///   enumeration); §D.2 Table 3 rows 1-2 (NOFORN dominates
-    ///   dominated FD&R at banner roll-up) — Overlay 3.
+    /// Authority: §H.8 p136 + §H.8 p140 (OC > OC-USGOV — Overlay 1);
+    /// §H.8 pp155-156 ("All portions must be marked as RELIDO for
+    /// the RELIDO marking to appear in the banner line" — Overlay 2);
+    /// §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO, EYES
+    /// ONLY, or DISPLAY ONLY") + §B.3.a p19 (FD&R dominator
+    /// enumeration) + §D.2 Table 3 rows 1-2 (NOFORN dominates
+    /// dominated FD&R at banner roll-up) — Overlay 3.
     pub fn with_all_overlays_reapplied(mut self) -> Self {
         self.apply_overlays(DISSEM_SUPERSESSION_TABLE);
         self
@@ -545,8 +542,8 @@ mod with_all_overlays_reapplied_tests {
     /// Overlay 1 unconditionally.
     #[test]
     fn overlay1_oc_strips_oc_usgov_without_noforn() {
-        let stripped = raw(&[DissemControl::Oc, DissemControl::OcUsgov])
-            .with_all_overlays_reapplied();
+        let stripped =
+            raw(&[DissemControl::Oc, DissemControl::OcUsgov]).with_all_overlays_reapplied();
         assert!(
             stripped.as_set().contains(&DissemControl::Oc),
             "Oc must survive Overlay 1 (it is the dominator); got {:?}",
