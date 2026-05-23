@@ -480,7 +480,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 //     Atomic Energy Act marking RD").
 //   §H.7 p127 worked example places BOHEMIA in the SCI category
 //     position: `(//CTS//BOHEMIA//REL TO USA, NATO)`.
-//   §G.1 Table 4 p38 portion-form column lists `ATOMAL` / `BALK` /
+//   §G.1 Table 4 p37 portion-form column lists `ATOMAL` / `BALK` /
 //     `BOHEMIA` as same-form across title / banner-abbrev / portion
 //     (standalone canonical names — no `SAR-` prefix, no fused
 //     class form).
@@ -694,7 +694,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
 /// match table) means a future expansion of the legacy set requires a
 /// coordinated edit in both places — the natural propagation point.
 ///
-/// Citations: CAPCO-2016 §G.1 Table 4 p38 (portion-form column);
+/// Citations: CAPCO-2016 §G.1 Table 4 p37 (portion-form column);
 /// §G.2 p40 (Table 5 — registers ATOMAL/BOHEMIA/BALK as standalone
 /// control markings, not classification suffixes).
 fn is_legacy_nato_compound_text(text: &str) -> bool {

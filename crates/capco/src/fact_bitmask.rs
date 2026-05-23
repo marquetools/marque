@@ -242,7 +242,7 @@ pub(crate) const MASK_FDR_DOMINATORS: u128 = (1u128 << fact_bit::NOFORN)
 /// IDO-deferred-release semantic that RELIDO encodes.
 ///
 /// Authority: §H.7 p123 (FGI foreign-equity bar); §H.3 p56 (JOINT
-/// co-ownership grammar); §G.1 Table 4 p38 + §H.7 p127 (NATO
+/// co-ownership grammar); §G.1 Table 4 p37 + §H.7 p127 (NATO
 /// classification); §H.4 marking templates for the six SCI
 /// sentinels (pp64 / 68 / 80 / 87 / 91 / 95); §H.8 p154 (RELIDO
 /// grammar — IC-content-only scope).

@@ -101,7 +101,7 @@ axis composition order in the function body is also unchanged:
     (`DissemSet::with_noforn_injected` for NofornSuperseded ∨
     EmptyIntersection ∨ needs_nf) — `marking.rs:613-646`.
 
-Cross-axis state flow that is load-bearing per CAPCO §G.1 Table 4 p38 +
+Cross-axis state flow that is load-bearing per CAPCO §G.1 Table 4 p37 +
 §H.7 pp123-125 + §H.3 p57 + §H.8 p145: **all preserved.** No phase
 deletion. The signature edit (removing `_tmp_ctx: &PageContext`) does not
 disturb the body composition. **PASS.**
