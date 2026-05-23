@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! SAR indicator-keyword structural repair.
 //!
 //! Two structural patterns near the `SAR-` indicator keyword
