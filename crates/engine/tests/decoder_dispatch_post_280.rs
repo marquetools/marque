@@ -310,7 +310,7 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
     for (input, expected) in cases {
         let display = std::str::from_utf8(input).unwrap_or("<bytes>");
         let fix = engine.fix(input, FixMode::Apply);
-        // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator`; collect
+        // `applied_fixes()` is `impl Iterator`; collect
         // once for filter + Debug-render in the assertion message.
         let applied: Vec<_> = fix.applied_fixes().collect();
         let r001_decoder_count = applied
@@ -511,7 +511,7 @@ fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
         "decoder must canonicalize lowercase `deu` to uppercase `DEU` \
          and write the fixed output byte-equal to the canonical form",
     );
-    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator`; collect
+    // `applied_fixes()` is `impl Iterator`; collect
     // once for `.len()` + indexed read.
     let applied: Vec<_> = fix.applied_fixes().collect();
     assert_eq!(
@@ -656,7 +656,7 @@ fn canonical_fgi_portion_emits_no_decoder_diagnostic() {
 // (Constitution Principle II — wipes on drop, every readout goes
 // through `expose_secret()`). The field is lint-side only; the audit
 // envelope continues to carry the BLAKE3 digest + structural intent
-// (Constitution V Principle V / G13). The asymmetry is pinned by
+// (Constitution V Principle V). The asymmetry is pinned by
 // `lint_carries_recognized_canonical_fix_audit_does_not` in
 // `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
 // ============================================================================

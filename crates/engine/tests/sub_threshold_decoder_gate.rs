@@ -235,10 +235,10 @@ fn cia_rdp96_fixture_emits_no_e015() {
 /// and
 /// `decoder::tests::decoder_records_position_penalty_vs_bullet_bonus_for_bare_classification`)
 /// pin the recorded `LinePositionPenalty` feature on the surviving
-/// candidate — they do NOT assert end-to-end suppression. Copilot
-/// #2 flagged the gap: if a future change relaxes the
-/// no-op-rewrite filter (audit-verbosity, FR-014 schema evolution,
-/// renderer rewrite), or if `(C)` becomes top-posterior via some
+/// candidate — they do NOT assert end-to-end suppression. The gap:
+/// if a future change relaxes the no-op-rewrite filter
+/// (audit-verbosity, schema evolution, renderer rewrite), or if `(C)`
+/// becomes top-posterior via some
 /// unrelated calibration change that flips `observed == canonical`,
 /// the false-positive would silently come back and only
 /// `c_mid_prose.txt` would catch it.

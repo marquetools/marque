@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T069 — engine emits `CorpusOverrideInEffect` feature contribution
-//! when a corpus override is installed via
-//! [`Engine::with_corpus_override`] (Phase 4 PR-5, FR-013).
+//! Engine emits a `CorpusOverrideInEffect` feature contribution when a
+//! corpus override is installed via [`Engine::with_corpus_override`].
 //!
-//! Scope: PR-5 minimal. The contribution is an audit-trail marker
-//! (`delta = 0.0`) — the engine does **not** yet substitute override
-//! priors into decoder scoring. Wiring substitution is a follow-up.
+//! The contribution is an audit-trail marker (`delta = 0.0`) — the
+//! engine does **not** yet substitute override priors into decoder
+//! scoring. Wiring substitution is a follow-up.
 //!
 //! Why behind `corpus-override`: the test exercises the gated builder
 //! `Engine::with_corpus_override(...)`, which only exists when the
@@ -40,7 +39,7 @@ fn deep_scan_engine_without_override() -> Engine {
 fn deep_scan_engine_with_override() -> Engine {
     deep_scan_engine_without_override()
         // Audit-marker-only override: every scoring section empty,
-        // schema_version implicit. The flag is what matters for T069.
+        // schema_version implicit. The flag is what this test checks.
         .with_corpus_override(Arc::new(CorpusOverride::default()))
 }
 
@@ -64,15 +63,10 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
 
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
-    // PR 3c.2.D fixup F-2: migrate from retired v1
-    // `result.applied: Vec<AppliedFix>` + flat `fix.confidence` to v2
-    // `result.audit_lines: Vec<AuditLine<S>>` with
-    // `Confidence` nested at `fix.fix.replacement.confidence`. The
+    // `Confidence` is nested at `fix.fix.replacement.confidence`. The
     // iteration is by way of `applied_fixes()` (zero-alloc
-    // `impl Iterator`; see PM-D F-3 in
-    // `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`) so we only
-    // walk the marking-side audit lines — text-correction lines
-    // (C001 / E006) don't carry a DecoderPosterior `FixSource`.
+    // `impl Iterator`) so we only walk the marking-side audit lines —
+    // text-correction lines don't carry a DecoderPosterior `FixSource`.
     let mut decoder_fixes_examined = 0usize;
     for fix in result.applied_fixes() {
         if fix.source != FixSource::DecoderPosterior {
@@ -117,8 +111,8 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
 }
 
 /// Without corpus override, no decoder-path fix may carry
-/// `CorpusOverrideInEffect`. This is the negative half of T069 —
-/// the audit-marker is silent unless override is actually in
+/// `CorpusOverrideInEffect`. The audit-marker is silent unless override
+/// is actually in
 /// effect, so an auditor reading the audit stream can trust
 /// "this fix has no override marker" as positive evidence the
 /// fix came out of stock priors.
@@ -132,7 +126,6 @@ fn decoder_fix_omits_corpus_override_feature_without_override() {
 
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
-    // PR 3c.2.D fixup F-2: see note above on the v1 → v2 migration.
     let mut decoder_fixes_examined = 0usize;
     for fix in result.applied_fixes() {
         if fix.source != FixSource::DecoderPosterior {

@@ -2,29 +2,29 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7c — Layer-3 per-pass fix invariants for the two-pass pipeline.
+//! Per-pass fix invariants for the two-pass pipeline.
 //!
 //! Each invariant gets at least one integration test against the
 //! real `Engine`. The fixtures use real CAPCO markings rather than
 //! synthetic constructions so the tests exercise the same code path
 //! the CLI / WASM / server do.
 //!
-//! Layer-3 invariant register (per `docs/plans/2026-05-02-engine-
-//! refactor-consolidated.md` §6 + the PR 7c implementer spec):
+//! Invariants:
 //!
-//! - **I-1**: `Engine::lint(buf)` is idempotent (same input → same
-//!   diagnostic stream, byte-for-byte).
-//! - **I-2**: `Engine::fix` is monotonic: `lint(fix(buf)).len() ≤
-//!   lint(buf).len()`. Fix never introduces new defects.
-//! - **I-4**: `Severity::Suggest` diagnostics never promote to
-//!   `AppliedFix`. Suggestion-channel emissions stay advisory.
-//! - **I-18**: No two `AppliedFix.span`s overlap in the merged
+//! - **Idempotent lint**: `Engine::lint(buf)` is idempotent (same input
+//!   → same diagnostic stream, byte-for-byte).
+//! - **Monotonic fix**: `lint(fix(buf)).len() ≤ lint(buf).len()`. Fix
+//!   never introduces new defects.
+//! - **Suggest never promotes**: `Severity::Suggest` diagnostics never
+//!   promote to `AppliedFix`. Suggestion-channel emissions stay
+//!   advisory.
+//! - **Non-overlap**: No two `AppliedFix.span`s overlap in the merged
 //!   audit stream — pass-1 + pass-2 span partitions are disjoint by
-//!   construction (the I-18 overlap demotion guards the boundary).
-//! - **I-19**: Reshape-aware whole-marking — a `(rule, span)` pair
-//!   never appears twice across the audit stream. FR-023
-//!   disambiguation drops pass-2 diagnostics whose `(rule,
-//!   candidate_span)` matches a pass-1 promoted fix.
+//!   construction (the overlap demotion guards the boundary).
+//! - **Reshape-aware whole-marking**: a `(rule, span)` pair never
+//!   appears twice across the audit stream. Disambiguation drops pass-2
+//!   diagnostics whose `(rule, candidate_span)` matches a pass-1
+//!   promoted fix.
 //!
 //! These tests complement the `two_pass_invariants.rs` proptest
 //! suite: that file pins universal generators, this one pins
@@ -241,8 +241,8 @@ fn i18_applied_fix_spans_disjoint_when_text_correction_present() {
 fn i19_same_rule_and_span_never_repeats_in_audit_stream() {
     use std::collections::HashSet;
     // A document that exercises both Localized + WholeMarking
-    // rules. The FR-023 disambiguation guarantees no rule appears
-    // twice on the same marking-scope span post-reshape.
+    // rules. Disambiguation guarantees no rule appears twice on the
+    // same marking-scope span post-reshape.
     let eng = engine_with_corrections();
     let src = b"SERCET//NOFORN\n(S//NF)\n(C//REL TO USA, GBR)\n";
     let result = eng.fix(src, FixMode::Apply);
