@@ -576,60 +576,55 @@ impl MarkingScheme for CapcoScheme {
 
     /// Residual fn-pointer closure-rule catalog (PR-D — issue #371).
     ///
-    /// Post-PR-D of the FactBitmask refactor, CAPCO's closure operator
-    /// executes as a bitwise Kleene fixpoint over
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) — a 10-row
-    /// `(trigger_mask, cone_mask)` catalog over a `u128` atom bitmask
-    /// (the pre-#704 `suppressor_mask` was retired; see the
-    /// `closure_table.rs` module doc-comment for the architectural
-    /// rationale). The fn-pointer slice this trait method returns is
-    /// the **residual** catalog: rows whose cone cannot be expressed
-    /// as a static closed-vocab bit and therefore retain fn-pointer
-    /// form. Today that is exactly one row:
+    /// Post-#704, CAPCO's closure operator executes as a bitwise
+    /// Kleene fixpoint over
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) — a
+    /// 6-row `(trigger_mask, cone_mask)` catalog over a `u128`
+    /// atom bitmask. The six rows are the per-marking unconditional
+    /// implications from §H.4 marking templates (HCS-O / HCS-P[sub]
+    /// → NOFORN + ORCON per §H.4 p64 / p68; SI-G → ORCON per §H.4
+    /// p80; TK-{BLFH, IDIT, KAND} → NOFORN per §H.4 p87 / p91 /
+    /// p95). All six fire unconditionally with no `suppressor_mask`
+    /// gating (the pre-#704 `suppressor_mask` field retired in
+    /// issue #704 — see the `closure_table.rs` module doc-comment
+    /// for the algebraic-monotonicity rationale).
     ///
-    /// | Rule key                                            | Why fn-pointer                                                                                                       |
-    /// |-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-    /// | `capco/rel-to-usa-nato-if-nato-classification`      | Open-vocab `cone_derived` injects `CountryCode::NATO`, which has no closed-vocab `TokenId`. Bitmask cannot represent it. |
+    /// **Post-#704: the fn-pointer slice this trait method returns
+    /// is empty (`&[]`)**. The pre-#704 residual fn-pointer rule
+    /// `CLOSURE_REL_TO_USA_NATO` (Row 7's open-vocab NATO
+    /// tetragraph tail) retired alongside Rows 0/7/8/9 to
+    /// [`crate::scheme::default_fill`] (`row7_should_fill` and
+    /// sibling predicates). The fn-pointer surface is reserved as
+    /// a stable seam for any future CAPCO closure rule that ships
+    /// an open-vocab cone which cannot project onto a closed-vocab
+    /// bit; today there are no such rules.
     ///
-    /// The static `cone` half of this row (`TOK_USA`) IS in the
-    /// bitmask (`closure_table::CONE_REL_TO_USA`); only the open-vocab
-    /// NATO leg rides this fn-pointer surface, as a single post-Kleene
-    /// tail invoked from [`Self::closure`] when the bitmask Row 7 has
-    /// fired (i.e., the `REL_TO_USA` cone bit appears in the
-    /// closed_bits delta).
-    ///
-    /// All other pre-PR-D rows — Trio 1 CAVEATED (the 20-trigger
-    /// algebraic union covering SAR · RD/FRD/TFNI · UCNI · FGI · ORCON
-    /// / ORCON-USGOV · RSEN / IMCON / PROPIN / DSEN / FISA / RAWFISA ·
-    /// LIMDIS / LES / NNPI / SBU / SSI), the per-marking SCI
-    /// implications (HCS-O / HCS-P[sub] ⇒ {NOFORN, ORCON}; SI-G ⇒
-    /// {ORCON} with NOFORN supplied transitively via Trio 1;
-    /// TK-{BLFH, IDIT, KAND} ⇒ {NOFORN}), and the two Trio 2 RELIDO
-    /// rows — live exclusively in [`CLOSURE_TABLE`] now. Their
-    /// §-citations are preserved verbatim on the bitmask row `label`
-    /// fields and the per-row doc-comments in
-    /// [`super::closure_table`](super::closure_table).
-    ///
-    /// Post-#704: rows are no longer suppressed inside the Kleene
-    /// fixpoint — the closure operator is purely additive, and
-    /// `FDR_DOMINATORS`-based supersession (NOFORN dominates REL TO /
-    /// RELIDO / DISPLAY ONLY / EYES per §H.8 p145) runs as a separate
-    /// post-closure overlay in
+    /// Why Rows 0/7/8/9 retired: those four are "default if absent"
+    /// rules per §B.3 paragraph b p19's "NOT MARKED PREVIOUSLY"
+    /// gate — inherently non-monotone by §-spec design and
+    /// therefore unable to live in a closure operator that honors
+    /// the [`MarkingScheme::closure`] monotone contract. The §H.8
+    /// p145 NOFORN-dominates / §B.3.a p19 FD&R supersession
+    /// semantics they previously encoded now split two ways:
+    /// the "default if absent" half moved to
+    /// [`crate::scheme::default_fill::apply_default_fill`]; the
+    /// "post-close re-apply per-axis supersession" half moved to
     /// [`CapcoScheme::apply_supersession_overlays`]. The
-    /// [`super::closure::FDR_DOMINATORS`] slice remains the canonical
-    /// FD&R enumeration consumed by `Vocabulary::is_fdr_dissem` and
-    /// the supersession overlays. All rows ship at
-    /// [`Severity::Info`] per `decisions.md` D19 B (closure firings
-    /// are silent lattice-layer fact propagation, not byte-level
-    /// fixes); user-visible byte diffs ride on independent
-    /// `Severity::Suggest` text-layer rules (e.g., S007 for the NATO
-    /// row — see `decisions.md` D20).
+    /// [`super::closure::FDR_DOMINATORS`] slice remains the
+    /// canonical FD&R enumeration consumed by
+    /// `Vocabulary::is_fdr_dissem` and the supersession overlays.
     ///
-    /// `closure_rules()` intentionally remains the residual executable
-    /// fn-pointer catalog (1 row post-PR-D). Scheme-agnostic discovery
-    /// should use [`Self::closure_inventory()`], which unifies metadata
-    /// across this residual catalog and the 10-row bitmask
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
+    /// All bitmask rows ship at [`Severity::Info`] per
+    /// `decisions.md` D19 B (closure firings are silent
+    /// lattice-layer fact propagation, not byte-level fixes);
+    /// user-visible byte diffs ride on independent
+    /// `Severity::Suggest` text-layer rules (e.g., S007 for the
+    /// NATO row — see `decisions.md` D20).
+    ///
+    /// Scheme-agnostic discovery should use
+    /// [`Self::closure_inventory()`], which projects the bitmask
+    /// `CLOSURE_TABLE` rows onto `ClosureRuleMetadata` for unified
+    /// downstream consumption.
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
     }
