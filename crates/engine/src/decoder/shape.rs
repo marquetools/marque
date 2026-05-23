@@ -9,8 +9,7 @@
 
 use marque_capco::CapcoMarking;
 use marque_ism::{
-    CanonicalAttrs, Classification, DissemControl, MarkingClassification,
-    span::MarkingType,
+    CanonicalAttrs, Classification, DissemControl, MarkingClassification, span::MarkingType,
 };
 use smallvec::SmallVec;
 

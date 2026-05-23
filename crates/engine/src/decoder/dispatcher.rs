@@ -16,7 +16,6 @@ use crate::recognizer::StrictRecognizer;
 use super::recognizer::DecoderRecognizer;
 use super::shape::{infer_marking_type, strict_parse_is_complete};
 
-
 // ---------------------------------------------------------------------------
 // Strict + decoder dispatcher
 // ---------------------------------------------------------------------------

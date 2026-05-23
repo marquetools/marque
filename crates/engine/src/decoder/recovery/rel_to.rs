@@ -10,8 +10,8 @@
 //! 3. **USA injection** — adds the missing leading `USA` country code
 //!    when a REL TO block starts with a non-USA trigraph.
 
-use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
 use marque_core::fuzzy::FuzzyVocabMatcher;
+use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
 use marque_rules::confidence::FeatureId;
 
 use super::super::types::FeatureEntry;
@@ -779,4 +779,3 @@ pub(crate) fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, Fe
 
     out
 }
-

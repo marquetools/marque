@@ -228,4 +228,3 @@ pub(crate) fn repair_sci_token(token: &str) -> Option<String> {
     }
     found.map(|(p, s)| format!("{p}/{s}"))
 }
-

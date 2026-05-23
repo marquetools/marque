@@ -118,4 +118,3 @@ pub(crate) fn try_collapse_stray_char_slash(text: &str) -> Vec<String> {
     }
     Vec::new()
 }
-

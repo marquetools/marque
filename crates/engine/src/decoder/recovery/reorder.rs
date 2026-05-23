@@ -8,10 +8,7 @@
 //! the recognizer to gate candidates below the configured floor.
 
 use marque_capco::CapcoMarking;
-use marque_ism::{
-    CapcoTokenSet, Classification,
-    token_set::TokenSet as _,
-};
+use marque_ism::{CapcoTokenSet, Classification, token_set::TokenSet as _};
 
 // Token reordering
 // ---------------------------------------------------------------------------

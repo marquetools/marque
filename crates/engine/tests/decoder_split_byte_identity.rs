@@ -43,9 +43,7 @@ fn scheme() -> CapcoScheme {
 }
 
 fn classification(m: &marque_capco::CapcoMarking) -> Option<Classification> {
-    m.0.classification
-        .as_ref()
-        .map(|c| c.effective_level())
+    m.0.classification.as_ref().map(|c| c.effective_level())
 }
 
 fn dissem_us_count(m: &marque_capco::CapcoMarking) -> usize {
@@ -125,9 +123,7 @@ fn dispatcher_suppresses_single_letter_portion_in_prose_context() {
     match parsed {
         Parsed::Ambiguous { ref candidates } if candidates.is_empty() => {}
         Parsed::Unambiguous(ref m) if m.0.classification.is_none() => {}
-        other => panic!(
-            "expected zero-candidate or trivial-attrs; got {other:?}"
-        ),
+        other => panic!("expected zero-candidate or trivial-attrs; got {other:?}"),
     }
 }
 

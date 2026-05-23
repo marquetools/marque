@@ -248,4 +248,3 @@ pub(crate) fn is_classification_continuation(next_token: &str, prev_token: Optio
     }
     is_classification_token(next_token)
 }
-

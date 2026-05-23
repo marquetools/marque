@@ -224,4 +224,3 @@ pub(crate) fn match_sar_missing_hyphen(bytes: &[u8], i: usize) -> Option<usize> 
     }
     Some(j)
 }
-

@@ -70,24 +70,10 @@ pub use candidates::diagnostic_canonical_attempts;
 #[cfg(test)]
 #[allow(unused_imports)]
 use {
-    candidates::*,
-    dispatcher::*,
-    heuristic::*,
-    normalize::*,
-    null_hypothesis::*,
-    recognizer::*,
-    recovery::delimiter::*,
-    recovery::nato::*,
-    recovery::rel_to::*,
-    recovery::reorder::*,
-    recovery::sar::*,
-    recovery::sci::*,
-    recovery::stray::*,
-    scoring::*,
-    shape::*,
-    types::*,
+    candidates::*, dispatcher::*, heuristic::*, normalize::*, null_hypothesis::*, recognizer::*,
+    recovery::delimiter::*, recovery::nato::*, recovery::rel_to::*, recovery::reorder::*,
+    recovery::sar::*, recovery::sci::*, recovery::stray::*, scoring::*, shape::*, types::*,
 };
-
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
 ///
@@ -159,7 +145,6 @@ pub(super) const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 /// recognizes the token. The strict parser + scanner provide the
 /// structural discrimination they need.
 pub(super) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
-
 
 // ---------------------------------------------------------------------------
 // Tests

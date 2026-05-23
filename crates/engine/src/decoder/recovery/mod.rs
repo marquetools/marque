@@ -22,7 +22,9 @@ pub(super) use rel_to::{
     try_rel_to_fuzzy_trigraph_candidates, try_rel_to_structural_repair,
     try_rel_to_usa_injection_candidates,
 };
-pub(super) use reorder::{meets_classification_floor, try_add_non_us_prefix, try_canonical_reorder};
+pub(super) use reorder::{
+    meets_classification_floor, try_add_non_us_prefix, try_canonical_reorder,
+};
 pub(super) use sar::try_sar_indicator_repair;
 pub(super) use sci::try_sci_delimiter_repair;
 pub(super) use stray::try_collapse_stray_char_slash;

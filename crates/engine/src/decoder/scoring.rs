@@ -479,8 +479,6 @@ pub(crate) fn for_each_canonical_token(
     }
 }
 
-
-
 /// True when `token` is an unambiguous segment-starting dissem
 /// long-form. These tokens have no in-segment role inside SCI / SAR /
 /// REL TO blocks, so seeing one after whitespace always indicates a

@@ -8,16 +8,16 @@
 
 use smallvec::SmallVec;
 
+use super::K_MAX_CANDIDATES;
 use super::heuristic::try_classification_heuristic_fix;
 use super::normalize::{fuzzy_correct_tokens, normalize_delimiters_and_case};
 use super::recovery::{
     try_add_non_us_prefix, try_canonical_reorder, try_collapse_stray_char_slash,
     try_insert_delimiter, try_nato_fold, try_rel_to_fuzzy_trigraph_candidates,
-    try_rel_to_structural_repair, try_rel_to_usa_injection_candidates,
-    try_sar_indicator_repair, try_sci_delimiter_repair,
+    try_rel_to_structural_repair, try_rel_to_usa_injection_candidates, try_sar_indicator_repair,
+    try_sci_delimiter_repair,
 };
 use super::types::{CanonicalAttempt, FeatureEntry};
-use super::K_MAX_CANDIDATES;
 
 use marque_core::fuzzy::FuzzyVocabMatcher;
 use marque_ism::{CapcoTokenSet, span::MarkingType, token_set::TokenSet as _};

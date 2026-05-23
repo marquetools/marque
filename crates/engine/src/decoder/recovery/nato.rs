@@ -5,10 +5,7 @@
 //! CAPCO-2016 §G.1 Table 4 pp 36-38 the portion form is the
 //! authoritative wire encoding inside marking compounds.
 
-use marque_ism::{
-    NatoClassification,
-    span::MarkingType,
-};
+use marque_ism::{NatoClassification, span::MarkingType};
 
 // ---------------------------------------------------------------------------
 // NATO longhand → canonical portion fold
