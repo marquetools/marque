@@ -53,7 +53,7 @@ pub use product::Product;
 pub use set::{FlatSet, IntersectSet};
 pub use supersession::SupersessionSet;
 
-pub(super) fn merge_sorted_union<T: Ord + Clone>(left: &[T], right: &[T]) -> Vec<T> {
+fn merge_sorted_union<T: Ord + Clone>(left: &[T], right: &[T]) -> Vec<T> {
     let mut out: Vec<T> = Vec::with_capacity(left.len() + right.len());
     let (mut i, mut j) = (0, 0);
     while i < left.len() && j < right.len() {
