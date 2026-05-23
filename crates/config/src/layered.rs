@@ -18,6 +18,16 @@ pub(crate) struct ConfigFile {
     user: Option<UserConfigFile>,
     #[serde(default)]
     pub(crate) rules: HashMap<String, String>,
+    /// Closure-rule severity overrides. Keys use the T044 wire-string
+    /// form (`<scheme>:closure.<category>.<predicate>`) and must be
+    /// quoted in TOML because `:` and `.` are not valid in bare TOML
+    /// keys. Example:
+    ///
+    /// ```toml
+    /// [closure_rules]
+    /// "capco:closure.dissem.noforn-if-caveated" = "warn"
+    /// "capco:closure.dissem.relido-if-sci-and-not-incompatible" = "off"
+    /// ```
     #[serde(default)]
     closure_rules: HashMap<String, String>,
     #[serde(default)]
@@ -31,9 +41,34 @@ pub(crate) struct ConfigFile {
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub(crate) struct CapcoConfigFile {
     pub(crate) version: Option<String>,
+    /// UTC offset string for floating times. Accepted: `"Z"`, `"+HH:MM"`, `"-HH:MM"`.
     pub(crate) default_timezone: Option<String>,
 }
 
+/// Load and merge configuration from standard locations.
+///
+/// Search order (first found wins for each layer):
+/// 1. `.marque.toml` discovered by walking upward from `start` per
+///    `contracts/cli.md`. The walk stops at the **first** of:
+///    - a directory containing `.marque.toml`
+///    - a directory containing `.git/` (git repository root)
+///    - the filesystem root
+///
+///    If the walk finds a `.marque.toml`, that directory is the project root
+///    for both Layer 1 (committed) and Layer 2 (local). If the walk finds a
+///    git root or filesystem root first, no project config is loaded —
+///    Layer 3 (env vars) still runs.
+/// 2. `.marque.local.toml` **only in the same directory** as the discovered
+///    `.marque.toml`. The local-config search is never independently walked,
+///    so a stray `.marque.local.toml` in a parent directory cannot silently
+///    attach to a child project's config.
+/// 3. Environment variables (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`,
+///    `MARQUE_LOG`, `MARQUE_DEFAULT_TIMEZONE`, and the
+///    `MARQUE_CLOSURE_RULES_*` parallel namespace for `[closure_rules]`
+///    per-row severity overrides — see [`Config::closure_rules`] and the
+///    naming convention documented at [`env_var_to_closure_rule_name`]).
+///
+/// Hard-fail validators run after merging all layers.
 pub fn load(start: &Path) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
@@ -70,6 +105,11 @@ pub fn load(start: &Path) -> Result<Config, ConfigError> {
     Ok(config)
 }
 
+/// Load configuration from an explicit `.marque.toml` path, bypassing the
+/// upward walk. Used by `--config <PATH>` per `contracts/cli.md`:
+/// "short-circuits the walk and uses the specified path as the project
+/// config; the local-config search still applies, only in the directory
+/// containing the supplied path."
 pub fn load_with_explicit_config(project_config: &Path) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
