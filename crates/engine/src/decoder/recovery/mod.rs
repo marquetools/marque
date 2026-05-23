@@ -24,6 +24,7 @@
 pub(in crate::decoder) mod delimiter;
 pub(in crate::decoder) mod nato;
 pub(in crate::decoder) mod rel_to;
+pub(in crate::decoder) mod rel_to_trigraph;
 pub(in crate::decoder) mod reorder;
 pub(in crate::decoder) mod sar;
 pub(in crate::decoder) mod sci;
@@ -31,9 +32,9 @@ pub(in crate::decoder) mod stray;
 
 pub(in crate::decoder) use delimiter::try_insert_delimiter;
 pub(in crate::decoder) use nato::try_nato_fold;
-pub(in crate::decoder) use rel_to::{
-    try_rel_to_fuzzy_trigraph_candidates, try_rel_to_structural_repair,
-    try_rel_to_usa_injection_candidates,
+pub(in crate::decoder) use rel_to::try_rel_to_structural_repair;
+pub(in crate::decoder) use rel_to_trigraph::{
+    try_rel_to_fuzzy_trigraph_candidates, try_rel_to_usa_injection_candidates,
 };
 pub(in crate::decoder) use reorder::{
     meets_classification_floor, try_add_non_us_prefix, try_canonical_reorder,
