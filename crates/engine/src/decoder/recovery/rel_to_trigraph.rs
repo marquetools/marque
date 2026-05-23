@@ -368,8 +368,8 @@ pub(in crate::decoder) fn try_rel_to_usa_injection_candidates(
 
         // Skip if USA is already present elsewhere in the block —
         // a USA-injection candidate would create a duplicate, which
-        // E052 would then need to dedup. Short-
-        // circuit here rather than emit-and-redup.
+        // E052 would then need to dedup. Short-circuit here rather
+        // than emit-and-redup.
         let already_has_usa = entries.iter().skip(1).any(|(_, e)| e.trim() == "USA");
         if already_has_usa {
             search_start = block_end;
