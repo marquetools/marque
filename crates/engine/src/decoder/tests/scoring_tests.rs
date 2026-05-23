@@ -93,7 +93,10 @@ fn score_candidate_splits_prior_and_posterior() {
             id: FeatureId::EditDistance1,
             delta: -0.5,
         },
-        FeatureId::TokenReorder.into(),
+        FeatureEntry {
+            id: FeatureId::TokenReorder,
+            delta: -0.4,
+        },
     ];
     let attempt = CanonicalAttempt {
         bytes: SmallVec::from_slice(b"SECRET//NOFORN"),
@@ -116,13 +119,6 @@ fn score_candidate_splits_prior_and_posterior() {
         "prior_log_odds must exclude feature deltas; \
          prior={prior}, posterior={posterior}"
     );
-}
-
-// Convenience conversion for the test above.
-impl From<FeatureId> for FeatureEntry {
-    fn from(id: FeatureId) -> Self {
-        Self { id, delta: -0.4 }
-    }
 }
 
 #[test]
