@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T033 — positive control for [`marque_rules::Message::new`].
+//! Positive control for [`marque_rules::Message::new`].
 //!
 //! The compile-fail proofs that no free-form constructor exists
 //! (`from_string`, `From<&str>`, `format`, etc.) live as
