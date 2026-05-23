@@ -39,15 +39,16 @@ pub(crate) use self::companions::{
 };
 pub(crate) use self::fgi::{extract_foreign_sources, merge_fgi_markers};
 pub(crate) use self::intent::apply_intent_to_marking;
-// `apply_closure_fact` retired in issue #704's architectural refinement
-// alongside the fn-pointer `CLOSURE_REL_TO_USA_NATO` rule it served.
-// The Row 7 NATO open-vocab cone now lives in
+// `apply_closure_fact` was deleted in issue #704's architectural
+// refinement alongside the fn-pointer `CLOSURE_REL_TO_USA_NATO` rule
+// it served. The Row 7 NATO open-vocab cone now lives in
 // `crate::scheme::default_fill::apply_default_fill`, which writes
 // `CountryCode::NATO` directly to `attrs.rel_to` without the
-// `FactRef::OpenVocab(_)` indirection. The function body is preserved
-// in `intent.rs` (cfg(test)-only at present) in case a future
-// open-vocab closure cone needs it; if no future caller materializes,
-// retire the body itself in a follow-up.
+// `FactRef::OpenVocab(_)` indirection. The function body is NOT
+// preserved in the tree — it lives in git history only (see
+// `intent.rs::360`'s tombstone comment for the retirement marker).
+// If a future open-vocab closure cone needs the wrapper, revive the
+// body from VCS rather than relying on a dead in-tree copy.
 // PR 4b-E: `page_context_to_attrs` retired with the
 // `scheme/actions/page_context.rs` file deletion.
 pub(crate) use self::strip::{noop_action, strip_dod_ucni_action, strip_doe_ucni_action};
