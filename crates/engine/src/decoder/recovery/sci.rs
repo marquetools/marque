@@ -8,7 +8,7 @@
 //! first compartment when the input wrote them as a glued token
 //! (`HCSP` → `HCS-P`) and similar shape recoveries on SCI tokens.
 
-use marque_ism::{SciControl, SciControlBare};
+use marque_ism::{DissemControl, NonIcDissem, SciControl, SciControlBare, marking_forms};
 
 // ---------------------------------------------------------------------------
 // SCI delimiter recovery
@@ -39,6 +39,30 @@ use marque_ism::{SciControl, SciControlBare};
 ///   slash-joined form. `SI-TK → SI/TK` (because `SI-TK` is not
 ///   registered), but `SI-G` is left alone (it IS registered — `-` is
 ///   the correct control-compartment separator per §A.6 p16).
+/// - **Pattern D (intra-SCI `/` promotion at category boundary)** —
+///   issue #720. When the current token is SCI-shaped (parses as
+///   `SciControl`, `SciControlBare`, or — post-Pattern-B — splits
+///   cleanly into two bare control systems) AND the following
+///   delimiter is a single `/` (not `//`) AND the NEXT token is a
+///   known non-SCI hard splitter (`DissemControl::parse(...)`,
+///   `NonIcDissem::parse(...)`, or their long-form banner / title
+///   equivalents via `marking_forms`), the single `/` is promoted to
+///   `//` — the canonical category separator per CAPCO-2016 §A.6 p16.
+///   Fires standalone: covers both inputs where Pattern A/B/C already
+///   rewrote the SCI token (`HCSP/NOFORN → HCS-P//NOFORN`) and
+///   inputs where the SCI control is already canonical and only the
+///   delimiter is wrong (`HCS-P/NOFORN → HCS-P//NOFORN`,
+///   `SI/NOFORN → SI//NOFORN`). The gate is "SCI + `/` + non-SCI",
+///   NOT "any control + `/` + any other category" — the dissem/dissem
+///   chain `ORCON/NOFORN` is left alone because ORCON is not SCI-
+///   shaped (regression-guarded by
+///   `missing_delimiter_top_secret_classification_then_dissem` in
+///   `crates/engine/tests/decoder_recovery.rs`). Strict-parser path
+///   is unchanged — E004's `SECRET//SI/NF` stray-slash detection in
+///   `crates/core/src/parser/tests/controls_tests.rs::sci_mixed_\
+///   category_slash_block_falls_through` runs against the strict
+///   parser and is unaffected: this recovery executes only when the
+///   strict path could not recognize the input.
 ///
 /// **Out of scope** — sub-compartment fuzzy recovery (`ABCE → ABCD`),
 /// unregistered-compartment recovery, and any rewrite that would
@@ -95,13 +119,76 @@ pub(in crate::decoder) fn try_sci_delimiter_repair(text: &str) -> Option<String>
             .map(|n| token_start + n)
             .unwrap_or(bytes.len());
 
+        // Track whether the resolved token (original or Pattern A/B/C
+        // repaired) is SCI-shaped, so Pattern D can decide whether to
+        // promote a trailing single `/` to `//`. `repaired_text` is
+        // `None` when no Pattern A/B/C repair fired; the original
+        // bytes are then used both for the SCI-shape probe and for
+        // (no-op) emission.
+        let mut sci_shaped = false;
+        let mut repaired_text: Option<String> = None;
         if token_start < token_end {
             let token = &text[token_start..token_end];
-            if let Some(repaired) = repair_sci_token(token) {
-                let r = result.get_or_insert_with(|| String::with_capacity(text.len()));
-                r.push_str(&text[last_copied..token_start]);
-                r.push_str(&repaired);
-                last_copied = token_end;
+            repaired_text = repair_sci_token(token);
+            let resolved = repaired_text.as_deref().unwrap_or(token);
+            sci_shaped = is_sci_shaped(resolved);
+        }
+
+        // Pattern D — intra-SCI `/` promotion when the current token
+        // is SCI-shaped, the following delimiter is exactly one `/`
+        // (i.e., not already `//`), and the next token is a known
+        // non-SCI hard splitter (DissemControl / NonIcDissem, in
+        // either abbreviated or long form). Standalone — fires
+        // whether or not Pattern A/B/C also rewrote the current
+        // token. See issue #720.
+        let mut promote_delim = false;
+        if sci_shaped && token_end < bytes.len() && bytes[token_end] == b'/' {
+            // Reject `//` — that's already the canonical category
+            // separator; nothing to promote.
+            let next_is_slash = bytes.get(token_end + 1).is_some_and(|&b| b == b'/');
+            if !next_is_slash {
+                let next_start = token_end + 1;
+                let next_end = bytes[next_start..]
+                    .iter()
+                    .position(|&b| {
+                        matches!(b, b'/' | b'(' | b')' | b' ' | b'\t' | b'\n' | b'\r' | b',')
+                    })
+                    .map(|n| next_start + n)
+                    .unwrap_or(bytes.len());
+                if next_start < next_end {
+                    let next_tok = &text[next_start..next_end];
+                    // Predicate gate: the next token must be a known
+                    // non-SCI hard splitter — a published abbreviated
+                    // or long-form dissem / non-IC dissem control.
+                    // Anything SCI-shaped, unknown, or country-list-
+                    // shaped (e.g., trigraphs in a REL TO tail) MUST
+                    // NOT trigger promotion: the same `/` is the
+                    // legitimate intra-category separator there
+                    // (`SI/TK`, `REL TO USA, FVEY/NF`).
+                    if is_non_sci_hard_splitter_token(next_tok) {
+                        promote_delim = true;
+                    }
+                }
+            }
+        }
+
+        let token_repaired = repaired_text.is_some();
+        if token_repaired || promote_delim {
+            let r = result.get_or_insert_with(|| String::with_capacity(text.len() + 1));
+            r.push_str(&text[last_copied..token_start]);
+            if let Some(repaired) = repaired_text.as_deref() {
+                r.push_str(repaired);
+            } else {
+                r.push_str(&text[token_start..token_end]);
+            }
+            last_copied = token_end;
+            if promote_delim {
+                // Copy the original `/` and inject a second `/` to
+                // make `//`. last_copied is left pointing at the
+                // original single `/` so the next iteration's
+                // `text[last_copied..]` copy includes it followed by
+                // the rest of the source.
+                r.push('/');
             }
         }
 
@@ -115,6 +202,58 @@ pub(in crate::decoder) fn try_sci_delimiter_repair(text: &str) -> Option<String>
         r.push_str(&text[last_copied..]);
         r
     })
+}
+
+/// Predicate for Pattern D's left side: returns `true` when `token`
+/// names an SCI control system or SCI compound. Accepts:
+///
+/// 1. The full CVE compound set (`SciControl::parse`) — e.g.,
+///    `HCS-P`, `SI-G`, `TK-KAND`, `BUR-BLG`.
+/// 2. The bare control-system set (`SciControlBare::parse`) — e.g.,
+///    `HCS`, `SI`, `TK`, `BUR`.
+/// 3. Slash-joined chains of bare control systems (the canonical
+///    Pattern B output shape) — e.g., `SI/TK`, `HCS/SI`. Recognized
+///    by splitting on `/` and requiring every part to parse as a
+///    bare control system.
+///
+/// Used only by the Pattern D promotion gate; deliberately narrow so
+/// the SCI/non-SCI distinction Pattern D depends on cannot collapse.
+fn is_sci_shaped(token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    if SciControl::parse(token).is_some() || SciControlBare::parse(token).is_some() {
+        return true;
+    }
+    if token.contains('/') {
+        return token
+            .split('/')
+            .all(|part| SciControlBare::parse(part).is_some());
+    }
+    false
+}
+
+/// Predicate for Pattern D's right side: returns `true` when `token`
+/// is a known non-SCI hard splitter — a published dissem control or
+/// non-IC dissem in either the abbreviated form (`NF`, `OC`, `XD`,
+/// `SBU`, ...) or the long banner / title form (`NOFORN`, `ORCON`,
+/// `EXDIS`, ...). Long-form recognition routes through
+/// `marque_ism::marking_forms::banner_to_portion` / `title_to_portion`
+/// so the surface tracks the canonical `MARKING_FORMS` table —
+/// matching the strict parser's `parse_dissem_full_form` /
+/// `parse_non_ic_full_form` shape (those live as `pub(super)` in
+/// `marque-core` so we re-derive them locally per issue #720
+/// preflight decision point #3).
+fn is_non_sci_hard_splitter_token(token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    if DissemControl::parse(token).is_some() || NonIcDissem::parse(token).is_some() {
+        return true;
+    }
+    let portion =
+        marking_forms::banner_to_portion(token).or_else(|| marking_forms::title_to_portion(token));
+    portion.is_some_and(|p| DissemControl::parse(p).is_some() || NonIcDissem::parse(p).is_some())
 }
 
 /// Cheap pre-check for [`try_sci_delimiter_repair`]: returns true when
@@ -411,5 +550,134 @@ mod tests {
         // BUR alone — bare CS by itself, len 3, fails Pattern B's
         // 4..=6 length check, no `-`, not in Pattern A. Returns None.
         assert!(repair_sci_token("BUR").is_none());
+    }
+
+    // ---------------------------------------------------------------
+    // Pattern D — intra-SCI `/` promotion (issue #720)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn pattern_d_promotes_canonical_sci_slash_dissem() {
+        // (b) standalone: SCI already canonical, only the delimiter
+        // is wrong. `HCS-P/NOFORN` → `HCS-P//NOFORN`.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//HCS-P/NOFORN").as_deref(),
+            Some("SECRET//HCS-P//NOFORN"),
+            "canonical HCS-P followed by single `/` then NOFORN must \
+             promote to category `//`",
+        );
+        // Bare SCI control system + single-slash + abbrev dissem.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//SI/NOFORN").as_deref(),
+            Some("SECRET//SI//NOFORN"),
+        );
+        // Bare SCI + single-slash + non-IC dissem (long form).
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//TK/EXDIS").as_deref(),
+            Some("SECRET//TK//EXDIS"),
+        );
+    }
+
+    #[test]
+    fn pattern_d_promotes_after_pattern_a_repair() {
+        // (a) composed with Pattern A: HCSP → HCS-P AND the trailing
+        // `/NOFORN` → `//NOFORN`. The single output covers both
+        // repairs — the canonical decoder-recovery shape for the bug
+        // class that motivated issue #720.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//HCSP/NOFORN").as_deref(),
+            Some("SECRET//HCS-P//NOFORN"),
+            "HCSP → HCS-P AND trailing single `/` → `//` (Pattern A + D)",
+        );
+    }
+
+    #[test]
+    fn pattern_d_promotes_after_pattern_b_repair() {
+        // Pattern B output (SI/TK) is itself SCI-shaped — the last
+        // bare CS in the chain (TK) is what abuts the trailing
+        // delimiter; the predicate accepts the slash-joined chain
+        // wholesale via `is_sci_shaped`.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//SITK/NOFORN").as_deref(),
+            Some("SECRET//SI/TK//NOFORN"),
+            "SITK → SI/TK AND trailing single `/` → `//` (Pattern B + D)",
+        );
+    }
+
+    #[test]
+    fn pattern_d_promotes_after_pattern_c_repair() {
+        // Pattern C output (SI/TK from SI-TK) — same as B output
+        // shape, plus a trailing single `/` to NOFORN.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//SI-TK/NOFORN").as_deref(),
+            Some("SECRET//SI/TK//NOFORN"),
+            "SI-TK → SI/TK AND trailing single `/` → `//` (Pattern C + D)",
+        );
+    }
+
+    #[test]
+    fn pattern_d_does_not_promote_sci_then_sci() {
+        // SCI followed by SCI uses the SAME `/` separator as Pattern
+        // B output (intra-category delimiter, §A.6 p16). The gate
+        // requires the right side to be a non-SCI hard splitter; SI
+        // followed by TK must leave the `/` alone.
+        // (Canonical input — no rewrite at all.)
+        assert!(try_sci_delimiter_repair("SECRET//SI/TK//NOFORN").is_none());
+        // And the only rewrite for `SI/TK/NOFORN` is to promote the
+        // `/` before NOFORN (after the second SCI token TK), not the
+        // one between SI and TK.
+        assert_eq!(
+            try_sci_delimiter_repair("SECRET//SI/TK/NOFORN").as_deref(),
+            Some("SECRET//SI/TK//NOFORN"),
+            "only the SCI→non-SCI boundary promotes; SCI→SCI stays \
+             single-slash",
+        );
+    }
+
+    #[test]
+    fn pattern_d_does_not_promote_dissem_then_dissem() {
+        // ORCON is a dissem long form; NOFORN is a dissem long form.
+        // The gate (left side requires SCI-shape) must not fire.
+        // This is the regression guard against breaking
+        // `decoder_recovery::missing_delimiter_top_secret_classification_then_dissem`.
+        assert!(try_sci_delimiter_repair("TOP SECRET//ORCON/NOFORN").is_none());
+        // Even when the SCI substring `HCS` appears earlier in the
+        // text (so the cheap pre-check passes), the boundary between
+        // ORCON and NOFORN must not be touched.
+        let out = try_sci_delimiter_repair("TOP SECRET//HCS-P INTEL OPS ORCON/NOFORN");
+        assert!(
+            out.is_none(),
+            "ORCON/NOFORN is a dissem/dissem chain — Pattern D must \
+             not promote it; got: {out:?}",
+        );
+    }
+
+    #[test]
+    fn pattern_d_leaves_canonical_double_slash_alone() {
+        // The standard `(S//HCS-P)` / `(S//HCSP)` no-trailing-dissem
+        // shapes that the existing recovery suite covers must not
+        // gain a Pattern D promotion — the right boundary is `)`,
+        // not `/`.
+        assert!(try_sci_delimiter_repair("(S//HCS-P)").is_none());
+        assert!(try_sci_delimiter_repair("(S//SI/TK)").is_none());
+    }
+
+    #[test]
+    fn pattern_d_leaves_rel_to_country_chain_alone() {
+        // `REL TO USA, FVEY/NF` — the `/` in `FVEY/NF` is the REL TO
+        // trailing-dissem separator, NOT an SCI boundary. SCI doesn't
+        // appear in this input at all; the cheap pre-check should
+        // bail out before any walking happens. Belt-and-suspenders
+        // assertion that no false promotion sneaks through.
+        assert!(try_sci_delimiter_repair("SECRET//REL TO USA, FVEY/NF").is_none());
+    }
+
+    #[test]
+    fn pattern_d_does_not_promote_sci_then_unknown() {
+        // `SI/GARBAGE` — GARBAGE is not a known non-SCI hard
+        // splitter (DissemControl/NonIcDissem don't accept it).
+        // Leave the `/` alone; the decoder's other passes can take
+        // a second crack at it.
+        assert!(try_sci_delimiter_repair("SECRET//SI/GARBAGE").is_none());
     }
 }
