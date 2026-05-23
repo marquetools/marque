@@ -139,6 +139,30 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 ///    gate's FD&R-absent test failed, OR a downstream page-rewrite
 ///    cleared RELIDO. No diagnostic.
 ///
+/// # Algebraic redundancy retired (issue #713)
+///
+/// Prior to #713 this `check()` also carried two pre-`project()`
+/// fast-paths — Clause 2b (input-explicit FD&R short-circuit) and
+/// Clause 2c (non-US classification short-circuit) — that mirrored
+/// `default_fill::row{8,9}_should_fill`'s gate predicates at the rule
+/// layer. They were a pure optimization: algebraically Clause 3's
+/// `project()` call reaches the same conclusion because the same
+/// `MASK_FDR_OR_RELIDO_INCOMPAT` / `MASK_RELIDO_US_CLASS_SUPPRESSORS`
+/// bits gate Row 8 and Row 9 unconditionally inside
+/// `apply_default_fill`. Both fast-paths were retired in #713 to
+/// eliminate the algebraic-drift risk that a future §B.3 / §H.8
+/// revision (Constitution VIII migration) would require updating two
+/// code paths in lock-step. The single source of truth is now the
+/// default-fill stage; this rule remains the byte-surfacing Suggest
+/// channel for §B.3 Table 2 p21.
+///
+/// `DISPLAY ONLY` silence flows through the same path post-#618:
+/// `MASK_RELIDO_US_CLASS_SUPPRESSORS ⊇ MASK_FDR_DOMINATORS` includes
+/// the `DISPLAY_ONLY` bit (the closure's `satisfies(TOK_DISPLAY_ONLY)`
+/// predicate scans both `dissem_iter()` and `display_only_to` since
+/// #618), so Row 9 skips and Clause 3 reads
+/// `projection_adds_relido == false`.
+///
 /// # Fix shape
 ///
 /// `ReplacementIntent::FactAdd { token: FactRef::Cve(TOK_RELIDO),
@@ -218,51 +242,6 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             return vec![];
         }
 
-        // Clause 2b (issue #704 fast-path): mirror
-        // `default_fill::row9_should_fill`'s FD&R-absent gate at the
-        // rule layer. If the input carries any FD&R dominator
-        // (REL TO / DISPLAY ONLY / EYES — RELIDO already handled by
-        // Clause 2), `default_fill::row9_should_fill` skips and no
-        // RELIDO will be added by the projection. Short-circuit here
-        // to avoid the project() call on the common case. This is a
-        // pure optimization; algebraically Clause 3's project-based
-        // check would reach the same conclusion.
-        //
-        // Authority: §B.3 paragraph b p19 ("not marked previously");
-        // §B.3.a p19 (FD&R dominator enumeration).
-        let input_has_explicit_fdr = !attrs.rel_to.is_empty()
-            || !attrs.display_only_to.is_empty()
-            || attrs
-                .dissem_iter()
-                .any(|d| matches!(d, DissemControl::Eyes));
-        if input_has_explicit_fdr {
-            return vec![];
-        }
-
-        // Clause 2c (issue #704 fast-path): RELIDO is an IC
-        // SFDRA-deferred marking per §H.8 p154 — IDO release authority
-        // is US-content-only. Non-US classification (NATO / JOINT /
-        // FGI) carries foreign equity and is in
-        // MASK_FDR_OR_RELIDO_INCOMPAT (the gate for
-        // `default_fill::row8_should_fill`). Short-circuit here so
-        // the project() call is skipped on non-US-classified inputs;
-        // algebraically Clause 3 would reach the same conclusion via
-        // default-fill Row 8's gate failing.
-        //
-        // Authority: §H.8 p154 (RELIDO grammar — US-originated
-        // content scope); §H.7 p123 (FGI foreign-equity bar);
-        // §H.3 p56 (JOINT co-ownership grammar); §G.1 Table 4 p37
-        // (NATO classification).
-        match attrs.classification {
-            Some(marque_ism::MarkingClassification::Nato(_))
-            | Some(marque_ism::MarkingClassification::Joint(_))
-            | Some(marque_ism::MarkingClassification::Fgi(_)) => return vec![],
-            _ => {}
-        }
-        if attrs.fgi_marker.is_some() {
-            return vec![];
-        }
-
         // Clause 3: run project(Scope::Page) and check the post-pipeline
         // state. Issue #704 retired the `CLOSURE_TABLE` suppressor_mask
         // architecture (which violated the closure operator's algebraic
@@ -275,8 +254,8 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         // in input, only to be stripped by the overlay), causing S008
         // to suggest RELIDO that the page projection would immediately
         // strip. `project(Scope::Page, &[marking])` over a single-
-        // portion page exercises the full pipeline (join +
-        // closure + supersession overlay + page rewrites) and gives
+        // portion page exercises the full pipeline (join + closure +
+        // default_fill + supersession overlay + page rewrites) and gives
         // S008 the canonical observable post-projection state.
         let marking = CapcoMarking::new(attrs.clone());
         let projected = SCHEME.project(Scope::Page, &[marking]);

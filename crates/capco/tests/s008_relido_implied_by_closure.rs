@@ -112,24 +112,32 @@ fn silent_when_rel_to_present() {
 #[test]
 fn silent_when_display_only_present() {
     // `(S//DISPLAY ONLY GBR)` — DISPLAY ONLY is an FD&R dominator at
-    // the lattice layer. Post-#618 the closure's
+    // the lattice layer. Post-#713 the rule-layer pre-`project()`
+    // fast-paths (former Clauses 2b/2c) were retired as algebraically
+    // redundant with `default_fill::row{8,9}_should_fill`; silence
+    // here now flows entirely through Clause 3's
+    // `projection_adds_relido == false` reading, because
+    // `default_fill::row{8,9}_should_fill` gate on
+    // `MASK_FDR_OR_RELIDO_INCOMPAT` / `MASK_RELIDO_US_CLASS_SUPPRESSORS`
+    // (both supermasks include `MASK_FDR_DOMINATORS`, which carries
+    // the `DISPLAY_ONLY` bit). Post-#618 the closure's
     // `satisfies(TOK_DISPLAY_ONLY)` predicate scans BOTH
     // `attrs.dissem_iter()` for `DissemControl::Displayonly` AND
     // `attrs.display_only_to` (the country-list axis the parser
-    // routes the canonical wire form into). Pre-#618 the predicate
-    // only checked `dissem_iter()`, missing the canonical wire
-    // form, which forced a workaround at S008 clause 2b
-    // (`!attrs.display_only_to.is_empty()` early-return). #618
-    // widened the predicate, the workaround was retired, and S008
-    // now reaches the canonical suppressor path through clause 3.
-    // This test stays load-bearing as a regression guard — if the
-    // underlying predicate ever drifts back, the test trips.
+    // routes the canonical wire form into), so the suppressor mask
+    // lights regardless of which axis the user wrote DISPLAY ONLY
+    // on. This test stays load-bearing as a regression guard — if
+    // either the #618 widening drifts back or the default-fill
+    // gates drop the DISPLAY ONLY bit, the test trips.
     assert!(
         !fires_s008(b"(S//DISPLAY ONLY GBR)\n"),
         "S008 must not fire when DISPLAY ONLY is present — \
-         post-#618 the closure suppressor correctly recognizes \
-         the `display_only_to` axis, so no RELIDO injection \
-         occurs and S008 has nothing to suggest",
+         post-#713 silence flows via Clause 3's projection-based \
+         check, with default_fill::row8_should_fill / row9_should_fill \
+         skipping because MASK_FDR_OR_RELIDO_INCOMPAT / \
+         MASK_RELIDO_US_CLASS_SUPPRESSORS include the DISPLAY ONLY \
+         bit (post-#618 the closure correctly recognizes both \
+         `dissem_iter()` and `display_only_to` axes)",
     );
 }
 
