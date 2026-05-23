@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T046 — wire-format pin for [`marque_rules::Discriminant`] per
-//! PR 3c.2.D PM-D-3.
+//! Wire-format pin for [`marque_rules::Discriminant`].
 //!
 //! `Discriminant::as_str()` returns the JSON wire string for the
-//! `marque-1.0` audit record's `replacement.discriminant` field. A
+//! `marque-2.0` audit record's `replacement.discriminant` field. A
 //! silent rename of either arm — or an attribute change that swaps
 //! the encoded form — breaks this test, forcing a coordinated
 //! audit-schema bump per the closed-set discipline.

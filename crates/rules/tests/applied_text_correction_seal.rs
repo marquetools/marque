@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T046 — PR 3c.2.D PM-D-4 seal-acceptance pin for
+//! Seal-acceptance pin for
 //! `AppliedTextCorrection::__engine_promote_text_correction`.
 //!
 //! Test-fixture carve-out per Constitution V Principle V — mints an
@@ -36,8 +36,6 @@ fn applied_text_correction_promote_seal_constructs_through_token() {
 
     let original_digest: Blake3Hash = Blake3Hash::from([0u8; 32]);
     let correction = AppliedTextCorrection::__engine_promote_text_correction(
-        // T044: legacy `C001` → `("capco", "marking.correction.token-typo")`
-        // per `docs/refactor-006/legacy-rule-id-map.md` §1.
         RuleId::new("capco", "marking.correction.token-typo"),
         Severity::Fix,
         Span::new(0, 6),
@@ -74,8 +72,6 @@ fn applied_text_correction_clone_preserves_fields() {
     let token = EnginePromotionToken::__engine_construct();
     let original_digest: Blake3Hash = Blake3Hash::from([1u8; 32]);
     let original = AppliedTextCorrection::__engine_promote_text_correction(
-        // T044: legacy `E006` → `("capco", "marking.deprecation.deprecated-dissem-control")`
-        // per `docs/refactor-006/legacy-rule-id-map.md` §1.
         RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
         Severity::Error,
         Span::new(10, 16),

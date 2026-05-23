@@ -16,8 +16,8 @@
 //! import [`FactRef`], [`ReplacementIntent`], and [`RecanonScope`]
 //! directly from `marque_scheme` — the types live there because the
 //! [`MarkingScheme::apply_intent`](marque_scheme::MarkingScheme::apply_intent)
-//! trait method (added in the engine-prereq PR) needs to reference
-//! them at the trait surface, and `marque-rules` already depends on
+//! trait method needs to reference them at the trait surface, and
+//! `marque-rules` already depends on
 //! `marque-scheme` — importing in the other direction would create a
 //! cycle. `marque-rules` does NOT re-export them: rule crates import
 //! directly from `marque_scheme::{FactRef, ReplacementIntent, RecanonScope}`.
@@ -26,21 +26,16 @@
 //!
 //! 1. Rule's `check(...)` returns `Vec<Diagnostic<S>>`. Each
 //!    `Diagnostic` carries `fix: Option<FixIntent<S>>` — the sole
-//!    fix-emission channel post PR 3c.B Commit 10.
-//! 2. Engine filters by `Confidence::combined() >= threshold`
-//!    (FR-016).
-//! 3. Engine sorts non-overlapping fixes (I-3) and resolves overlaps
-//!    (C-1). Span ordering comes from the *diagnostic's* span —
-//!    `FixIntent<S>` carries no `target_span` (spans are
-//!    diagnostic-only per architecture.md "Type sketch" invariant 3).
+//!    fix-emission channel.
+//! 2. Engine filters by `Confidence::combined() >= threshold`.
+//! 3. Engine sorts non-overlapping fixes and resolves overlaps. Span
+//!    ordering comes from the *diagnostic's* span — `FixIntent<S>`
+//!    carries no `target_span` (spans are diagnostic-only per
+//!    architecture.md "Type sketch" invariant 3).
 //! 4. Engine snapshots runtime state (timestamp, classifier id,
 //!    dry-run flag, input identifier) onto the rule's pure-data
 //!    `FixIntent` to produce an `AppliedFix<S>` via
-//!    `AppliedFix::__engine_promote(...)`. The single promotion path
-//!    replaces the Commit 2–9 dual-path `__engine_promote` /
-//!    `__engine_promote_legacy` shape: as of Commit 10 every rule
-//!    emits `FixIntent<S>` and the engine carries the intent directly
-//!    on `AppliedFixProposal::FixIntent(_)`.
+//!    `AppliedFix::__engine_promote(...)`.
 
 use core::fmt::Debug;
 
@@ -73,20 +68,18 @@ use crate::message::Message;
 ///
 /// `FixIntent` carries no span. Spans are diagnostic-only per
 /// architecture.md "Type sketch" invariant 3. The engine reads the
-/// containing diagnostic's `span` field when it needs to order
-/// fixes (FR-016) or resolve overlaps (C-1). A `FixIntent` is a
-/// structural fact-set delta plus the message attached to its
-/// diagnostic; it never references the source buffer.
+/// containing diagnostic's `span` field when it needs to order fixes
+/// or resolve overlaps. A `FixIntent` is a structural fact-set delta
+/// plus the message attached to its diagnostic; it never references
+/// the source buffer.
 ///
 /// # Sole rule-emission API
 ///
-/// PR 3c.B Commit 10 retired the legacy `FixProposal` from the
-/// rule-emission surface. Every rule emits `FixIntent<S>` via
-/// `Diagnostic::with_fix(...)` / `Diagnostic::with_fix_at_span(...)`,
-/// and the engine promotes through the single `__engine_promote`
-/// constructor. The internal text-correction helper still lives
-/// inside `marque-engine` (engine-only `TextCorrectionProposal`),
-/// but no rule crate constructs it.
+/// Every rule emits `FixIntent<S>` via `Diagnostic::with_fix(...)` /
+/// `Diagnostic::with_fix_at_span(...)`, and the engine promotes through
+/// the single `__engine_promote` constructor. The internal
+/// text-correction helper lives inside `marque-engine` (engine-only
+/// `TextCorrectionProposal`), but no rule crate constructs it.
 ///
 /// `FixIntent<S>` deliberately does NOT derive `PartialEq` /
 /// `Eq` / `Hash` — `Confidence` and `Message` are not equatable
@@ -105,7 +98,7 @@ pub struct FixIntent<S: MarkingScheme> {
     pub replacement: ReplacementIntent<S>,
 
     /// Multi-axis confidence. `recognition × rule` is gated against
-    /// the engine's threshold (FR-016).
+    /// the engine's threshold.
     pub confidence: Confidence,
 
     /// Closed-set list of contributing features. Inline-4 capacity
@@ -121,18 +114,14 @@ pub struct FixIntent<S: MarkingScheme> {
     /// Provenance: where this fix recommendation originated
     /// (BuiltinRule, CorrectionsMap, MigrationTable, decoder).
     ///
-    /// Moved from `FixProposal` to `FixIntent<S>` in PR 3c.B
-    /// Commit 10. Rules own their fix's provenance; the engine
-    /// snapshots it onto `AppliedFix<S>` at promotion time.
+    /// Rules own their fix's provenance; the engine snapshots it onto
+    /// `AppliedFix<S>` at promotion time.
     pub source: FixSource,
 
     /// Reference to the CAPCO rule or migration document
     /// justifying this fix. `None` for most rules; populated when
     /// a specific section / doc anchor adds value beyond the
     /// diagnostic's `citation`.
-    ///
-    /// Moved from `FixProposal` to `FixIntent<S>` in PR 3c.B
-    /// Commit 10 for the same reason as `source`.
     pub migration_ref: Option<&'static str>,
 }
 

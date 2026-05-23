@@ -49,9 +49,9 @@ use marque_scheme::MarkingScheme;
 ///
 /// Both fields are `&'static str` so construction is free and
 /// `Copy`-able. There is exactly one constructor — [`RuleId::new`]
-/// taking the two segments separately — by design (per the T044 PM
-/// decisions, OD-6): a single 2-arg form makes the misuse of
-/// confusing scheme with predicate unrepresentable.
+/// taking the two segments separately — by design: a single 2-arg
+/// form keeps the scheme and predicate segments distinct at the call
+/// site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleId {
     scheme: &'static str,
@@ -113,8 +113,8 @@ impl std::fmt::Display for RuleId {
 ///
 /// # Generic over the marking scheme
 ///
-/// `Rule<S>` is generic post-PR 3c.B so `check`'s return type can
-/// carry scheme-typed [`crate::FixIntent<S>`] payloads through
+/// `Rule<S>` is generic so `check`'s return type can carry
+/// scheme-typed [`crate::FixIntent<S>`] payloads through
 /// [`Diagnostic<S>`]. Every consumer crate instantiates
 /// `Rule<CapcoScheme>`. The `Box<dyn Rule<S>>` shape stays sound;
 /// `Box<dyn Rule<CapcoScheme>>` is the production form used by
@@ -126,19 +126,18 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     fn default_severity(&self) -> Severity;
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext<'_>) -> Vec<Diagnostic<S>>;
 
-    /// Dispatch phase for the engine's two-pass fix pipeline (FR-021).
+    /// Dispatch phase for the engine's two-pass fix pipeline.
     ///
     /// Returns [`Phase::WholeMarking`] by default. The default is
-    /// **intentional, not accidental** — per PM decision D-7.2 in
-    /// `docs/refactor-006/pr-7-pm-decisions.md`:
+    /// **intentional, not accidental**:
     ///
     /// - Most rules in the catalog are whole-marking by construction
-    ///   (27 of 31 CAPCO rules at PR 7a; see `crates/capco/tests/phase_assignment.rs`
-    ///   for the canonical per-rule list).
+    ///   (see `crates/capco/tests/phase_assignment.rs` for the
+    ///   canonical per-rule list).
     /// - Failing to declare yields the safer dispatch: a localized rule
-    ///   running in pass-2 is conservative (no I-19 false positive),
+    ///   running in pass-2 is conservative (no false positive),
     ///   whereas a whole-marking rule running in pass-1 violates the
-    ///   span-shape constraint and trips the PR 7b first-fire check.
+    ///   span-shape constraint and trips the first-fire check.
     /// - Drift mitigation lives in `crates/capco/tests/phase_assignment.rs`,
     ///   which enumerates every registered rule's declared phase
     ///   against a hand-maintained allowlist. Adding a new rule
@@ -146,11 +145,8 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     ///   "stop and think" gate without the per-rule boilerplate of a
     ///   required-method.
     ///
-    /// PR 7a (this commit) stores the phase on the engine as a
-    /// partition but does NOT yet dispatch on it; both phases still
-    /// run together in pass-2 exactly as before. Pass-split dispatch
-    /// lands in 7b. The default is forward-compatible with future
-    /// schemes whose rules are `WholeMarking`-by-construction.
+    /// The default is forward-compatible with future schemes whose
+    /// rules are `WholeMarking`-by-construction.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
@@ -168,7 +164,7 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     ///    is resolved against the diagnostic's emitted `rule` field.
     ///
     /// Default: empty. Only dispatcher walkers like
-    /// `BannerMatchesProjectedRule` (T026a) — which register under one
+    /// `BannerMatchesProjectedRule` — which register under one
     /// bookkeeping ID but emit diagnostics under per-row catalog IDs
     /// — need to override this. A rule whose registered `id()` matches
     /// every diagnostic it emits should leave this at the default.
@@ -216,7 +212,7 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     ///   the rule's correctness rests on, not only the ones the
     ///   diagnostic emits.
     ///
-    /// Used by the PR 10.A.2 F.1 corpus-fidelity gate
+    /// Used by the corpus-fidelity gate
     /// (`crates/capco/tests/citation_fidelity.rs`) to cross-check the
     /// declared catalog against what the engine actually emits over
     /// the corpus. The gate runs in both directions:
@@ -225,7 +221,8 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     ///    set (`union(Diagnostic.citation)` across every fixture's
     ///    `Engine::lint()` output) MUST be a subset of the declared
     ///    set (catalog rows ∪ rule declarations), modulo a small
-    ///    closed allow-list of engine-internal citations (R001 / R002).
+    ///    closed allow-list of engine-internal citations (the
+    ///    decoder-recognition and reparse-failed sentinels).
     ///    Catches rules that emit citations they didn't declare.
     /// 2. **Declared ⊆ harvested ∪ whitelist.** The declared set
     ///    MUST be a subset of the harvested set, modulo a documented
@@ -254,8 +251,8 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     ///
     /// Walker-style rules (e.g. `BannerMatchesProjectedRule`) MUST
     /// list the union of per-row citations emitted under any per-row
-    /// `rule_id`, because the F.1 gate harvests by
-    /// `Diagnostic.citation` not by `Rule::id()`.
+    /// `rule_id`, because the gate harvests by `Diagnostic.citation`
+    /// not by `Rule::id()`.
     ///
     /// Constitution VIII (Authoritative Source Fidelity): every
     /// entry — emitted or non-emitted cross-reference — MUST trace
@@ -274,8 +271,8 @@ pub trait RuleSet<S: MarkingScheme>: Send + Sync {
     fn schema_version(&self) -> &'static str;
 }
 
-// FR-038 / T002 — `Send + Sync` for the `Rule` and `RuleSet` traits is
-// declared by the `pub trait Rule: Send + Sync` and
+// `Send + Sync` for the `Rule` and `RuleSet` traits is declared by
+// the `pub trait Rule: Send + Sync` and
 // `pub trait RuleSet: Send + Sync` supertrait bounds above. The
 // trait-object dimension (`Box<dyn Rule>: Send + Sync`,
 // `Arc<dyn Rule>: Send + Sync`, plus the analogous `RuleSet` shapes)

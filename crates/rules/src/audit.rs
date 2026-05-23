@@ -1,48 +1,34 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `marque-2.0` audit-record types (was `marque-1.0` pre-T044).
+//! `marque-2.0` audit-record types.
 //!
-//! This module ships the audit-record-side types reshaped for the
-//! `marque-1.0` audit schema cutover landing at PR 3c.2.D, then
-//! re-pinned to `marque-2.0` at T044 to carry the `RuleId`
+//! The audit-record-side types carrying the `RuleId`
 //! `(scheme, predicate_id)` 2-tuple form on the audit-record wire:
 //!
-//! - [`Discriminant`] — closed `Strict | Decoder` provenance discriminator.
-//!   Derived at audit-emit time from [`crate::FixSource`] per PM-D-7
-//!   (`docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`).
+//! - [`Discriminant`] — closed `Strict | Decoder` provenance
+//!   discriminator. Derived at audit-emit time from [`crate::FixSource`].
 //! - [`AppliedReplacement`] — `{ canonical, confidence, bytes_digest }`
-//!   payload inside an [`AppliedFixDetail`]. Replaces the v1
-//!   `AppliedFixProposal::FixIntent` arm for the marking-side audit-
+//!   payload inside an [`AppliedFixDetail`], the marking-side audit-
 //!   record path.
 //! - [`AppliedFixDetail`] — `{ replacement, original_span,
 //!   original_digest }`. The marking-side fix-detail substructure on
-//!   the `marque-2.0` envelope (was `marque-1.0` pre-T044).
+//!   the `marque-2.0` envelope.
 //! - [`AppliedTextCorrection`] — separate audit-record type for the
 //!   C001 / `[corrections]`-map path. Disjoint from [`crate::AppliedFix`]
-//!   by construction so the G13 boundary (Constitution V Principle V)
-//!   is checkable at compile time.
+//!   by construction so the audit-content-ignorance boundary
+//!   (Constitution V Principle V) is checkable at compile time.
 //! - [`AuditLine`] — sum type preserving cross-record promotion order
 //!   between marking-fix and text-correction NDJSON lines.
 //!
-//! # Status (PR 3c.2.D / D2 commit boundary)
-//!
-//! All types land **alongside** the existing v1 types in this crate.
-//! v1 [`crate::AppliedFix`] and [`crate::AppliedFixProposal`] are
-//! unchanged at D2; the consumer migration (engine emit, CLI / WASM
-//! renderers, test fixtures) lands in D3–D6, and the atomic schema
-//! flip with v1 deletion lands in D7. This module is **purely
-//! additive** at D2 — no consumer is wired through it yet.
-//!
 //! # Constitution VII (crate discipline)
 //!
-//! `blake3` dep added to `marque-rules` per PM-D-6 (NOT to
-//! `marque-scheme` — leaf-crate minimal-dep posture preserved). The
-//! digest is computed at promotion time inside the engine's
-//! `__engine_promote` body and threaded through these types as a
-//! `Blake3Hash` value (`Copy`-sized; renderer materializes the
-//! `"blake3:<hex>"` audit-emit string only at the NDJSON projection
-//! boundary).
+//! `blake3` is a `marque-rules` dep, not a `marque-scheme` one — the
+//! leaf crate keeps its minimal-dep posture. The digest is computed at
+//! promotion time inside the engine's `__engine_promote` body and
+//! threaded through these types as a `Blake3Hash` value (`Copy`-sized;
+//! the renderer materializes the `"blake3:<hex>"` audit-emit string
+//! only at the NDJSON projection boundary).
 
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -64,7 +50,7 @@ use marque_scheme::Severity;
 ///
 /// Distinguishes strict-recognizer-derived fixes from decoder-fallback
 /// fixes per `specs/006-engine-rule-refactor/contracts/audit-record.md`
-/// `marque-2.0` shape (was `marque-1.0` pre-T044).
+/// `marque-2.0` shape.
 ///
 /// The `Strict` arm covers every [`crate::FixSource`] value that comes
 /// from a deterministic-parse path
@@ -73,7 +59,7 @@ use marque_scheme::Severity;
 /// ([`crate::FixSource::DecoderPosterior`],
 /// [`crate::FixSource::DecoderClassificationHeuristic`]).
 /// [`crate::FixSource::CorrectionsMap`] does NOT map to a `Discriminant`
-/// — it routes to an [`AppliedTextCorrection`] line instead, per PM-D-4.
+/// — it routes to an [`AppliedTextCorrection`] line instead.
 ///
 /// # Why closed (no `#[non_exhaustive]`)
 ///
@@ -90,7 +76,7 @@ use marque_scheme::Severity;
 /// **No `From<FixSource> for Discriminant` impl.** The 5-to-2 collapse
 /// is not total ([`crate::FixSource::CorrectionsMap`] routes to
 /// [`AppliedTextCorrection`], not to a discriminant). Conversion lives
-/// at the engine's audit-emit projection (PM-D-7).
+/// at the engine's audit-emit projection.
 ///
 /// ```compile_fail
 /// # use marque_rules::audit::Discriminant;
@@ -111,8 +97,7 @@ impl Discriminant {
     /// Audit-emit wire string.
     ///
     /// Matches `contracts/audit-record.md` `marque-2.0`
-    /// `replacement.discriminant` JSON field (was `marque-1.0`
-    /// pre-T044). Pinned by
+    /// `replacement.discriminant` JSON field. Pinned by
     /// `crates/rules/tests/discriminant_audit_string.rs` so a silent
     /// rename of either arm becomes a compile-time test failure.
     #[inline]
@@ -127,8 +112,7 @@ impl Discriminant {
 
 /// Map [`FixSource`] to a [`Discriminant`] for audit-record emission.
 ///
-/// Per PM-D-7 (`docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`) the
-/// discriminant is derived at audit-emit time from the originating
+/// The discriminant is derived at audit-emit time from the originating
 /// fix's source, not threaded through promote-call arguments. The
 /// 5-to-2 collapse table:
 ///
@@ -142,8 +126,8 @@ impl Discriminant {
 ///
 /// # Why panic on `CorrectionsMap`
 ///
-/// Per PM-D-4, `FixSource::CorrectionsMap` is structurally outside
-/// the marking-recognition discriminator — it routes to an
+/// `FixSource::CorrectionsMap` is structurally outside the
+/// marking-recognition discriminator — it routes to an
 /// [`AppliedTextCorrection`] line, which is a separate NDJSON record
 /// type and never carries a [`Discriminant`]. If a `CorrectionsMap`
 /// source reaches this function the engine has bugged the routing
@@ -155,8 +139,7 @@ impl Discriminant {
 ///
 /// Closed mapping. Adding a [`FixSource`] variant requires deciding
 /// which arm it routes to and updating this match — the compiler
-/// will refuse the build until that decision is made (FR-040 lint
-/// + non-exhaustive-match warning).
+/// will refuse the build until that decision is made.
 ///
 /// Pinned by `crates/rules/tests/discriminant_from_source.rs`.
 #[inline]
@@ -188,18 +171,16 @@ pub const fn discriminant_from_source(source: FixSource) -> Discriminant {
 /// Carries the engine-rendered [`Canonical<S>`] value (sealed
 /// construction per `marque_scheme::canonical`), the originating
 /// [`Confidence`] snapshot, and the BLAKE3 digest of the canonical
-/// bytes. Replaces the v1 `AppliedFixProposal::FixIntent` arm for the
-/// marking-side audit-record path.
+/// bytes — the marking-side audit-record path.
 ///
-/// # Field set per PM-D-7
+/// # Field set
 ///
-/// Per PM-D-7 (`docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`), this
-/// type does NOT carry a `discriminant: Discriminant` field. The
+/// This type does NOT carry a `discriminant: Discriminant` field. The
 /// discriminant is derived at audit-emit time from
 /// [`AppliedFix::source`] via the 5-to-2 mapping; storing it here
 /// would duplicate data already on the outer [`AppliedFix`].
 ///
-/// # `bytes_digest` precomputation (PM-D-6)
+/// # `bytes_digest` precomputation
 ///
 /// The digest is precomputed at promotion time inside the engine's
 /// `__engine_promote` body, NOT lazily at audit-emit time, so the
@@ -212,7 +193,7 @@ pub const fn discriminant_from_source(source: FixSource) -> Discriminant {
 ///
 /// Pure data struct; field set is the v2 shape per
 /// `contracts/audit-record.md`. Adding a field is an audit-schema
-/// bump (closed-set discipline; matches [`crate::MessageArgs`]).
+/// bump (closed-set discipline matching [`crate::MessageArgs`]).
 /// External brace construction is blocked by [`Canonical<S>`] being
 /// sealed via [`marque_scheme::EngineConstructor`] — `AppliedReplacement`
 /// cannot be brace-constructed by an external crate even without
@@ -234,8 +215,7 @@ pub struct AppliedReplacement<S: MarkingScheme> {
     /// originating [`crate::FixIntent`]`.confidence`).
     pub confidence: Confidence,
     /// BLAKE3 digest of the rendered canonical bytes. Precomputed at
-    /// promotion time per PM-D-6 to keep the audit-emit path
-    /// allocation-free.
+    /// promotion time to keep the audit-emit path allocation-free.
     pub bytes_digest: Blake3Hash,
 }
 
@@ -253,27 +233,25 @@ impl<S: MarkingScheme> Clone for AppliedReplacement<S> {
 // AppliedFixDetail<S>
 // ---------------------------------------------------------------------------
 
-/// The "marking" arm of an [`AppliedFix`] — replaces the
-/// `AppliedFixProposal::FixIntent` variant of the pre-v2 envelope.
+/// The "marking" arm of an [`AppliedFix`].
 ///
 /// # Shape per contract
 ///
 /// The `marque-2.0` audit-record contract at
-/// `contracts/audit-record.md` (was `marque-1.0` pre-T044) shapes the JSON as
+/// `contracts/audit-record.md` shapes the JSON as
 /// `{ "fix": { "replacement": {...}, "original_span": ...,
 /// "original_digest": ... } }` — `fix` is a nested object, not a flat
 /// field set. Matching the JSON shape at the type level (rather than
 /// via custom `Serialize`) keeps the relationship debuggable and the
 /// JSON projection trivial.
 ///
-/// # `original_digest` (Constitution V Principle V / G13)
+/// # `original_digest` (Constitution V Principle V)
 ///
 /// The pre-fix bytes themselves are NEVER stored — only the BLAKE3
 /// digest. This is the audit anchor for "which bytes were rewritten"
-/// without storing the bytes themselves. PM-D-6 places the digest
-/// computation at promotion time inside the engine's
-/// `__engine_promote` body so the digest and the bytes that produced
-/// it cannot desync.
+/// without storing the bytes themselves. The digest is computed at
+/// promotion time inside the engine's `__engine_promote` body so the
+/// digest and the bytes that produced it cannot desync.
 #[derive(Debug)]
 pub struct AppliedFixDetail<S: MarkingScheme> {
     /// The canonical replacement payload + provenance.
@@ -295,12 +273,10 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 }
 
 // ---------------------------------------------------------------------------
-// AppliedFix<S> — v2 outer type (marque-2.0 audit-record shape;
-//                                  was marque-1.0 pre-T044)
+// AppliedFix<S> — outer type (marque-2.0 audit-record shape)
 // ---------------------------------------------------------------------------
 
-/// `marque-2.0` audit-record marking-side type (v2 shape; was
-/// `marque-1.0` pre-T044).
+/// `marque-2.0` audit-record marking-side type.
 ///
 /// The marking-side complement of [`AppliedTextCorrection`]: a
 /// promoted [`FixIntent<S>`] with the engine-rendered
@@ -310,40 +286,24 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 /// `{ "type": "applied_fix", ... }` NDJSON line per
 /// `specs/006-engine-rule-refactor/contracts/audit-record.md` body §.
 ///
-/// # Transient module location
+/// # Field set
 ///
-/// This is the v2 reshape of [`crate::AppliedFix`]. During the PR
-/// 3c.2.D window (D2–D7) both v1 (at the crate root) and v2 (here)
-/// coexist; D7 atomically deletes v1 and promotes this type to the
-/// crate root per `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`
-/// PM-D-9. Consumers within `marque-engine` work directly with this
-/// module path during the window; consumers outside the engine
-/// (CLI render, WASM render, test fixtures) migrate in D-A3 / D-A4.
-///
-/// # Field set per PM-D-11
-///
-/// **Added vs v1**:
 /// - `severity: Severity` — top-level snapshot from the originating
 ///   [`crate::Diagnostic`]. Contract emits `"severity": "..."` at top
 ///   level.
 /// - `message: Message` — top-level snapshot. Contract emits
 ///   `{"message": {"template": "...", "args": {...}}}` at top level.
+/// - `fix: AppliedFixDetail<S>` — the marking-side replacement; text
+///   corrections route to [`AppliedTextCorrection`] instead. The
+///   confidence lives inside `fix.replacement.confidence` rather than
+///   at the top level, avoiding the duplication the JSON contract
+///   would otherwise force.
+/// - `rule`, `span`, `source`, `timestamp`, `classifier_id`,
+///   `dry_run`, `input` — provenance and runtime context.
 ///
-/// **Removed vs v1**:
-/// - `proposal: AppliedFixProposal<S>` — replaced by `fix:
-///   AppliedFixDetail<S>` (text corrections move to
-///   [`AppliedTextCorrection`] per PM-D-4).
-/// - `confidence: Confidence` — moved into
-///   `fix.replacement.confidence`. Avoids the duplication the JSON
-///   contract would otherwise force (the field already lives inside
-///   the `fix` sub-object).
-/// - `migration_ref: Option<&'static str>` — removed. The
-///   `marque-2.0` contract does not emit a top-level `migration_ref`;
-///   PR 3c.2.C's typed `Citation` on [`crate::Diagnostic`] supersedes
-///   it as the citation-provenance channel.
-///
-/// **Retained**: `rule`, `span`, `source`, `timestamp`,
-/// `classifier_id`, `dry_run`, `input`.
+/// The typed `Citation` on [`crate::Diagnostic`] is the
+/// citation-provenance channel; the contract emits no top-level
+/// `migration_ref`.
 ///
 /// # `#[non_exhaustive]`
 ///
@@ -361,9 +321,9 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 /// # Construction
 ///
 /// Engine-only via [`Self::__engine_promote`], sealed by
-/// [`EnginePromotionToken`] (FR-040 lint-enforced).
+/// [`EnginePromotionToken`] (promote-callsite-lint-enforced).
 ///
-/// # Compile-fail invariants (PR 3c.2.D)
+/// # Compile-fail invariants
 ///
 /// **No `Default for AppliedFix<S>` impl** — would defeat the
 /// engine-only seal in `__engine_promote`.
@@ -398,11 +358,8 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 /// # use marque_rules::RuleId;
 /// # use marque_scheme::{Severity, Span};
 /// let _: AppliedFix<()> = AppliedFix {
-///     // T044: 2-tuple form; legacy `E001` is retired (PR 3c.B Commit
-///     // 6) — illustrative example uses the canonical
-///     // `("capco", "banner.classification.usa-trigraph")` shape from
-///     // the plan §2.1 doc surface. The doctest's purpose is the
-///     // `#[non_exhaustive]` brace-construct rejection; the rule
+///     // Illustrative 2-tuple rule id; the doctest's purpose is the
+///     // `#[non_exhaustive]` brace-construct rejection, so the rule
 ///     // identity is incidental.
 ///     rule: RuleId::new("capco", "banner.classification.usa-trigraph"),
 ///     severity: Severity::Error,
@@ -413,20 +370,18 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 /// };
 /// ```
 ///
-/// **`__engine_promote_text_correction` relocates to
-/// [`AppliedTextCorrection`] at v2** (PM-D-4 marking-vs-text-correction
-/// split). The old method-resolution path
-/// `AppliedFix::__engine_promote_text_correction(...)` is gone — the
-/// marking-side [`AppliedFix`] carries no text-correction
-/// constructor. A future regression that re-adds the method on
-/// `AppliedFix` (collapsing the type-level G13 boundary) is caught
-/// at `cargo test --doc` time, an earlier gate than the FR-040
-/// promote-callsite lint.
+/// **`__engine_promote_text_correction` lives on
+/// [`AppliedTextCorrection`], not here** (the
+/// marking-vs-text-correction split). The marking-side [`AppliedFix`]
+/// carries no text-correction constructor. A future regression that
+/// re-adds the method on `AppliedFix` (collapsing the type-level
+/// audit-content-ignorance boundary) is caught at `cargo test --doc`
+/// time, an earlier gate than the promote-callsite lint.
 ///
-/// Rust preflight §7.7. Defense-in-depth: the FR-040 lint's
-/// exact-equality matcher (PR 3c.2.D fixup F-1) catches calls to the
-/// `AppliedTextCorrection` constructor regardless of receiver; this
-/// doctest catches the type-system relocation directly.
+/// Defense-in-depth: the promote-callsite lint's exact-equality
+/// matcher catches calls to the `AppliedTextCorrection` constructor
+/// regardless of receiver; this doctest catches the type-system
+/// relocation directly.
 ///
 /// ```compile_fail
 /// # use marque_rules::audit::AppliedFix;
@@ -443,17 +398,16 @@ pub struct AppliedFix<S: MarkingScheme> {
     pub rule: RuleId,
     /// Severity at promotion time (snapshot from
     /// [`crate::Diagnostic::severity`]; survives the lint-post-pass
-    /// severity rewrite at FR-008 / D-7.6).
+    /// severity rewrite).
     pub severity: Severity,
     /// Byte span in the original source buffer.
     pub span: Span,
     /// The marking-side fix detail (replacement + digest +
-    /// original_span). v2 replacement for the v1
-    /// `proposal: AppliedFixProposal<S>` envelope's `FixIntent` arm.
+    /// original_span).
     pub fix: AppliedFixDetail<S>,
     /// Provenance of the originating rule emission. The renderer
     /// projects this to the wire-format [`Discriminant`] via
-    /// [`discriminant_from_source`] at audit-emit time (PM-D-7).
+    /// [`discriminant_from_source`] at audit-emit time.
     pub source: FixSource,
     /// Diagnostic message — closed-template, closed-args. Snapshot
     /// from [`crate::Diagnostic::message`]. Audit emitters render
@@ -464,17 +418,17 @@ pub struct AppliedFix<S: MarkingScheme> {
     /// Classifier identity from runtime config. `None` if
     /// not configured.
     pub classifier_id: Option<Arc<str>>,
-    /// `true` if produced under `--dry-run` (FR-006).
+    /// `true` if produced under `--dry-run`.
     pub dry_run: bool,
     /// Caller-supplied input identifier (file path, `-` for stdin,
     /// `None` if N/A).
     pub input: Option<Arc<str>>,
 }
 
-// Manual Clone — see the v1 [`crate::AppliedFix`] impl for the
-// rationale (S: MarkingScheme, not S: Clone). The actual cloned
-// payload (`AppliedFixDetail`, `Message`, `Arc<str>`) all support
-// `Clone` without an `S: Clone` bound.
+// Manual Clone — the derive would over-constrain to `S: Clone`, but
+// the cloned payload (`AppliedFixDetail`, `Message`, `Arc<str>`) all
+// support `Clone` without an `S: Clone` bound, so `S: MarkingScheme`
+// suffices.
 impl<S: MarkingScheme> Clone for AppliedFix<S> {
     fn clone(&self) -> Self {
         Self {
@@ -493,20 +447,17 @@ impl<S: MarkingScheme> Clone for AppliedFix<S> {
 }
 
 impl<S: MarkingScheme> AppliedFix<S> {
-    /// Engine-only promotion path for the v2 audit record.
+    /// Engine-only promotion path for the audit record.
     ///
-    /// # Reserved name (FR-040 lint contract)
+    /// # Reserved name (promote-callsite lint contract)
     ///
     /// `__engine_promote` is reserved by the marque project — the
     /// `tools/promote-callsite-lint/` CI lint matches by last
-    /// segment, regardless of receiver type or qualifier form. The
-    /// lint covers both this v2 method on
-    /// [`crate::audit::AppliedFix`] AND the v1 method on
-    /// [`crate::AppliedFix`] (crate-root) with the same matcher
-    /// pattern. See [`crate::AppliedFix::__engine_promote`] for the
-    /// full FR-040 contract definition; the same engine-only
-    /// production carve-out and Constitution V Principle V
-    /// test-fixture carve-out apply verbatim.
+    /// segment, regardless of receiver type or qualifier form. See
+    /// [`crate::AppliedFix::__engine_promote`] for the full contract
+    /// definition; the same engine-only production carve-out and
+    /// Constitution V Principle V test-fixture carve-out apply
+    /// verbatim.
     ///
     /// # Parameters
     ///
@@ -528,7 +479,7 @@ impl<S: MarkingScheme> AppliedFix<S> {
     /// - `timestamp` / `classifier_id` / `dry_run` / `input`:
     ///   clock-injected runtime context.
     ///
-    /// # PM-D-6 digest computation
+    /// # Digest computation
     ///
     /// Both BLAKE3 digests are computed inside this function body
     /// from the parameters passed in by the engine. Engine never
@@ -536,7 +487,7 @@ impl<S: MarkingScheme> AppliedFix<S> {
     /// source of truth so the digest and the bytes that produced it
     /// cannot desync.
     ///
-    /// # PM-D-7 discriminant derivation
+    /// # Discriminant derivation
     ///
     /// `Discriminant` is NOT a constructor parameter. The renderer
     /// derives it from `self.source` via
@@ -563,9 +514,9 @@ impl<S: MarkingScheme> AppliedFix<S> {
         input: Option<Arc<str>>,
         _token: EnginePromotionToken,
     ) -> Self {
-        // Constitution V Principle V (G13): hash inline, never store
-        // the bytes. The `&[u8]` view borrows for the duration of
-        // this function body only; the digest survives in
+        // Constitution V Principle V: hash inline, never store the
+        // bytes. The `&[u8]` view borrows for the duration of this
+        // function body only; the digest survives in
         // `AppliedFixDetail.original_digest`.
         let original_digest = blake3::hash(original_bytes);
         let bytes_digest = blake3::hash(canonical.bytes().as_bytes());
@@ -597,9 +548,8 @@ impl<S: MarkingScheme> AppliedFix<S> {
     /// Wire-format [`Discriminant`] for this record.
     ///
     /// Derived from [`Self::source`] per
-    /// [`discriminant_from_source`] (PM-D-7). Audit emitters call
-    /// this at NDJSON projection time; the value is not stored on
-    /// the record.
+    /// [`discriminant_from_source`]. Audit emitters call this at
+    /// NDJSON projection time; the value is not stored on the record.
     #[inline]
     #[must_use]
     pub fn discriminant(&self) -> Discriminant {
@@ -617,12 +567,12 @@ impl<S: MarkingScheme> AppliedFix<S> {
 ///
 /// Distinct from [`AppliedFix`] (marking-side) — text corrections run
 /// pre-scanner and carry corpus-derived canonical replacement strings
-/// rather than [`Canonical<S>`] payloads. Per PM-D-4
-/// (`docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`) the type split
-/// makes the G13 boundary (Constitution V Principle V) checkable at
-/// compile time: a marking-side record carries token canonicals +
-/// category IDs + BLAKE3 digests + confidence scalars; a text-
-/// correction record carries a corpus-derived `SmolStr` replacement.
+/// rather than [`Canonical<S>`] payloads. The type split makes the
+/// audit-content-ignorance boundary (Constitution V Principle V)
+/// checkable at compile time: a marking-side record carries token
+/// canonicals + category IDs + BLAKE3 digests + confidence scalars; a
+/// text-correction record carries a corpus-derived `SmolStr`
+/// replacement.
 ///
 /// # Not generic over the scheme
 ///
@@ -640,17 +590,15 @@ impl<S: MarkingScheme> AppliedFix<S> {
 /// applies here verbatim.
 ///
 /// The function name `__engine_promote_text_correction` is reserved
-/// by the FR-040 promote-callsite lint — last-segment match by name,
-/// regardless of receiver type. The lint catches calls to this method
-/// AND calls to [`AppliedFix::__engine_promote_text_correction`] (v1
-/// path) with the same matcher pattern.
+/// by the promote-callsite lint — last-segment match by name,
+/// regardless of receiver type.
 ///
-/// # Compile-fail invariant (PM-D-4)
+/// # Compile-fail invariant
 ///
 /// **`AppliedTextCorrection` is not coercible to `AppliedFix<S>`.**
 /// The two audit-record types are disjoint by construction; no
 /// `From` / `Into` impl exists between them. Type-level enforcement
-/// of the G13 marking-vs-text-correction split.
+/// of the marking-vs-text-correction split.
 ///
 /// ```compile_fail
 /// # use marque_rules::{AppliedFix, AppliedTextCorrection};
@@ -661,8 +609,9 @@ impl<S: MarkingScheme> AppliedFix<S> {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct AppliedTextCorrection {
-    /// Rule ID (typically `C001` for `[corrections]`-map matches;
-    /// rule-emitted text corrections carry their own ID).
+    /// Rule ID (typically the corrections-map rule for
+    /// `[corrections]` matches; rule-emitted text corrections carry
+    /// their own ID).
     pub rule: RuleId,
     /// Severity at promotion time.
     pub severity: Severity,
@@ -677,12 +626,13 @@ pub struct AppliedTextCorrection {
     pub source: FixSource,
     /// Confidence snapshot.
     pub confidence: Confidence,
-    /// Migration reference (§-citation, for E006 deprecation path);
-    /// `None` for C001 corrections-map matches.
+    /// Migration reference (§-citation, for the deprecation path);
+    /// `None` for corrections-map matches.
     pub migration_ref: Option<&'static str>,
     /// Diagnostic message — closed template, closed args. Text-
     /// correction records emit [`crate::MessageTemplate::CorrectionsApplied`]
-    /// (C001) or [`crate::MessageTemplate::SupersededToken`] (E006).
+    /// (corrections map) or [`crate::MessageTemplate::SupersededToken`]
+    /// (deprecation migration).
     pub message: Message,
     /// Timestamp of application.
     pub timestamp: SystemTime,
@@ -697,12 +647,12 @@ pub struct AppliedTextCorrection {
 impl AppliedTextCorrection {
     /// Engine-only promotion path for text corrections.
     ///
-    /// # Reserved name (FR-040 lint contract)
+    /// # Reserved name (promote-callsite lint contract)
     ///
     /// The function name `__engine_promote_text_correction` is
     /// reserved by the marque project — last-segment matching applies
     /// regardless of the receiver type. See
-    /// [`AppliedFix::__engine_promote`] for the full FR-040 contract
+    /// [`AppliedFix::__engine_promote`] for the full contract
     /// definition.
     ///
     /// # Engine-only contract (production code) — same as
@@ -762,16 +712,15 @@ impl AppliedTextCorrection {
 
 /// Single line in the engine's NDJSON audit-record stream.
 ///
-/// Two arms preserve the FR-016 promotion-order invariant across the
+/// Two arms preserve the promotion-order invariant across the
 /// marking-fix channel and the text-correction channel: an audit
 /// reader walking the stream sees marking fixes and text corrections
 /// in the order the engine promoted them, without consumer-side
 /// timestamp merge logic.
 ///
-/// Per `contracts/audit-record.md` `marque-2.0` shape (was
-/// `marque-1.0` pre-T044), each arm projects to its own NDJSON line type
-/// (`{"type": "applied_fix", ...}` vs
-/// `{"type": "text_correction", ...}`).
+/// Per `contracts/audit-record.md` `marque-2.0` shape, each arm
+/// projects to its own NDJSON line type (`{"type": "applied_fix", ...}`
+/// vs `{"type": "text_correction", ...}`).
 ///
 /// # `#[non_exhaustive]`
 ///
@@ -803,7 +752,7 @@ impl<S: MarkingScheme> Clone for AuditLine<S> {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — unit coverage for the new types (PM-D-1 / >80% coverage)
+// Tests — unit coverage for the audit-record types
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
