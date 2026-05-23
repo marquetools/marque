@@ -7,18 +7,25 @@
 //! Exercises [`CapcoScheme::project(Scope::Page, ...)`] post-flip
 //! (PR 4b-D.2 Commit 3). The closure operator now runs between the
 //! per-axis lattice join and the declarative `PageRewrite` catalog;
-//! these tests pin that the unified `CLOSURE_NOFORN_CAVEATED` Trio 1
-//! row (post-PR-#522 collapse of the seven historical `CLOSURE_NOFORN_*`
-//! rows) and `CLOSURE_REL_TO_USA_NATO` fire through the production
-//! page projection, that the operator is idempotent and monotone in
-//! the marking, and that NOFORN-injection at the closure layer
-//! correctly composes with the `DissemSet` supersession overlay
+//! these tests pin end-to-end behavior through the production page
+//! projection — idempotence and monotonicity in the marking, plus
+//! correct composition with the `DissemSet` supersession overlay
 //! (§H.8 p145 NOFORN-dominates).
 //!
+//! **Post-#704 note**: the pre-#704 `CLOSURE_NOFORN_CAVEATED` Trio 1
+//! row and `CLOSURE_REL_TO_USA_NATO` row retired from close() and
+//! relocated to `marque_capco::scheme::default_fill` (they're "default
+//! if absent" rules, non-monotone by §-design per §B.3 paragraph b
+//! p19's "NOT MARKED PREVIOUSLY" gate). The end-to-end fact
+//! injection these tests assert is preserved through the
+//! close() + default_fill stack; the tests use `scheme.project()`
+//! (full pipeline) and so are unaffected by the close()/default_fill
+//! split.
+//!
 //! Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e) +
-//! §4.7.4 pipeline ordering. Per-trigger §-citations on the
-//! `CLOSURE_NOFORN_CAVEATED` row doc-comment at
-//! `crates/capco/src/scheme/closure.rs`.
+//! §4.7.4 pipeline ordering. Default-fill per-row authorities at
+//! `marque_capco::scheme::default_fill::ROW0_CAVEATED_TRIGGERS` and
+//! sibling consts.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{
@@ -189,9 +196,12 @@ fn closure_noforn_nonic_limdis_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_REL_TO_USA_NATO (§H.7 p127 + §G.2 Table 5 p40): bare NATO
-/// classification triggers implicit REL TO USA, NATO via the
-/// open-vocab `cone_derived` branch.
+/// `default_fill::row7_should_fill` (§H.7 p127 + §G.2 Table 5 p40):
+/// bare NATO classification triggers implicit REL TO USA, NATO via
+/// the post-#704 default-fill stage (was `CLOSURE_REL_TO_USA_NATO`
+/// pre-#704; retired from close() to default-fill because the
+/// "default if absent" semantic is non-monotone by §-design per §B.3
+/// paragraph b p19's "NOT MARKED PREVIOUSLY" gate).
 #[test]
 fn closure_rel_to_usa_nato_fires_on_hotpath() {
     let usa = CountryCode::USA;
