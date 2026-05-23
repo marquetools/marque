@@ -9,12 +9,6 @@ use std::str::FromStr;
 // Round-trip: Display → FromStr
 // -----------------------------------------------------------------------
 
-fn round_trip(s: &str) -> bool {
-    IsmDate::from_str(s)
-        .map(|d| d.to_string() == s)
-        .unwrap_or(false)
-}
-
 #[test]
 fn round_trip_year() {
     assert!(round_trip("2003"));

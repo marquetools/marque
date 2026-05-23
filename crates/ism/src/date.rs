@@ -125,7 +125,7 @@ impl UtcOffset {
 ///
 /// # Parsing
 ///
-/// `IsmDate` implements [`std::str::FromStr`]. Accepted forms:
+/// `IsmDate` implements [`FromStr`]. Accepted forms:
 ///
 /// | Input | Variant |
 /// |-------|---------|
@@ -138,7 +138,7 @@ impl UtcOffset {
 ///
 /// # Display
 ///
-/// [`std::fmt::Display`] produces canonical ISO 8601 form (with hyphens and
+/// [`Display`] produces canonical ISO 8601 form (with hyphens and
 /// `T` separator) suitable for round-trip:
 /// `IsmDate::from_str(&date.to_string()) == Ok(date)`.
 ///
@@ -369,11 +369,11 @@ impl IsmDate {
 /// Parse error for [`IsmDate`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseIsmDateError {
-    pub(super) msg: &'static str,
+    msg: &'static str,
 }
 
 impl ParseIsmDateError {
-    pub(super) const fn new(msg: &'static str) -> Self {
+    const fn new(msg: &'static str) -> Self {
         Self { msg }
     }
 }

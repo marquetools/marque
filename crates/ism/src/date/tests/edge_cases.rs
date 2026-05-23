@@ -4,12 +4,6 @@
 
 use super::*;
 use std::str::FromStr;
-
-fn round_trip(s: &str) -> bool {
-    IsmDate::from_str(s)
-        .map(|d| d.to_string() == s)
-        .unwrap_or(false)
-}
 // -----------------------------------------------------------------------
 // ApproxIsmDate Display
 // -----------------------------------------------------------------------
