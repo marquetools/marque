@@ -47,20 +47,20 @@
 /// # `Suggest` channel semantics
 ///
 /// `Suggest` is the firing-but-non-applying channel: a diagnostic
-/// emitted at `Suggest` carries a candidate `FixProposal` that the
-/// engine will **never** auto-apply, regardless of `confidence`. The
-/// fix is informational — it tells the user what the rule would
-/// suggest if confidence were higher. Two paths produce
-/// `Suggest`-severity diagnostics:
+/// emitted at `Suggest` may carry a candidate `FixIntent` in
+/// `Diagnostic::fix`, but the engine will **never** auto-apply it,
+/// regardless of `confidence`. The fix is informational — it tells
+/// the user what the rule would suggest if confidence were higher.
+/// Two paths produce `Suggest`-severity diagnostics:
 ///
 /// 1. **Explicit emission**: a rule constructs the diagnostic with
 ///    `Severity::Suggest` directly. `S004 rel-to-trigraph-suggest`
 ///    is the first such rule.
-/// 2. **Engine rewrite**: any diagnostic whose attached `FixProposal`
-///    has `confidence.combined() < confidence_threshold` is rewritten
-///    to `Severity::Suggest` by the engine in `lint`. This subsumes
-///    the prior silent-drop behavior at threshold-gate time so
-///    below-threshold proposals stay observable.
+/// 2. **Engine rewrite**: any diagnostic whose attached `FixIntent`
+///    carries `confidence.combined() < confidence_threshold` is
+///    rewritten to `Severity::Suggest` by the engine in `lint`. This
+///    subsumes the prior silent-drop behavior at threshold-gate time
+///    so below-threshold fixes stay observable.
 ///
 /// In both cases, `Engine::fix` filters out `Suggest` diagnostics
 /// from auto-apply by construction. `Suggest` diagnostics with
@@ -210,7 +210,7 @@ pub enum Phase {
     /// rules refine the anchor to the specific offending portion.
     ///
     /// **No-fix emission convention.** Rules in this phase today
-    /// surface diagnostics without `FixProposal` (W004 is the first
+    /// surface diagnostics with `fix: None` (W004 is the first
     /// consumer — the JOINT→FGI migration is renderer-canonical
     /// territory; see W004's doc comment for the trade-off rationale).
     /// A future PR that introduces a fixable PageFinalization rule

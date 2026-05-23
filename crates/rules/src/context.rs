@@ -95,10 +95,10 @@ pub struct RuleContext<'a> {
     /// diagnostic might point at (e.g., a single token within the
     /// portion).
     ///
-    /// Intent-only rules (those emitting `Diagnostic.fix_intent` with
-    /// no `fix` field) copy this into `Diagnostic.candidate_span` so
-    /// the engine's intent-synthesis path knows which scope-bytes to
-    /// re-render via `MarkingScheme::apply_intent` +
+    /// Rules that attach a structural fix via `Diagnostic::fix` copy
+    /// this into `Diagnostic::candidate_span` so the engine's
+    /// intent-synthesis path knows which scope-bytes to re-render via
+    /// `MarkingScheme::apply_intent` +
     /// `MarkingScheme::render_canonical`.
     ///
     /// Added in the PR 3c.B engine-prereq commit. Populated by the
@@ -196,8 +196,8 @@ pub struct RuleContext<'a> {
     /// ([`Self::page_marking`]). This is necessary because
     /// [`crate::Rule::check`] does NOT receive the source byte buffer — the
     /// rule cannot read `&[u8]` slices itself from the span. The
-    /// single-span shape matches the existing [`crate::FixProposal`]
-    /// contract (one `span`, one `replacement`) and avoids storing
+    /// single-span shape matches the current `Diagnostic::fix` +
+    /// `Diagnostic::candidate_span` contract and avoids storing
     /// per-category sub-spans the engine doesn't already track on the
     /// page accumulator.
     ///
