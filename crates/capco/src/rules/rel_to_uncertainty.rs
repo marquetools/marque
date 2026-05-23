@@ -511,3 +511,191 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
         analyze_uncertain_reduction(attrs, ctx)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Issue #722 — ported from quarantined `_disabled_tests.rs`.
+//
+// `s005_state_text`, `s005_expand_atomic`, `s005_render_set` are
+// private `fn` items used by `analyze_uncertain_reduction`. Pre-PR
+// 3c.2.C C5 (closed-template `Message`) those helpers' output flowed
+// into the diagnostic message body and the integration tests
+// observed them indirectly via `s005.message.contains(...)`. Post-
+// cutover the rule emits a closed `MessageTemplate::NonCanonicalOrder
+// { category: CAT_REL_TO }` and the per-code state text is no longer
+// reachable from the diagnostic. The helpers themselves remain
+// load-bearing for the rule's set-algebra; this colocated `mod tests`
+// pins their contracts directly.
+//
+// Per `feedback_pub_doc_hidden_is_still_public_api` we do NOT widen
+// visibility for test reach — colocated `mod tests` is the right
+// port destination.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    /// RSMA is `decomposable=NA` / `membership_shape=Suppressed` in
+    /// the ISMCAT V2022-NOV taxonomy; state text must say the code is
+    /// deprecated AND its membership is suppressed.
+    ///
+    /// Authority: ODNI ISMCAT Tetragraph Taxonomy V2022-NOV. The
+    /// taxonomy data is generated into `marque-ism` at build time
+    /// from the `ism-ismcat` build-dependency.
+    #[test]
+    fn s005_state_text_for_na_suppressed_code() {
+        let text = s005_state_text("RSMA");
+        assert!(
+            text.contains("deprecated") && text.contains("suppressed"),
+            "RSMA is NA-Suppressed; state text must say so: {text:?}"
+        );
+    }
+
+    /// EUDA is `decomposable=NA` / `membership_shape=Description` in
+    /// V2022-NOV; the taxonomy's Description body must reach the
+    /// helper's output. The Description text is ODNI taxonomy data,
+    /// not user-document content — Constitution V audit-content-
+    /// ignorance is satisfied because the closed CAPCO/ISMCAT
+    /// vocabulary is on the permitted-identifier list.
+    #[test]
+    fn s005_state_text_for_na_description_code() {
+        let text = s005_state_text("EUDA");
+        assert!(
+            text.contains("deprecated"),
+            "EUDA is NA; state text must mark it deprecated: {text:?}"
+        );
+        assert!(
+            text.contains("original classification authority"),
+            "EUDA Description text must reach state output: {text:?}"
+        );
+    }
+
+    /// BHTF is `decomposable=NA` / `membership_shape=Members(recursive)`
+    /// in V2022-NOV — out-of-scope for v1; state text must mark it as
+    /// recursive / out-of-scope.
+    #[test]
+    fn s005_state_text_for_recursive_code() {
+        let text = s005_state_text("BHTF");
+        assert!(
+            text.contains("recursive") || text.contains("out of scope"),
+            "BHTF is NA-Members(recursive): {text:?}"
+        );
+    }
+
+    /// A code absent from the V2022-NOV taxonomy entirely — represents
+    /// org-fork extensions or genuinely unknown codes. State text
+    /// must mention absence.
+    #[test]
+    fn s005_state_text_for_unknown_code() {
+        let text = s005_state_text("XYZW");
+        assert!(
+            text.contains("absent"),
+            "unknown-code state text must mention absence: {text:?}"
+        );
+    }
+
+    /// `decomposable=Yes` defensive-fallback. FVEY is
+    /// `decomposable=Yes` / `membership_shape=Members` in V2022-NOV.
+    /// The rule's outer `is_decomposable == None` guard means the
+    /// state-text helper is never called with FVEY in production
+    /// (S005's loop filters such codes out before formatting), but
+    /// the function is callable directly and its catch-all arm is
+    /// the defensive fallback if a future taxonomy revision
+    /// introduces a `(non-NA, *)` reachable shape. Pin the
+    /// fallback's format so the contract is documented behavior.
+    #[test]
+    fn s005_state_text_decomposable_yes_hits_defensive_fallback() {
+        let text = s005_state_text("FVEY");
+        assert!(
+            text.contains("decomposable=\"Yes\""),
+            "fallback must surface decomposable verbatim: {text:?}"
+        );
+        assert!(
+            text.contains("membership_shape=\"Members\""),
+            "fallback must surface membership_shape verbatim: {text:?}"
+        );
+        assert!(
+            text.contains("ISMCAT V"),
+            "fallback includes the ISMCAT_TETRA_VERSION preamble: {text:?}"
+        );
+    }
+
+    /// `decomposable=No` defensive-fallback. EU is `decomposable=No`
+    /// / `membership_shape=Suppressed` (atom by authority) in
+    /// V2022-NOV. Same defensive-fallback contract as the Yes case.
+    #[test]
+    fn s005_state_text_decomposable_no_hits_defensive_fallback() {
+        let text = s005_state_text("EU");
+        assert!(
+            text.contains("decomposable=\"No\""),
+            "fallback for No: {text:?}"
+        );
+        assert!(
+            text.contains("membership_shape=\"Suppressed\""),
+            "fallback for No (Suppressed shape): {text:?}"
+        );
+    }
+
+    /// `s005_render_set` promotes USA to the first slot (per CAPCO-2016
+    /// §H.8 p151) and alphabetizes the rest; the BTreeSet input
+    /// already sorts the remaining codes lexicographically, so the
+    /// join order matches insertion order.
+    ///
+    /// Authority: CAPCO-2016 §H.8 p151 (REL TO USA-first rule).
+    /// Re-verified against `crates/capco/docs/CAPCO-2016.md` at
+    /// authorship per Constitution VIII.
+    #[test]
+    fn s005_helpers_render_set_promotes_usa_and_alphabetizes_rest() {
+        use std::collections::BTreeSet;
+        let set: BTreeSet<&str> = ["GBR", "AUS", "USA", "FRA"].into_iter().collect();
+        let rendered = s005_render_set(&set);
+        assert_eq!(rendered, "USA, AUS, FRA, GBR");
+
+        // No USA — pure alphabetical (BTreeSet sorts the input).
+        let no_usa: BTreeSet<&str> = ["GBR", "AUS", "FRA"].into_iter().collect();
+        assert_eq!(s005_render_set(&no_usa), "AUS, FRA, GBR");
+
+        // Empty set → empty string. The rule guards against this
+        // path via the `expected_set.is_empty()` branch but pinning
+        // the helper's behavior keeps the contract honest.
+        let empty: BTreeSet<&str> = BTreeSet::new();
+        assert_eq!(s005_render_set(&empty), "");
+    }
+
+    /// `s005_expand_atomic` is the rule's view of "what trigraphs does
+    /// this REL TO list cover after tetragraph expansion?" FVEY
+    /// decomposes; opaque codes (RSMA, KFOR) and trigraphs pass
+    /// through unchanged. Direct unit test because integration tests
+    /// can't observe the function's output shape post-G13-closure.
+    ///
+    /// Authority: CAPCO-2016 §H.8 p150 (REL TO + tetragraph
+    /// expansion). Re-verified against
+    /// `crates/capco/docs/CAPCO-2016.md` at authorship per
+    /// Constitution VIII.
+    #[test]
+    fn s005_helpers_expand_atomic_round_trips_through_tetragraph() {
+        use marque_ism::CountryCode;
+        use std::collections::BTreeSet;
+
+        let rel_to: Vec<CountryCode> = ["USA", "FVEY"]
+            .into_iter()
+            .map(|s| CountryCode::try_new(s.as_bytes()).unwrap())
+            .collect();
+        let expanded = s005_expand_atomic(&rel_to);
+        let expected: BTreeSet<&str> = ["USA", "AUS", "CAN", "GBR", "NZL"].into_iter().collect();
+        assert_eq!(
+            expanded, expected,
+            "FVEY must expand to its 5 trigraph members + USA passthrough"
+        );
+
+        // Opaque tetragraph (RSMA NA-Suppressed) and trigraphs pass
+        // through.
+        let opaque: Vec<CountryCode> = ["USA", "RSMA"]
+            .into_iter()
+            .map(|s| CountryCode::try_new(s.as_bytes()).unwrap())
+            .collect();
+        let expanded_opaque = s005_expand_atomic(&opaque);
+        let expected_opaque: BTreeSet<&str> = ["USA", "RSMA"].into_iter().collect();
+        assert_eq!(expanded_opaque, expected_opaque);
+    }
+}

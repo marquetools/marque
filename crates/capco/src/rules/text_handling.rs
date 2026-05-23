@@ -713,3 +713,54 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
         diagnostics
     }
 }
+
+// ---------------------------------------------------------------------------
+// Issue #722 — ported from quarantined `_disabled_tests.rs`.
+//
+// `looks_like_deprecated_x_shorthand` is the private predicate shared by
+// E007 (emit) and E008 (suppress), so the two rules cannot drift on
+// which X-shorthand variants each owns. Colocated `mod tests` is the
+// correct port destination per `feedback_pub_doc_hidden_is_still_public_api`
+// — widening visibility for test reach is forbidden.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    /// Pin the `looks_like_deprecated_x_shorthand` pattern set. The
+    /// canonical (modern) declass-exemption forms (`25X1`, `50X1-HUM`)
+    /// live in the ODNI ISM CVE vocabulary and parse as
+    /// `DeclassExemption`; they never reach this helper via the
+    /// `TokenKind::Unknown` walk. The deprecated forms carry a trailing
+    /// `-` and must match here so E007 owns them (and E008 suppresses
+    /// on the same span — see `is_x_shorthand_for_suppression` in
+    /// this module).
+    ///
+    /// Authority: CAPCO-2016 §E.6 pp 33-34 (X-shorthand date-pattern
+    /// migration). Re-verified against `crates/capco/docs/CAPCO-2016.md`
+    /// at authorship per Constitution VIII.
+    #[test]
+    fn looks_like_deprecated_x_shorthand_matches_expected_patterns() {
+        let m = looks_like_deprecated_x_shorthand;
+        // Deprecated forms (must match).
+        assert!(m("25X1-"));
+        assert!(m("25X2-"));
+        assert!(m("25X9-"));
+        assert!(m("50X1-"));
+        assert!(m("50X1-HUM-"));
+        assert!(m("25X3-WMD-"));
+        // Canonical forms (must NOT match — no trailing dash).
+        assert!(!m("25X1"));
+        assert!(!m("50X1-HUM"));
+        // Malformed / unrelated.
+        assert!(!m(""));
+        assert!(!m("-"));
+        assert!(!m("X1-"));
+        assert!(!m("25-X1-"));
+        assert!(!m("25X-"));
+        assert!(!m("ABCX1-"));
+        assert!(!m("25X1-hum-"), "lowercase suffix should not match");
+        assert!(!m("NOFORN"));
+    }
+}

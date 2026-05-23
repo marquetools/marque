@@ -691,3 +691,11 @@ fn s005_does_not_fire_on_pure_trigraph_portions() {
             .collect::<Vec<_>>()
     );
 }
+
+// Issue #722 — additional S005 behavioral pins ported from the
+// quarantined `_disabled_tests.rs` live in a sibling file
+// (`s005_pagefinalization_ports_722.rs`) to keep this file under
+// the 800-line coding-style gate. The sibling carries the
+// not-ported / structurally-subsumed dispositions in its header
+// for the message-content-assertion group obsoleted by the PR
+// 3c.2.C C5 G13 closure.

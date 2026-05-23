@@ -294,3 +294,50 @@ pub(crate) fn build_rel_to_replacement(trigraphs: &[String]) -> String {
     }
     out
 }
+
+// ---------------------------------------------------------------------------
+// Issue #722 — ported from quarantined `_disabled_tests.rs`.
+//
+// `dedup_country_codes` is `pub(crate)` (callable from sibling rule
+// modules and from this colocated `mod tests` block) but not `pub`;
+// integration tests under `crates/capco/tests/` cannot reach it. Per
+// `feedback_pub_doc_hidden_is_still_public_api` we do NOT widen
+// visibility for test reach — colocated `mod tests` is the right port
+// destination.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    /// `dedup_country_codes` is order-preserving: the FIRST occurrence
+    /// of each `CountryCode` wins; later duplicates are dropped. This
+    /// is the contract every caller relies on (e.g., E002's canonical
+    /// REL TO output composes dedup with USA-first + alphabetize per
+    /// CAPCO-2016 §H.8 p151).
+    ///
+    /// Authority: CAPCO-2016 §H.8 p150-151 (REL TO grammar). The
+    /// helper itself has no §-citation; its contract is enforced by
+    /// every REL TO rendering call site. Re-verified against
+    /// `crates/capco/docs/CAPCO-2016.md` at authorship per
+    /// Constitution VIII.
+    #[test]
+    fn dedup_country_codes_preserves_first_occurrence_order() {
+        let input = [
+            CountryCode::USA,
+            CountryCode::GBR,
+            CountryCode::AUS,
+            CountryCode::USA, // duplicate USA — drop
+            CountryCode::CAN,
+            CountryCode::GBR, // duplicate GBR — drop
+        ];
+        let deduped = dedup_country_codes(&input);
+        let expected = vec![
+            CountryCode::USA,
+            CountryCode::GBR,
+            CountryCode::AUS,
+            CountryCode::CAN,
+        ];
+        assert_eq!(deduped, expected);
+    }
+}
