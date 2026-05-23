@@ -320,7 +320,7 @@ impl CapcoMarking {
     /// than split. The `#[allow]` below is permanent — not a TODO.
     ///
     /// Authority: `docs/plans/2026-05-01-lattice-design.md` §2 (axis
-    /// ordering rationale per CAPCO-2016 §G.1 Table 4 p38) +
+    /// ordering rationale per CAPCO-2016 §G.1 Table 4 p37) +
     /// §11 (PR 4b-B per-axis follow-ups encoded as inline phases).
     #[allow(
         clippy::too_many_lines,

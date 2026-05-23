@@ -241,7 +241,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     // §H.7 Non-US Protective Markings — NATO classifications and programs.
     //
     // U.S. representation of NATO markings is fully governed by CAPCO; per
-    // CAPCO-2016 §G.1 Table 4 p36, NATO classifications and programs
+    // CAPCO-2016 §G.1 Table 4 p37, NATO classifications and programs
     // appear with the abbreviation column listed as `None`, meaning the
     // banner-line form spells out the marking title (no separate banner
     // abbreviation). Classification rows have a distinct portion form
@@ -252,35 +252,35 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     // enumerated here pending the CAPCO-vs-ODNI title-authority
     // architectural discussion.
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| COSMIC TOP SECRET | None | CTS |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| COSMIC TOP SECRET | None | CTS |`.
         title: "COSMIC TOP SECRET",
         banner: "COSMIC TOP SECRET",
         portion: "CTS",
         description_title: None,
     },
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| NATO SECRET | None | NS |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| NATO SECRET | None | NS |`.
         title: "NATO SECRET",
         banner: "NATO SECRET",
         portion: "NS",
         description_title: None,
     },
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| NATO CONFIDENTIAL | None | NC |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| NATO CONFIDENTIAL | None | NC |`.
         title: "NATO CONFIDENTIAL",
         banner: "NATO CONFIDENTIAL",
         portion: "NC",
         description_title: None,
     },
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| NATO RESTRICTED | None | NR |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| NATO RESTRICTED | None | NR |`.
         title: "NATO RESTRICTED",
         banner: "NATO RESTRICTED",
         portion: "NR",
         description_title: None,
     },
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| NATO UNCLASSIFIED | None | NU |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| NATO UNCLASSIFIED | None | NU |`.
         title: "NATO UNCLASSIFIED",
         banner: "NATO UNCLASSIFIED",
         portion: "NU",
@@ -291,21 +291,21 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     // (no substitution opportunity); they document the closed set of
     // NATO program markings recognized by CAPCO.
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| ATOMAL | None | ATOMAL |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| ATOMAL | None | ATOMAL |`.
         title: "ATOMAL",
         banner: "ATOMAL",
         portion: "ATOMAL",
         description_title: None,
     },
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| BALK | None | BALK |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| BALK | None | BALK |`.
         title: "BALK",
         banner: "BALK",
         portion: "BALK",
         description_title: None,
     },
     MarkingForm {
-        // CAPCO-2016 §G.1 Table 4 p36: `| BOHEMIA | None | BOHEMIA |`.
+        // CAPCO-2016 §G.1 Table 4 p37: `| BOHEMIA | None | BOHEMIA |`.
         title: "BOHEMIA",
         banner: "BOHEMIA",
         portion: "BOHEMIA",
@@ -677,7 +677,7 @@ mod tests {
         assert_eq!(banner_to_portion("DOD UCNI"), Some("DCNI"));
         assert_eq!(banner_to_portion("DOE UCNI"), Some("UCNI"));
         // §H.7 NATO classifications — banner spells out the title, portion
-        // is the abbreviation. CAPCO-2016 §G.1 Table 4 p36.
+        // is the abbreviation. CAPCO-2016 §G.1 Table 4 p37.
         assert_eq!(banner_to_portion("COSMIC TOP SECRET"), Some("CTS"));
         assert_eq!(banner_to_portion("NATO SECRET"), Some("NS"));
         assert_eq!(banner_to_portion("NATO CONFIDENTIAL"), Some("NC"));
@@ -714,7 +714,7 @@ mod tests {
         assert_eq!(portion_to_banner("DCNI"), Some("DOD UCNI"));
         assert_eq!(portion_to_banner("UCNI"), Some("DOE UCNI"));
         // §H.7 NATO classifications — inverse direction.
-        // CAPCO-2016 §G.1 Table 4 p36.
+        // CAPCO-2016 §G.1 Table 4 p37.
         assert_eq!(portion_to_banner("CTS"), Some("COSMIC TOP SECRET"));
         assert_eq!(portion_to_banner("NS"), Some("NATO SECRET"));
         assert_eq!(portion_to_banner("NC"), Some("NATO CONFIDENTIAL"));
@@ -945,14 +945,14 @@ mod tests {
         same_form.sort_unstable();
         let mut expected = vec![
             // §H.7 NATO classifications (banner == title, distinct portion).
-            // CAPCO-2016 §G.1 Table 4 p36.
+            // CAPCO-2016 §G.1 Table 4 p37.
             "COSMIC TOP SECRET",
             "NATO SECRET",
             "NATO CONFIDENTIAL",
             "NATO RESTRICTED",
             "NATO UNCLASSIFIED",
             // §H.7 NATO programs (same-form-all-three documentation rows).
-            // CAPCO-2016 §G.1 Table 4 p36.
+            // CAPCO-2016 §G.1 Table 4 p37.
             "ATOMAL",
             "BALK",
             "BOHEMIA",
