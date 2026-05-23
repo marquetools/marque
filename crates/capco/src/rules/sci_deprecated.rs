@@ -2,32 +2,20 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Walker-style CAPCO rules that survive PR #578 consolidation.
+//! Deprecated SCI long-form canonicalization walker.
 //!
-//! PR #578 retired the 16 thin declarative wrappers that used to live
-//! here (E010 / E012 / E014 / E015 / E016 / E021 / E024 / E036 / E037 /
-//! E038 / E053 / E054 / E055 / E056 / E057 + S004) into the engine's
-//! constraint-catalog bridge. `severity` + `span_anchor` now ride on
-//! [`marque_scheme::Constraint::Conflicts`] / [`marque_scheme::Constraint::Requires`]
-//! directly, [`marque_scheme::MarkingScheme::token_span`] resolves the
-//! diagnostic anchor against the scheme's marking, and the engine
-//! synthesizes the optional [`marque_rules::FixIntent`] via
-//! [`crate::scheme::CapcoScheme::fix_intent_by_name`].
+//! [`DeprecatedSciLongFormRule`] (wire ID
+//! `capco:portion.sci.deprecated-long-form`) is a hand-written catalog
+//! walker, not a declarative `Constraint`: it matches deprecated SCI
+//! long-form *source text* the parser tagged `TokenKind::SciControl`
+//! against a static catalog and emits canonicalization fixes. Because
+//! it predicates on raw token text rather than parsed category facts,
+//! it cannot be expressed as a dyadic `Constraint` over the marking
+//! model — hence a walker. (It lived in `rules_declarative.rs` until
+//! that module was retired; the name was an accident of PR #578's
+//! consolidation history, not a coherent grouping.)
 //!
-//! What remains here are the **walker rules** whose structural logic
-//! (catalog matching with prefix / compound-form dispatch, multi-row
-//! emission, suggest-only fall-throughs) does not fit the dyadic
-//! `Constraint` shape:
-//!
-//! - [`DeprecatedSciLongFormRule`] (E065) — deprecated SCI long-form
-//!   canonicalization walker per CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
-//! - [`BareCanonicalCompoundRule`] (E067) — bare CNWDI / NK / EU
-//!   short-form → canonical compound portion-mark rewriter per
-//!   §H.6 p106 / §H.4 p83 / §H.4 p78.
-//!
-//! Both walkers are registered as `Box<dyn Rule>` in
-//! `CapcoRuleSet::new()` and emit `Diagnostic` values directly — they
-//! do not flow through the constraint-catalog bridge.
+//! Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
 
 use marque_ism::{CanonicalAttrs, TokenKind};
 use marque_rules::{
@@ -38,14 +26,8 @@ use marque_scheme::{Citation, SectionLetter, capco};
 
 use crate::scheme::CapcoScheme;
 
-mod bare_canonical_compound;
-
-pub(crate) use bare_canonical_compound::{
-    BareCanonicalCompoundRule, is_bare_canonical_compound_form,
-};
-
 // ---------------------------------------------------------------------------
-// E065 — Deprecated SCI long-form canonicalization walker (T135a)
+// Deprecated SCI long-form canonicalization walker (T135a)
 // ---------------------------------------------------------------------------
 //
 // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
@@ -416,9 +398,9 @@ pub(crate) struct DeprecatedSciLongFormRule;
 /// Citations the [`DeprecatedSciLongFormRule`] walker may emit on
 /// diagnostics — the union of `citation` fields across every row in
 /// [`DEPRECATED_SCI_LONG_FORM_CATALOG`]. The walker registers under
-/// `E065` and per-row IDs travel on emitted diagnostics via the row
-/// metadata. See [`Rule::cited_authorities`] for the F.1 corpus-
-/// fidelity gate contract.
+/// `capco:portion.sci.deprecated-long-form` and per-row IDs travel on
+/// emitted diagnostics via the row metadata. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate contract.
 const E065_AUTHORITIES: &[Citation] = &[
     // HUMINT / HUMINT CONTROL SYSTEM → HCS (§H.4 p62).
     capco(SectionLetter::H, 4, 62),

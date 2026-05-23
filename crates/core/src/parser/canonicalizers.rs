@@ -10,7 +10,8 @@ use super::*;
 /// with optional compartment / sub-compartment context). Source bytes are
 /// preserved verbatim in the caller's `TokenSpan.text` — this struct does
 /// NOT rewrite the user's input. The walker rule in
-/// `marque-capco::rules_declarative` (E065) consumes the original
+/// `marque-capco`'s `rules::sci_deprecated` module
+/// (`capco:portion.sci.deprecated-long-form`) consumes the original
 /// `TokenSpan.text` plus this canonical projection to emit
 /// `Diagnostic::text_correction` fixes.
 ///

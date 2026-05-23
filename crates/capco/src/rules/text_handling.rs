@@ -560,7 +560,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                 find_migration(text).is_none()
                     && !looks_like_deprecated_x_shorthand(text)
                     && !is_repeated_sar_owned_by_e030(text, has_first_sar)
-                    && !crate::rules_declarative::is_bare_canonical_compound_form(text)
+                    && !super::recanonicalize::is_bare_canonical_compound_form(text)
                     && !is_fgi_invalid_ownership_token(text)
             })
             .map(|t| {
