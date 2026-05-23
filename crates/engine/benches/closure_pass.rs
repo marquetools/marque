@@ -2,63 +2,63 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `CapcoScheme::closure()` micro-bench across representative CAPCO input
-//! profiles.
+//! Benches related to the closure-pass subsystem.
 //!
-//! # Purpose
+//! Mix of two measurement shapes:
 //!
-//! PR-F of the FactBitmask refactor (issue #371). Measures the bitmask
-//! Kleene fixpoint path landed in PR-D against six representative input
-//! profiles that exercise distinct code paths through the 6-row
-//! [`CLOSURE_TABLE`](marque_capco::closure_table::CLOSURE_TABLE)
-//! (post-#704; Rows 0/7/8/9 retired to
-//! `marque_capco::scheme::default_fill`):
+//! 1. **`close()`-isolated micro-measurements.** Call
+//!    `CapcoScheme::closure()` directly to measure the bitmask Kleene
+//!    fixpoint path landed in PR-D (issue #371) against representative
+//!    CAPCO input profiles. Post-#704 the close() catalog walks the
+//!    6-row [`CLOSURE_TABLE`](marque_capco::closure_table::CLOSURE_TABLE)
+//!    (Rows 1-6); the four "default if absent" rules pre-#704
+//!    Rows 0/7/8/9 retired to `marque_capco::scheme::default_fill`,
+//!    which runs in `scheme.project()` between close() and the
+//!    supersession overlay.
 //!
-//! 1. **`hot1_exit`** — UNCLASSIFIED, no special markings. The HOT-1
-//!    early-exit guard `(derive_bits(attrs).bits() & ALL_TRIGGER_MASK) == 0`
-//!    returns immediately; zero table rows evaluated.
-//! 2. **`row9_us_classified`** — SECRET, no SCI/SAR/AEA/dissem. Post-#704
-//!    this bench measures the HOT-1 exit cost on US-classified input (Row 9
-//!    retired; no closure rows fire). Rewriting to call `scheme.project()`
-//!    would more accurately measure the default-fill stage; tracked as a
-//!    follow-up issue at #704 merge.
-//! 3. **`rows_1_0_hcs_o`** — TOP SECRET + HCS-O compartment. Post-#704
-//!    Row 1 (`capco:closure.dissem.hcs-o-implies-noforn-orcon`) fires
-//!    producing ORCON + NOFORN. The pre-#704 Row 0 transitive NOFORN
-//!    chain retired with Row 0 to `default_fill::row0_should_fill`; HCS-O
-//!    via close() now produces NOFORN+ORCON directly (Row 1's cone),
-//!    not via the transitive chain.
-//! 4. **`row7_nato_class`** — NATO Secret classification. Post-#704 Row 7
-//!    retired; NATO classification no longer triggers any closure row.
-//!    The REL TO USA, NATO injection moved to
-//!    `default_fill::row7_should_fill`. This bench now measures the
-//!    HOT-1 exit cost on NATO input (NATO_CLASS is not in the post-#704
-//!    `ALL_TRIGGER_MASK`).
-//! 5. **`worst_case_all_rows`** — TOP SECRET + all 6 SCI compartment
-//!    sentinels + SAR present + AEA/RD. Post-#704 close() walks 6 rows;
-//!    SCI sentinel rows fire (HCS-O / HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND}).
-//!    SAR / AEA / US-classification no longer trigger any closure row
-//!    (Rows 0/9 retired); they're default-fill triggers in the full
-//!    pipeline.
-//! 6. **`batch_closure`** — applies closure to 50 identical TS+HCS-O markings
-//!    in sequence; measures throughput across a document batch.
+//! 2. **`close()`-driven-via-`project()` full-pipeline measurements.**
+//!    Call `scheme.project(Scope::Page, &[marking])` to measure the
+//!    user-observable cost of the post-#704 lattice pass: per-axis
+//!    join → close() → default_fill → page_rewrites. These benches
+//!    inherit cost from every pipeline stage, not just the closure
+//!    table walk. Bench names start with `project_*` so future
+//!    triage doesn't read the cost as close()-only.
+//!
+//! # Post-#704 reconciliation (issue #714)
+//!
+//! Pre-#704, the close()-isolated benches measured the full lattice
+//! pass because all 10 rows (transitive + default-fill) lived in
+//! `CLOSURE_TABLE`. Post-#704 they measure a strictly smaller path
+//! than their names imply (Rows 0/7/8/9 retired). The `closure_row*`
+//! benches were renamed to `project_*` and rewritten to call
+//! `scheme.project()` so the measured cost matches the user-facing
+//! shape. `closure_hot1_exit` is kept as a close()-only bench
+//! because its framing (HOT-1 early-exit guard) stays honest:
+//! HOT-1 returns before any default-fill triggers can fire.
+//! `closure_worst_case_all_rows` is kept as a close()-only bench
+//! and a parallel `project_worst_case_all_rows` is added so
+//! stage decomposition (close() vs full pipeline) stays visible.
 //!
 //! # Relationship to other benches
 //!
-//! `lint_latency.rs` / `linear_scaling.rs` measure end-to-end `Engine::lint`
-//! cost (scanner + parser + rules + `project`). This bench isolates `closure()`
-//! alone — the projection step that runs once per page after `join_via_lattice`.
-//! `profile_project.rs::phase_b_closure` covers the same call but only for the
-//! `(S//NF) + (TS//SI)` synthesis pair. This bench adds the HOT-1 exit,
-//! per-marking-row, NATO, and worst-case profiles that `phase_b_closure` omits.
+//! `lint_latency.rs` / `linear_scaling.rs` measure end-to-end
+//! `Engine::lint` cost (scanner + parser + rules + `project`).
+//! This file isolates two layers of that stack: the close() Kleene
+//! fixpoint alone (closure_* benches) and the close()-driven-via-
+//! project() lattice pass (project_* benches). `profile_project.rs`
+//! adds per-phase attribution on a single synthesized portion mix.
 //!
 //! # Maintenance contract
 //!
-//! If the `CLOSURE_TABLE` row count or atom inventory changes, verify that
-//! the worst-case scenario still exercises the intended rows (the intent is
-//! "fire every row at least once per Kleene iteration"). The individual
-//! scenarios are deliberately simple so their cost directly reflects the
-//! bitmask dispatch plus the Kleene loop overhead, not extraneous parsing.
+//! If the `CLOSURE_TABLE` row count or atom inventory changes,
+//! verify that `closure_worst_case_all_rows` / `project_worst_case_all_rows`
+//! still exercise the intended rows (the intent is "fire each row
+//! in the post-#704 6-row catalog at least once per Kleene
+//! iteration"). The individual
+//! scenarios are deliberately simple so their cost directly
+//! reflects the bitmask dispatch plus the Kleene loop overhead
+//! (close()-isolated benches) or the lattice + close + default-fill
+//! + page-rewrites stack (project_* benches), not extraneous parsing.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_capco::CapcoMarking;
@@ -68,7 +68,7 @@ use marque_ism::{
     SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlBare, SciControlSystem,
     SciMarking,
 };
-use marque_scheme::MarkingScheme;
+use marque_scheme::{MarkingScheme, Scope};
 use smol_str::SmolStr;
 use std::hint::black_box;
 
@@ -85,13 +85,10 @@ fn unclassified_no_markings() -> CapcoMarking {
     CapcoMarking::new(a)
 }
 
-/// SECRET, no SCI/SAR/AEA/dissem/NATO. Post-#704: Row 9 retired to
-/// `default_fill::row9_should_fill`; this bench now measures the
-/// HOT-1 exit cost on US-classified input (no closure rows fire on
-/// bare US classification post-#704; `US_COLLATERAL_CLASSIFIED` is
-/// not in the post-#704 `ALL_TRIGGER_MASK`). Rewriting to call
-/// `scheme.project()` would measure the default-fill stage; tracked
-/// as a follow-up issue at #704 merge.
+/// SECRET, no SCI/SAR/AEA/dissem/NATO. Post-#704: bare US-classification
+/// no longer triggers a closure row; the RELIDO default-fill moved to
+/// `default_fill::row9_should_fill`. Used by `project_us_classified` to
+/// measure the full pipeline cost on the smallest US-classified fixture.
 fn secret_no_special() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
@@ -100,12 +97,10 @@ fn secret_no_special() -> CapcoMarking {
 
 /// TOP SECRET + HCS-O compartment. Post-#704: Row 1
 /// (`capco:closure.dissem.hcs-o-implies-noforn-orcon`) fires producing
-/// NOFORN + ORCON directly via its cone. The pre-#704 Row 0 transitive
-/// chain (ORCON triggers caveated → NOFORN) retired with Row 0 to
-/// `default_fill::row0_should_fill`; the SI-G → ORCON → NOFORN chain
-/// still works end-to-end but crosses the close()/default_fill boundary
-/// in the full project() pipeline. close() alone produces NOFORN +
-/// ORCON in one Kleene iteration on HCS-O.
+/// NOFORN + ORCON via its cone in close(). In the full project()
+/// pipeline the SI-G → ORCON → NOFORN chain still works end-to-end
+/// (close() + default_fill); the close()-only measurement is one
+/// Kleene iteration on HCS-O.
 fn top_secret_hcs_o() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
@@ -121,9 +116,9 @@ fn top_secret_hcs_o() -> CapcoMarking {
 
 /// NATO Secret classification. Post-#704: Row 7 retired to
 /// `default_fill::row7_should_fill`; NATO classification no longer
-/// triggers any closure row. `NATO_CLASS` is not in the post-#704
-/// `ALL_TRIGGER_MASK`, so this bench measures the HOT-1 exit cost on
-/// NATO input. The REL TO USA, NATO injection moved to default-fill.
+/// triggers any closure row. Used by `project_nato_default_fill`
+/// to measure the full pipeline cost (close() HOT-1 exit + the
+/// NATO REL TO USA, NATO injection in default_fill + page_rewrites).
 fn nato_secret() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
@@ -134,10 +129,10 @@ fn nato_secret() -> CapcoMarking {
 /// Post-#704: close() walks 6 rows; the SCI sentinel rows fire (HCS-O /
 /// HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND}). SAR / AEA / US-classification
 /// retired to default-fill so they no longer trigger any closure row;
-/// this bench now measures dispatch cost across the 6 surviving rows
-/// rather than the pre-#704 10-row catalog. The "worst case" framing
-/// is still correct against the post-#704 catalog (every surviving row
-/// can fire in one Kleene iteration on this input).
+/// in `closure_worst_case_all_rows` this fixture measures dispatch
+/// across the 6 surviving rows. In `project_worst_case_all_rows` the
+/// full project() pipeline runs and the default-fill triggers (Rows
+/// 0/9 equivalents) also contribute.
 fn worst_case_all_rows() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
@@ -192,7 +187,8 @@ fn worst_case_all_rows() -> CapcoMarking {
 
     // Post-#704: Rows 8-9 retired to default-fill; close() walks
     // the 6 SCI per-marking rows only. The "all rows fire" framing
-    // applies to the surviving 6-row catalog.
+    // applies to the surviving 6-row catalog for `closure_worst_case_all_rows`,
+    // and to the full lattice pass for `project_worst_case_all_rows`.
     CapcoMarking::new(a)
 }
 
@@ -210,7 +206,12 @@ fn joined_hcs_o_n(n: usize) -> CapcoMarking {
 fn closure_profiles(c: &mut Criterion) {
     let scheme = CapcoScheme::new();
 
-    // 1. HOT-1 early exit — UNCLASSIFIED, zero rows evaluated.
+    // ---- close()-isolated micro-measurements ----
+
+    // HOT-1 early exit — UNCLASSIFIED, zero rows evaluated. Bench
+    // framing post-#704 stays honest because HOT-1 returns before any
+    // default-fill triggers could fire; close()-only measurement is
+    // representative of the user-observable cost on this input.
     let hot1 = unclassified_no_markings();
     c.bench_function("closure_hot1_exit", |b| {
         b.iter(|| {
@@ -219,55 +220,15 @@ fn closure_profiles(c: &mut Criterion) {
         });
     });
 
-    // 2. Single-row (post-#704: was Row 9, retired to default-fill):
-    //    US collateral classified. Post-#704 this measures the HOT-1
-    //    exit cost on US-classified input; the Row 9 RELIDO injection
-    //    moved to `default_fill::row9_should_fill`. Bench name kept
-    //    for criterion-history continuity; follow-up issue tracks
-    //    rewriting to `scheme.project()` for accurate measurement.
-    let row9 = secret_no_special();
-    c.bench_function("closure_row9_us_classified", |b| {
-        b.iter(|| {
-            let out = scheme.closure(black_box(row9.clone()));
-            black_box(out)
-        });
-    });
-
-    // 3. Single-row (post-#704: was rows 1 then 0 transitively):
-    //    HCS-O via close() now produces NOFORN+ORCON directly via
-    //    Row 1's cone in one Kleene iteration. The pre-#704
-    //    transitive ORCON → Trio 1 → NOFORN chain retired with Row
-    //    0 to `default_fill::row0_should_fill`; the full project()
-    //    pipeline still produces the same end-to-end state via
-    //    close() + default-fill.
-    let hcs_o = top_secret_hcs_o();
-    c.bench_function("closure_rows_1_0_hcs_o", |b| {
-        b.iter(|| {
-            let out = scheme.closure(black_box(hcs_o.clone()));
-            black_box(out)
-        });
-    });
-
-    // 4. Post-#704: Row 7 retired to `default_fill::row7_should_fill`;
-    //    NATO classification no longer triggers any closure row. This
-    //    bench now measures the HOT-1 exit cost on NATO input. Bench
-    //    name kept for criterion-history continuity; follow-up issue
-    //    tracks rewriting to `scheme.project()` for accurate measurement.
-    let nato = nato_secret();
-    c.bench_function("closure_row7_nato_class", |b| {
-        b.iter(|| {
-            let out = scheme.closure(black_box(nato.clone()));
-            black_box(out)
-        });
-    });
-
-    // 5. Worst case across the post-#704 6-row catalog: TOP SECRET +
-    //    all 6 SCI compartment sentinels fires all 6 surviving rows
-    //    (HCS-O / HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND}) in one
-    //    Kleene iteration. SAR / AEA / US-classification on the
-    //    fixture do NOT trigger any close() row post-#704 (Rows 0/9
-    //    retired to default-fill); they're carried for fixture
-    //    completeness but don't contribute to close() dispatch cost.
+    // Post-#704 worst-case close()-isolated dispatch across the
+    // surviving 6-row catalog. Measures bitmask Kleene fixpoint
+    // dispatch cost only; the SAR / AEA / US-classification bits
+    // in the fixture are carried for fixture completeness but
+    // no longer contribute to close() cost (Rows 0/9 retired to
+    // default_fill). Paired with `project_worst_case_all_rows`
+    // for stage-decomposition visibility (close() vs full pipeline).
+    // Framing-vs-name note: bench inherits ONLY the close() cost,
+    // not the default_fill / page_rewrites stages.
     let worst = worst_case_all_rows();
     c.bench_function("closure_worst_case_all_rows", |b| {
         b.iter(|| {
@@ -276,16 +237,109 @@ fn closure_profiles(c: &mut Criterion) {
         });
     });
 
-    // 6. Batch throughput: 50 sequential closures on identical TS+HCS-O input.
-    //    Measures per-call amortized cost under realistic document-batch load.
-    //    The marking is pre-joined outside the iter loop; each clone + closure
-    //    call pair is timed (clone overhead is negligible for this input size).
+    // Batch throughput: 50 sequential closures on identical TS+HCS-O input.
+    // Measures per-call amortized cost under realistic document-batch load.
+    // The marking is pre-joined outside the iter loop; each clone + closure
+    // call pair is timed (clone overhead is negligible for this input size).
     let batch_input = joined_hcs_o_n(1);
     c.bench_function("closure_batch_50", |b| {
         b.iter(|| {
             for _ in 0..50 {
                 black_box(scheme.closure(black_box(batch_input.clone())));
             }
+        });
+    });
+
+    // ---- close()-driven-via-project() full-pipeline measurements ----
+
+    // Renamed from `closure_row9_us_classified` (#714).
+    //
+    // Post-#704: Row 9 (US_COLLATERAL_CLASSIFIED → RELIDO) retired
+    // from `CLOSURE_TABLE` to `default_fill::row9_should_fill`. The
+    // old bench called `scheme.closure()` on bare US-classified
+    // input and measured the HOT-1 exit cost (not the Row 9 effect).
+    // Rewritten to call `scheme.project(Scope::Page, &[marking])`
+    // so the measurement reflects the full user-observable pipeline:
+    // per-axis join → close() (HOT-1 exit on this input) →
+    // default_fill (RELIDO injection fires) → page_rewrites.
+    //
+    // Framing-vs-name note: this bench inherits cost from lattice
+    // + close + default_fill + page_rewrites — not just one stage.
+    // Future regression triage on `project_us_classified` should
+    // run `profile_project.rs::phase_b_closure` / `phase_c_scheme_project`
+    // to attribute deltas to individual stages.
+    let us_classified = secret_no_special();
+    let us_classified_slice = [us_classified];
+    c.bench_function("project_us_classified", |b| {
+        b.iter(|| {
+            let out = scheme.project(Scope::Page, black_box(&us_classified_slice));
+            black_box(out)
+        });
+    });
+
+    // Renamed from `closure_rows_1_0_hcs_o` (#714).
+    //
+    // Post-#704: Row 0 (transitive ORCON → NOFORN chain) retired
+    // to `default_fill::row0_should_fill`. The old bench called
+    // `scheme.closure()` and measured one Kleene iteration of
+    // Row 1's cone (HCS-O → NOFORN + ORCON); the transitive
+    // chain that produced the bench's original name no longer
+    // runs inside close(). Rewritten to call
+    // `scheme.project(Scope::Page, &[marking])` so the full HCS-O
+    // → ORCON → NOFORN chain runs end-to-end (close() + default_fill).
+    //
+    // Framing-vs-name note: this bench inherits cost from lattice
+    // + close + default_fill + page_rewrites. The `hcs_o_chain`
+    // suffix refers to the closure+default-fill chain, not a
+    // single CLOSURE_TABLE row.
+    let hcs_o = top_secret_hcs_o();
+    let hcs_o_slice = [hcs_o];
+    c.bench_function("project_hcs_o_chain", |b| {
+        b.iter(|| {
+            let out = scheme.project(Scope::Page, black_box(&hcs_o_slice));
+            black_box(out)
+        });
+    });
+
+    // Renamed from `closure_row7_nato_class` (#714).
+    //
+    // Post-#704: Row 7 (NATO classification → REL TO USA, NATO
+    // injection) retired to `default_fill::row7_should_fill`. The
+    // old bench called `scheme.closure()` on NATO-classified input
+    // and measured the HOT-1 exit cost (not the Row 7 effect).
+    // Rewritten to call `scheme.project(Scope::Page, &[marking])`
+    // so the NATO default-fill injection actually runs.
+    //
+    // Framing-vs-name note: this bench inherits cost from lattice
+    // + close + default_fill + page_rewrites — the `default_fill`
+    // suffix marks the stage that's the dominant cost driver on
+    // this input post-#704.
+    let nato = nato_secret();
+    let nato_slice = [nato];
+    c.bench_function("project_nato_default_fill", |b| {
+        b.iter(|| {
+            let out = scheme.project(Scope::Page, black_box(&nato_slice));
+            black_box(out)
+        });
+    });
+
+    // Parallel to `closure_worst_case_all_rows` (#714). Measures the
+    // full project() pipeline on the same TOP SECRET + 6 SCI sentinels
+    // + SAR + AEA/RD fixture. Both benches share the fixture so the
+    // delta (`project_worst_case_all_rows` − `closure_worst_case_all_rows`)
+    // approximates the default_fill + page_rewrites stage cost on the
+    // worst-case input.
+    //
+    // Framing-vs-name note: this bench inherits cost from lattice
+    // + close + default_fill + page_rewrites; "all rows" applies
+    // to both the close() catalog AND the default-fill triggers
+    // (SAR / AEA / US-classification) on this input.
+    let worst_proj = worst_case_all_rows();
+    let worst_slice = [worst_proj];
+    c.bench_function("project_worst_case_all_rows", |b| {
+        b.iter(|| {
+            let out = scheme.project(Scope::Page, black_box(&worst_slice));
+            black_box(out)
         });
     });
 }
