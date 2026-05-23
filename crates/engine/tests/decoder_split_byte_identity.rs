@@ -2,23 +2,26 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Byte-identity regression suite for the decoder split (#562).
+//! Recognizer-outcome regression suite for the decoder split (#562).
 //!
-//! Pins the `Parsed<CapcoMarking>` output of both `DecoderRecognizer`
-//! and `StrictOrDecoderRecognizer` against an 18-fixture corpus
-//! covering each recovery pass + null-hypothesis suppression branch.
-//! Catches the case where the split changes behavior in a way that
-//! no other unit or integration test happens to exercise — the brief
-//! flagged this as the load-bearing correctness gate ("it builds and
-//! is green ≠ it functions correctly").
+//! Pins the semantic `Parsed<CapcoMarking>` output (Unambiguous shape +
+//! key marking attributes, or Ambiguous-with-zero-candidates) of both
+//! `DecoderRecognizer` and `StrictOrDecoderRecognizer` against an
+//! 18-fixture corpus covering each recovery pass + null-hypothesis
+//! suppression branch. Catches the case where the split changes
+//! behavior in a way that no other unit or integration test happens
+//! to exercise — the brief flagged this as the load-bearing
+//! correctness gate ("it builds and is green ≠ it functions
+//! correctly"). Compares parsed shapes, not raw bytes — the engine
+//! does not surface the canonicalized byte stream at the recognizer
+//! boundary.
 //!
-//! Each fixture asserts the Parsed shape (Unambiguous vs Ambiguous vs
-//! zero-candidate) and, for Unambiguous, key marking attributes
-//! (classification, dissem controls, REL TO countries, etc.).
-//! Fixtures are constructed defensively — they pin behavior, not
-//! aspirational behavior; if a future scoring tweak changes which
-//! candidate wins for a borderline input, this test fails and the
-//! fixture is updated.
+//! Each fixture asserts the Parsed shape and, for Unambiguous, the
+//! observed classification + dissem-count (and REL TO countries
+//! where relevant). Fixtures pin observed behavior, not aspirational
+//! behavior; if a future scoring tweak changes which candidate wins
+//! for a borderline input, this test fails and the fixture is
+//! updated.
 
 use marque_capco::CapcoScheme;
 use marque_engine::{DecoderRecognizer, StrictOrDecoderRecognizer};
@@ -164,18 +167,11 @@ fn decoder_recovers_stray_char_slash_recovery() {
     // The collapse-stray pass should emit at least one candidate that
     // parses to Secret + NF; even if the gate doesn't reach Unambiguous,
     // a non-empty Ambiguous result is acceptable here.
-    match parsed {
-        Parsed::Unambiguous(m) => {
-            assert_eq!(classification(&m), Some(Classification::Secret));
-        }
-        Parsed::Ambiguous { candidates } => {
-            // Some inputs at this shape don't produce candidates the
-            // null gate accepts — that's fine, the gate is correct.
-            // Either branch (>=1 or 0 candidates) is acceptable; both
-            // are observed depending on the exact prior values.
-            let _ = candidates;
-        }
-    }
+    let Parsed::Unambiguous(m) = parsed else {
+        panic!("expected Unambiguous; got {parsed:?}");
+    };
+    assert_eq!(classification(&m), Some(Classification::Secret));
+    assert_eq!(dissem_us_count(&m), 1);
 }
 
 #[test]
