@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Decoder recovery pipeline — structural repair passes.
 //!
 //! Each sub-module owns one recovery pass. `candidates.rs` invokes

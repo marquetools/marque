@@ -29,7 +29,6 @@ use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
 /// **structural** (literal-shape) repairs, not vocabulary-based fuzzy
 /// guesses — they fire only when the observed pattern is invalid
 /// CAPCO AND the corrected pattern is unambiguously the intended form.
-// The fuzzy / prior-weighted trigraph correction cluster lives in the sibling rel_to_trigraph.rs.
 ///
 /// # Patterns
 ///
@@ -85,6 +84,8 @@ use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
 ///   without allocating until a fix actually fires.
 ///
 /// Allocation only occurs once a pattern produces a fixed string.
+// The fuzzy / prior-weighted trigraph correction cluster lives in the sibling rel_to_trigraph.rs.
+// Decision-archaeology for #186 relocated to docs/refactor-006/decoder-architecture.md §"REL TO recovery — historical archaeology".
 pub(in crate::decoder) fn try_rel_to_structural_repair(text: &str) -> Option<String> {
     // Cheap pre-check: if `REL` doesn't appear at all, no repair is
     // possible. Saves the byte-walk cost on the overwhelmingly common
