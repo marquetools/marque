@@ -49,7 +49,7 @@ pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorR
 
 /// Resolve the diagnostic span anchor for a class-floor catalog row.
 ///
-/// Lifted from `rules_declarative::class_floor_anchor_span` in PR
+/// Lifted from the former `rules_declarative` module in PR
 /// 3c.B Commit 7.3 when the `DeclarativeClassFloorRule` walker
 /// retired into the engine's constraint-catalog bridge. Per PM
 /// directive #2 of the original PR 3b.D plan, the span anchors at
@@ -77,9 +77,9 @@ pub(crate) fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &ClassFloorRo
 }
 
 /// Returns the first span of a given token kind in the attrs'
-/// `token_spans`, or `None` if the kind is absent. Lifted from
-/// `rules_declarative::first_span_of_optional` in PR 3c.B Commit
-/// 7.3 alongside [`class_floor_anchor_span`].
+/// `token_spans`, or `None` if the kind is absent. Lifted from the
+/// former `rules_declarative` module in PR 3c.B Commit 7.3 alongside
+/// [`class_floor_anchor_span`].
 pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Span> {
     attrs
         .token_spans

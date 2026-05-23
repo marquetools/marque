@@ -31,9 +31,9 @@ use marque_scheme::{Severity, Span, TokenRef};
 //
 // Each helper is the predicate body for a `Constraint::Custom` entry in
 // `build_constraints`. The helpers do NOT reference `RuleContext` — only
-// `CanonicalAttrs`. Per-context filtering lives in the wrapper layer
-// (`crate::rules_declarative`); the catalog represents "this marking is
-// structurally inconsistent" without regard to where the marking appears.
+// `CanonicalAttrs`. Per-context filtering lives in the engine-bridge
+// layer (`crate::scheme::adapter`); the catalog represents "this marking
+// is structurally inconsistent" without regard to where the marking appears.
 //
 // The returned `ConstraintViolation` populates `message` with text that the
 // wrapper inspects when constructing the user-facing `Diagnostic`. The

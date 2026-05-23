@@ -36,10 +36,10 @@ use super::super::*;
 /// [`Self::evaluate_custom`] to scheme-private predicate
 /// helpers below. The hand-written `Rule` impls in
 /// `crate::rules` that previously enforced these invariants
-/// are retired in the same PR; `crate::rules_declarative`
-/// hosts thin wrappers that call `scheme.validate()` and
-/// construct `Diagnostic` values with byte-identical
-/// message/span/fix output.
+/// are retired in the same PR; the engine's scheme-adapter bridge
+/// (`crate::scheme::adapter`) hosts the dispatch that calls
+/// `scheme.validate()` and constructs `Diagnostic` values with
+/// byte-identical message/span/fix output.
 ///
 /// T035b audit (2026-04-21): E017, E018, and E019 were
 /// retired as over-restrictive relative to CAPCO-2016 §H.3
@@ -374,12 +374,12 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         //
         // Custom (not two separate `Requires` constraints)
         // because the rule emits a SINGLE diagnostic ID — E038 —
-        // and the dispatch layer in `rules_declarative.rs`
-        // works by filtering violations by constraint `name`.
-        // Splitting into two `Requires` constraints would create
-        // two distinct violation names for one rule ID and force
-        // the wrapper to OR them. Folding the disjunction into a
-        // single Custom predicate keeps the wrapper trivial.
+        // and the dispatch layer in the scheme-adapter bridge
+        // (`crate::scheme::adapter`) works by filtering violations by
+        // constraint `name`. Splitting into two `Requires` constraints
+        // would create two distinct violation names for one rule ID and
+        // force the bridge to OR them. Folding the disjunction into a
+        // single Custom predicate keeps the bridge trivial.
         Constraint::Custom {
             name: "portion.dissem.nodis-or-exdis-requires-noforn",
             label: capco(SectionLetter::H, 9, 172),
@@ -390,13 +390,14 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // "Cannot be used with NOFORN or DISPLAY ONLY."
         //
         // PR 3.7 update: this row STAYS as an enumerated `Conflicts`
-        // (reverted from Stage D's compaction). The wrapper layer
-        // (`rules_declarative.rs::E054RelidoConflictsNoforn`) dispatches
-        // by name through `violations_for(attrs, "E054/...")`; without
-        // an enumerated row here, the wrapper silently emits no
-        // diagnostics. PR 4 (T112) will rebuild the wrapper dispatch
-        // to be family-aware and then retire this row. Per plan rev 1
-        // §0 "Non-scope (deferred to PR 4): RELIDO Conflicts compaction".
+        // (reverted from Stage D's compaction). The scheme-adapter bridge
+        // (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
+        // dispatches by the constraint name
+        // `"portion.dissem.relido-conflicts-noforn"`; without an
+        // enumerated row here, the bridge silently emits no diagnostics.
+        // PR 4 (T112) will rebuild the bridge dispatch to be family-aware
+        // and then retire this row. Per plan rev 1 §0 "Non-scope (deferred
+        // to PR 4): RELIDO Conflicts compaction".
         Constraint::Conflicts {
             name: "portion.dissem.relido-conflicts-noforn",
             left: TokenRef::Token(TOK_RELIDO),
@@ -470,7 +471,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // the CAPCO catalog does not need active family-row entries to
         // validate the primitive. PR 4 (T112) lands the actual
         // compaction (delete E054-E057 enumerated rows AND add the
-        // family rows AND rewire `rules_declarative.rs` wrappers to
-        // dispatch by family-row name) as one coordinated change.
+        // family rows AND rewire the scheme-adapter bridge dispatch to
+        // use family-row name) as one coordinated change.
     ]
 }

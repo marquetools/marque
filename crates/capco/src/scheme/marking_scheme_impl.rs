@@ -42,12 +42,12 @@ use super::*;
 // (or equivalently `scheme.validate(&m)` via the trait default)
 // fires every dyadic and Custom constraint in the catalog.
 //
-// The 11 hand-written rule impls retired by T035 dispatch through
-// `crate::rules_declarative`, which uses the inherent fast-path
-// method `CapcoScheme::evaluate_named_constraint` above (not the
-// trait-path `validate`) and constructs `Diagnostic` values
-// locally for byte-identical message/span/fix output. E018 / E019
-// remain hand-written pending the T035b predicate audit.
+// The 11 hand-written rule impls retired by T035 dispatch through the
+// engine's scheme-adapter bridge (`crate::scheme::adapter`), which
+// synthesizes fixes and messages via `CapcoScheme::fix_intent_by_name`
+// / `message_by_name` (not the trait-path `validate`) for byte-identical
+// message/span/fix output. E018 / E019 remain hand-written pending the
+// T035b predicate audit.
 impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;

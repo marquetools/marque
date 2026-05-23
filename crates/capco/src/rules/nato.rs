@@ -59,10 +59,10 @@ use crate::scheme::CapcoScheme;
 /// `Severity::Suggest`. Within the suggest channel, the confidence
 /// scalar reflects how strongly the source dictates the rewrite. The
 /// chosen value `0.85` is below the (broader) `Confidence::strict(0.95)`
-/// used by mandate-prose rewrites in `rules_declarative.rs` (e.g. the
-/// REL TO canonical-form rewrite at line 711, the JOINT class-floor
-/// rewrite at line 1077) and above the `0.75` used by lower-evidence
-/// suggest-channel rewrites in this file.
+/// used by mandate-prose constraint fixes synthesized in the
+/// scheme-adapter bridge (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
+/// and above the `0.75` used by lower-evidence suggest-channel
+/// rewrites in this file.
 ///
 /// **Threshold ladder relationship (load-bearing for auto-apply).**
 /// The default `confidence_threshold` in `Engine::fix_inner` is `0.95`.
