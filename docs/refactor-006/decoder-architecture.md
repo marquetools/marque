@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc.
+
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Decoder architecture (engine internal)
 
 This document captures architectural decisions and rationale that
@@ -109,16 +115,26 @@ and the prose-glue heuristic (`preceded_by_whitespace = false`)
 suppresses the much more common `letter(s)` / `function(c)` cases
 independently.
 
-This margin applies to single-letter portion candidates only.
-Multi-letter portion candidates (`(NU)`, `(NC)`, `(NR)`, `(TS)`,
-`(SI)`, ...) and banner-form candidates (`UNCLASSIFIED`,
-`CONFIDENTIAL`, etc.) bypass the null filter entirely: their shapes
-are long enough that English prose doesn't fabricate them by glyph
-coincidence, and pinning any positive margin on them would reject
-legitimate NATO/IC abbreviation recovery (NU at marking `-8.43`,
-prose `-8.34`, delta `-0.09`; NC at marking `-8.43`, prose `-5.89`,
-delta `-2.54`) where the marking stratum has zero examples but the
-strict grammar still recognizes the token.
+The recognizer applies this margin to every `MarkingType::Portion`
+input EXCEPT:
+
+- portions containing `//` (`has_double_slash`) — the category
+  separator is a marking-grammar signal English prose does not
+  produce, so the marking interpretation is the only plausible
+  reading;
+- portions whose inner content is exactly a canonical classification
+  token (`is_bare_classification_shape`): the whitelist is `(U)`,
+  `(C)`, `(S)`, `(TS)`, `(R)` plus the NATO abbreviations `(NU)`,
+  `(NR)`, `(NC)`, `(NS)`, `(CTS)`. Pinning a positive margin on
+  these would reject legitimate NATO/IC abbreviation recovery (NU
+  at marking `-8.43`, prose `-8.34`, delta `-0.09`; NC at marking
+  `-8.43`, prose `-5.89`, delta `-2.54`) where the marking stratum
+  has zero examples but the strict grammar still recognizes the
+  token.
+
+Banner and CAB shapes bypass the filter entirely. Multi-letter
+Portion candidates outside the classification whitelist (e.g.,
+`(SI)`, `(HCS)`) ARE subject to the margin.
 
 ## What the decoder is NOT
 
