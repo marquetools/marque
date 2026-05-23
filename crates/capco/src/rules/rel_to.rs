@@ -288,21 +288,27 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 },
                 confidence: Confidence::strict(0.97),
                 feature_ids: Default::default(),
-                // The USA-missing branch deliberately uses
-                // `RequiredByPresence` (not the parent's
-                // `NonCanonicalOrder`) with `MessageArgs::default()`:
-                // injecting `USA` is a "required companion is absent"
-                // event, not an ordering violation, and
-                // `MessageTemplate::RequiredByPresence` documents its
-                // args as `token` / `expected_token` — it does NOT take
-                // a `category`. Leaving `category` off here matches the
-                // established convention for this template (e.g. the
-                // `FactAdd { RELIDO }` FixIntent in `dissem_closure.rs`,
-                // and the companion-required FixIntents in `nato.rs` /
-                // `sci.rs`, all emit `RequiredByPresence` with
-                // `MessageArgs::default()`). G13: no document content
-                // either way.
-                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+                // The USA-missing branch uses `RequiredByPresence`
+                // (not the parent's `NonCanonicalOrder`): injecting
+                // `USA` is a "required companion is absent" event, not
+                // an ordering violation. It still carries
+                // `category: CAT_REL_TO` so the FixIntent's audit-record
+                // message keeps the REL TO axis context the parent
+                // diagnostic records — the same #748 / #739 intent that
+                // motivates mirroring on the `else` branch above.
+                // `MessageArgs` is a shared optional-field struct, so
+                // `RequiredByPresence` accepts `category`: the
+                // declarative `RequiredByPresence` catalog rows in
+                // `scheme/adapter.rs` set `category: Some(CAT_SCI)` /
+                // `Some(CAT_DISSEM)` the same way. G13: `CAT_REL_TO` is a
+                // `CategoryId` constant, not document content.
+                message: Message::new(
+                    MessageTemplate::RequiredByPresence,
+                    MessageArgs {
+                        category: Some(crate::scheme::CAT_REL_TO),
+                        ..MessageArgs::default()
+                    },
+                ),
                 source: FixSource::BuiltinRule,
                 migration_ref: None,
             }
