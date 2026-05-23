@@ -2,17 +2,16 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T096 — FGI / SAR silent-skip regression guard (FR-015 / FR-016 / SC-011).
+//! FGI / SAR silent-skip regression guard.
 //!
-//! Closure of the four open-vocabulary parser admission sites migrated in
-//! PR 2 of the engine-rule refactor (specs/006-engine-rule-refactor):
+//! Closure of the four open-vocabulary parser admission sites:
 //!
 //! 1. `parse_fgi_marker` → `CountryCode::admits_fgi_ownership_token` (#280)
 //! 2. SAR program identifier (abbrev) → `SarProgram::admits_program_id_abbrev`
 //! 3. SAR compartment identifier → `SarCompartment::admits_identifier`
 //! 4. SAR sub-compartment identifier → `SarCompartment::admits_identifier`
 //!
-//! Item 1 site detail: post-#280 the FGI parser admits any 2- or
+//! Item 1 site detail: the FGI parser admits any 2- or
 //! 3-byte ASCII-upper token OR the literal `NATO` tetragraph.
 //! Distribution-list tetragraphs like `FVEY` / `CFIUS` / `ACGU` /
 //! `ISAF` reject at this gate because they don't carry ownership
@@ -22,15 +21,13 @@
 //! the project's parser/rule split. EU motivates the 2-byte
 //! admission branch (its own classification system per Council
 //! Decision 2013/488/EU; registered in ISMCAT CVEnumISMCATRelTo).
-//! Pre-#280 this site routed through the broader
-//! `admits_country_token` predicate (which also admitted 4-byte
+//! This site uses the narrower FGI-ownership predicate rather than
+//! the broader `admits_country_token` (which also admits 4-byte
 //! distribution-list tetragraphs).
 //!
-//! Pre-PR-2 these sites used inline `is_ascii_alphanumeric()` byte-class checks
-//! (or, in the FGI case, a length-3 + `try_new` shortcut that silently dropped
-//! shape-failing tokens). The replacement contract is FR-016: shape failure →
-//! `None`, never a degraded `Some` shape (`FgiMarker { countries: [] }` was the
-//! specific ghost shape FR-017's `enum FgiMarker { SourceConcealed, Acknowledged
+//! The admission contract is: shape failure → `None`, never a
+//! degraded `Some` shape (`FgiMarker { countries: [] }` is the
+//! ghost shape the `enum FgiMarker { SourceConcealed, Acknowledged
 //! { countries: SmallVec<…> } }` discriminant rules out).
 //!
 //! These tests pin the contract from the **outside** of the parser — they do
@@ -52,12 +49,12 @@
 //!   2–3 alphanumeric per p101; full: uppercase + spaces per Table 7 p100),
 //!   compartment / sub-compartment identifier shape (alphanumeric, p99).
 //!
-//! # Spec linkage
+//! # Contracts pinned
 //!
-//! - FR-015 (admission via documented vocabulary surface)
-//! - FR-016 (`parse_fgi_marker` returns `None` on shape failure)
-//! - FR-017 (`FgiMarker` discriminant: `SourceConcealed` ⊕ `Acknowledged`)
-//! - SC-011 (no `FgiMarker { countries: [] }` shape survives in parser output)
+//! - Admission via documented vocabulary surface (no inline byte-class checks).
+//! - `parse_fgi_marker` returns `None` on shape failure.
+//! - `FgiMarker` discriminant: `SourceConcealed` ⊕ `Acknowledged`.
+//! - No `FgiMarker { countries: [] }` shape survives in parser output.
 
 use marque_core::Parser;
 use marque_core::parser::ParsedMarking;
@@ -95,9 +92,9 @@ fn parse_banner_attrs(text: &str) -> CanonicalAttrs {
     // (Constitution VII), so the trait route
     // `CapcoScheme::canonicalize` is unreachable from here. The helper
     // mirrors the override's field mapping and emits the same
-    // `CanonicalAttrs` output for every input, plus the §G.2 p41 /
-    // PR 9b T132 debug-assert that the override carries. The helper
-    // takes `ParsedMarking` (not `ParsedAttrs`) so FR-040 PRC100's
+    // `CanonicalAttrs` output for every input, plus the §G.2 p41
+    // debug-assert that the override carries. The helper takes
+    // `ParsedMarking` (not `ParsedAttrs`) so the promote-callsite-lint's
     // `(ParsedAttrs) -> CanonicalAttrs` signature shape never appears
     // in test code; the lint's sole-path invariant is unweakened.
     parsed_marking_to_canonical(parsed)
@@ -127,8 +124,8 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
 /// Structural rename — `ParsedMarking<'_>::attrs` → `CanonicalAttrs`.
 ///
 /// Mirrors the `CapcoScheme::canonicalize` override's field mapping
-/// and output semantics, including the §G.2 p41 / PR 9b T132 debug-
-/// assert that no `ParsedAttrs` reaches canonicalization with both
+/// and output semantics, including the §G.2 p41 debug-assert that no
+/// `ParsedAttrs` reaches canonicalization with both
 /// `dissem_nato` populated AND a US classification axis (which would
 /// mean `attribute_dissems` was skipped). The local helper's
 /// control flow and locals are not a literal copy of the override —
@@ -139,12 +136,11 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
 /// Lives in `marque-core/tests/` because Constitution VII forbids
 /// `marque-core ←── marque-capco` (the trait route would need that
 /// dev-dep edge). The helper takes `ParsedMarking` (parser output
-/// wrapper) rather than `ParsedAttrs` directly so the FR-040 PRC100
-/// signature shape `(ParsedAttrs) -> CanonicalAttrs` does not appear
-/// in test code — keeping the sole-path lint at full strength while
-/// honoring the Constitution V Principle V test-fixture carve-out.
-///
-/// Lifted from `marque_ism::from_parsed_unchecked` in PR 3c.2.E.
+/// wrapper) rather than `ParsedAttrs` directly so the
+/// promote-callsite-lint signature shape
+/// `(ParsedAttrs) -> CanonicalAttrs` does not appear in test code —
+/// keeping the sole-path lint at full strength while honoring the
+/// Constitution V Principle V test-fixture carve-out.
 #[allow(clippy::needless_pass_by_value)]
 fn parsed_marking_to_canonical(parsed: ParsedMarking<'_>) -> CanonicalAttrs {
     let marque_ism::ParsedAttrs {
@@ -213,7 +209,7 @@ fn parsed_marking_to_canonical(parsed: ParsedMarking<'_>) -> CanonicalAttrs {
         token_spans,
     };
 
-    // Mirror the PR 9b (T132) invariant guard carried by
+    // Mirror the invariant guard carried by
     // `CapcoScheme::canonicalize`. `attribute_dissems` is the single
     // source of truth; this debug-only assertion catches a future
     // bug where attribution is skipped or a hand-built `ParsedAttrs`
@@ -232,7 +228,7 @@ fn parsed_marking_to_canonical(parsed: ParsedMarking<'_>) -> CanonicalAttrs {
 }
 
 // =============================================================================
-// FGI marker — `parse_fgi_marker` four-case enforcement (FR-016 / FR-017)
+// FGI marker — `parse_fgi_marker` four-case enforcement
 // =============================================================================
 
 #[test]
@@ -240,7 +236,7 @@ fn parse_fgi_marker_bare_fgi_yields_source_concealed() {
     // CAPCO-2016 §H.7 p122: bare `FGI` is the lawful source-concealed banner
     // form ("FOREIGN GOVERNMENT INFORMATION (when country[ies] or
     // organization[s] of origin must be concealed)"). The parser must
-    // produce `Some(SourceConcealed)`, not the pre-FR-017 collision shape
+    // produce `Some(SourceConcealed)`, not the collision shape
     // `Some(FgiMarker { countries: [] })`.
     let attrs = parse_banner_attrs("SECRET//FGI//NOFORN");
     let marker = attrs
@@ -251,7 +247,7 @@ fn parse_fgi_marker_bare_fgi_yields_source_concealed() {
         matches!(marker, FgiMarker::SourceConcealed),
         "bare FGI must be SourceConcealed (CAPCO §H.7 p122), got {marker:?}",
     );
-    // FR-017 invariant: the lawful concealed form has no countries.
+    // Invariant: the lawful concealed form has no countries.
     assert!(
         marker.countries().is_empty(),
         "SourceConcealed has no countries by definition",
@@ -283,9 +279,9 @@ fn parse_fgi_marker_acknowledged_yields_countries() {
 
 #[test]
 fn parse_fgi_marker_lowercase_trigraph_yields_no_marker() {
-    // FR-016: post-prefix bytes failing `shape_admits` MUST return `None` —
+    // Post-prefix bytes failing `shape_admits` MUST return `None` —
     // not silently drop the lowercase token and fall back to a degraded
-    // `SourceConcealed` (which was the pre-FR-016 surface).
+    // `SourceConcealed`.
     //
     // CAPCO §H.7 p122 + §A.6 p16 require trigraph or tetragraph country
     // codes; both registries are uppercase-canonical. Lowercase fails
@@ -475,7 +471,7 @@ fn parse_fgi_marker_5_letter_token_yields_no_marker() {
     // codes (the `AUSTRALIA_GROUP`-class "exception is granted"
     // surface per CAPCO §H.7 p122) are out of scope at this gate.
     // `USAGB` fails because it's 5 bytes; the whole FGI marker
-    // rejects per the FR-016 closure ("one bad token taints the
+    // rejects per the closure invariant ("one bad token taints the
     // list"), not silent partial acceptance.
     let attrs = parse_banner_attrs("SECRET//FGI USAGB//NOFORN");
     assert!(
@@ -490,9 +486,9 @@ fn parse_fgi_marker_5_letter_token_yields_no_marker() {
 fn parse_fgi_marker_digit_token_yields_no_marker() {
     // Digits in any list-token slot fail `admits_country_token`
     // (which requires uniform ASCII upper letters across 2/3/4
-    // bytes). The pre-FR-016 surface would silently drop `U23` and
+    // bytes). A degraded surface would silently drop `U23` and
     // produce `Some(SourceConcealed)` once the country list went
-    // empty; FR-016 + FR-017 close that channel.
+    // empty; the closure + discriminant invariants close that channel.
     let attrs = parse_banner_attrs("SECRET//FGI U23//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
@@ -504,14 +500,13 @@ fn parse_fgi_marker_digit_token_yields_no_marker() {
 
 #[test]
 fn parse_fgi_marker_one_invalid_token_taints_whole_list() {
-    // FR-016 contract: every token in the list must pass admission. One
+    // Closure contract: every token in the list must pass admission. One
     // shape-failing token rejects the whole marker — the parser must NOT
     // accept the valid prefix and silently drop the invalid suffix.
     //
     // `USA` is shape-admissible; `xyz` is lowercase and fails
-    // `admits_country_token`. The pre-FR-016 surface would produce a
-    // single-country `Acknowledged([USA])`; the post-FR-016 surface returns
-    // `None`.
+    // `admits_country_token`. A degraded surface would produce a
+    // single-country `Acknowledged([USA])`; the parser returns `None`.
     let attrs = parse_banner_attrs("SECRET//FGI USA xyz//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
@@ -548,10 +543,10 @@ fn sar_program_id_too_short_yields_no_sar_marking() {
     // or three-character designator for the program." A length-1 program
     // identifier fails `admits_program_id_abbrev` at the parser site.
     //
-    // Pre-FR-015 the inline `is_ascii_alphanumeric()` check would have
-    // accepted `X` (length 1, all alnum) and produced a phantom one-char
-    // SAR program. FR-015 routes this through the documented predicate,
-    // which enforces the 2-3 length bound.
+    // An inline `is_ascii_alphanumeric()` check would have accepted `X`
+    // (length 1, all alnum) and produced a phantom one-char SAR program.
+    // Routing through the documented predicate enforces the 2-3 length
+    // bound instead.
     let attrs = parse_portion_attrs("(TS//SAR-X)");
     assert!(
         attrs.sar_markings.is_none(),
@@ -604,8 +599,9 @@ fn sar_compartment_with_punctuation_yields_no_sar_marking() {
     // returns `None` from `parse_sar_program`, which propagates up through
     // `parse_sar_category` so `attrs.sar_markings` stays `None`.
     //
-    // This guards the FR-015 migration of `crates/core/src/parser.rs:1481`
-    // from inline `is_ascii_alphanumeric()` to the documented predicate.
+    // This guards SAR compartment admission in `parse_sar_program`,
+    // which routes through the documented predicate rather than an
+    // inline `is_ascii_alphanumeric()` check.
     let attrs = parse_portion_attrs("(TS//SAR-BP-foo.bar)");
     assert!(
         attrs.sar_markings.is_none(),
@@ -643,7 +639,7 @@ fn sar_sub_compartment_with_punctuation_yields_no_sar_marking() {
     // not retain the well-formed compartment prefix and discard the failing
     // sub-compartment.
     //
-    // This guards the FR-015 migration of `crates/core/src/parser.rs:1493`.
+    // This guards SAR sub-compartment admission in `parse_sar_program`.
     // `SAR-BP-CD foo.bar` parses as program `BP` with compartment `CD` and
     // sub-compartment `foo.bar`; the dot in the sub-compartment fails
     // admission.

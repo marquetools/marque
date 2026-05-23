@@ -15,13 +15,12 @@ use marque_scheme::Span;
 /// `marque-core` cannot dev-depend on `marque-capco` (Constitution
 /// VII), so the trait route `CapcoScheme::canonicalize` is
 /// unreachable from here. The inlined body mirrors the override's
-/// field mapping and output semantics — including the §G.2 p41 /
-/// PR 9b T132 debug-assert — but is not a literal byte-for-byte
-/// copy (control flow + locals differ, `From::from` returns
-/// `Self` rather than the override's `CanonicalAttrs`).
-/// FR-040 PRC100 stays satisfied because the enclosing
-/// `From::from` signature is `(ParsedMarking) -> Self`, not
-/// `(ParsedAttrs) -> CanonicalAttrs`.
+/// field mapping and output semantics — including the §G.2 p41
+/// debug-assert — but is not a literal byte-for-byte copy (control
+/// flow + locals differ, `From::from` returns `Self` rather than the
+/// override's `CanonicalAttrs`). The promote-callsite-lint stays
+/// satisfied because the enclosing `From::from` signature is
+/// `(ParsedMarking) -> Self`, not `(ParsedAttrs) -> CanonicalAttrs`.
 pub(super) struct CanonicalParsed {
     pub attrs: CanonicalAttrs,
     #[allow(dead_code)] // tests inspect attrs only; kept for parity
@@ -98,7 +97,7 @@ impl<'src> From<ParsedMarking<'src>> for CanonicalParsed {
             token_spans,
         };
 
-        // Mirror the PR 9b (T132) invariant guard carried by
+        // Mirror the invariant guard carried by
         // `CapcoScheme::canonicalize`. `attribute_dissems` is the
         // single source of truth; this debug-only assertion catches
         // a future bug where attribution is skipped or a hand-built

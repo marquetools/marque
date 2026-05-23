@@ -2,26 +2,16 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `ProjectedMarking` — the **intended** post-PR-6 engine-facing output
-//! of `MarkingScheme::project(Scope::Page, ...)` once the `Scope::Page`
-//! projection cutover lands. Defined at PR 3a, **not wired** at PR 3a;
-//! PR 6 wires it.
+//! `ProjectedMarking` — the engine-facing output of
+//! `MarkingScheme::project(Scope::Page, ...)`.
 //!
-//! Today's `MarkingScheme::project` (in `marque-scheme`) returns
-//! `Self::Marking` (scheme-specific). PR 6's cutover changed the
-//! engine-facing call path so banner-validation rules consume
-//! `&ProjectedMarking` instead of reaching through a separate page
-//! accumulator type. PR 5 widened the per-axis classification rollup
-//! to `Option<MarkingClassification>` ahead of that wiring (FR-007).
-//! This type is defined at PR 3a so both PRs had a stable target
-//! without a separate type-system change.
-//!
-//! Post-PR-4b-D.2 (hot-path flip) + PR 4b-E (lattice-driven page
-//! roll-up) + PR 6c (full `PageContext` retirement), `ProjectedMarking`
-//! is the production page-roll-up shape that banner/CAB rules consume
-//! via `RuleContext::page_marking`. The engine drives the projection
-//! through `CapcoScheme::project_from_attrs_slice` +
-//! `ProjectedMarking::from_canonical`.
+//! `ProjectedMarking` is the production page-roll-up shape that
+//! banner/CAB rules consume via `RuleContext::page_marking`. The engine
+//! drives the projection through
+//! `CapcoScheme::project_from_attrs_slice` +
+//! `ProjectedMarking::from_canonical`. The per-axis classification
+//! rollup is `Option<MarkingClassification>` so a pure-foreign page
+//! produces `None` rather than a hardcoded US default.
 //!
 //! # Field shape
 //!
@@ -42,23 +32,12 @@ use marque_scheme::Scope;
 
 /// Output of a `MarkingScheme::project(scope, ...)` call.
 ///
-/// PR 3a defines the shape; PR 6 wires the engine to consume it.
-/// Banner-validation rules migrate to `&ProjectedMarking` at PR 9.
+/// `classification: Option<MarkingClassification>` preserves foreign
+/// provenance; `fgi_marker` survives the projection alongside
+/// classification rather than being collapsed into it.
 ///
-/// **FR-007 + FR-008**: `classification: Option<MarkingClassification>`
-/// preserves foreign provenance; `fgi_marker` survives the projection
-/// alongside classification rather than being collapsed into it.
-///
-/// # PR-3a scope note
-///
-/// Post-PR-4b-D.2 hot-path flip, PR 4b-E expected-accessor deletion,
-/// and PR 6c `PageContext` retirement, `ProjectedMarking` is the
-/// production page-roll-up shape banner/CAB rules consume via
-/// `RuleContext::page_marking`. The type is `pub` so `dead_code`
-/// does not fire across the workspace; per the design's Risk #6 a
-/// targeted `#[allow(dead_code)]` is reserved should the workspace
-/// lints flag it. PR 6 turns `ProjectedMarking` into a real
-/// consumer.
+/// `ProjectedMarking` is the production page-roll-up shape banner/CAB
+/// rules consume via `RuleContext::page_marking`.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectedMarking {
@@ -67,8 +46,7 @@ pub struct ProjectedMarking {
     pub scope: Scope,
 
     /// Aggregated classification. `None` when no portion contributed a
-    /// US classification — pure-foreign pages produce this case
-    /// post-PR-5.
+    /// US classification — pure-foreign pages produce this case.
     pub classification: Option<MarkingClassification>,
 
     /// SCI controls (CVE projection of `sci_markings`).
@@ -78,9 +56,8 @@ pub struct ProjectedMarking {
     pub sci_markings: Box<[SciMarking]>,
 
     /// SAR block, at most one per banner per §A.6. Field name aligns
-    /// with `CanonicalAttrs::sar_markings` (plural form preserved from
-    /// the pre-PR-3a `IsmAttributes` shape) so PR 6's projection
-    /// wiring does not need name-mapping glue.
+    /// with `CanonicalAttrs::sar_markings` (plural form) so the
+    /// projection wiring does not need name-mapping glue.
     pub sar_markings: Option<SarMarking>,
 
     /// AEA markings.
@@ -90,9 +67,7 @@ pub struct ProjectedMarking {
     /// foreign provenance (FR-008, #261).
     pub fgi_marker: Option<FgiMarker>,
 
-    /// US-attributed IC dissemination controls in the page rollup.
-    /// PR 9b (FR-046 / T132) split the prior single
-    /// `dissem_controls` field; see
+    /// US-attributed IC dissemination controls in the page rollup. See
     /// [`crate::CanonicalAttrs::dissem_us`] for the CAPCO-2016 p41
     /// reciprocity rule. Page roll-up unions each namespace
     /// independently via the per-axis lattice helpers
@@ -146,8 +121,8 @@ impl ProjectedMarking {
     /// [`CanonicalAttrs`] value produced by the lattice path of
     /// `CapcoScheme::project(Scope::Page, ...)`.
     ///
-    /// This is the type bridge installed at PR 4b-D for the hot-path
-    /// flip: the engine drives `page_marking_arc` through
+    /// This is the type bridge for the hot path: the engine drives
+    /// `page_marking_arc` through
     /// `scheme.project(Scope::Page, ...) -> CapcoMarking`, then uses
     /// this constructor to project the resulting `CanonicalAttrs` into
     /// the engine-facing `ProjectedMarking` shape that banner-
@@ -158,8 +133,7 @@ impl ProjectedMarking {
     /// home crate so cross-crate callers cannot bypass field-addition
     /// migrations (Constitution Principle VII).
     ///
-    /// Production callers (Copilot R2 #12 — the previous doc claim
-    /// that `CapcoScheme::project` calls this was wrong):
+    /// Production callers:
     ///
     /// - `marque_engine::project_page_marking` — the engine fast-path
     ///   helper that wraps `CapcoScheme::project_from_attrs_slice`'s
@@ -180,24 +154,21 @@ impl ProjectedMarking {
     /// document- and diff-scoped projections will land their own
     /// constructors when those code paths come online). `provenance`
     /// is [`ProjectionProvenance::default()`] — per-portion span
-    /// attribution lands when the projection pipeline grows a
-    /// contribution-tracking layer (out of scope for PR 4b-D).
+    /// attribution would require the projection pipeline to grow a
+    /// contribution-tracking layer.
     ///
     /// CAB-only fields on `CanonicalAttrs` (`classified_by`,
     /// `derived_from`, `declass_exemption`, `token_spans`) are
     /// intentionally absent from `ProjectedMarking` per the type-level
     /// "page aggregate, not a CAB" contract.
     ///
-    /// # Lifecycle
+    /// # Parity
     ///
-    /// PR 4b-D wired the engine to call this on the hot path; PR 4b-E
-    /// retired the historical `PageContext::project` accessor in
-    /// favor of this constructor + the scheme's lattice path; PR 6c
-    /// retired the `PageContext` accumulator type itself. The parity
-    /// gate at `crates/capco/tests/lattice_vs_scheme_parity.rs`
-    /// continues to enforce agreement on the documented-divergence
-    /// set across the two surviving surfaces (`project_via_lattice`
-    /// and `project_via_scheme`).
+    /// The engine calls this on the hot path alongside the scheme's
+    /// lattice path. The parity gate at
+    /// `crates/capco/tests/lattice_vs_scheme_parity.rs` enforces
+    /// agreement on the documented-divergence set across the two
+    /// surfaces (`project_via_lattice` and `project_via_scheme`).
     pub fn from_canonical(attrs: CanonicalAttrs) -> ProjectedMarking {
         ProjectedMarking {
             scope: Scope::Page,
@@ -269,16 +240,12 @@ impl ProjectedMarking {
 /// Lattice trace + per-portion contribution record for a
 /// [`ProjectedMarking`].
 ///
-/// Defined at PR 3a as an empty-default placeholder. PR 6 fills in the
-/// fields consumed by banner-validation rules. The shape is reserved so
-/// PR 6 doesn't require a separate type-system change.
-///
 /// # Why a struct, not a typedef
 ///
 /// Banner rules need both the source-portion spans (for diagnostic
 /// pointers) and a lattice-operation summary ("which join produced this
-/// SCI compartment set?"). Splitting them into a struct now avoids a
-/// later breaking-change PR.
+/// SCI compartment set?"). A struct keeps room for both fields without
+/// a later breaking change.
 #[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProjectionProvenance {
@@ -460,10 +427,9 @@ mod tests {
         assert!(p.display_only_to.is_empty());
     }
 
-    // PR 4b-D.3 — `is_solely_nato_classified` predicate. These tests
-    // exercise the four invariants the doc-comment relies on; the
-    // S007 callsite migration in `crates/capco/src/rules.rs` is the
-    // load-bearing consumer.
+    // `is_solely_nato_classified` predicate. These tests exercise the
+    // four invariants the doc-comment relies on; the S007 callsite in
+    // `crates/capco/src/rules.rs` is the load-bearing consumer.
 
     #[test]
     fn is_solely_nato_classified_true_on_pure_nato() {
@@ -490,7 +456,7 @@ mod tests {
     #[test]
     fn is_solely_nato_classified_false_when_fgi_present() {
         // FgiMarker::acknowledged enforces non-empty list — see
-        // attrs.rs §H.7 p123 (CHK028 / FR-017).
+        // attrs.rs §H.7 p123.
         let fgi = FgiMarker::acknowledged([gbr()]).expect("non-empty list");
         let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),

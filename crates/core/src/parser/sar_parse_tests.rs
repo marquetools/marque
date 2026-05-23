@@ -229,7 +229,7 @@ fn rejects_program_id_out_of_2_3_length() {
 }
 
 // ---------------------------------------------------------------------
-// T089 / T090 / T091: FR-015 closure for parse_sar_program
+// Admission closure for parse_sar_program
 //
 // The parser-side admission for SAR program identifiers,
 // compartments, and sub-compartments routes through the
@@ -246,10 +246,9 @@ fn rejects_program_id_out_of_2_3_length() {
 
 #[test]
 fn t089_program_id_abbrev_length_boundary() {
-    // FR-015 / T089 regression. The 2-3 alnum gate is the
-    // most observable boundary; if the parser ever falls back
-    // to a length-only or class-only check (a pre-T089 bug
-    // mode), one of these assertions will fail.
+    // The 2-3 alnum gate is the most observable boundary; if the
+    // parser ever falls back to a length-only or class-only check,
+    // one of these assertions will fail.
 
     // Length 1 (below the 2-char minimum) — must reject.
     assert!(
@@ -298,8 +297,7 @@ fn t089_program_id_abbrev_length_boundary() {
 
 #[test]
 fn t090_compartment_identifier_admission() {
-    // FR-015 / T090 regression. `parse_sar_program` must
-    // delegate compartment admission to
+    // `parse_sar_program` must delegate compartment admission to
     // `SarCompartment::admits_identifier`, not an inline
     // length-and-class check. The accept set is "≥1 ASCII
     // alnum"; the reject set covers the empty-segment and
@@ -332,8 +330,8 @@ fn t090_compartment_identifier_admission() {
 
 #[test]
 fn t091_sub_compartment_identifier_admission() {
-    // FR-015 / T091 regression. Sub-compartment admission goes
-    // through the same `SarCompartment::admits_identifier`
+    // Sub-compartment admission goes through the same
+    // `SarCompartment::admits_identifier`
     // predicate as the compartment slot — the manual places
     // both grammar positions under one rule
     // (CAPCO-2016 §H.5 pp 99-100).

@@ -17,20 +17,18 @@
 //! codewords, not a closed vocabulary. SAR is modeled structurally via
 //! [`SarMarking`] / [`SarProgram`] / [`SarCompartment`].
 //!
-//! # Pivot type history
+//! # Pivot types
 //!
-//! Pre-PR-3a a single owned struct (then named `IsmAttributes`) lived in
-//! this module and served both as the parser output and the
-//! rule-consumption form. PR 3a split that role across three types:
+//! The pivot role is split across three types:
 //!
 //! - [`crate::ParsedAttrs`] (in `parsed.rs`) — borrowed parser output.
 //! - [`crate::CanonicalAttrs`] (in `canonical.rs`) — owned rule input.
 //! - [`crate::ProjectedMarking`] (in `projected.rs`) — page projection
-//!   output. Defined at PR 3a; PR 6 wires the engine to consume it.
+//!   output.
 //!
 //! Parser output ([`crate::ParsedAttrs`]) is converted to
 //! [`crate::CanonicalAttrs`] through `MarkingScheme::canonicalize`
-//! (sole production path per FR-043; the CAPCO override lives in
+//! (the sole production path; the CAPCO override lives in
 //! `marque_capco::CapcoScheme::canonicalize`).
 
 use crate::generated::values;
@@ -105,13 +103,10 @@ mod tests {
         );
     }
 
-    /// PR 9c.1 T134: `NatoClassification` is now a 5-variant bare-class
-    /// enum; the 5 fused variants (`NatoConfidentialAtomal`,
-    /// `NatoSecretAtomal`, `CosmicTopSecretAtomal`,
-    /// `CosmicTopSecretBohemia`, `CosmicTopSecretBalk`) were retired
-    /// because they conflated classification with AEA/SCI sub-marking
-    /// semantics. ATOMAL now lives in [`AeaMarking::Atomal`];
-    /// BALK/BOHEMIA in [`SciControlSystem::NatoSap`].
+    /// `NatoClassification` is a 5-variant bare-class enum: it does not
+    /// fuse classification with AEA/SCI sub-marking semantics. ATOMAL
+    /// lives in [`AeaMarking::Atomal`]; BALK/BOHEMIA in
+    /// [`SciControlSystem::NatoSap`].
     #[test]
     fn nato_banner_portion_round_trip() {
         for n in [

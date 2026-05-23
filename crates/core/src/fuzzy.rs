@@ -33,7 +33,7 @@
 //!    from fuzzy matching because edit distance is semantically unreliable at
 //!    that length. `C`, `S`, `U` are valid in context but look similar enough to
 //!    dozens of other possibilities that any fuzzy suggestion would be noise.
-//!    See [`MIN_FUZZY_LEN`] for the 2-char rationale (PR 7 SAR
+//!    See [`MIN_FUZZY_LEN`] for the 2-char rationale (avoids SAR
 //!    sub-compartment false-positives).
 //!
 //! 5. **Confidence scores.** Each `FuzzyCorrection` carries a base confidence
@@ -652,7 +652,7 @@ mod tests {
     // future change that removed the banner long-form additions from
     // the extended vocab (or unintentionally narrowed it back to
     // `ALL_CVE_TOKENS`) would fail here, not silently regress the
-    // SC-004 accuracy harness. The unit tests above use a minimal
+    // corpus accuracy harness. The unit tests above use a minimal
     // local TEST_VOCAB and would not catch the regression.
 
     #[test]

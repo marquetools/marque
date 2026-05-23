@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 9a Copilot R2 Fix 3 — SCI long-form span emission invariant.
+//! SCI long-form span emission invariant.
 //!
 //! When the parser recognizes a deprecated SCI long-form (HUMINT,
 //! COMINT, ECI, EL, ENDSEAL, KDK, KLONDIKE, ...), it emits a
