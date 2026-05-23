@@ -1017,7 +1017,7 @@ impl CapcoScheme {
         // round-trip when `Nf` is actually present; the common case
         // (no NOFORN in the post-closure state) is a single
         // `iter().any(...)` test that costs no allocations.
-        let has_noforn = attrs.dissem_us.iter().any(|d| *d == DissemControl::Nf);
+        let has_noforn = attrs.dissem_us.contains(&DissemControl::Nf);
         if has_noforn {
             // Build a DissemSet view, run the overlay, write back if
             // changed. The DissemSet round-trip preserves the natural

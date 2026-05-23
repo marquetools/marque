@@ -233,7 +233,7 @@ fn project_orcon_plus_noforn_is_idempotent() {
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let out = scheme.project(Scope::Page, &[m.clone()]);
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert_eq!(
         out.0.dissem_us.len(),
         m.0.dissem_us.len(),
@@ -741,9 +741,9 @@ fn closure_fires_noforn_on_nnpi_marking() {
     );
 }
 
-/// Post-#704 FD&R supersession parity for NNPI: project(Page) with NNPI
-/// + RELIDO converges to `{NOFORN, ...}` with RELIDO stripped per
-/// §H.8 p145.
+/// Post-#704 FD&R supersession parity for NNPI: `project(Page)` on a
+/// portion carrying NNPI together with RELIDO converges to
+/// `{NOFORN, ...}` with RELIDO stripped per §H.8 p145.
 ///
 /// Authority: §B.3 Table 2 p21 (caveated default fires on NNPI per the
 /// non-IC-dissem-implies-NOFORN principle); §H.8 p145 (NOFORN-dominates
@@ -971,7 +971,7 @@ fn project_is_idempotent_on_orcon_marking() {
     let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
 
     let once = scheme.project(Scope::Page, &[m]);
-    let twice = scheme.project(Scope::Page, &[once.clone()]);
+    let twice = scheme.project(Scope::Page, std::slice::from_ref(&once));
 
     assert_eq!(
         once, twice,
@@ -1193,7 +1193,7 @@ fn project_resolves_orcon_plus_noforn_no_relido() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let out = scheme.project(Scope::Page, &[m.clone()]);
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(dissem_us_contains(&out, DissemControl::Oc));
     assert!(dissem_us_contains(&out, DissemControl::Nf));
     assert!(

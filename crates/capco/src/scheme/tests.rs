@@ -1088,7 +1088,7 @@ fn project_noop_on_classified_with_noforn_via_overlay() {
     let mut a = mk_attrs(); // US(Secret)
     a.dissem_us = vec![DissemControl::Nf].into();
     let before = CapcoMarking::new(a);
-    let after = scheme.project(Scope::Page, &[before.clone()]);
+    let after = scheme.project(Scope::Page, std::slice::from_ref(&before));
     assert_eq!(
         before.0.dissem_us, after.0.dissem_us,
         "project must converge to `{{NOFORN}}` when NOFORN is already \
