@@ -28,5 +28,7 @@
 // retains the registry + the not-yet-moved rule structs and is
 // re-exported through this module.
 
+pub(crate) mod helpers;
+
 pub use crate::rules_legacy::CapcoRuleSet;
-pub(crate) use crate::rules_legacy::{FixDiagnosticParams, make_fix_diagnostic};
+pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
