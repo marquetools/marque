@@ -58,11 +58,11 @@ use marque_ism::{DissemControl, NonIcDissem, SciControl, SciControlBare, marking
 ///   shaped (regression-guarded by
 ///   `missing_delimiter_top_secret_classification_then_dissem` in
 ///   `crates/engine/tests/decoder_recovery.rs`). Strict-parser path
-///   is unchanged — E004's `SECRET//SI/NF` stray-slash detection in
-///   `crates/core/src/parser/tests/controls_tests.rs::sci_mixed_\
-///   category_slash_block_falls_through` runs against the strict
-///   parser and is unaffected: this recovery executes only when the
-///   strict path could not recognize the input.
+///   is unchanged — E004's `SECRET//SI/NF` stray-slash detection,
+///   covered by the `sci_mixed_category_slash_block_falls_through` test
+///   in `crates/core/src/parser/tests/controls_tests.rs`, runs against
+///   the strict parser and is unaffected: this recovery executes only
+///   when the strict path could not recognize the input.
 ///
 /// **Out of scope** — sub-compartment fuzzy recovery (`ABCE → ABCD`),
 /// unregistered-compartment recovery, and any rewrite that would
@@ -235,15 +235,27 @@ fn is_sci_shaped(token: &str) -> bool {
 
 /// Predicate for Pattern D's right side: returns `true` when `token`
 /// is a known non-SCI hard splitter — a published dissem control or
-/// non-IC dissem in either the abbreviated form (`NF`, `OC`, `XD`,
-/// `SBU`, ...) or the long banner / title form (`NOFORN`, `ORCON`,
-/// `EXDIS`, ...). Long-form recognition routes through
-/// `marque_ism::marking_forms::banner_to_portion` / `title_to_portion`
-/// so the surface tracks the canonical `MARKING_FORMS` table —
-/// matching the strict parser's `parse_dissem_full_form` /
-/// `parse_non_ic_full_form` shape (those live as `pub(super)` in
-/// `marque-core` so we re-derive them locally per issue #720
-/// preflight decision point #3).
+/// non-IC dissem in either the abbreviated portion form (`NF`, `OC`,
+/// `XD`, `SBU`, ...) or its single-word banner abbreviation (`NOFORN`,
+/// `ORCON`, `EXDIS`, ...). Single-word banner recognition routes through
+/// `marque_ism::marking_forms::banner_to_portion` so the surface tracks
+/// the canonical `MARKING_FORMS` table — matching the strict parser's
+/// `parse_dissem_full_form` / `parse_non_ic_full_form` shape (those live
+/// as `pub(super)` in `marque-core` so we re-derive them locally per
+/// issue #720 preflight decision point #3).
+///
+/// **Scope — single word.** `token` is the one whitespace-delimited word
+/// following the `/` (see the caller's scan in `try_sci_delimiter_repair`,
+/// which stops at the first space/structural delimiter). Multi-word
+/// long-form *titles* (e.g. NOFORN's "NOT RELEASABLE TO FOREIGN
+/// NATIONALS") are therefore not recognized here — and a title lookup is
+/// not needed: every dissem / non-IC control whose `title` differs from
+/// its `banner` abbreviation is multi-word, so `title_to_portion` could
+/// never resolve a single-word `token` to a dissem/non-IC portion (the
+/// only single-word `title != banner` rows in `MARKING_FORMS` are SCI
+/// compartments, which fail the dissem/non-IC gate below). Recovering a
+/// misplaced `/` before a multi-word banner would require widening the
+/// caller's scan; that is out of scope for issue #720.
 fn is_non_sci_hard_splitter_token(token: &str) -> bool {
     if token.is_empty() {
         return false;
@@ -251,8 +263,7 @@ fn is_non_sci_hard_splitter_token(token: &str) -> bool {
     if DissemControl::parse(token).is_some() || NonIcDissem::parse(token).is_some() {
         return true;
     }
-    let portion =
-        marking_forms::banner_to_portion(token).or_else(|| marking_forms::title_to_portion(token));
+    let portion = marking_forms::banner_to_portion(token);
     portion.is_some_and(|p| DissemControl::parse(p).is_some() || NonIcDissem::parse(p).is_some())
 }
 
