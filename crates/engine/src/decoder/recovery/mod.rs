@@ -12,7 +12,7 @@ mod sar;
 mod sci;
 mod stray;
 
-pub(super) use delimiter::{is_hard_splitter, try_insert_delimiter};
+pub(super) use delimiter::try_insert_delimiter;
 pub(super) use nato::try_nato_fold;
 pub(super) use rel_to::{
     try_rel_to_fuzzy_trigraph_candidates, try_rel_to_structural_repair,

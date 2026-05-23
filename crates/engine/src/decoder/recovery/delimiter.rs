@@ -6,6 +6,8 @@
 //! can't recover. This pass walks the input left-to-right and inserts
 //! `//` at whitespace gaps that separate two distinct CAPCO segments.
 
+use crate::decoder::scoring::is_hard_splitter;
+
 // ---------------------------------------------------------------------------
 // Missing-delimiter insertion (issue #133 PR 3)
 // ---------------------------------------------------------------------------
@@ -245,39 +247,5 @@ fn is_classification_continuation(next_token: &str, prev_token: Option<&str>) ->
         return true;
     }
     is_classification_token(next_token)
-}
-
-/// True when `token` is an unambiguous segment-starting dissem
-/// long-form. These tokens have no in-segment role inside SCI / SAR /
-/// REL TO blocks, so seeing one after whitespace always indicates a
-/// missing `//` separator. Pinned by
-/// `try_insert_delimiter_inserts_before_long_form_dissem`.
-///
-/// Excluded from this set:
-///
-/// - 2-char short forms (`NF`, `OC`, `PR`, `IMC`, `RS`) — could
-///   collide with SAR compartment / sub-compartment naming.
-/// - SCI starters (`SI`, `HCS`, `TK`, `KDK`) — 2-3 char tokens that
-///   appear in compartment context.
-/// - SAR prefixes (`SAR-*`) — handled in v2 with classification-
-///   context lookahead.
-pub(crate) fn is_hard_splitter(token: &str) -> bool {
-    matches!(
-        token,
-        "NOFORN"
-            | "ORCON"
-            | "ORCON-USGOV"
-            | "PROPIN"
-            | "IMCON"
-            | "RELIDO"
-            | "RSEN"
-            | "EYESONLY"
-            | "FOUO"
-            | "FISA"
-            | "DSEN"
-            | "EXDIS"
-            | "NODIS"
-            | "LIMDIS"
-    )
 }
 
