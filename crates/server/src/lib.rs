@@ -13,12 +13,9 @@
 //! `axum::Router::oneshot(...)` without spinning up a real TCP
 //! listener.
 //!
-//! ## T3 enforcement (corpus-override gate)
+//! ## Corpus-override gate
 //!
-//! Per Constitution III + FR-013 + the Phase-D threat model
-//! (`docs/plans/2026-04-19-recursive-lattice-and-decoder.md` §6a) +
-//! the contract at
-//! `specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md`,
+//! Per Constitution III (WASM-safety / runtime-config restriction),
 //! HTTP callers may not supply runtime corpus overrides. Three channels
 //! are guarded:
 //!
