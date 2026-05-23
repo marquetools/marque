@@ -302,12 +302,10 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
     let mut reads: BTreeSet<CategoryId> = BTreeSet::new();
     let mut writes: BTreeSet<CategoryId> = BTreeSet::new();
     for &i in indexes {
-        for r in rewrites[i].reads {
-            reads.insert(*r);
-        }
-        for w in rewrites[i].writes {
-            writes.insert(*w);
-        }
+        // Bolt Optimization: Use .extend() combined with iterator chains
+        // for bulk insertion into BTreeSet to leverage iterator optimizations.
+        reads.extend(rewrites[i].reads.iter().copied());
+        writes.extend(rewrites[i].writes.iter().copied());
     }
     let picked = reads.intersection(&writes).next().copied();
     debug_assert!(
