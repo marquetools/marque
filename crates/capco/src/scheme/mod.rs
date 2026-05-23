@@ -404,7 +404,7 @@ pub const TOK_DCNI: TokenId = TokenId(147); // DCNI — DOD UCNI portion form, �
 //     CAPCO-2016 §G.2 p40 + §H.7 p127 worked example.
 //
 // All three render same-form across title / banner-abbrev / portion
-// columns per §G.1 Table 4 p38 (the row "ATOMAL/BALK/BOHEMIA" lists
+// columns per §G.1 Table 4 p37 (the row "ATOMAL/BALK/BOHEMIA" lists
 // the canonical name in all three columns).
 //
 // Resolved by `satisfies_attrs` against `attrs.aea_markings` and

@@ -15,7 +15,7 @@
 //! [`SciControlSystem::NatoSap`]-anchored [`SciMarking`] into the SCI
 //! axis, whenever the parser recognizes a legacy NATO compound text
 //! (`CTSA` / `NSAT` / `CTS-B` / `CTS-BALK` / banner-form equivalents
-//! per CAPCO-2016 §G.1 Table 4 p38).
+//! per CAPCO-2016 §G.1 Table 4 p37).
 //!
 //! When the same marking ALSO carries an explicit canonical
 //! ATOMAL / BOHEMIA / BALK block (e.g., `(//NSAT//ATOMAL)` — legacy class
@@ -62,7 +62,7 @@
 //!
 //! # Authority
 //!
-//! - CAPCO-2016 §G.1 Table 4 p38 (the eight portion-form + five
+//! - CAPCO-2016 §G.1 Table 4 p37 (the eight portion-form + five
 //!   banner-form legacy compounds whose canonicalization triggers the
 //!   duplicate-push pattern).
 //! - CAPCO-2016 §G.2 p40 (registers ATOMAL / BOHEMIA / BALK as

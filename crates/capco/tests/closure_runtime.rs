@@ -74,7 +74,7 @@ fn classified_with_dissem(c: Classification, dissem: DissemControl) -> CapcoMark
 /// Bare NATO portion (no US classification axis populated).
 ///
 /// `NS` (NATO SECRET, portion mark abbreviation `NS`) per CAPCO-2016
-/// §G.1 Table 4 p38 — registers the five NATO classification levels
+/// §G.1 Table 4 p37 — registers the five NATO classification levels
 /// (CTS / NS / NC / NR / NU) with the pointer "NATO Protective
 /// Markings, refer to Appendix B" for the full grammar.
 fn bare_nato_secret() -> CapcoMarking {
