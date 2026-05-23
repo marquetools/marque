@@ -2,21 +2,18 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 4 PR-3 — decoder recovery tests (T045, T046, T047).
+//! Decoder recovery tests.
 //!
-//! These tests exercise the three mangling classes US2 targets:
+//! These tests exercise the three mangling classes the decoder targets:
 //!
-//! - **T046** Typo-to-canonical (`SERCET//NOFORN` → `SECRET//NOFORN`).
-//! - **T047** Banner reordering (`NOFORN//SECRET` → `SECRET//NOFORN`).
-//! - **T045** Strict-context classification floor (FR-011:
-//!   ambiguous `(C)` decodes to CONFIDENTIAL only when a strict
-//!   CONFIDENTIAL-or-higher floor is established for the page).
+//! - Typo-to-canonical (`SERCET//NOFORN` → `SECRET//NOFORN`).
+//! - Banner reordering (`NOFORN//SECRET` → `SECRET//NOFORN`).
+//! - Strict-context classification floor: ambiguous `(C)` decodes to
+//!   CONFIDENTIAL only when a strict CONFIDENTIAL-or-higher floor is
+//!   established for the page.
 //!
 //! Tests hit `DecoderRecognizer` directly (not through `Engine::lint`)
-//! because the PR-3 scope covers the recognizer only — Engine-side
-//! wiring of per-page classification floors and audit-record
-//! emission is PR-4 scope. When PR-4 lands, these tests graduate to
-//! end-to-end `Engine::lint` + audit-stream checks.
+//! because they cover the recognizer in isolation.
 
 use std::sync::LazyLock;
 
@@ -44,7 +41,7 @@ fn effective_level(m: &marque_capco::CapcoMarking) -> Option<Classification> {
 }
 
 // ---------------------------------------------------------------------------
-// T046: typo-to-canonical
+// Typo-to-canonical
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -84,18 +81,11 @@ fn fuzzy_ambiguity_yields_zero_candidate() {
     // `TokenKind::Unknown`, and the decoder's step-3a Unknown-span
     // filter rejects the partial candidate.
     //
-    // Honesty invariant FR-015: when any token is unresolvable,
-    // the decoder surfaces zero candidates rather than fabricating
-    // a marking that silently drops the unresolved token.
+    // Honesty invariant: when any token is unresolvable, the decoder
+    // surfaces zero candidates rather than fabricating a marking that
+    // silently drops the unresolved token.
     //
-    // Renamed and re-anchored from
-    // `double_typo_zero_candidate_when_one_token_is_ambiguous`
-    // (originally used `SERCET//NOFRN`). That example stopped
-    // exercising the ambiguity path once the issue #133 long-form
-    // vocab fix added `NOFORN` to the matcher's vocabulary —
-    // `NOFRN → NOFORN` is now unambiguously distance-1. The
-    // FR-015 invariant still warrants a regression test, just with
-    // an example that holds under the extended vocab. The companion
+    // The companion
     // `partial_canonicalization_with_unresolvable_token_returns_zero_candidate`
     // covers the distinct "uncorrectable / no candidate close
     // enough" path (e.g., `SECRET//WIBBLE`).
@@ -118,11 +108,10 @@ fn fuzzy_ambiguity_yields_zero_candidate() {
 
 #[test]
 fn partial_canonicalization_with_unresolvable_token_returns_zero_candidate() {
-    // Regression guard for PR #114 round-3 review: the decoder must
-    // NOT produce a partial candidate when a token is
-    // un-correctable. `SECRET//WIBBLE` was the reviewer's
-    // pathological case — classification fine, tail token
-    // uncorrectable. Without the Unknown-span filter the decoder
+    // Regression guard (PR #114): the decoder must NOT produce a
+    // partial candidate when a token is un-correctable.
+    // `SECRET//WIBBLE` is the pathological case — classification
+    // fine, tail token uncorrectable. Without the Unknown-span filter the decoder
     // would have emitted a `SECRET` candidate silently dropping
     // WIBBLE. With the filter in place the candidate is dropped.
     let rx = DecoderRecognizer::new();
@@ -146,7 +135,7 @@ fn partial_canonicalization_with_unresolvable_token_returns_zero_candidate() {
 }
 
 // ---------------------------------------------------------------------------
-// T047: banner reordering
+// Banner reordering
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -181,7 +170,7 @@ fn dissem_first_banner_decodes_to_canonical_order() {
 }
 
 // ---------------------------------------------------------------------------
-// T045: strict-context classification floor (FR-011)
+// Strict-context classification floor
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -406,7 +395,7 @@ fn superseded_comint_decodes_to_si() {
     );
 }
 
-/// **MissingDelimiter** class — recovery test (issue #133 PR 3).
+/// **MissingDelimiter** class — recovery test (issue #133).
 ///
 /// `SECRET//NOFORN EXDIS` (missing `//` before `EXDIS`) is the
 /// canonical MissingDelimiter shape. The decoder's
@@ -416,12 +405,6 @@ fn superseded_comint_decodes_to_si() {
 /// parses as `SECRET//NOFORN//EXDIS` with both dissems landing in
 /// the right slots (`Nf` → `dissem_controls`, `Exdis` →
 /// `non_ic_dissem`).
-///
-/// Renamed from `missing_delimiter_secret_noforn_exdis_currently_unrecovered`
-/// — the "currently unrecovered" framing was the temporary state
-/// pinned in PR 1's predecessor and explicitly invited replacement
-/// when the helper lands. Recovery is now the regression-guarded
-/// shape.
 #[test]
 fn missing_delimiter_secret_noforn_exdis_resolves() {
     let rx = DecoderRecognizer::new();
@@ -453,7 +436,7 @@ fn missing_delimiter_secret_noforn_exdis_resolves() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #133 PR 3: missing-delimiter insertion
+// Missing-delimiter insertion (issue #133)
 // ---------------------------------------------------------------------------
 //
 // `try_insert_delimiter` walks the input and inserts `//` at
@@ -472,10 +455,9 @@ fn missing_delimiter_secret_noforn_exdis_resolves() {
 // long forms (`SbuNf` / `LesNf`); the helper does not split between
 // `SBU`/`LES` and a following `NOFORN`.
 //
-// The PR 3 helper does NOT yet handle SCI starters (`SI`, `HCS`,
-// `TK`), SAR prefixes (`SAR-*`), or `SPECIAL ACCESS REQUIRED-*` —
-// those need classification-context lookahead and are deferred to
-// the planned PR 4 / corpus-confidence work. The hard-splitter +
+// The helper does NOT handle SCI starters (`SI`, `HCS`, `TK`), SAR
+// prefixes (`SAR-*`), or `SPECIAL ACCESS REQUIRED-*` — those need
+// classification-context lookahead. The hard-splitter +
 // classification-boundary rules cover ~15 of 17 MissingDelimiter
 // fixtures; the SCI/SAR/SPECIAL family covers the remaining ~2.
 
@@ -613,9 +595,9 @@ fn missing_delimiter_sar_block_with_trailing_noforn_resolves() {
     // the trailing sub-compartment of the `XR-XRA` compartment when
     // no `//` separator precedes it. The competing delim-inserted
     // candidate puts `NOFORN` into `dissem_controls` instead — that's
-    // the canonical interpretation. Before PR 5 the bag-of-tokens
-    // scorer rewarded the absorbing parse (fewer scored tokens →
-    // higher posterior because log-priors are negative);
+    // the canonical interpretation. A naive bag-of-tokens scorer
+    // would reward the absorbing parse (fewer scored tokens → higher
+    // posterior because log-priors are negative);
     // `HARD_SPLITTER_ABSORPTION_PENALTY` flips the contest.
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(
@@ -644,7 +626,7 @@ fn missing_delimiter_sar_block_with_trailing_noforn_resolves() {
 #[test]
 fn missing_delimiter_full_sar_with_trailing_noforn_resolves() {
     // `TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN`
-    // (issue #133 PR 5). Same scoring problem as the abbreviated SAR
+    // (issue #133). Same scoring problem as the abbreviated SAR
     // shape above, but here `NOFORN` gets absorbed as the trailing
     // word of the multi-word `Full`-indicator program nickname
     // (`identifier: "BUTTER POPCORN NOFORN"`). The `Full` shape needs
@@ -697,10 +679,10 @@ fn missing_delimiter_no_change_on_already_canonical() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #133 PR 6: SAR indicator-keyword structural repair
+// SAR indicator-keyword structural repair (issue #133)
 // ---------------------------------------------------------------------------
 //
-// Three structural recovery paths added in PR 6:
+// Three structural recovery paths:
 //   1. `[A-Z]{1,3}SAR-` → `SAR-` prefix strip (USAR-BP, ABSAR-BP, …).
 //   2. `SAR[A-Z0-9]{2,3}<delim>` → `SAR-<rest><delim>` missing-hyphen
 //      insertion (SARBP, SARABC).
@@ -710,7 +692,7 @@ fn missing_delimiter_no_change_on_already_canonical() {
 //      path.
 //
 // The structural penalty `CUSTOM_SCI_MARKING_PENALTY` in
-// `score_candidate` is a peer change: without it, a raw `USAR-BP-J12`
+// `score_candidate` is a companion: without it, a raw `USAR-BP-J12`
 // segment is interpreted by the lenient strict-parser as 3 custom-
 // system SCI markings (USAR/CD/XR with `canonical_enum: None`), and
 // the bag-of-tokens scorer can't distinguish that interpretation
@@ -719,21 +701,21 @@ fn missing_delimiter_no_change_on_already_canonical() {
 // margin clearing `UNAMBIGUOUS_LOG_MARGIN`.
 //
 // All three integration tests below pin a named fixture from the
-// SC-004 mangled corpus so the harness's `Typo`-class rate (`50.0%`
-// post-PR-6) is anchored to specific recovery shapes rather than an
-// opaque aggregate.
+// mangled corpus so the recovery shapes are anchored to specific
+// inputs rather than an opaque aggregate.
 
 #[test]
 fn typo_usar_prefix_resolves_via_indicator_repair() {
     // Pinned fixture: `tests/fixtures/mangled/typo/d04f45f7a4f5a8b4.json`
     // (`SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN`).
     // The full Enron-corpus SAR shape with a stray `U` prefix on the
-    // SAR indicator. Pre-PR-6 this resolved as 3 custom-system SCI
-    // markings (lenient strict parse) competing with the SAR-repaired
-    // candidate at a tied posterior; both `try_sar_indicator_repair`
-    // (added the SAR candidate) and `CUSTOM_SCI_MARKING_PENALTY`
-    // (demoted the custom-SCI candidate) had to land together to
-    // clear the `UNAMBIGUOUS_LOG_MARGIN` threshold.
+    // SAR indicator. Without recovery this resolves as 3 custom-system
+    // SCI markings (lenient strict parse) competing with the
+    // SAR-repaired candidate at a tied posterior; both
+    // `try_sar_indicator_repair` (which adds the SAR candidate) and
+    // `CUSTOM_SCI_MARKING_PENALTY` (which demotes the custom-SCI
+    // candidate) are needed to clear the `UNAMBIGUOUS_LOG_MARGIN`
+    // threshold.
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(
         b"SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
@@ -798,9 +780,8 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
     // Pinned fixture: `tests/fixtures/mangled/typo/1f75ddd89b432949.json`
     // (`TOP SECRET//SPCIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN`).
     // `SPCIAL` is a missing-`E` typo on `SPECIAL` (edit distance 1).
-    // PR 6's vocab addition of `SPECIAL` to
-    // `SAR_STRUCTURAL_KEYWORDS` lets the existing per-token fuzzy
-    // matcher recover it; the strict SAR parser then matches the
+    // `SPECIAL` lives in `SAR_STRUCTURAL_KEYWORDS`, which lets the
+    // per-token fuzzy matcher recover it; the strict SAR parser then matches the
     // canonical `SPECIAL ACCESS REQUIRED-BUTTER POPCORN` indicator
     // literally. No structural-repair pass is involved — this case
     // exercises the vocab path only.
@@ -838,20 +819,19 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
 // `TokenKind::Unknown` filter is the natural disambiguator: only the
 // transform that produces fully-recognized tokens survives.
 //
-// PR 7 also briefly experimented with lowering `MIN_FUZZY_LEN` from
-// 3 to 2 to recover `UK→TK`-style 2-char tail typos, but reverted
-// because the canonical Enron-corpus SAR fixture has `RB` as a
-// standalone 2-char sub-compartment token and `RB` is at edit
-// distance 1 from `RS` (the RSEN portion form) — so 2-char fuzzy
-// silently corrupted SAR sub-compartments into dissem controls.
-// Net 4 SAR-shape regressions vs 1 UK→TK win. The `MIN_FUZZY_LEN`
-// doc in `crates/core/src/fuzzy.rs` carries the full rationale.
+// `MIN_FUZZY_LEN` deliberately stays at 3 rather than 2: lowering it
+// to recover `UK→TK`-style 2-char tail typos corrupts SAR
+// sub-compartments, because the canonical Enron-corpus SAR fixture
+// has `RB` as a standalone 2-char sub-compartment token and `RB` is
+// at edit distance 1 from `RS` (the RSEN portion form) — so 2-char
+// fuzzy silently turns SAR sub-compartments into dissem controls.
+// The `MIN_FUZZY_LEN` doc in `crates/core/src/fuzzy.rs` carries the
+// full rationale.
 //
-// Three integration tests below pin a named fixture from the SC-004
-// mangled corpus per recovery branch (drop / right-attach /
-// left-attach), so the harness's `Typo`-class rate movement
-// (50.0% → 56.9% post-PR-7; 65→74/130, +9 fixtures) is anchored to
-// specific recovery shapes rather than an opaque aggregate.
+// Three integration tests below pin a named fixture from the mangled
+// corpus per recovery branch (drop / right-attach / left-attach), so
+// the recovery shapes are anchored to specific inputs rather than an
+// opaque aggregate.
 
 #[test]
 fn typo_drop_stray_r_resolves_via_collapse_stray_char_slash() {
@@ -940,10 +920,10 @@ fn typo_left_attach_t_resolves_via_collapse_stray_char_slash() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #133 PR 8: 3-char classification typo recovery
+// 3-char classification typo recovery (issue #133)
 // ---------------------------------------------------------------------------
 //
-// Two complementary recovery paths added in PR 8:
+// Two complementary recovery paths:
 //
 // 1. **Bare `TOP` added to `EXTENDED_CORRECTION_VOCAB`.** The CVE
 //    schema only lists the multi-word `TOP SECRET` entry, so without
@@ -968,15 +948,13 @@ fn typo_left_attach_t_resolves_via_collapse_stray_char_slash() {
 // `TOP` so the heuristic doesn't fire on already-canonical
 // `TOP SECRET//...` input.
 //
-// SC-004 movement: Typo class 56.9% → 69.2% (+12.3 pp, +16
-// fixtures); aggregate 78.1% → 84.2% (+6.1 pp). Five named
-// integration tests below pin the canonical fixture for each
-// recovery branch.
+// Five named integration tests below pin the canonical fixture for
+// each recovery branch.
 
 #[test]
 fn typo_tpp_resolves_via_top_vocab_addition() {
     // Pinned fixture family: `tests/fixtures/mangled/typo/ed06b49d58c3c389.json`
-    // (`TPP SECRET//SI//NOFORN`). PR 8 adds bare `TOP` to the fuzzy
+    // (`TPP SECRET//SI//NOFORN`). Bare `TOP` is in the fuzzy
     // correction vocab; standard dist-1 fuzzy then handles
     // `TPP→TOP`. Strict parser re-joins `TOP SECRET` into the
     // canonical multi-word classification.
@@ -1057,7 +1035,7 @@ fn typo_otp_resolves_via_3char_heuristic() {
 
 #[test]
 fn typo_tp_and_to_resolve_via_2char_heuristic_extension() {
-    // PR 8's 2-char heuristic extension. `TP`/`TO` at the leading
+    // 2-char heuristic extension. `TP`/`TO` at the leading
     // classification slot map to `TOP` (the elided-middle-O and
     // elided-trailing-P cases respectively). Bare `TP`/`TO` have
     // no other canonical CAPCO meaning, so the heuristic isn't
@@ -1084,8 +1062,8 @@ fn typo_tp_and_to_resolve_via_2char_heuristic_extension() {
 #[test]
 fn typo_tops_ecret_resolves_via_top_vocab_token_boundary() {
     // Pinned fixture: `TOPS ECRET//...` — token-boundary issue
-    // where the `S` of `SECRET` migrated to the end of `TOP`. PR 8
-    // recovers because `TOPS` (4 chars) fuzzy-matches `TOP` (3 chars)
+    // where the `S` of `SECRET` migrated to the end of `TOP`. The
+    // decoder recovers because `TOPS` (4 chars) fuzzy-matches `TOP` (3 chars)
     // at edit distance 1 (delete trailing `S`), and `ECRET` (5 chars)
     // fuzzy-matches `SECRET` (6 chars) at edit distance 1 (insert
     // leading `S`). The strict parser then re-joins them as
@@ -1234,7 +1212,7 @@ fn rel_to_structural_repair_does_not_corrupt_aut_austria() {
     // (Austria, ISO 3166-1 alpha-3). The riskier per-trigraph fuzzy
     // recovery deferred to issue #186 would have to disambiguate
     // AUT-as-typo-for-AUS from AUT-as-Austria using corpus priors
-    // and block-level invariants. PR 9's structural repair is
+    // and block-level invariants. The structural repair is
     // intentionally narrower: it only touches literal-shape
     // patterns and trigraph-joinable tokens. AUT in a valid
     // position must round-trip unchanged.
@@ -1397,11 +1375,10 @@ fn recovers_ad2bcfe3ac0b0765_short_first_entry_resolves_to_usa() {
 // The Enron-corpus-derived mangled-fixture tree at
 // `tests/fixtures/mangled/typo/` contains very few short-leading-
 // classification typos (mostly 3+ char tail-token typos like UK→TK,
-// USAR→SAR), so the SC-004 harness's per-class rate doesn't move
-// from this heuristic alone. These integration tests pin the
-// heuristic's behavior on synthetic inputs that exercise the
-// keyboard-proximity table directly. A follow-up PR adding fixtures
-// for this typo class will make the SC-004 movement measurable.
+// USAR→SAR), so the harness's per-class rate doesn't move from this
+// heuristic alone. These integration tests pin the heuristic's
+// behavior on synthetic inputs that exercise the keyboard-proximity
+// table directly.
 
 #[test]
 fn heuristic_2char_ts_decodes_portion() {
@@ -1486,7 +1463,7 @@ fn heuristic_emits_classification_heuristic_provenance() {
     // `FixSource::DecoderClassificationHeuristic` so the engine
     // can downgrade severity and cap rule confidence. The check
     // here is on the marking's `provenance.fix_source` field
-    // (PR 2 plumbing) — without it the engine would treat the
+    // — without it the engine would treat the
     // fix the same as a vocab-based decoder fix, which would
     // (a) auto-apply at default threshold and (b) show as
     // `Severity::Fix` instead of `Severity::Warn`, defeating the
@@ -1644,14 +1621,11 @@ fn decoder_recognizer_implements_recognizer_for_capco_scheme() {
 // the split exactly.
 
 // ---------------------------------------------------------------------------
-// T129/T130: NATO longhand fold (FR-039 Rule 5 — tests written pre-fix)
+// NATO longhand fold
 // ---------------------------------------------------------------------------
 //
 // These tests verify that the decoder's `try_nato_fold` preprocessing helper
 // recovers NATO longhand classification levels from mangled portion markings.
-// Per FR-039 Rule 5, this block was committed before the fold implementation
-// to demonstrate tests-fail-before / tests-pass-after. Failure proof in
-// `docs/refactor-006/pr-8-t130-failure-proof.md`.
 //
 // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register — NATO
 // portion abbreviations NU/NR/NC/NS/CTS for the five base levels).
@@ -1675,10 +1649,10 @@ fn nato_class(m: &marque_capco::CapcoMarking) -> NatoClassification {
 
 #[test]
 fn nato_u_portion_folds_to_nu() {
-    // `(NATO U)` — NATO UNCLASSIFIED longhand abbrev → NU
-    // Pre-fix: decoder returns zero candidates (strict parser doesn't recognize
-    // `NATO U` as a valid non-US classification segment without the `//` prefix).
-    // Post-fix: decoder folds to `(//NU)` → strict-parses to NatoUnclassified.
+    // `(NATO U)` — NATO UNCLASSIFIED longhand abbrev → NU. The strict
+    // parser doesn't recognize `NATO U` without the `//` prefix, so
+    // the decoder folds it to `(//NU)` → strict-parses to
+    // NatoUnclassified.
     //
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
@@ -1971,8 +1945,8 @@ fn nato_fold_emits_superseded_token_feature() {
 }
 #[test]
 fn nato_in_second_segment_yields_decode_miss() {
-    // FIX-2: `(S//NATO C)` — NATO C appears in the SCI/dissem slot (second
-    // segment), NOT the classification slot (first segment). After FIX-2 the
+    // `(S//NATO C)` — NATO C appears in the SCI/dissem slot (second
+    // segment), NOT the classification slot (first segment). The
     // fold is restricted to the first non-empty `//`-separated segment only.
     // The first segment is `S` (doesn't start with "NATO "), so fold_nato_segment
     // returns None for it, `any_changed = false`, and `try_nato_fold` returns None.
@@ -1982,12 +1956,8 @@ fn nato_in_second_segment_yields_decode_miss() {
     //
     // Domain rationale (§H.7): NATO commingled with US info should transmute to
     // FGI (`(S//FGI NATO)`) — not produce a NATO-axis canonical or a Conflict
-    // intermediate. The transmutation is Stage 4 / PR 9+ territory; PR 8
-    // produces a decode-miss to avoid wrong intermediates while the proper fix waits.
-    //
-    // Replaces `nato_in_second_segment_yields_conflict_not_us_secret` from
-    // the round-2 commit (which documented the old Conflict behavior as "bounded"
-    // but which was itself wrong per CAPCO-2016 §H.7).
+    // intermediate. That transmutation is not yet implemented; the decoder
+    // produces a decode-miss to avoid wrong intermediates in the meantime.
     //
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17; §H.7 p122.
     let rx = DecoderRecognizer::new();
@@ -2021,20 +1991,20 @@ fn nato_in_second_segment_yields_decode_miss() {
 
 #[test]
 fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
-    // T129 regression guard: lowercase `(//nato secret atomal//nf)`
+    // Regression guard: lowercase `(//nato secret atomal//nf)`
     // case-normalizes, fuzzy-corrects, and reaches the strict parser
     // intact (the NATO fold MUST NOT mangle the `ATOMAL` suffix —
     // verified at the helper level by
     // `fold_nato_segment_returns_none_for_atomal_compound` in
     // decoder.rs unit tests). This test verifies the end-to-end engine
-    // recovery path still produces the canonical result.
+    // recovery path produces the canonical result.
     //
     // Pipeline: lowercase input → normalize_delimiters_and_case → uppercase →
-    // try_nato_fold("NATO SECRET ATOMAL") returns None (FIX-A) →
+    // try_nato_fold("NATO SECRET ATOMAL") returns None →
     // fuzzy_correct_tokens passes ATOMAL through (in NATO_CLASSIFICATION_KEYWORDS) →
     // generate_candidate_bytes emits `(//NATO SECRET ATOMAL//NF)` →
     // strict parser's parse_nato_classification("NATO SECRET ATOMAL") →
-    // PR 9c.1 T134 canonical form: bare class `NatoSecret` + AEA
+    // canonical form: bare class `NatoSecret` + AEA
     // `Atomal` companion (`(//NS//ATOMAL//NF)` semantic).
     //
     // Citations: CAPCO-2016 §G.1 Table 4 pp 36-38 (legacy text
@@ -2046,14 +2016,12 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
     let parsed = rx.recognize(b"(//nato secret atomal//nf)", 0, &*TEST_SCHEME, &deep_cx());
     match parsed {
         Parsed::Unambiguous(ref marking) => {
-            // PR 9c.1 T134: legacy `NATO SECRET ATOMAL` text canonicalizes
-            // to bare `NatoClassification::NatoSecret` plus an AEA-axis
+            // Legacy `NATO SECRET ATOMAL` text canonicalizes to bare
+            // `NatoClassification::NatoSecret` plus an AEA-axis
             // `Atomal` companion (CAPCO-2016 §H.7 p122 worked example
             // + §G.2 p40 Table 5 registration of ATOMAL as a standalone
-            // control marking). Pre-PR-9c.1 this assertion expected the
-            // fused `NatoClassification::NatoSecretAtomal` variant; that
-            // variant was retired in PR 9c.1 Commit 5 as a structurally
-            // wrong fusion of classification and AEA semantics.
+            // control marking). The classification and AEA semantics
+            // are kept on separate axes rather than fused.
             match marking.0.classification.as_ref() {
                 Some(MarkingClassification::Nato(NatoClassification::NatoSecret)) => {
                     // Expected canonical bare-class outcome.
