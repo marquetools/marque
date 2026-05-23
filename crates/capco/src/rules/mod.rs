@@ -38,6 +38,8 @@ pub(crate) mod joint;
 pub(crate) mod nato;
 pub(crate) mod nodis_exdis;
 pub(crate) mod rel_to;
+pub(crate) mod rel_to_suggest;
+pub(crate) mod rel_to_uncertainty;
 pub(crate) mod sci;
 pub(crate) mod text_handling;
 
