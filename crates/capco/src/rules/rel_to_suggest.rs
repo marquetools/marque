@@ -63,10 +63,10 @@ use crate::scheme::CapcoScheme;
 ///    trigraphs only) from the entry, where the prior delta vs the
 ///    entry exceeds [`SUGGEST_LOG_MARGIN`].
 /// 3. If such a neighbor exists, emit a `Severity::Suggest`
-///    diagnostic with a `FixProposal` whose `replacement` is the
-///    neighbor and `confidence` is a strict-built scalar
-///    [`SUGGEST_CONFIDENCE`] (purely informational — `Suggest`
-///    diagnostics never auto-apply).
+///    diagnostic via `Diagnostic::text_correction` whose
+///    `replacement` is the neighbor and `confidence` is a
+///    strict-built scalar [`SUGGEST_CONFIDENCE`] (purely
+///    informational — `Suggest` diagnostics never auto-apply).
 ///
 /// # Coverage of #186 ambiguous fixtures
 ///
@@ -121,12 +121,14 @@ use crate::scheme::CapcoScheme;
 ///
 /// # Constitution V audit-content-ignorance
 ///
-/// The diagnostic message uses **only canonical token strings**
-/// (the trigraph itself, the candidate trigraph, and English country
-/// names from the [`COUNTRY_NAMES`](crate::vocab::COUNTRY_NAMES)
-/// table) — no document content, no surrounding span text, no
-/// user-provided fields. Verified by `s004_audit_content_ignorance`
-/// in `crates/capco/tests/`.
+/// The diagnostic carries a closed [`MessageTemplate`] (no
+/// string-bearing arg by design — see `crates/rules/src/message.rs`),
+/// a typed [`Citation`], and a `text_correction` replacement that is
+/// a bare closed-vocabulary trigraph (the candidate neighbor). No
+/// document content, no surrounding span text, no user-provided
+/// fields, and no free-form formatted prose appear on any emitted
+/// surface. Verified by `s004_audit_content_ignorance` in
+/// `crates/capco/tests/`.
 ///
 /// # Reuse for #206
 ///
@@ -238,46 +240,6 @@ pub(crate) fn s004_candidate_covered_by_block(
     })
 }
 
-/// Build an S004 diagnostic message for a given (rare, candidate)
-/// trigraph pair.
-///
-/// Extracted from the rule body so each of the four `(Option,
-/// Option)` country-name arms can be exercised directly in tests
-/// — building real `CanonicalAttrs` to drive every arm requires
-/// finding trigraph pairs that satisfy both the corpus-prior gap
-/// AND the partial COUNTRY_NAMES coverage, which is brittle. The
-/// helper lets us pin the formatting contract independently.
-///
-/// The output is content-ignorant per Constitution V: it only
-/// references the input trigraph tokens (vocabulary) and the
-/// canonical English country names (vocabulary), never any
-/// document-source bytes.
-fn s004_message(
-    trigraph: &str,
-    candidate: &str,
-    entry_name: Option<&str>,
-    candidate_name: Option<&str>,
-) -> String {
-    match (entry_name, candidate_name) {
-        (Some(en), Some(cn)) => format!(
-            "{trigraph:?} ({en}) is far less common in REL TO than \
-             {candidate:?} ({cn}); did you mean {candidate:?}?"
-        ),
-        (None, Some(cn)) => format!(
-            "{trigraph:?} is rare in REL TO blocks; did you mean \
-             {candidate:?} ({cn})?"
-        ),
-        (Some(en), None) => format!(
-            "{trigraph:?} ({en}) is rare in REL TO blocks; did you mean \
-             {candidate:?}?"
-        ),
-        (None, None) => format!(
-            "{trigraph:?} is rare in REL TO blocks; did you mean \
-             {candidate:?}?"
-        ),
-    }
-}
-
 /// Citations S004 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
@@ -310,7 +272,6 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
-        use crate::vocab::country_name;
 
         if attrs.rel_to.is_empty() {
             return Vec::new();
@@ -422,16 +383,6 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
             };
             let span = span_token.span;
 
-            // Compose a content-ignorant message. The trigraph,
-            // candidate, and country names are vocabulary-derived;
-            // none of the surrounding document text appears.
-            let message = s004_message(
-                trigraph,
-                candidate,
-                country_name(trigraph),
-                country_name(candidate),
-            );
-
             // S004 suggests a trigraph swap (corpus-derived
             // canonical replacement, no fact-set delta). Encode as
             // a `text_correction` diagnostic. Even though
@@ -441,7 +392,13 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
             // exclusion is a hard channel-cutoff). The text
             // correction carries the canonical trigraph for
             // renderer / UI display.
-            let _ = (trigraph, message);
+            //
+            // G13 (Constitution V Principle V): the diagnostic's
+            // human-facing prose lives in the closed `MessageTemplate`
+            // enum — there is no string-bearing template arg, by
+            // design — so the candidate trigraph rides only on the
+            // `text_correction` replacement (a closed-vocabulary
+            // identifier), never as a formatted free-form string.
             diagnostics.push(Diagnostic::text_correction(
                 self.id(),
                 self.default_severity(),
