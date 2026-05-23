@@ -33,6 +33,7 @@ pub(crate) mod dissem;
 pub(crate) mod eyes;
 pub(crate) mod helpers;
 pub(crate) mod joint;
+pub(crate) mod nato;
 pub(crate) mod rel_to;
 pub(crate) mod sci;
 pub(crate) mod text_handling;
