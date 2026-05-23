@@ -207,12 +207,11 @@ fn row7_should_fill(post_close: u128) -> bool {
 /// (FD&R-absent gate); §H.8 p154 (RELIDO marking template —
 /// defines what RELIDO means once triggered: SFDRA-deferred
 /// release for uncaveated IC intelligence). Foreign-equity bar
-/// on RELIDO eligibility per §H.7 p123 (FGI) + §H.3 p56 (JOINT)
-/// + §G.1 Table 4 p38 (NATO classification); §H.4 marking
-/// templates for the six SCI sentinels (pp 64 / 68 / 80 / 87 /
-/// 91 / 95) — sentinels are excluded because their per-marking
-/// implications already drive NOFORN/ORCON and make RELIDO
-/// inapplicable.
+/// on RELIDO eligibility per §H.7 p123 (FGI) + §H.3 p56 (JOINT) +
+/// §G.1 Table 4 p38 (NATO classification); §H.4 marking templates
+/// for the six SCI sentinels (pp 64 / 68 / 80 / 87 / 91 / 95) —
+/// sentinels are excluded because their per-marking implications
+/// already drive NOFORN/ORCON and make RELIDO inapplicable.
 #[inline]
 fn row8_should_fill(post_close: u128) -> bool {
     (post_close & ROW8_SCI_PRESENT_TRIGGER) != 0 && (post_close & MASK_FDR_OR_RELIDO_INCOMPAT) == 0
