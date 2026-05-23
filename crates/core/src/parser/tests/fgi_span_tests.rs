@@ -122,7 +122,7 @@ fn fgi_marker_concealed_emits_no_ownership_spans() {
 
 #[test]
 fn fgi_marker_parse_failure_emits_no_ownership_spans() {
-    // FR-016 closure: a parse failure must NOT leak per-country
+    // Closure invariant: a parse failure must NOT leak per-country
     // spans into the AST. `FGI FVEY` parses to `None` because
     // distribution-list tetragraphs reject in the ownership slot.
     // The `pending` staging in `parse_fgi_marker_with_spans`

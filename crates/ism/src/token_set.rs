@@ -59,7 +59,7 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
 /// no `TOP` correction target available. Adding `TOP` to the fuzzy
 /// vocab lets the standard edit-distance path recover the
 /// `TPP→TOP`, `UOP→TOP`, `TDOP→TOP`, `QTOP→TOP`, `TOPW→TOP` family
-/// of typos seen in the SC-004 mangled corpus. The strict parser
+/// of typos seen in the mangled corpus. The strict parser
 /// then re-joins `TOP SECRET` into the canonical multi-word
 /// classification.
 ///
@@ -158,18 +158,14 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// (`NU`, `NR`, `NC`, `NS`, `CTS`) plus the five **legacy compound**
 /// portion forms (`NCA`, `NSAT`, `CTSA`, `CTS-B`, `CTS-BALK`).
 ///
-/// # Legacy compound forms (post PR 9c.1 T134)
+/// # Legacy compound forms
 ///
-/// Pre-PR-9c.1 the strict parser produced fused
-/// `NatoClassification::CosmicTopSecretAtomal` /
-/// `CosmicTopSecretBohemia` / `CosmicTopSecretBalk` /
-/// `NatoSecretAtomal` / `NatoConfidentialAtomal` variants for these
-/// inputs. Per CAPCO-2016 §G.2 p40 + §H.7 p122 those forms are
-/// **structurally wrong** — ATOMAL is an AEA-axis marking and
-/// BOHEMIA/BALK are NATO SAPs in the SCI position. PR 9c.1 retired
-/// the fused variants; the parser now canonicalizes the legacy text
-/// into bare class + AEA/SCI companion at parse time. The legacy
-/// forms remain in this list because:
+/// Per CAPCO-2016 §G.2 p40 + §H.7 p122, fused
+/// classification+sub-marking forms are **structurally wrong** —
+/// ATOMAL is an AEA-axis marking and BOHEMIA/BALK are NATO SAPs in the
+/// SCI position. The parser canonicalizes the legacy text into bare
+/// class + AEA/SCI companion at parse time. The legacy forms remain in
+/// this list because:
 ///
 /// 1. The fuzzy-correction pass operates on raw tokens before strict
 ///    parsing. `CTSA` is at edit-distance 1 from `CTS` — without it
@@ -191,7 +187,7 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// 10 forms as valid non-US portion markings. The five base-level
 /// forms map to a corresponding [`crate::NatoClassification`]
 /// variant; the five legacy compound forms map to a `NatoClassification`
-/// bare class + AEA/SCI companion write per PR 9c.1 T134. Adding
+/// bare class + AEA/SCI companion write. Adding
 /// these tokens to the correction vocab makes `FuzzyVocabMatcher::correct`
 /// return `None` for exact-match inputs (binary-search fast path),
 /// causing `fuzzy_correct_tokens` to pass them through unchanged

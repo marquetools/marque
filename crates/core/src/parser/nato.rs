@@ -11,13 +11,11 @@ use super::*;
 /// CAPCO-2016 §H.7 p122) or the SCI axis (BALK / BOHEMIA per §G.2 p40
 /// + §H.7 p127).
 ///
-/// # Legacy text canonicalization (PR 9c.1 T134)
+/// # Legacy text canonicalization
 ///
-/// Pre-PR-9c.1 the legacy text forms `CTSA` / `NSAT` / `NCA` /
-/// `CTS-A` / `NS-A` / `NC-A` / `CTS-B` / `CTS-BALK` parsed into
-/// fused `NatoClassification::*Atomal` / `*Bohemia` / `*Balk`
-/// variants. Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered
-/// Marking) those forms are **structurally wrong**: ATOMAL,
+/// The legacy text forms `CTSA` / `NSAT` / `NCA` / `CTS-A` / `NS-A` /
+/// `NC-A` / `CTS-B` / `CTS-BALK` are **structurally wrong** per
+/// CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking): ATOMAL,
 /// BOHEMIA, and BALK each have their own ARH row at §G.2 p40,
 /// confirming they are registered control markings, not classification
 /// suffixes. The §H.7 p122 worked example
@@ -26,12 +24,11 @@ use super::*;
 /// (`TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN`) places
 /// BOHEMIA in the SCI category position.
 ///
-/// The legacy compound variants were retired in PR 9c.1 Commit 5;
-/// this parser canonicalizes the legacy text at parse time so
-/// existing markings produce the correct structural canonical form.
-/// Marque's autofix channel (rule E066 in `marque-capco/src/rules.rs`)
-/// drives the source-text re-marking when the rule severity is
-/// configured to fire.
+/// This parser canonicalizes the legacy text at parse time so existing
+/// markings produce the correct structural canonical form. Marque's
+/// autofix channel (rule E066 in `marque-capco/src/rules.rs`) drives
+/// the source-text re-marking when the rule severity is configured to
+/// fire.
 ///
 /// Longer patterns are checked first to avoid prefix ambiguity
 /// (e.g., `"COSMIC TOP SECRET ATOMAL"` before `"COSMIC TOP SECRET"`).
@@ -105,10 +102,9 @@ pub(super) fn parse_nato_classification(s: &str) -> Option<NatoBlock> {
 ///
 /// The block carries the canonical bare NATO class plus an optional
 /// companion write to either the AEA axis (ATOMAL) or the SCI axis
-/// (BALK / BOHEMIA). PR 9c.1 T134 introduced this split so the
-/// classification axis no longer fuses sub-markings into wrong
-/// classification-variant identities; see [`parse_nato_classification`]
-/// doc for the rationale.
+/// (BALK / BOHEMIA). The split keeps the classification axis from
+/// fusing sub-markings into wrong classification-variant identities;
+/// see [`parse_nato_classification`] doc for the rationale.
 pub(super) struct NatoBlock {
     pub(super) class: NatoClassification,
     pub(super) companion: NatoCompanion,
@@ -126,7 +122,7 @@ pub(super) enum NatoCompanion {
     /// equivalents. The "bare" framing matches the
     /// `nato-dissem-reciprocity` invariant (pure-NATO portions carry
     /// NATO classification + NATO dissem, no fused control marking).
-    /// Renamed from `None` in PR 9c.1 to avoid shadowing the language
+    /// Named `Bare` rather than `None` to avoid shadowing the language
     /// keyword and to mirror the project's "bare" terminology.
     Bare,
     /// AEA companion — ATOMAL per CAPCO-2016 §H.7 p122. Written into
@@ -170,10 +166,10 @@ pub(super) fn parse_joint_classification(s: &str) -> Option<JointClassification>
 
     // Remaining tokens are space-delimited country trigraphs.
     //
-    // NOTE: JOINT classifications today drop non-3-byte tokens
-    // silently (tetragraphs like NATO never appear in real JOINT
-    // markings, but the parallel of issue #183's REL TO silent-drop
-    // is tracked as deferred scope for PR-B / a future issue).
+    // NOTE: JOINT classifications drop non-3-byte tokens silently
+    // (tetragraphs like NATO never appear in real JOINT markings).
+    // The parallel of issue #183's REL TO silent-drop is deferred
+    // scope.
     let country_str = rest[remaining_start..].trim();
     // Inline-4 covers Five Eyes (USA, GBR, CAN, AUS, NZL) and typical
     // bilateral / trilateral JOINT markings; larger coalition lists
@@ -256,18 +252,18 @@ pub(super) fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
     })
 }
 
-/// # PR 9c.1 T134 — companion drop in conflict scenarios
+/// # Companion drop in conflict scenarios
 ///
-/// Post-PR-9c.1, [`parse_nato_classification`] returns a `NatoBlock`
-/// carrying the bare NATO class plus an optional AEA/SCI companion.
-/// In the conflict-scenario fallback (this function), the companion
-/// is **dropped** — the conflict path stores only the foreign
+/// [`parse_nato_classification`] returns a `NatoBlock` carrying the
+/// bare NATO class plus an optional AEA/SCI companion. In the
+/// conflict-scenario fallback (this function), the companion is
+/// **dropped** — the conflict path stores only the foreign
 /// classification axis; there's no `ForeignClassification` carrier
 /// shape for companion AEA/SCI writes. A conflict input like
 /// `SECRET//CTSA//NOFORN` records the foreign class as `CosmicTopSecret`
 /// (the bare class) and loses the implicit ATOMAL companion.
 ///
-/// This is acceptable for PR 9c.1 because:
+/// This is acceptable because:
 ///   - The conflict shape itself is malformed input (US + foreign
 ///     classifications shouldn't both appear), and dedicated rules
 ///     surface that condition first.

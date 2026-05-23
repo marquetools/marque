@@ -17,10 +17,9 @@
 //! - The pivot type triple ([`ParsedAttrs<'src>`], [`CanonicalAttrs`],
 //!   [`ProjectedMarking`]). Conversion is handled by
 //!   `MarkingScheme::canonicalize` in the scheme adapter (the CAPCO
-//!   override lives in `marque_capco::CapcoScheme::canonicalize`); per
-//!   FR-043 that trait method is the sole production path. PR 6 wires
-//!   `ProjectedMarking` into the engine alongside the `Scope::Page`
-//!   projection cutover.
+//!   override lives in `marque_capco::CapcoScheme::canonicalize`); that
+//!   trait method is the sole production path. `ProjectedMarking` is
+//!   the engine-facing output of the `Scope::Page` projection.
 //! - `TokenSet` trait and `CapcoTokenSet` (Aho-Corasick CVE token matching)
 //! - Generated code from ODNI ISM schemas (CVE enums, validators, migrations)
 //!
@@ -55,9 +54,8 @@ pub use generated::values::{
     ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, TetragraphProvenance,
     is_bare_cve_value, is_decomposable, lookup_tetragraph_members, lookup_tetragraph_provenance,
 };
-// PR 4b-E: `sar_sort_key` lives in its own module post-relocation; the
-// re-export at the crate root preserves the `marque_ism::sar_sort_key`
-// public path (architect plan §3 Decision 4).
+// `sar_sort_key` lives in its own module; the re-export at the crate
+// root preserves the `marque_ism::sar_sort_key` public path.
 pub use parsed::{
     ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDisplayOnlyEntry,
     ParsedDissem, ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking,

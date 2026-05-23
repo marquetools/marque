@@ -6,13 +6,13 @@
 //! that rules consume.
 //!
 //! Constructed from `ParsedAttrs<'_>` via `MarkingScheme::canonicalize`
-//! — the sole authorized public route per FR-043. A scheme decides
+//! — the sole authorized public route. A scheme decides
 //! what canonicalization means (case folding, deprecated-token
 //! migration, etc.) and rule crates do not own the choice. The
 //! CAPCO/ISM implementation lives in
 //! `marque_capco::CapcoScheme::canonicalize`.
 //!
-//! FR-040 promote-callsite-lint enforces the sole-path invariant at
+//! The promote-callsite-lint enforces the sole-path invariant at
 //! signature shape: any other function shaped
 //! `fn(ParsedAttrs<'_>) -> CanonicalAttrs` outside the trait method
 //! is a CI error.
@@ -29,19 +29,15 @@
 //!
 //! # Field shape
 //!
-//! Mirrors `IsmAttributes` at PR 3a — same field names, same types,
-//! same semantics. Subsequent PRs reshape:
-//!
-//! - **PR 9b (FR-046, T132)** split the prior single `dissem_controls`
-//!   field into `dissem_us` and `dissem_nato`. The attribution is
-//!   performed by [`crate::dissem_attribution::attribute_dissems`] on
-//!   the `ParsedAttrs` side; `MarkingScheme::canonicalize` is a pure
+//! - IC dissem is split into `dissem_us` and `dissem_nato`. The
+//!   attribution is performed by
+//!   [`crate::dissem_attribution::attribute_dissems`] on the
+//!   `ParsedAttrs` side; `MarkingScheme::canonicalize` is a pure
 //!   structural rename and does not re-run attribution.
-//! - **PR 3c** may migrate `sci_controls` (the CVE projection) to a
-//!   `SciSet`-only shape if no rule reads `sci_controls` post-collapse
-//!   (CLAUDE.md "compatibility view scheduled for removal").
-//! - **PR 2 (FR-017)** introduces `FgiMarker::SourceConcealed |
-//!   Acknowledged`.
+//! - `sci_controls` (the CVE projection) is a compatibility view
+//!   scheduled for removal once no rule reads it.
+//! - `fgi_marker` carries the `FgiMarker::SourceConcealed |
+//!   Acknowledged` discriminant.
 
 use crate::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiMarker,
@@ -58,21 +54,17 @@ use crate::date::IsmDate;
 /// is documentation-only; rules dispatch on field name, not order.
 ///
 /// **Exhaustive**: the struct intentionally exposes every field for
-/// brace construction outside `marque-ism`. PR 3c.2.E lifted the
-/// structural rename body (formerly `marque_ism::from_parsed_unchecked`)
-/// into `CapcoScheme::canonicalize` and into four `marque-core` test
+/// brace construction outside `marque-ism`. The structural rename body
+/// lives in `CapcoScheme::canonicalize` and in four `marque-core` test
 /// helpers — both sets need to construct `CanonicalAttrs` literally.
-/// FR-043 keeps `MarkingScheme::canonicalize` the sole production
-/// `ParsedAttrs → CanonicalAttrs` constructor; per FR-040 the
-/// promote-callsite-lint flags any other signature shape outside that
-/// trait method.
+/// `MarkingScheme::canonicalize` remains the sole production
+/// `ParsedAttrs → CanonicalAttrs` constructor; the promote-callsite-lint
+/// flags any other signature shape outside that trait method.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanonicalAttrs {
     /// US/FGI/NATO/JOINT classification, or `None` when the parser
-    /// found no classification. **FR-007**: must remain `Option<_>` —
-    /// the `MarkingClassification::Us` hardcode in the scheme's
-    /// projection logic (`crates/capco/src/scheme/marking.rs`) is
-    /// PR 5's deletion target, not PR 3a's.
+    /// found no classification. Must remain `Option<_>` — a missing
+    /// classification is a representable state, not a hardcoded default.
     pub classification: Option<MarkingClassification>,
 
     /// SCI controls (CVE projection). Compatibility view per CLAUDE.md;
@@ -87,22 +79,20 @@ pub struct CanonicalAttrs {
     /// `Option`, not `Box<[]>`.
     ///
     /// Field name preserves the existing `IsmAttributes::sar_markings`
-    /// (plural) form to keep PR 3a a structural rename only. PR 3c can
-    /// rename to singular when shape narrowing happens.
+    /// (plural) form for a purely structural rename.
     pub sar_markings: Option<SarMarking>,
 
     /// AEA markings (RD/FRD/CNWDI/SIGMA/UCNI/TFNI) per §H.6.
     pub aea_markings: Box<[AeaMarking]>,
 
-    /// FGI marker in a US-classified marking. Flat shape at PR 3a;
-    /// PR 2 introduces the `SourceConcealed | Acknowledged`
-    /// discriminant (FR-017).
+    /// FGI marker in a US-classified marking, carrying the
+    /// `SourceConcealed | Acknowledged` discriminant.
     pub fgi_marker: Option<FgiMarker>,
 
     /// US-attributed IC dissemination controls. See
     /// [`crate::ParsedAttrs::dissem_us`] for the CAPCO-2016 p41
-    /// reciprocity rule that drives attribution (PR 9b / FR-046 /
-    /// T132). When both fields could apply, US wins;
+    /// reciprocity rule that drives attribution. When both fields
+    /// could apply, US wins;
     /// [`Self::dissem_nato`] populates only when the marking has no
     /// US classification axis.
     pub dissem_us: Box<[DissemControl]>,
