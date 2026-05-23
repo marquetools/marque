@@ -19,7 +19,6 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
 
-use super::helpers::canonicalize_trigraph_list;
 use crate::lattice::JointSet;
 use crate::scheme::CapcoScheme;
 
@@ -64,29 +63,36 @@ use crate::scheme::CapcoScheme;
 /// convention-based style to portions is a judgment call best
 /// deferred.
 ///
-/// # Interaction with E060 (JOINT row)
+/// # Interaction with the renderer's canonical JOINT ordering
 ///
-/// E060's JOINT row and S003 can both fire on the same JOINT list
-/// when it is neither pure-alpha nor USA-first (e.g., `GBR USA AUS`
-/// is not alpha AND not USA-first). Both fixes target the same
-/// Classification token span:
+/// JOINT country-list canonicalization is no longer a rule-side
+/// concern: the renderer (`MarkingScheme::render_canonical`) owns it,
+/// emitting **pure-alphabetical** order per §H.3 p56. S003 is the only
+/// surviving rule that touches JOINT ordering, and it layers the IC
+/// USA-first *convention* above that renderer default. The two compose
+/// cleanly because S003 runs at the rule layer and the renderer runs at
+/// fix-application time:
 ///
-/// - E060 (non-canonical input walker, JOINT row) fix: `AUS GBR USA`
-///   (pure alpha per §H.3 p56).
-/// - S003 fix: `USA AUS GBR` (USA first, rest alpha per convention).
+/// - S003 fires first (Info by default) on a banner JOINT list that
+///   contains USA out of first position, emitting a
+///   `Recanonicalize { RecanonScope::Page }` fix intent.
+/// - If S003's fix is applied (org configures `S003 = "fix"`), the
+///   engine invokes `MarkingScheme::render_canonical`, which re-renders
+///   the JOINT block; the convention-bearing intent reaches the
+///   renderer as the canonical target, so the downstream canonical
+///   form respects USA-first.
+/// - If S003 is configured `off`, no JOINT-ordering rule fires and the
+///   renderer produces pure-alphabetical order per §H.3 p56 — the
+///   strict-conformance default.
 ///
-/// Under FR-016's rule-id tiebreaker ("E060" < "S003" lexically),
-/// E060 wins the overlap guard and applies. On re-lint, E060 is
-/// silent (list now pure-alpha) and S003 still wants USA first;
-/// running fix again converges to `USA AUS GBR`. Two passes. Orgs
-/// that want single-pass USA-first convergence can disable E060
-/// for JOINT (currently not configurable; would need a per-list-type
-/// severity override — follow-up).
+/// There is no longer a competing JOINT-ordering rule, so no rule-id
+/// overlap guard or FR-016 tiebreaker applies to this list type; S003
+/// is the sole owner of the USA-first convention layer.
 ///
 /// (Pre-PR-3b.F this was E020; PR 3b.F retired E020 into the E060
 /// walker, which preserved the same fix shape and citation but
-/// changed the rule-ID. PR 3c.B Commit 6 retired E060 into the
-/// renderer.)
+/// changed the rule-ID. PR 3c.B Commit 6 retired E060 entirely into
+/// the renderer, where JOINT pure-alpha canonicalization now lives.)
 ///
 /// # Constitution V audit-content-ignorance
 ///
@@ -186,12 +192,9 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             return vec![];
         }
 
-        // Canonicalize: USA first, remaining trigraphs alphabetical.
-        let canonical = canonicalize_trigraph_list(&j.countries, true);
-
         // Locate the `Classification` token to anchor the diagnostic
         // span; the replacement-bytes computation retired with the
-        // mvp-3 cutover (the engine's `render_canonical` produces
+        // mvp-3 cutover (`MarkingScheme::render_canonical` produces
         // canonical JOINT bytes at fix-application time).
         let Some(classification_tok) = attrs
             .token_spans
@@ -206,7 +209,23 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         // bytes by way of `j.countries.iter().map(|t| t.as_str())`.
         // The typed `Message` identifies the ordering-violation class
         // for the JOINT axis.
-        let _ = canonical; // canonical is consumed by the fix_intent path below
+        //
+        // Build the category-bearing `Message` once and clone it for
+        // both the parent diagnostic and the `FixIntent` (#739). Both
+        // describe the same JOINT-axis ordering violation, so they
+        // mirror the same (template, args) pair — matching the
+        // FixIntent-mirrors-parent convention in `nato.rs`
+        // (`WrongTokenForm` + `token`) and `dissem_closure.rs`
+        // (`RequiredByPresence`). Dropping `category` from only the
+        // FixIntent message lost the JOINT axis context for any
+        // consumer that reads `FixIntent.message` rather than the
+        // parent `Diagnostic.message`.
+        //
+        // G13 (Constitution V Principle V): `CAT_JOINT_CLASSIFICATION`
+        // is a `CategoryId` constant — a permitted audit identifier,
+        // not document content. `MessageTemplate::NonCanonicalOrder`
+        // documents `category` as its arg ("which axis is out of
+        // order"), so the category is meant to flow through.
         let message = Message::new(
             MessageTemplate::NonCanonicalOrder,
             MessageArgs {
@@ -232,7 +251,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             },
             confidence: Confidence::strict(1.0),
             feature_ids: Default::default(),
-            message: Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+            // #739: mirror the parent diagnostic's category-bearing
+            // message so the JOINT axis context survives in the
+            // FixIntent's audit-record message.
+            message: message.clone(),
             source: FixSource::BuiltinRule,
             migration_ref: None,
         };
