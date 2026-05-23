@@ -119,7 +119,7 @@ impl EnginePromotionToken {
     ///
     /// # Reserved name (FR-040 lint contract)
     ///
-    /// As with [`AppliedFix::__engine_promote`], the function name
+    /// As with [`crate::AppliedFix::__engine_promote`], the function name
     /// `__engine_construct` is reserved by the marque project. The
     /// `tools/promote-callsite-lint/` CI lint flags every call
     /// expression whose path's last segment is `__engine_construct`
@@ -127,14 +127,14 @@ impl EnginePromotionToken {
     /// `Self::`, aliased, UFCS). Defining or calling another
     /// function with this exact name elsewhere will fail the lint.
     /// The `__` prefix + `#[doc(hidden)]` attribute reinforce the
-    /// reserved status; see [`AppliedFix::__engine_promote`] for the
+    /// reserved status; see [`crate::AppliedFix::__engine_promote`] for the
     /// full contract and the rationale for last-segment matching.
     ///
     /// # Engine-only contract (production code)
     ///
     /// Only `marque-engine` may call this in production code. The
     /// same three-constraint test-fixture carve-out from
-    /// [`AppliedFix::__engine_promote`] applies here verbatim — see
+    /// [`crate::AppliedFix::__engine_promote`] applies here verbatim — see
     /// that constructor's doc comment for the binding definition.
     /// Outside the engine, calling this from `cfg(not(test))` code
     /// violates Constitution V Principle V.
