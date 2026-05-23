@@ -298,9 +298,10 @@ fn r002_does_not_mint_applied_fix() {
 // every synthetic fixture, baking a mislabel into the test surface that
 // masked the per-rule assignment.
 //
-// Build a config that turns off the corrections map / migration table by
-// using `Config::default()` and supply a small in-line corrections map so
-// the C001 path is exercisable alongside the rule-emitting paths.
+// `Config::default()` starts with an empty corrections map and no
+// migration-table inputs; this helper then supplies a small in-memory
+// corrections map so the C001 path is exercisable alongside the
+// rule-emitting paths.
 
 fn engine_with_corrections(corrections: HashMap<String, String>) -> Engine {
     let mut config = Config::default();
@@ -377,16 +378,18 @@ fn diagnostic_and_fix_templates_match_production_per_rule() {
             expected_lint_template: MessageTemplate::NonCanonicalOrder,
             expected_fix_template: Some(MessageTemplate::RequiredByPresence),
         },
-        // Banner-rollup rules: both sides emit `BannerRollupMismatch`
-        // (the rule's emit body uses a single Message for both the
-        // diagnostic and the optional FixIntent attached to it).
-        // Banner-rollup SAR: the rule itself emits via
-        // `Diagnostic::text_correction` (see `banner/eval_sar.rs`), so the
-        // `TextCorrection` intent_kind is engine lint output — not a
-        // renderer projection. This fixture pins only the `Diagnostic.fix`
-        // (FixIntent) vs AppliedFix arm, so it expects no FixIntent here
-        // (`expected_fix_template: None`); the text-correction arm is
-        // covered by `lint_diag_template_equals_text_correction_template_for_c001`.
+        // Banner-rollup rules emit a lint `Diagnostic` carrying
+        // `BannerRollupMismatch` with no attached `FixIntent` (see
+        // `banner/eval_sar.rs`). This fixture pins the lint-side template
+        // and asserts `.fix` is None (`expected_fix_template: None`).
+        //
+        // There is no audit-side template to pin for these predicates:
+        // on `Engine::fix` the rollup diagnostic produces zero applied
+        // audit lines (it is advisory — not auto-promoted to an
+        // `AppliedFix`/`AppliedTextCorrection`), verified by the
+        // `banner_rollup_fix_produces_no_audit_line` companion test below.
+        // So lint-vs-audit template parity is vacuously satisfied here,
+        // not asserted.
         TemplateParityFixture {
             name: "banner-rollup SAR portions",
             source: b"(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",
@@ -459,6 +462,56 @@ fn diagnostic_and_fix_templates_match_production_per_rule() {
                 fx.name,
             ),
         }
+    }
+}
+
+/// Companion to `diagnostic_and_fix_templates_match_production_per_rule`:
+/// the banner-rollup predicates emit advisory lint diagnostics that are
+/// NOT auto-applied, so `Engine::fix` produces no audit line for them —
+/// which is why the parity test pins only their lint-side template and
+/// has no audit-side template to assert.
+///
+/// This test pins that advisory status. If a future change promotes a
+/// banner-rollup diagnostic to an applied fix (an `AppliedFix` or
+/// `AppliedTextCorrection`), this test fails — forcing the author to add
+/// the audit-side template assertion the parity test currently omits, so
+/// a promotion/projection regression can't slip through silently.
+/// (Addresses the PR #752 review note on un-pinned rollup audit templates.)
+#[test]
+fn banner_rollup_fix_produces_no_audit_line() {
+    let engine = test_engine();
+    let cases: [(&str, &[u8]); 2] = [
+        (
+            "banner.banner-rollup.sar-portions-roll-up",
+            b"(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",
+        ),
+        (
+            "banner.banner-rollup.non-ic-dissem-roll-up",
+            b"(S//NF//ND)\nSECRET//NOFORN\n",
+        ),
+    ];
+    for (predicate, source) in cases {
+        let result = engine.fix(source, FixMode::Apply);
+        let applied: Vec<&str> = result
+            .audit_lines
+            .iter()
+            .filter_map(|line| match line {
+                AuditLine::AppliedFix(f) if f.rule.predicate_id() == predicate => {
+                    Some(f.rule.predicate_id())
+                }
+                AuditLine::TextCorrection(tc) if tc.rule.predicate_id() == predicate => {
+                    Some(tc.rule.predicate_id())
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            applied.is_empty(),
+            "{predicate}: banner-rollup is advisory — Engine::fix must not \
+             emit an applied audit line for it; got {applied:?}. If this rule \
+             now auto-applies, pin its audit-side template in \
+             `diagnostic_and_fix_templates_match_production_per_rule`.",
+        );
     }
 }
 
