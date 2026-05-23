@@ -105,19 +105,11 @@ fn surrounding_lowercase_majority(source: &[u8], start: usize, end: usize) -> bo
 
 /// Synthetic rule identifier the engine attaches to decoder-path
 /// `FixSource::DecoderPosterior` diagnostics emitted from
-/// `Engine::lint`. Phase 4 PR-4b minted this identifier so the
-/// recognition-layer rewrite carries a real `RuleId` (rules and
-/// fixes share that requirement) without colliding with any CAPCO
-/// rule.
-///
-/// T044 (post-PR-10 FR-049 unfreeze) reshaped this from the
-/// legacy flat-string `"R001"` form to the canonical
-/// `("engine", "recognition.decoder-recognized")` 2-tuple per
-/// FR-044 (`docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
-/// §1.4 + §2.6 + OD-4): the `"engine"` scheme is the reserved
-/// namespace for engine-minted diagnostics, and the predicate id
-/// describes the rewrite in plain English rather than the legacy
-/// opaque `R001` numeric.
+/// `Engine::lint`. This identifier lets the recognition-layer rewrite
+/// carry a real `RuleId` (rules and fixes share that requirement)
+/// without colliding with any CAPCO rule. The `"engine"` scheme is the
+/// reserved namespace for engine-minted diagnostics, and the predicate
+/// id describes the rewrite in plain English.
 const DECODER_RULE_ID: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
 
 /// Citation attached to `R001 decoder-recognition` diagnostics. Points
@@ -127,32 +119,17 @@ const DECODER_RULE_ID: RuleId = RuleId::new("engine", "recognition.decoder-recog
 /// `crates/capco/docs/CAPCO-2016.md` line 49) and contains the
 /// canonical syntax for portion / banner / CAB markings the decoder
 /// canonicalizes input toward.
-///
-/// PR 3c.2.C C5 migrated this from `&'static str` →
-/// [`marque_scheme::Citation`] atomically with the `Diagnostic.citation`
-/// field-type flip. (PR 10.A.1 Commit 4 retargeted the import path from
-/// `marque_rules::Citation` to the canonical `marque_scheme::Citation`
-/// when the back-compat re-export was deleted.)
 const DECODER_CITATION_TYPED: marque_scheme::Citation =
     marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15);
 
 /// Synthetic rule identifier for the post-pass-1 re-parse-failure
-/// sentinel (PR 7b, FR-024). Emitted when the post-pass-1 buffer
-/// fails to re-parse — pass-1 produced ≥1 applied fix that turned
-/// the source into an unparseable shape, so pass-2 is skipped and
-/// the engine returns the pass-1 buffer + this diagnostic carrying
-/// the contributing pass-1 rule IDs.
-///
-/// T044 (post-PR-10 FR-049 unfreeze) reshaped this from the legacy
-/// flat-string `RuleId::new("R002")` form to the canonical
-/// `("engine", "fix.reparse-failed")` 2-tuple per FR-044
-/// (`docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
-/// §1.4 + §2.6 + OD-4). The numeric `r002.` placeholder from the
-/// freeze-window plan was dropped — the `"engine"` scheme already
-/// carries the cross-version anchor; the predicate id describes the
-/// failure mode in plain English. The pre-T044 legacy name survives
-/// only in `docs/refactor-006/legacy-rule-id-map.md` and git
-/// history.
+/// sentinel. Emitted when the post-pass-1 buffer fails to re-parse —
+/// pass-1 produced ≥1 applied fix that turned the source into an
+/// unparseable shape, so pass-2 is skipped and the engine returns the
+/// pass-1 buffer + this diagnostic carrying the contributing pass-1
+/// rule IDs. The `"engine"` scheme is the reserved namespace for
+/// engine-minted diagnostics; the predicate id describes the failure
+/// mode in plain English.
 pub const R002_RULE_ID: RuleId = RuleId::new("engine", "fix.reparse-failed");
 
 /// Typed [`Citation`](marque_scheme::Citation) attached to `R002`
@@ -161,12 +138,6 @@ pub const R002_RULE_ID: RuleId = RuleId::new("engine", "fix.reparse-failed");
 /// passage; R002 is engine-internal guidance, not a CAPCO rule). Uses
 /// [`marque_scheme::AuthoritativeSource::EngineInternal`]. Display
 /// renders as `[engine-internal]`.
-///
-/// PR 3c.2.C C5 migrated this from `&'static str` → typed `Citation`
-/// atomically with the `Diagnostic.citation` field-type flip. PR 10.A.1
-/// Commit 4 retargeted the import path from `marque_rules::Citation`
-/// to the canonical `marque_scheme::Citation` when the back-compat
-/// re-export was deleted.
 const R002_CITATION_TYPED: marque_scheme::Citation = marque_scheme::Citation::new(
     marque_scheme::AuthoritativeSource::EngineInternal,
     marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
@@ -188,9 +159,7 @@ const R002_CITATION_TYPED: marque_scheme::Citation = marque_scheme::Citation::ne
 /// past 8 instead of the early growth sequence a `Vec::new()` path
 /// would incur on the first several pushes.
 ///
-/// PR 6c (T069) moved this const from the retired
-/// `marque_ism::PageContext` to its single owner site at the engine
-/// accumulator. Issue #430.
+/// Owned at the engine accumulator (issue #430).
 pub(crate) const DEFAULT_PORTIONS_CAPACITY: usize = 8;
 
 /// Construct a fresh per-page portion accumulator pre-sized to
@@ -238,35 +207,28 @@ impl std::error::Error for InvalidThreshold {}
 pub struct Engine {
     config: Config,
     rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
-    /// Scheme catalog held for the PR 3c.B Commit 7.2 constraint-bridge
-    /// dispatch in `lint_inner`. A fresh `CapcoScheme::new()` is built
-    /// at construction time because the engine is concrete over
+    /// Scheme catalog held for constraint-bridge dispatch in
+    /// `lint_inner`. A fresh `CapcoScheme::new()` is built at
+    /// construction time because the engine is concrete over
     /// `CapcoScheme` (the generic-`S` parameter on the constructors is
     /// only used to extract `page_rewrites()` for scheduling — the
-    /// scheduler test in `crates/engine/tests/scheduler.rs:106` passes
+    /// scheduler test in `crates/engine/tests/scheduler.rs` passes
     /// a stub scheme through that surface, but every production call
     /// site passes `CapcoScheme::new()` and the bridge fires only
-    /// against the default catalog). A future PR that makes
-    /// `Engine<S>` truly generic over the scheme will replace this
-    /// field with the user-supplied `S`.
+    /// against the default catalog). Making `Engine<S>` truly generic
+    /// over the scheme would replace this field with the user-supplied
+    /// `S`.
     ///
     /// # Bridge diagnostic population
     ///
-    /// The engine bridge (Commit 7.3+) uses row names from the
-    /// `Constraint` catalog to populate `Diagnostic.rule`. As of T044
-    /// (FR-049 unfreeze, post-PR-10) the bridge is a **no-op
+    /// The engine bridge uses row names from the `Constraint` catalog
+    /// to populate `Diagnostic.rule`. The bridge is a **no-op
     /// pass-through**: the catalog row's `constraint_label` IS the
     /// predicate id; the bridge constructs `RuleId::new("capco",
-    /// constraint_label)` with no string manipulation. Per OD-8.A in
-    /// `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md` and
-    /// the per-row rename table in §1.5, the pre-T044 special-case
-    /// table (15 `capco/...` → `E0xx` literals + `class-floor/...` →
-    /// `E058` + `sci-per-system/...` → `E059` aggregations) is
-    /// eliminated — every former target gets its own predicate id at
-    /// the catalog-row level, and `docs/refactor-006/legacy-rule-id-map.md`
-    /// records the legacy → predicate-id correspondence for archaeology.
+    /// constraint_label)` with no string manipulation. Every catalog
+    /// row gets its own predicate id at the row level.
     ///
-    /// The bridge code (now ~3 lines) lives in
+    /// The bridge code lives in
     /// [`Engine::bridge_constraint_diagnostic`].
     scheme: CapcoScheme,
     clock: Box<dyn Clock>,
@@ -283,8 +245,8 @@ pub struct Engine {
     /// time from the scheme's `page_rewrites()` declaration. The order
     /// satisfies: for every edge `a → b` (rewrite `a` writes a
     /// category `b` reads), `a` appears before `b`. When dataflow
-    /// edges fully determine the order, FR-007's declaration-order-
-    /// independence guarantee holds; when two rewrites have no edge
+    /// edges fully determine the order, the rewrite order is
+    /// independent of declaration order; when two rewrites have no edge
     /// between them, the scheduler breaks the tie by declaration
     /// order (Kahn's algorithm seeded in declaration order). Empty
     /// when the scheme declares no rewrites.
@@ -303,28 +265,26 @@ pub struct Engine {
     /// CAPCO-2016 marking. Live-typing surfaces concerned with
     /// per-keystroke latency are expected to debounce their calls into
     /// the engine; surfaces that need to pin strict-only behavior (the
-    /// SC-001 interactive-latency benchmark, tests asserting strict
+    /// interactive-latency benchmark, tests asserting strict
     /// dispatch) should call [`Engine::with_strict_recognizer`].
     recognizer: EngineRecognizer,
 
-    /// CLI-supplied corpus override (Phase 4 PR-5 / FR-013 / T069).
-    /// Held only behind the `corpus-override` Cargo feature so the
-    /// WASM artifact and the `marque-server` build cannot
-    /// accidentally accept one through any code path.
+    /// CLI-supplied corpus override. Held only behind the
+    /// `corpus-override` Cargo feature so the WASM artifact and the
+    /// `marque-server` build cannot accidentally accept one through any
+    /// code path.
     ///
-    /// The decoder does not yet substitute these priors into scoring
-    /// — PR-5 minimal scope wires the surface end-to-end and stamps
-    /// every decoder fix with
-    /// [`marque_rules::FeatureId::CorpusOverrideInEffect`] in the
+    /// The decoder does not yet substitute these priors into scoring —
+    /// the surface is wired end-to-end and every decoder fix is stamped
+    /// with [`marque_rules::FeatureId::CorpusOverrideInEffect`] in the
     /// audit record so an auditor can identify fixes produced under
-    /// organizational overrides vs. stock priors. The prior-
-    /// substitution wiring is the next-PR step; this field is the
-    /// seam.
+    /// organizational overrides vs. stock priors. The prior-substitution
+    /// wiring is not yet done; this field is the seam.
     #[cfg(feature = "corpus-override")]
     corpus_override: Option<std::sync::Arc<marque_config::corpus_override::CorpusOverride>>,
 
     /// Phase partition of the registered rule set, computed once at
-    /// construction time (PR 7a, FR-021). Each entry is a
+    /// construction time. Each entry is a
     /// `(rule_set_index, rule_index_within_set)` pair indexing back into
     /// `self.rule_sets[i].rules()[j]`. `pass1_rule_indices` lists every
     /// rule whose `phase()` returned [`Phase::Localized`];
@@ -333,17 +293,14 @@ pub struct Engine {
     /// rule exactly once.
     ///
     /// **Inline-size choice.** `[(usize, usize); 4]` for pass-1
-    /// (Localized rules are rare — 4 of 31 in the CAPCO ruleset at
-    /// PR 7a: C001, E006, E007, S004) and `[(usize, usize); 32]` for
-    /// pass-2. With 27 WholeMarking rules today and an inline capacity
-    /// of 32, the partition has 5 entries of headroom before the
-    /// SmallVec spills to the heap at the 33rd entry. The current
-    /// rule-collapse trajectory (PR 3b retired 13 rules into walkers;
-    /// further reductions targeted in stages 3–4) makes 32 comfortable
-    /// for the foreseeable future. The canonical per-rule list lives
-    /// in `crates/capco/tests/phase_assignment.rs`. Inline storage
-    /// means no extra heap allocation in the common case — the
-    /// partitions live wherever the `Engine` itself does.
+    /// (Localized rules are rare — a handful in the CAPCO ruleset) and
+    /// `[(usize, usize); 32]` for pass-2. With ~27 WholeMarking rules
+    /// today and an inline capacity of 32, the partition has headroom
+    /// before the SmallVec spills to the heap at the 33rd entry. The
+    /// canonical per-rule list lives in
+    /// `crates/capco/tests/phase_assignment.rs`. Inline storage means no
+    /// extra heap allocation in the common case — the partitions live
+    /// wherever the `Engine` itself does.
     ///
     /// **Current consumer.** Read by
     /// [`TwoPassFixer::localized_rule_id_set`] to build the
@@ -354,19 +311,16 @@ pub struct Engine {
     /// Pass-2 (WholeMarking) partition counterpart of
     /// [`Engine::pass1_rule_indices`].
     ///
-    /// **Post-PR-7c behavior.** Stored but not yet read at dispatch
-    /// time. Pass-2 in `TwoPassFixer::run` routes diagnostics as the
-    /// **complement** of the pass-1 (Localized) set via
-    /// `partition_diags_by_phase` — sufficient for today's rule
-    /// shape because every diagnostic emitted by `lint()` comes
-    /// from a registered rule, so the complement equals the
-    /// WholeMarking partition. PR 7c retained this dispatch shape
-    /// (implementer Decision #4) rather than flipping to a positive
-    /// whitelist; the field stays available for a deferred future
-    /// PR that wants the symmetry with pass-1 and the "unregistered
-    /// emitted ID falls into neither pass" property. No schedule for
-    /// that work is set. See [`Engine::pass1_rule_indices`] for the
-    /// shape rationale.
+    /// Stored but not yet read at dispatch time. Pass-2 in
+    /// `TwoPassFixer::run` routes diagnostics as the **complement** of
+    /// the pass-1 (Localized) set via `partition_diags_by_phase` —
+    /// sufficient for today's rule shape because every diagnostic
+    /// emitted by `lint()` comes from a registered rule, so the
+    /// complement equals the WholeMarking partition. The field stays
+    /// available for a future change that wants the symmetry with
+    /// pass-1 and the "unregistered emitted ID falls into neither pass"
+    /// property. See [`Engine::pass1_rule_indices`] for the shape
+    /// rationale.
     #[allow(dead_code)]
     pass2_rule_indices: dispatch::Pass2Indices,
     /// PageFinalization rule partition (issue #461) — read by
@@ -438,20 +392,17 @@ pub struct Engine {
     /// preserve the pre-hoist `.and_then(parse_config)` semantics
     /// (`build_severity_tables_skips_unparsable_severity` pins this).
     ///
-    /// **Hot-loop consumers.** Read by Sites B (per-diagnostic
-    /// `retain_mut` rewrite), C (bridge `ConstraintViolation`
-    /// envelope), and D (C001 corrections-map post-pass). This field
-    /// handles the construction-time part of the optimization by
-    /// precomputing emitted-ID override severities once, so hot paths
-    /// avoid repeated parse/canonicalization work. Per-row severity
-    /// overrides for the SCI per-system catalog (post-T044) flow
-    /// directly through this map — each catalog row's `name` is its
-    /// own predicate ID and is independently overridable via
+    /// **Hot-loop consumers.** Read by the per-diagnostic `retain_mut`
+    /// rewrite, the bridge `ConstraintViolation` envelope, and the
+    /// corrections-map post-pass. This field handles the
+    /// construction-time part of the optimization by precomputing
+    /// emitted-ID override severities once, so hot paths avoid repeated
+    /// parse/canonicalization work. Per-row severity overrides for the
+    /// SCI per-system catalog flow directly through this map — each
+    /// catalog row's `name` is its own predicate ID and is
+    /// independently overridable via
     /// `[rules] "capco:marking.sci.<row>" = "<severity>"`; the bridge
-    /// dispatches per-row in `bridge_sci_per_system_diagnostics`. The
-    /// pre-T044 `e059_override` walker-level hoist was retired with
-    /// the legacy `"E059"` rule ID (the map is keyed by predicate ID,
-    /// so `get("E059")` always returned `None`).
+    /// dispatches per-row in `bridge_sci_per_system_diagnostics`.
     emitted_id_overrides: dispatch::EmittedIdOverrides,
 }
 
