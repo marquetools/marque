@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 /// Document position context passed to rules alongside parsed markings.
 ///
-/// Phase 3 made `zone` and `position` `Option`-typed: the scanner cannot
+/// `zone` and `position` are `Option`-typed: the scanner cannot
 /// reliably determine header/footer/body or document position from raw
 /// text alone, so a rule that reads either field must handle `None`.
 /// They will become populated in a future scanner pass that consumes
@@ -34,7 +34,7 @@ use std::sync::Arc;
 ///   (`NodisExdisClearsBannerRelToRule`) compare the observed banner /
 ///   CAB against this composite. Constructed by
 ///   `CapcoScheme::project_from_attrs_slice(&page_portions)` lazily at
-///   first banner/CAB use; PR 9b T133 / FR-006.
+///   first banner/CAB use.
 ///
 /// New banner / CAB validation rules SHOULD read `page_marking` (the
 /// rolled-up shape the banner is supposed to convey). Reach for
@@ -42,21 +42,20 @@ use std::sync::Arc;
 /// per-portion-structural (i.e. the projection has flattened away
 /// information the rule needs).
 ///
-/// **`#[non_exhaustive]`** (PR 4b-B 9th-pass follow-up): the engine
-/// has added several public fields during the 006 refactor
-/// (`page_marking`, `corrections`, `pre_pass_1_attrs`) and is likely
-/// to add more before the API stability freeze at PR 10. Marking the
-/// struct `#[non_exhaustive]` means a future field addition is a
-/// non-breaking change for downstream consumers.
+/// **`#[non_exhaustive]`**: the engine adds public fields over time
+/// (`page_marking`, `corrections`, `pre_pass_1_attrs`, and likely more
+/// before the API stability freeze), so marking the struct
+/// `#[non_exhaustive]` keeps a future field addition non-breaking for
+/// downstream consumers.
 ///
-/// **Note on future cross-portion aggregation rules** (N-9-2, PR 437
-/// 10th-pass): the `cross_portion_context` field was removed because
-/// eager per-portion accumulator cloning is O(N²) over portions per
-/// page and had zero active rule consumers. Future cross-portion
-/// rules that need the post-add accumulator state should add a
-/// lazy/gated field with explicit capability declaration rather than
-/// restoring the eager-clone shape. Per Constitution Principle I,
-/// any O(N²) hot-path cost MUST be benchmarked before shipping.
+/// **Note on future cross-portion aggregation rules**: a
+/// `cross_portion_context` field was removed because eager
+/// per-portion accumulator cloning is O(N²) over portions per page and
+/// had zero active rule consumers. Future cross-portion rules that
+/// need the post-add accumulator state should add a lazy/gated field
+/// with explicit capability declaration rather than restoring the
+/// eager-clone shape. Per Constitution Principle I, any O(N²) hot-path
+/// cost MUST be benchmarked before shipping.
 ///
 /// **Cross-crate consumers MUST construct via the engine-provided
 /// constructor path** (`RuleContext::new`). `#[non_exhaustive]` blocks
@@ -74,12 +73,10 @@ use std::sync::Arc;
 /// restricts construction in EXTERNAL crates. ALL other crates —
 /// including `marque-engine` (which is a separate crate from
 /// `marque-rules`), `marque-capco`, and `crates/capco/tests/*` — are
-/// external and must use the constructor helpers. The FR-040
-/// cargo-rules check enforces the pattern.
-///
-/// P-5 (8th-pass): corrected prior doc that claimed `..base`
-/// functional-update "works" for downstream rule crates — it does not.
-/// The constructor doc at `RuleContext::new` is authoritative.
+/// external and must use the constructor helpers; the cargo-rules
+/// check enforces the pattern. `..base` functional-update does not
+/// work for downstream rule crates — the constructor doc at
+/// `RuleContext::new` is authoritative.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct RuleContext<'a> {
@@ -101,8 +98,8 @@ pub struct RuleContext<'a> {
     /// `MarkingScheme::apply_intent` +
     /// `MarkingScheme::render_canonical`.
     ///
-    /// Added in the PR 3c.B engine-prereq commit. Populated by the
-    /// engine from `candidate.span` before invoking each rule.
+    /// Populated by the engine from `candidate.span` before invoking
+    /// each rule.
     pub candidate_span: Span,
     /// Per-page accumulated portion attributes — the slice form that
     /// banner / CAB / PageFinalization rules consume when they need
@@ -116,20 +113,17 @@ pub struct RuleContext<'a> {
     /// `None` for portion candidates and for banner / CAB candidates
     /// on an empty page.
     ///
-    /// PR 6c (T069) introduced this field as the structural successor
-    /// to the historical `page_context: Option<Arc<PageContext>>`
-    /// field. `Box<[CanonicalAttrs]>` (immutable snapshot) is what
-    /// `Arc` wraps because the slice form mirrors Constitution
-    /// Principle II "pivot fields use `Box<[T]>`" and the snapshot
-    /// is genuinely immutable once frozen at the banner/CAB
-    /// boundary.
+    /// `Box<[CanonicalAttrs]>` (immutable snapshot) is what `Arc`
+    /// wraps because the slice form mirrors Constitution Principle II
+    /// "pivot fields use `Box<[T]>`" and the snapshot is genuinely
+    /// immutable once frozen at the banner/CAB boundary.
     pub page_portions: Option<std::sync::Arc<Box<[CanonicalAttrs]>>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
-    /// [`marque_ism::MarkingType::PageBreak`]. PR 9b (T133 / FR-006)
-    /// added this alongside the per-page portion snapshot
-    /// ([`Self::page_portions`]) so banner-validation rules can
-    /// consume the rolled-up shape directly.
+    /// [`marque_ism::MarkingType::PageBreak`]. Sits alongside the
+    /// per-page portion snapshot ([`Self::page_portions`]) so
+    /// banner-validation rules can consume the rolled-up shape
+    /// directly.
     ///
     /// Populated by the engine for every non-portion candidate
     /// (Banner, CAB) once at least one portion has accumulated on the
@@ -226,8 +220,8 @@ pub struct RuleContext<'a> {
     /// `None` when no corrections are configured.
     pub corrections: Option<Arc<HashMap<String, String>>>,
     /// Pre-pass-1 attributes for this marking when a pass-1 fix
-    /// reshaped its bytes (FR-023 / R-4). `Some` iff the marking's
-    /// span overlaps a pass-1 fix span; `None` otherwise.
+    /// reshaped its bytes. `Some` iff the marking's span overlaps a
+    /// pass-1 fix span; `None` otherwise.
     ///
     /// Rules MUST handle `None` — never unconditionally unwrap. The
     /// field is populated by the engine's `TwoPassFixer` from a stack-
@@ -241,14 +235,10 @@ pub struct RuleContext<'a> {
     /// on `pre_pass_1_attrs.is_some()`. No current rule consumes the
     /// signal — it is plumbed through every rule's `check` signature
     /// so future consumers can read it without re-threading the
-    /// lifetime parameter. The engine-applied `PrecedingFixPenalty`
-    /// mechanism originally planned to consume the field's PRESENCE
-    /// was retired in PR 7c per D-7.22 (misunderstanding-derived,
-    /// path was independently confirmed dead code under current
-    /// `Phase::Localized` rules). Future evolution (deferred per
-    /// D-7.7) replaces this borrow with `Arc<CanonicalAttrs>` when
-    /// the parse cache adopts refcount-shared attrs alongside the
-    /// v0.2 LMDB incremental cache.
+    /// lifetime parameter. A future evolution replaces this borrow
+    /// with `Arc<CanonicalAttrs>` when the parse cache adopts
+    /// refcount-shared attrs alongside the v0.2 LMDB incremental
+    /// cache.
     pub pre_pass_1_attrs: Option<&'a CanonicalAttrs>,
 }
 
@@ -279,12 +269,11 @@ impl<'a> RuleContext<'a> {
     /// ctx.page_portions = Some(portions);
     /// ```
     ///
-    /// PR 4b-B 9th-pass follow-up: added alongside the
-    /// `#[non_exhaustive]` attribute on `RuleContext` so external
-    /// consumers (downstream rule crates, integration tests in
-    /// `marque-capco`, the `marque-engine` rule loop) have a stable
-    /// construction entrypoint regardless of which optional fields
-    /// the engine adds in future PRs.
+    /// Paired with the `#[non_exhaustive]` attribute on `RuleContext`
+    /// so external consumers (downstream rule crates, integration
+    /// tests in `marque-capco`, the `marque-engine` rule loop) have a
+    /// stable construction entrypoint regardless of which optional
+    /// fields the engine adds in future.
     pub fn new(marking_type: MarkingType, candidate_span: marque_scheme::Span) -> Self {
         Self {
             marking_type,
@@ -312,7 +301,7 @@ impl<'a> RuleContext<'a> {
     }
 
     /// Set [`Self::page_portions`] (per-page snapshot of accumulated
-    /// portion attributes; PR 6c successor to `with_page_context`).
+    /// portion attributes).
     pub fn with_page_portions(mut self, page_portions: Option<Arc<Box<[CanonicalAttrs]>>>) -> Self {
         self.page_portions = page_portions;
         self
