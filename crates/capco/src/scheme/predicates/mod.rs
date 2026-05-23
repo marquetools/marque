@@ -37,7 +37,7 @@ mod token_routing;
 mod triggers;
 
 // `pub` re-exports — the two true public-API names per the original
-// `scheme.rs:98` `pub use self::predicates::{is_fdr_dominator, is_orcon_family}`.
+// (pre-split) `scheme.rs` `pub use self::predicates::{is_fdr_dominator, is_orcon_family}`.
 pub use self::families::{is_fdr_dominator, is_orcon_family};
 
 // `pub(crate)` re-exports — surface every helper at the historical

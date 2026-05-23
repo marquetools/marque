@@ -16,7 +16,7 @@
 //! ## Token coverage scope
 //!
 //! `CapcoScheme::Token = TokenId` and the active sentinel set today
-//! is ~14 hand-assigned ids in `crates/capco/src/scheme.rs` — the
+//! is ~14 hand-assigned ids in `crates/capco/src/scheme/mod.rs` — the
 //! only TokenIds CAPCO's catalog actually references. Of those, the
 //! ones with a corresponding canonical CVE value in the JSON-derived
 //! `TOKEN_METADATA` table form the "active CAPCO vocabulary set"

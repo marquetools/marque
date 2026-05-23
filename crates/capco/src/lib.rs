@@ -60,7 +60,6 @@ pub mod priors;
 pub mod provenance;
 pub(crate) mod render;
 pub mod rules;
-pub(crate) mod rules_declarative;
 pub mod scheme;
 pub mod vocab;
 // `vocabulary` is implementation detail — it carries the

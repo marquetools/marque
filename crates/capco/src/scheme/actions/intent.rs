@@ -116,7 +116,7 @@ pub(crate) fn apply_intent_to_marking(
 /// "absent token is inapplicable" policy: both axes report
 /// per-intent inapplicability when the requested mutation is a
 /// no-op. The trait contract at
-/// [`marque_scheme::MarkingScheme::apply_intent`] (scheme.rs:185-194)
+/// [`marque_scheme::MarkingScheme::apply_intent`]
 /// is explicit that per-intent inapplicability is not failure; the
 /// batch aggregates to `Err(IntentInapplicable)` only when the whole
 /// batch produced no mutation.
@@ -207,7 +207,7 @@ fn apply_fact_add(
         if attrs.rel_to.contains(&country) {
             // Per-intent no-op: country already present, no mutation
             // applied. Per the trait contract at
-            // `scheme::MarkingScheme::apply_intent` (scheme/src/scheme.rs:185-194)
+            // `scheme::MarkingScheme::apply_intent` (in scheme/src/scheme.rs)
             // and the CAT_DISSEM precedent below: per-intent
             // inapplicability is NOT failure — the batch loop skips
             // and continues. Returning Ok here would let a redundant-
@@ -257,7 +257,7 @@ fn apply_fact_add(
             // add aggregates to `Err(IntentInapplicable)` (engine
             // silently drops the synthesized no-op fix). The trait
             // contract at `scheme::MarkingScheme::apply_intent`
-            // (scheme/src/scheme.rs:185-194) is explicit: per-intent
+            // (in scheme/src/scheme.rs) is explicit: per-intent
             // inapplicability is NOT a failure — the batch loop skips
             // and continues; whole-batch no-op surfaces as Err so the
             // engine drops the fix. Returning Ok here would let a
@@ -323,7 +323,7 @@ fn apply_fact_add(
         // Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
         // RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2
         // + §H.8 p157 (EYES ONLY: NSA-only, retains DissemControl::Eyes
-        // through lint per scheme.rs:190). All citations re-verified
+        // through lint). All citations re-verified
         // 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`.
         if target == DissemControl::Nf {
             let portion_attrs = [attrs.clone()];
@@ -533,7 +533,7 @@ fn apply_fact_remove(
         // banner line").
         //
         // Per the `ApplyIntentError::UnknownToken` doc-comment
-        // (`crates/scheme/src/scheme.rs:454-458`), an emitter that
+        // (in `crates/scheme/src/scheme.rs`), an emitter that
         // targets an unsupported token is treated as a programmer-
         // emission defect: the engine logs the error and drops the
         // fix without panicking.
@@ -625,7 +625,7 @@ fn apply_fact_remove(
             }
             TOK_REL_TO => {
                 // Whole-axis clear. Per the trait contract
-                // (`crates/scheme/src/scheme.rs:185-194`), an already-
+                // (`MarkingScheme::apply_intent` in `crates/scheme/src/scheme.rs`), an already-
                 // empty axis is per-intent inapplicable — return
                 // `Err(IntentInapplicable)`. The batch dispatcher
                 // aggregates to whole-batch inapplicable only when no

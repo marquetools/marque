@@ -125,8 +125,8 @@ const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// `sm.canonical_enum.is_none()`. The two are NOT equivalent:
 /// `canonical_enum` is also `None` for legitimate `Published`-system
 /// SCI markings whenever the `{system}-{first_compartment}` pair
-/// doesn't map to a CVE atom (per the `canonical_enum` doc in
-/// `crates/scheme/src/scheme.rs` — populated only when "the bare
+/// doesn't map to a CVE atom (per the `SciMarking::canonical_enum`
+/// doc in `crates/ism/src/attrs/sci.rs` — populated only when "the bare
 /// control or `{ctrl}-{first_comp}` matches a CVE value AND no
 /// sub-compartments are present"). Using `canonical_enum` as the
 /// discriminator would penalize legitimate `SI-G ABCD DEFG-MMM AACD`-

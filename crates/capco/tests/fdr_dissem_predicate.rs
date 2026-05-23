@@ -12,7 +12,7 @@
 //!
 //! These tests exercise the public `Vocabulary` trait surface only —
 //! the bidirectional value-pin against the private
-//! `crates/capco/src/scheme.rs::FDR_DOMINATORS` slice lives in
+//! `FDR_DOMINATORS` slice (`crates/capco/src/scheme/closure.rs`) lives in
 //! `crates/capco/src/vocabulary.rs::fdr_dissem_pin` (a `#[cfg(test)]`
 //! unit-test module) because `FDR_DOMINATORS` is `pub(crate)` per
 //! the project-memory `pub_doc_hidden_is_still_public_api` discipline:
@@ -49,7 +49,8 @@ fn is_fdr_dissem_admits_canonical_dominators() {
     assert!(
         v.is_fdr_dissem(&TOK_RELIDO),
         "RELIDO is FD&R per §B.3.a p19. Important regression \
-         pin: the neighboring scheme.rs::is_fdr_dominator predicate \
+         pin: the neighboring is_fdr_dominator predicate \
+         (`crates/capco/src/scheme/predicates/families.rs`) \
          excludes RELIDO (RELIDO-vs-RELIDO is a tautology in the \
          RELIDO-conflict family catalog). A regression that delegates \
          is_fdr_dissem through is_fdr_dominator would fail this test.",

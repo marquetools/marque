@@ -46,7 +46,7 @@ pub(crate) fn current_year() -> u32 {
 /// Banner derivation runs through the scheme's
 /// `render_canonical(Scope::Page, ...)` per the `MarkingScheme`
 /// trait's "single source of truth for canonical form" contract
-/// (`crates/scheme/src/scheme.rs` `render_canonical` doc).
+/// (the `MarkingScheme::render_canonical` doc in `crates/scheme/src/scheme.rs`).
 pub fn compute_banner_native(text: &str) -> Result<String, String> {
     use marque_capco::CapcoMarking;
     use marque_capco::scheme::CapcoScheme;

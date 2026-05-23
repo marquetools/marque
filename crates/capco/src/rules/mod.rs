@@ -32,11 +32,13 @@ mod helpers;
 mod joint;
 mod nato;
 mod nodis_exdis;
+mod recanonicalize;
 mod registry;
 mod rel_to;
 mod rel_to_suggest;
 mod rel_to_uncertainty;
 mod sci;
+mod sci_deprecated;
 mod text_handling;
 
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};

@@ -219,7 +219,7 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// The motivating PR 4b-D JOINT use case — `REL TO USA, GBR, JPN`
     /// partner-list cone — needs `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))`,
     /// which is the established open-vocab carrier in CAPCO
-    /// (`crates/capco/src/rules_declarative.rs:711-718`). [`FactRef<S>`]'s
+    /// (`CapcoOpenVocabRef::CountryCode`). [`FactRef<S>`]'s
     /// `Cve` / `OpenVocab` split covers both closed and open vocab uniformly,
     /// and the scheme's `category_of` impl owns the routing.
     ///

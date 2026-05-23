@@ -70,9 +70,9 @@ use crate::date::IsmDate;
 pub struct CanonicalAttrs {
     /// US/FGI/NATO/JOINT classification, or `None` when the parser
     /// found no classification. **FR-007**: must remain `Option<_>` —
-    /// the `MarkingClassification::Us` hardcode at
-    /// `crates/capco/src/scheme.rs:365` is PR 5's deletion target,
-    /// not PR 3a's.
+    /// the `MarkingClassification::Us` hardcode in the scheme's
+    /// projection logic (`crates/capco/src/scheme/marking.rs`) is
+    /// PR 5's deletion target, not PR 3a's.
     pub classification: Option<MarkingClassification>,
 
     /// SCI controls (CVE projection). Compatibility view per CLAUDE.md;

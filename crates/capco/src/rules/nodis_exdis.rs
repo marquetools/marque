@@ -440,7 +440,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
 ///
 /// `feature_ids` uses `Default::default()` (empty `SmallVec`) to
 /// stay consistent with the other strict-path intent builders in
-/// this crate (see `relido_remove_intent` in `rules_declarative.rs`).
+/// this crate (see `nodis_supersedes_exdis_intent` below).
 fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
     use crate::scheme::{TOK_EXDIS, TOK_NODIS};
     FixIntent {

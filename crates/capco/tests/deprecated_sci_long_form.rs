@@ -5,9 +5,10 @@
 //! T135a (issue #307 Group D) — deprecated SCI long-form canonicalization
 //! walker integration tests.
 //!
-//! Exercises the end-to-end engine flow for E065
-//! (`DeprecatedSciLongFormRule`) per row in the catalog in
-//! `marque-capco::rules_declarative::DEPRECATED_SCI_LONG_FORM_CATALOG`.
+//! Exercises the end-to-end engine flow for the deprecated SCI
+//! long-form walker (`DeprecatedSciLongFormRule`, wire ID
+//! `capco:portion.sci.deprecated-long-form`) per row in the catalog in
+//! `marque-capco`'s `rules::sci_deprecated` module.
 //!
 //! Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
 //!

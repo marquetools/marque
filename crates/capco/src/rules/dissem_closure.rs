@@ -68,11 +68,10 @@ const SUGGEST_CONFIDENCE: f32 = 0.85;
 /// fixpoint to a portion's marking. Constructed lazily — `CapcoScheme::new()`
 /// runs the constraint/page-rewrite/closure-rule catalog build once,
 /// then every `check()` call borrows the cached instance instead of
-/// reconstructing it per-portion. Mirrors the `SCHEME` pattern in
-/// `rules_declarative.rs` (the wrapper-layer file slated for retirement
-/// in the post-#578 refactor); having an independent instance here
-/// survives that retirement without coupling S008 to a file being
-/// deleted.
+/// reconstructing it per-portion. Mirrors the `SCHEME` lazy-construction
+/// pattern the former `rules_declarative` module used; keeping an
+/// independent instance here meant S008 was never coupled to that
+/// now-deleted file.
 static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(CapcoScheme::new);
 
 /// Rule **S008** — `relido-implied-by-closure`.
@@ -168,8 +167,9 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 /// `ReplacementIntent::FactAdd { token: FactRef::Cve(TOK_RELIDO),
 /// scope: Scope::Portion }` — the engine's renderer composes the
 /// post-add marking back into bytes. This is the same intent shape
-/// E021 uses for `FactAdd(NOFORN)` (see
-/// `rules_declarative.rs::aea_noforn_add_intent`); the engine handles
+/// E021 uses for `FactAdd(NOFORN)` (synthesized by the scheme-adapter
+/// bridge `crate::scheme::adapter::CapcoScheme::fix_intent_by_name` for
+/// `"portion.aea.rd-frd-requires-noforn"`); the engine handles
 /// canonical placement (per-axis sort) and separator insertion. No
 /// manual splice logic in this rule, in contrast to S007 which crosses
 /// a token boundary (RelToBlock vs Classification).

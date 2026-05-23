@@ -26,6 +26,7 @@ use super::form_mismatch::{BannerFormInPortionRule, PortionFormInBannerRule};
 use super::joint::{JointDisunityCollapseRule, JointUsaFirstRule};
 use super::nato::{BareNatoRequiresRelToRule, LegacyNatoCompoundRemarkRule};
 use super::nodis_exdis::{NodisExdisClearsBannerRelToRule, NodisSupersedesExdisInPortionRule};
+use super::recanonicalize::BareCanonicalCompoundRule;
 use super::rel_to::{
     BareRelPortionDivergenceRule, CollapseUniformRelPortionsRule, MissingUsaTrigraphRule,
     PreferTetragraphCollapseRule,
@@ -36,10 +37,10 @@ use super::sci::{
     HcsBareAtConfidentialLegacyRemarkRule, HcsBareSuggestSubcompartmentRule,
     RsvBareRequiresCompartmentRule, SciCustomControlInfoRule,
 };
+use super::sci_deprecated::DeprecatedSciLongFormRule;
 use super::text_handling::{
     CorrectionsMapRule, DeclassifyMisplacedRule, UnknownTokenRule, XShorthandDateRule,
 };
-use crate::rules_declarative::{BareCanonicalCompoundRule, DeprecatedSciLongFormRule};
 use crate::scheme::CapcoScheme;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
@@ -108,7 +109,7 @@ impl CapcoRuleSet {
                 // HCS, COMINT / SPECIAL INTELLIGENCE → SI, ECI <COMP> →
                 // SI-<COMP>, EL / ENDSEAL <COMP> → SI-<COMP>,
                 // KDK / KLONDIKE-<COMP> → TK-<COMP>). Catalog ordered
-                // longer-prefix-first inside `rules_declarative.rs`.
+                // longer-prefix-first inside `sci_deprecated.rs`.
                 // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
                 Box::new(DeprecatedSciLongFormRule),
                 // PR 9a (issue #307): class-specific bare-HCS / bare-RSV

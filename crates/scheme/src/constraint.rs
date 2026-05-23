@@ -349,7 +349,8 @@ pub struct ConstraintViolation {
 ///   they construct plus the returned `Vec`. The `ConflictsWithFamily`
 ///   arm additionally allocates the iterator returned by
 ///   `MarkingScheme::iter_present_tokens` (typically a boxed `Vec` of
-///   present tokens — see `crates/capco/src/scheme.rs::collect_present_tokens`),
+///   present tokens — see `collect_present_tokens` in
+///   `crates/capco/src/scheme/predicates/satisfies.rs`),
 ///   so its allocation cost is O(|present tokens|) per row. The `Custom`
 ///   arm delegates to `scheme.evaluate_custom`, whose allocation cost is
 ///   scheme-defined. The loop body itself does not allocate beyond the
