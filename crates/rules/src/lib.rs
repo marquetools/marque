@@ -1099,9 +1099,11 @@ impl<S: MarkingScheme> Clone for Diagnostic<S> {
         // wipes on drop just like the original.
         let recognized_canonical = self.recognized_canonical.as_ref().map(|sb| {
             // Principle II readout — Diagnostic clone path (issue #699).
-            // `expose_secret()` on a `SecretSlice<u8>` returns `&[u8]`,
-            // `Box::from(&[u8])` produces a fresh `Box<[u8]>`, and
-            // `SecretSlice::new` wraps it back up.
+            // `expose_secret()` on a `SecretSlice<u8>` returns `&[u8]`;
+            // `Box::from(&[u8])` produces a fresh `Box<[u8]>`; and
+            // `SecretBox::new(Box<[u8]>)` wraps it back up. `SecretSlice<u8>`
+            // is the type alias for `SecretBox<[u8]>` — there is no
+            // separate `SecretSlice::new` constructor.
             secrecy::SecretBox::new(Box::from(secrecy::ExposeSecret::expose_secret(sb)))
         });
         Self {
