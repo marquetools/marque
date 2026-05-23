@@ -1039,10 +1039,14 @@ pub struct Diagnostic<S: MarkingScheme> {
     ///
     /// # Constitution Principle II
     ///
-    /// Stored as `SecretBox<Box<[u8]>>` so the canonical bytes wipe
-    /// on drop and every readout site goes through `expose_secret()`
-    /// (greppable for security review). Readout sites today: the
-    /// CLI human renderer (`render_human`), the CLI NDJSON projection
+    /// Stored as [`secrecy::SecretSlice<u8>`] (the alias for the
+    /// unsized `SecretBox<[u8]>`) so the canonical bytes wipe on drop
+    /// and every readout site goes through `expose_secret()` —
+    /// greppable for security review, returning `&[u8]` directly.
+    /// This is the same wrapper that backs `FixResult.source`; the
+    /// lint and fix output surfaces use one shared content-bearing
+    /// type. Readout sites today: the CLI human renderer
+    /// (`render_human`), the CLI NDJSON projection
     /// (`diagnostic_to_json`), and the WASM NDJSON mirror.
     ///
     /// # Constitution V Principle V (G13 audit-content-ignorance)
@@ -1054,7 +1058,7 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// never the bytes themselves. The asymmetry is pinned by the
     /// `lint_carries_recognized_canonical_fix_audit_does_not` test
     /// in `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
-    pub recognized_canonical: Option<secrecy::SecretBox<Box<[u8]>>>,
+    pub recognized_canonical: Option<secrecy::SecretSlice<u8>>,
 }
 
 /// Payload for an engine-applied byte-substitution fix.
@@ -1087,21 +1091,18 @@ pub struct TextCorrection {
 // `Clone` by its own derive).
 impl<S: MarkingScheme> Clone for Diagnostic<S> {
     fn clone(&self) -> Self {
-        // `SecretBox<Box<[u8]>>` blocks Clone by design (Constitution
+        // `SecretSlice<u8>` blocks Clone by design (Constitution
         // Principle II — content-bearing buffers must not silently
         // duplicate without an auditable readout). We expose-and-rewrap:
         // every Diagnostic clone is a sanctioned readout of the
-        // decoder-recognized canonical bytes, and the new SecretBox
+        // decoder-recognized canonical bytes, and the new SecretSlice
         // wipes on drop just like the original.
         let recognized_canonical = self.recognized_canonical.as_ref().map(|sb| {
             // Principle II readout — Diagnostic clone path (issue #699).
-            // `SecretBox::new` takes `Box<T>`; with `T = Box<[u8]>` the
-            // constructor argument is `Box<Box<[u8]>>`, hence the
-            // outer `Box::new(...)` wrapping the inner `Box<[u8]>`
-            // returned by `.clone()`. Looks redundant, isn't —
-            // see the parallel construction in
-            // `crates/engine/src/engine.rs::build_decoder_diagnostic`.
-            secrecy::SecretBox::new(Box::new(secrecy::ExposeSecret::expose_secret(sb).clone()))
+            // `expose_secret()` on a `SecretSlice<u8>` returns `&[u8]`,
+            // `Box::from(&[u8])` produces a fresh `Box<[u8]>`, and
+            // `SecretSlice::new` wraps it back up.
+            secrecy::SecretBox::new(Box::from(secrecy::ExposeSecret::expose_secret(sb)))
         });
         Self {
             rule: self.rule,
@@ -1254,8 +1255,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
     ///
     /// # Constitution Principle II
     ///
-    /// The argument is a `SecretBox<Box<[u8]>>` so the bytes wipe on
-    /// drop. Every `expose_secret()` readout site (CLI human
+    /// The argument is a [`secrecy::SecretSlice<u8>`] so the bytes
+    /// wipe on drop. Every `expose_secret()` readout site (CLI human
     /// renderer, NDJSON projection, WASM mirror) is a grep target
     /// for security review.
     ///
@@ -1281,7 +1282,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
     #[must_use]
     pub fn with_recognized_canonical(
         mut self,
-        canonical: Option<secrecy::SecretBox<Box<[u8]>>>,
+        canonical: Option<secrecy::SecretSlice<u8>>,
     ) -> Self {
         self.recognized_canonical = canonical;
         self

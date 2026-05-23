@@ -4354,17 +4354,14 @@ fn build_decoder_diagnostic(
     // UTF-8-validity and no-op-rewrite gates only — both have already
     // run by this point. The canonical bytes feeding
     // `recognized_canonical` come directly from
-    // `provenance.canonical_bytes`, not from the gate-side `replacement`
-    // `&str`. The double-`Box` (`Box::new(Box::from(&[u8]))`) is
-    // load-bearing because `SecretBox::new` takes `Box<T>` and we want
-    // `T = Box<[u8]>` — the outer `Box::new` wraps the inner `Box<[u8]>`
-    // to match the constructor signature. Constitution II — the
-    // `SecretBox` wipes on drop; every readout goes through
-    // `expose_secret()`.
+    // `provenance.canonical_bytes`. The wrapper is `SecretSlice<u8>`
+    // (alias for `SecretBox<[u8]>`), the same content-bearing type
+    // backing `FixResult.source`. Constitution II — the secret wipes
+    // on drop; every readout goes through `expose_secret()`.
     let _ = (original, replacement);
-    let recognized_canonical = Some(secrecy::SecretBox::new(Box::new(Box::from(
+    let recognized_canonical = Some(secrecy::SecretBox::new(Box::from(
         provenance.canonical_bytes.as_ref(),
-    ))));
+    )));
     use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {

@@ -117,7 +117,7 @@ fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_>
     let recognized_canonical = d
         .recognized_canonical
         .as_ref()
-        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb).as_ref()).ok());
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
         rule: (&d.rule).into(),
         severity: d.severity.as_str(),

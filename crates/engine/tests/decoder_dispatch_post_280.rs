@@ -538,7 +538,7 @@ fn canonical_fgi_portion_emits_no_decoder_diagnostic() {
 fn recognized_canonical_bytes(d: &Diagnostic<CapcoScheme>) -> Option<Vec<u8>> {
     d.recognized_canonical
         .as_ref()
-        .map(|sb| sb.expose_secret().as_ref().to_vec())
+        .map(|sb| sb.expose_secret().to_vec())
 }
 
 #[test]

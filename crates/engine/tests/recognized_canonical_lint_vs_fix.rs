@@ -149,7 +149,7 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
         // bytes" half of the cross-channel asymmetry; the negative
         // half (audit envelope contains only the digest) is asserted
         // below.
-        .map(|sb| sb.expose_secret().as_ref().to_vec())
+        .map(|sb| sb.expose_secret().to_vec())
         .expect("R001 must carry recognized_canonical");
     assert_eq!(
         recognized.as_slice(),

@@ -254,9 +254,7 @@ pub fn render_human(
     // (the engine's `build_decoder_diagnostic` only populates this
     // field after a UTF-8-validity gate).
     if let Some(canonical) = diag.recognized_canonical.as_ref() {
-        if let Ok(text) =
-            std::str::from_utf8(secrecy::ExposeSecret::expose_secret(canonical).as_ref())
-        {
+        if let Ok(text) = std::str::from_utf8(secrecy::ExposeSecret::expose_secret(canonical)) {
             writeln!(out, "{gutter} {eq} recognized as: {text}")?;
         }
     }
@@ -410,7 +408,7 @@ pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     let recognized_canonical = d
         .recognized_canonical
         .as_ref()
-        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb).as_ref()).ok());
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
         rule: (&d.rule).into(),
         severity: d.severity.as_str(),
@@ -1529,9 +1527,9 @@ mod tests {
             "decoder recognized canonical form",
             Some(make_intent_fix()),
         )
-        .with_recognized_canonical(Some(secrecy::SecretBox::new(Box::new(Box::from(
+        .with_recognized_canonical(Some(secrecy::SecretBox::new(Box::from(
             b"(TS//SAR-FK)".as_ref(),
-        )))));
+        ))));
 
         let mut out = Vec::new();
         render_human(&mut out, "portion.txt", src, &diag, false).unwrap();
