@@ -391,7 +391,7 @@ mod tests {
         // Without the `strict_parse_is_complete` check, the
         // dispatcher would accept this as a complete strict result
         // and never fall through to the decoder.
-        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        // Inline scheme per test for hermeticity.
         let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn strict_parse_is_complete_accepts_clean_marking() {
-        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        // Inline scheme per test for hermeticity.
         let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
@@ -442,7 +442,7 @@ mod tests {
         // tail token `FRBN` lands in an `Unknown` span. The
         // dispatcher must fall back so the decoder can resolve
         // `FRBN` → `NF` (or reject).
-        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        // Inline scheme per test for hermeticity.
         let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);

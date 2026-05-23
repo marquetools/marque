@@ -151,7 +151,7 @@ pub(super) const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
 /// [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`] (`-12.0`, used
 /// for the canonical-token path elsewhere).
 ///
-/// **Dedup is an approximation (Copilot #5).** Tokens are dedup'd by
+/// **Dedup is an approximation.** Tokens are dedup'd by
 /// a 16-byte uppercase prefix, not by their full bytes. Tokens longer
 /// than 16 bytes that share a prefix collide on the dedup key and
 /// suppress one another's contribution to the sum. The effect is
@@ -169,7 +169,8 @@ pub(super) const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
 /// caller writes the resulting `f32` into `ScoredCandidate::null_posterior`,
 /// where it flows into the decoder's scoring math but never reaches
 /// `AppliedFix.proposal.original`, `proposal.replacement`, or the
-/// R001 diagnostic message (those channels were closed in PR #259).
+/// R001 diagnostic message (those channels were closed under
+/// issue #259).
 pub(super) fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
     let mut sum: f32 = 0.0;
     let mut seen: SmallVec<[[u8; 16]; 16]> = SmallVec::new();
@@ -194,8 +195,8 @@ pub(super) fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
                     // Uppercase into a stack buffer; priors keys are
                     // uppercase.
                     //
-                    // **Truncation is a deliberate approximation
-                    // (Copilot #5).** The 16-byte stack key truncates
+                    // **Truncation is a deliberate approximation.**
+                    // The 16-byte stack key truncates
                     // observed tokens longer than 16 bytes for dedup
                     // purposes. The lookup against the priors tables
                     // is unaffected — tokens >16 bytes will not match
@@ -247,7 +248,7 @@ pub(super) fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
                     if !already {
                         seen.push(buf);
                         seen_lens.push(take as u8);
-                        // Lazy table fallback (Copilot #6): the
+                        // Lazy table fallback: the
                         // country-code lookup runs only when the
                         // token-table lookup returned `None`. Most
                         // observed tokens hit `token_prose_log_prior`

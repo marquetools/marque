@@ -50,7 +50,7 @@ fn is_hard_splitter_covers_documented_long_forms() {
     ] {
         assert!(
             is_hard_splitter(token),
-            "{token:?} must be a hard splitter (issue #133 PR 3)"
+            "{token:?} must be a hard splitter (issue #133)"
         );
     }
 }
@@ -84,8 +84,8 @@ fn score_candidate_splits_prior_and_posterior() {
     let parsed = parser
         .parse(&candidate, b"SECRET//NOFORN")
         .expect("SECRET//NOFORN must parse");
-    // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme construction
-    // per test for hermeticity; routes via the trait override.
+    // Inline scheme construction per test for hermeticity; routes
+    // via the trait override.
     let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
 
     let features = [
@@ -132,8 +132,8 @@ fn score_candidate_includes_country_code_prior_for_rel_to() {
     // entries must produce a strictly lower (more negative) prior than the
     // same marking with ONE entry, because each country code contributes a
     // negative log-prior term and GBR is a known high-frequency trigraph.
-    // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme construction
-    // per test for hermeticity; both call sites route via the trait override.
+    // Inline scheme construction per test for hermeticity; both
+    // call sites route via the trait override.
     let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
@@ -184,8 +184,8 @@ fn score_candidate_deduplicates_rel_to_entries() {
     // Issue #233 dedup guard: a duplicate REL TO entry (e.g. "USA, USA")
     // must score identically to the deduplicated form ("USA") because
     // `seen_rel_to_codes` prevents double-counting.
-    // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme construction
-    // per test for hermeticity; both call sites route via the trait override.
+    // Inline scheme construction per test for hermeticity; both
+    // call sites route via the trait override.
     let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);

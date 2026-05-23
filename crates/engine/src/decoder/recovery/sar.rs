@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn decoder_recovers_spcial_via_extended_correction_vocab() {
-        // `SPCIAL` (typo in `SPECIAL`) — issue #133 PR 6 vocab
+        // `SPCIAL` (typo in `SPECIAL`) — issue #133 vocab
         // addition. The fuzzy matcher now finds `SPECIAL` at edit
         // distance 1, the strict SAR parser then matches the
         // `SPECIAL ACCESS REQUIRED-BUTTER POPCORN` indicator

@@ -10,7 +10,7 @@ use marque_ism::{SciControl, SciControlBare};
 // SCI delimiter recovery
 // ---------------------------------------------------------------------------
 
-/// SCI delimiter recovery preprocessing — issue #198, #133 PR 10.
+/// SCI delimiter recovery preprocessing — issues #198 and #133.
 ///
 /// Repairs three classes of SCI delimiter typos against the closed
 /// CVE vocabulary in `CVEnumISMSCIControls.xml`. Vocabulary checks
@@ -43,7 +43,7 @@ use marque_ism::{SciControl, SciControlBare};
 /// invent identifiers it doesn't know are valid (Constitution VIII).
 ///
 /// **Architectural shape** mirrors `try_rel_to_structural_repair`
-/// (PR 9, #190): runs as preprocessing on the input string before
+/// (issue #190): runs as preprocessing on the input string before
 /// per-token fuzzy correction, returns `Some(repaired)` only when at
 /// least one repair fired. The caller pushes a `BaseRateCommonMarking`
 /// feature onto `delim_features` so every candidate derived from the

@@ -484,10 +484,10 @@ mod tests {
     fn heuristic_skips_long_token() {
         // 4+ char tokens fall through the length match arm — the
         // vocab fuzzy path handles them. 3-char tokens are mostly
-        // handled by the vocab path too (now that PR 8 added bare
-        // `TOP` to `EXTENDED_CORRECTION_VOCAB`, shapes like `TPP`
-        // and `UOP` correct via dist-1 fuzzy); the 3-char heuristic
-        // is intentionally narrow (only `OTP` → `TOP`) so unrelated
+        // handled by the vocab path too (bare `TOP` is in
+        // `EXTENDED_CORRECTION_VOCAB`, so shapes like `TPP` and
+        // `UOP` correct via dist-1 fuzzy); the 3-char heuristic is
+        // intentionally narrow (only `OTP` → `TOP`) so unrelated
         // 3-char tokens like `YES` return None.
         assert_eq!(try_classification_heuristic_fix("(YES//NF)"), None);
         assert_eq!(try_classification_heuristic_fix("(SECT//NF)"), None);
@@ -534,11 +534,11 @@ mod tests {
 
     #[test]
     fn heuristic_recovers_tp_and_to_to_top_via_2char_rule() {
-        // PR 8 extended the 2-char heuristic to map `TP`/`TO` → `TOP`.
-        // These are corpus-attested classification typos where the
-        // middle `O` (`TP`) or trailing `P` (`TO`) was elided. They
-        // must not collide with the TS rule because neither `P` nor
-        // `O` is in the S-cluster.
+        // The 2-char heuristic also maps `TP`/`TO` → `TOP`. These are
+        // corpus-attested classification typos where the middle `O`
+        // (`TP`) or trailing `P` (`TO`) was elided. They must not
+        // collide with the TS rule because neither `P` nor `O` is in
+        // the S-cluster.
         let cases: &[(&str, &str)] = &[
             ("TP SECRET//NOFORN", "TOP SECRET//NOFORN"),
             ("TO SECRET//NOFORN", "TOP SECRET//NOFORN"),
@@ -577,12 +577,11 @@ mod tests {
 
     #[test]
     fn is_canonical_short_classification_recognizes_top() {
-        // PR 8 added bare `TOP` to the canonical-short set so the
+        // Bare `TOP` belongs in the canonical-short set so the
         // classification heuristic doesn't fire on already-canonical
         // `TOP SECRET//...` input (whose first whitespace-token is
-        // `TOP`). Pre-PR-8 this was a no-op because the length-3
-        // heuristic always returned None; PR 8's OTP rule made it
-        // load-bearing.
+        // `TOP`). Without `TOP` in the set the length-3 heuristic
+        // (`OTP → TOP`) would re-fire on canonical input.
         assert!(is_canonical_short_classification("TOP"));
         // Existing canonical short forms still recognized.
         for s in &["U", "R", "C", "S", "TS"] {
@@ -606,12 +605,12 @@ mod tests {
 
     #[test]
     fn heuristic_skips_lone_inputs() {
-        // Issue #133 PR 4 / #176 lone-input safety guard. The
-        // heuristic must NOT fire on inputs without marking-shape
-        // signals beyond the leading token — auto-applying lone-case
-        // fixes would surface as false positives on parenthetical
-        // refs like `(A)`, `(W)`, `(F)` that are common in business
-        // prose. The corpus measurement at PR 4 found `A` alone has
+        // Issues #133 / #176 lone-input safety guard. The heuristic
+        // must NOT fire on inputs without marking-shape signals
+        // beyond the leading token — auto-applying lone-case fixes
+        // would surface as false positives on parenthetical refs
+        // like `(A)`, `(W)`, `(F)` that are common in business
+        // prose. The #133 corpus measurement found `A` alone has
         // 214,539 unrestricted body-text occurrences in the Enron
         // corpus vs 168 in marking-context — the lone-case FP rate
         // is ~3 orders of magnitude higher than the in-context rate.
@@ -631,7 +630,7 @@ mod tests {
             assert_eq!(
                 try_classification_heuristic_fix(lone),
                 None,
-                "lone input {lone:?} must not fire heuristic (#133 PR 4 / #176 lone-input guard)"
+                "lone input {lone:?} must not fire heuristic (#133 / #176 lone-input guard)"
             );
         }
     }

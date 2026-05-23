@@ -61,7 +61,7 @@ use super::super::types::FeatureEntry;
 ///    pattern 3 — the structural transform requires the corrected
 ///    output to be a valid trigraph.
 ///
-/// # Scope (PR 9)
+/// # Scope
 ///
 /// Patterns 1 and 2 affect the literal `REL TO` header and run
 /// regardless of what follows. Patterns 3 and 4 require a `REL TO `

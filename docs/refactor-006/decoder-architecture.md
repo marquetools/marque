@@ -80,7 +80,7 @@ log-priors); the per-feature log-odds deltas live only in
 `prior_log_odds + Σ evidence.log_odds` recovers the decoder's
 internal posterior exactly, without double-counting.
 
-## Null-hypothesis dispatch (issue #258 + #472)
+## Null-hypothesis dispatch (issues #258 and #472)
 
 The decoder dispatches a candidate to the rule layer only when its
 marking-side posterior beats the prose-side null hypothesis by at
@@ -89,13 +89,13 @@ prose-prior computation, the line-position / bullet-anchor /
 lowercase-context feature extractor, and the constants that tune all
 three live in `decoder/null_hypothesis.rs`.
 
-The pre-#472 implementation summed the null prior over canonical
-tokens (post fuzzy correction) which silently shifted null-side mass
-when fuzzy correction landed on a rare CAPCO token (e.g., observed
-`(CMS)` → canonical `CTS`). The post-#472 path
-(`observed_prose_log_prior`) walks the original `bytes` slice to
-produce a bag of *observed* tokens, restoring the symmetric
-marking-vs-prose comparison.
+Before issue #472, the null prior was summed over canonical tokens
+(post fuzzy correction), which silently shifted null-side mass when
+fuzzy correction landed on a rare CAPCO token (e.g., observed
+`(CMS)` → canonical `CTS`). The current path
+(`observed_prose_log_prior`, landed for #472) walks the original
+`bytes` slice to produce a bag of *observed* tokens, restoring the
+symmetric marking-vs-prose comparison.
 
 The `NULL_HYPOTHESIS_LOG_MARGIN` magnitude of `2.5` (e^2.5 ≈ 12.2×)
 is the smallest margin that suppresses the SC-003a Federalist `(s)`

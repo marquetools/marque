@@ -495,9 +495,9 @@ mod tests {
         // Synthesize a marking via the decoder and check the floor
         // predicate directly.
         //
-        // Issue #258: pre-#258 this used `(U)` (portion form), but
-        // single-letter portions are now suppressed by the prose null
-        // hypothesis. Switch to `UNCLASSIFIED` (banner form) — the
+        // Issue #258: this uses `UNCLASSIFIED` (banner form)
+        // because single-letter portions like `(U)` are suppressed
+        // by the prose null hypothesis. With the banner form, the
         // prose-side prior for the full word is at the Laplace floor
         // (zero hits in 134M prose-corpus words), so the marking-y
         // delta is huge and the candidate resolves cleanly. The unit

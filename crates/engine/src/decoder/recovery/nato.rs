@@ -15,8 +15,8 @@ use marque_ism::{NatoClassification, span::MarkingType};
 /// [`NatoClassification`] variants. Keyed on the token string (abbreviation
 /// or full-word form); the canonical portion string (`NS`, `CTS`, etc.) is
 /// derived via [`NatoClassification::portion_str`] so that a future
-/// enum-variant addition (ATOMAL sub-levels, PR 9 T134 BOHEMIA/BALK) is
-/// enough to extend coverage without touching this fold logic.
+/// enum-variant addition (ATOMAL sub-levels, BOHEMIA/BALK NATO SAPs)
+/// is enough to extend coverage without touching this fold logic.
 ///
 /// Rows ordered: abbreviations first (U/R/C/S/TS), then full words. The
 /// lookup is a linear scan over 10 rows — the total set is small and
@@ -24,9 +24,8 @@ use marque_ism::{NatoClassification, span::MarkingType};
 ///
 /// **Out of scope.** Parametric NATO-NAC-Activity rows from §G.1 Table 4
 /// lines 776-779 (`NATO [NAC Activity] SECRET → N[NAC Activity]S` and
-/// equivalents for C/R/U) are not covered here; they require distinct parser
-/// support for the open-ended activity identifier and are not tracked in this
-/// PR or PR 9 T134.
+/// equivalents for C/R/U) are not covered here; they require distinct
+/// parser support for the open-ended activity identifier.
 ///
 /// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register).
 const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
@@ -76,9 +75,9 @@ const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
 /// classification slot). NATO content in a non-first-slot position
 /// (e.g., `(S//NATO C)`) indicates commingled US+NATO info, which per
 /// CAPCO-2016 §H.7 should transmute to FGI (`(S//FGI NATO)`) — not
-/// produce a NATO-axis canonical. PR 8 does not implement the transmutation
-/// (Stage 4 / PR 9+ territory); restricting the fold to the first segment
-/// ensures we don't manufacture wrong intermediates while the proper fix waits.
+/// produce a NATO-axis canonical. The FGI-transmutation rewrite is not
+/// yet implemented; restricting the fold to the first segment ensures
+/// we don't manufacture wrong intermediates while the proper fix waits.
 /// Cross-segment NATO inputs return decode-miss.
 ///
 /// **Idempotence**: returns `None` when no segment was changed (including
@@ -133,8 +132,9 @@ pub(in crate::decoder) fn try_nato_fold(text: &str, kind: MarkingType) -> Option
     // `//`-separated slot per CAPCO-2016 §A.6. `NATO X` in a
     // non-first slot (e.g., `(S//NATO C)`) indicates commingled
     // US+NATO info. Correct canonical form per §H.7 is FGI transmutation
-    // (`(S//FGI NATO)`), not a NATO-axis canonical. PR 9+ handles that
-    // transmutation; PR 8 produces a decode-miss to avoid wrong intermediates.
+    // (`(S//FGI NATO)`), not a NATO-axis canonical. Until that
+    // transmutation is implemented, the fold produces a decode-miss
+    // to avoid wrong intermediates.
     let first_nonempty_idx = segments.iter().position(|s| !s.is_empty());
     let Some(class_slot_idx) = first_nonempty_idx else {
         return None; // All empty — degenerate input, nothing to fold.
@@ -216,10 +216,10 @@ pub(in crate::decoder) fn try_nato_fold(text: &str, kind: MarkingType) -> Option
 ///
 /// Returns `None` when the segment is `NATO <level> <rest>` with non-empty
 /// `<rest>` — compound forms like `NATO SECRET ATOMAL` parse through the
-/// strict parser's `parse_nato_classification`, which now (PR 9c.1 T134)
-/// canonicalizes legacy compound text into bare class + AEA/SCI companion
-/// per CAPCO-2016 §H.7 p122 + §G.2 p40 + §H.7 p127. The fold must not
-/// truncate the suffix; its job is the 5-base-level path only.
+/// strict parser's `parse_nato_classification`, which canonicalizes legacy
+/// compound text into bare class + AEA/SCI companion per CAPCO-2016 §H.7
+/// p122 + §G.2 p40 + §H.7 p127. The fold must not truncate the suffix;
+/// its job is the 5-base-level path only.
 ///
 /// **Caller invariant.** The caller ([`try_nato_fold`]) restricts invocation
 /// to the first non-empty `//`-separated segment (the classification slot) so
@@ -246,12 +246,12 @@ fn fold_nato_segment(seg: &str, kind: MarkingType) -> Option<String> {
     if let Some(after_ts) = after_nato.strip_prefix("TOP SECRET") {
         let rest = after_ts.trim_start();
         if !rest.is_empty() {
-            // Compound NATO SAP forms (ATOMAL, BOHEMIA, BALK) are out of scope
-            // for PR 8. The strict parser already accepts
-            // `NATO TOP SECRET ATOMAL` / `NATO TOP SECRET-BOHEMIA` /
-            // `NATO TOP SECRET-BALK` (parser.rs:1043-1052); folding the first
-            // half would mangle the suffix and regress recovery.
-            // PR 9 T134 will land an explicit fold for these compounds.
+            // Compound NATO SAP forms (ATOMAL, BOHEMIA, BALK) are out of
+            // scope for the longhand fold. The strict parser already
+            // accepts `NATO TOP SECRET ATOMAL` / `NATO TOP SECRET-BOHEMIA`
+            // / `NATO TOP SECRET-BALK` (see `parse_nato_classification`
+            // in `marque-core`); folding the first half would mangle
+            // the suffix and regress recovery.
             return None;
         }
         nato_level = NatoClassification::CosmicTopSecret;
@@ -270,10 +270,9 @@ fn fold_nato_segment(seg: &str, kind: MarkingType) -> Option<String> {
 
         if !rest.is_empty() {
             // Same rationale as the TOP SECRET branch: compound SAP forms
-            // (NATO SECRET ATOMAL, NATO CONFIDENTIAL ATOMAL, etc.) are out of
-            // scope. The strict parser handles them; the fold must not truncate
-            // the suffix. PR 9 T134 will land the explicit ATOMAL/BOHEMIA/BALK
-            // fold.
+            // (NATO SECRET ATOMAL, NATO CONFIDENTIAL ATOMAL, etc.) are out
+            // of scope. The strict parser handles them; the fold must not
+            // truncate the suffix.
             return None;
         }
         nato_level = found;
@@ -481,13 +480,13 @@ mod tests {
     #[test]
     fn fold_nato_segment_returns_none_for_atomal_compound() {
         // `NATO SECRET ATOMAL` is a legitimate compound the strict parser
-        // canonicalizes (PR 9c.1 T134: bare `NatoSecret` class + AEA
-        // `Atomal` companion). The fold MUST NOT fire on it — otherwise
-        // the suffix gets truncated and recovery regresses.
+        // canonicalizes (bare `NatoSecret` class + AEA `Atomal`
+        // companion). The fold MUST NOT fire on it — otherwise the
+        // suffix gets truncated and recovery regresses.
         //
-        // Regression guard for the FIX-A correctness fix in the PR 8
-        // round-2 reviewer response. Citation: CAPCO-2016 §H.7 p122
-        // (ATOMAL as AEA-axis marking, worked example).
+        // Regression guard for the FIX-A correctness fix.
+        // Citation: CAPCO-2016 §H.7 p122 (ATOMAL as AEA-axis marking,
+        // worked example).
         assert!(
             fold_nato_segment("NATO SECRET ATOMAL", MarkingType::Portion).is_none(),
             "fold must not fire on NATO SECRET ATOMAL (strict parser canonicalizes)"
@@ -506,8 +505,8 @@ mod tests {
     fn fold_nato_segment_returns_none_for_bohemia_balk() {
         // Hyphen-separated NATO compounds (`NATO TOP SECRET-BOHEMIA`,
         // `NATO TOP SECRET-BALK`) are also out of scope for the fold;
-        // the strict parser canonicalizes them via PR 9c.1 T134 into
-        // bare `CosmicTopSecret` class + SCI `NatoSap` companion
+        // the strict parser canonicalizes them into bare
+        // `CosmicTopSecret` class + SCI `NatoSap` companion
         // (CAPCO-2016 §G.2 p40 + §H.7 p127).
         //
         // Regression guard for FIX-A. Citation: CAPCO-2016 §G.2 p40 +

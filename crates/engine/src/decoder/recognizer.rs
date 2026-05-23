@@ -198,11 +198,11 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 
                 // Canonicalization seam: `MarkingScheme::canonicalize`
                 // is the sole `ParsedAttrs → CanonicalAttrs` route per
-                // FR-043 (PR 3c.2.E retired the transitional
-                // `marque_ism::from_parsed_unchecked` adapter). The
-                // recognizer receives the scheme via the `&S`
-                // parameter threaded through `recognize()` after
-                // `engine-S-generic-recognizer-cleanup` (#634) landed.
+                // FR-043 (the transitional
+                // `marque_ism::from_parsed_unchecked` adapter has been
+                // retired). The recognizer receives the scheme via
+                // the `&S` parameter threaded through `recognize()`
+                // after issue #634 landed.
                 let mut attrs = scheme.canonicalize(parsed.attrs);
 
                 // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
@@ -442,16 +442,17 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         // Portion-shape null-hypothesis filter (issue #472, expanded
         // from issue #258).
         //
-        // Pre-#472 the gate fired only for single-letter portions
-        // (`(s)`, `(c)`, `(u)`, `(r)`). That covered the
+        // Before issue #472 the gate fired only for single-letter
+        // portions (`(s)`, `(c)`, `(u)`, `(r)`). That covered the
         // SC-003a-Federalist `(s)` case but missed the broader class
         // of prose acronym parentheticals (`(CMS)`, `(CTs)`, `(MD)`,
         // …) where the user typed a 2-5-letter English acronym that
-        // happens to fuzzy-correct to a CAPCO portion shape. The
-        // pre-#472 gate also gated by canonical-token shape, so an
-        // observed `(CMS)` whose decoder canonicalized to `CTS` was
-        // measured against the prose prior for the (rare) CAPCO token
-        // it became, not the (common) prose acronym the user typed.
+        // happens to fuzzy-correct to a CAPCO portion shape. Before
+        // issue #472 landed, the gate also keyed on canonical-token
+        // shape, so an observed `(CMS)` whose decoder canonicalized
+        // to `CTS` was measured against the prose prior for the
+        // (rare) CAPCO token it became, not the (common) prose
+        // acronym the user typed.
         //
         // #472 generalizes the gate to **every** portion shape except:
         //
@@ -499,12 +500,12 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         //
         // 1. **Dispatch decision** (Unambiguous vs Ambiguous): driven
         //    by the marking-side runner-up only — i.e., the second-
-        //    best CAPCO candidate. Preserves the pre-#258 invariant
-        //    that a single CAPCO candidate (after strict-parse
-        //    filtering) collapses to Unambiguous regardless of how
-        //    confident the prose alternative is, as long as the prose
-        //    alternative does not outright beat the marking
-        //    interpretation (the null-wins early return below).
+        //    best CAPCO candidate. Preserves the invariant established
+        //    before issue #258 that a single CAPCO candidate (after
+        //    strict-parse filtering) collapses to Unambiguous
+        //    regardless of how confident the prose alternative is, as
+        //    long as the prose alternative does not outright beat the
+        //    marking interpretation (the null-wins early return below).
         //    Applying `UNAMBIGUOUS_LOG_MARGIN` against the null
         //    hypothesis would tighten the threshold for short fuzzy
         //    fixes (e.g., `(SERCET//NF)`) that already cleared the

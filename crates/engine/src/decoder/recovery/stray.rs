@@ -40,15 +40,15 @@
 /// per-pattern lookup table to choose the right transform; the
 /// vocab does the choosing implicitly.
 ///
-/// # Scope (PR 7)
+/// # Scope
 ///
 /// Only the FIRST `/X/` match in the input is processed; an input
 /// with multiple stray-character patterns (e.g., `S/I/T/K`) is not
 /// fully recovered by a single pass. The current corpus has very
 /// few multi-pattern inputs (1–2 in the unresolved Typo set), and
 /// adding a multi-pass loop here would complicate the candidate cap
-/// in [`generate_candidate_bytes`] without proportional benefit. A
-/// future PR can iterate if multi-pattern recovery becomes
+/// in [`generate_candidate_bytes`] without proportional benefit. The
+/// pass can iterate later if multi-pattern recovery becomes
 /// load-bearing for SC-004 movement.
 ///
 /// # Pattern boundary requirements
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn try_collapse_stray_char_slash_processes_only_first_match() {
-        // PR 7 scope: only the first `/X/` is processed. Multi-
-        // pattern inputs need a future multi-pass extension.
+        // Scope: only the first `/X/` is processed. Multi-pattern
+        // inputs need a future multi-pass extension.
         let result = try_collapse_stray_char_slash("A/X/B/Y/C");
         assert_eq!(result.len(), 3);
         // Each candidate carries only the first transform — the

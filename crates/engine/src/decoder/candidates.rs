@@ -92,7 +92,7 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
     // ---- Raw: just trim + normalize delimiters/case. --------------
     let (normalized, mut delim_features) = normalize_delimiters_and_case(trimmed);
 
-    // ---- REL TO structural repair (issue #133 PR 9) — applied as
+    // ---- REL TO structural repair (issue #133) — applied as
     //      PREPROCESSING (before fuzzy correction) rather than as a
     //      competing candidate emission. All four PR-9 patterns are
     //      safe to apply unconditionally:
@@ -144,7 +144,7 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
         None => normalized,
     };
 
-    // ---- SCI delimiter repair (issue #198, #133 PR 10). Same
+    // ---- SCI delimiter repair (issues #198 and #133). Same
     //      preprocessing-shape as the REL TO repair above: rewrites
     //      concatenated CVE compounds (`HCSP → HCS-P`), missing
     //      slashes between bare control systems (`SITK → SI/TK`), and
@@ -264,7 +264,7 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
         );
     }
 
-    // ---- Missing-delimiter insertion (issue #133 PR 3). Walks the
+    // ---- Missing-delimiter insertion (issue #133). Walks the
     //      fuzzy-corrected text, inserts `//` at category-transition
     //      whitespace gaps. Tagged with `FixSource::DecoderPosterior`
     //      because the recovery is structural (missing punctuation),
@@ -290,7 +290,7 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
         );
     }
 
-    // ---- SAR indicator-keyword structural repair (issue #133 PR 6).
+    // ---- SAR indicator-keyword structural repair (issue #133).
     //      Recovers `USAR-BP-J12...` (stray prefix on the SAR
     //      indicator) and `SARBP` (missing hyphen between indicator
     //      and program identifier). Same provenance / penalty story
@@ -312,7 +312,7 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
         );
     }
 
-    // ---- Stray-character `/X/` recovery (issue #133 PR 7). Walks
+    // ---- Stray-character `/X/` recovery (issue #133). Walks
     //      the fuzzy-corrected text looking for the pattern
     //      `<alnum>/<single_alnum_char>/<alnum>` — three transforms
     //      emitted per match (drop X, attach X to right token,
@@ -419,7 +419,7 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
         );
     }
 
-    // ---- Position-aware classification heuristic (issue #133 PR 2).
+    // ---- Position-aware classification heuristic (issue #133).
     //      Runs LAST so the dedup-keep-first guard above lets a
     //      vocab-based attempt with the same canonical bytes win the
     //      provenance contest — the heuristic only "wins" when no

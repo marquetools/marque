@@ -108,7 +108,7 @@ fn decoder_rejects_trivial_strict_parse() {
     // dissem_controls=[], sci_controls=[]. The decoder must treat
     // that as "no real parse" and drop the candidate — otherwise
     // it would fabricate an empty marking for arbitrary prose.
-    // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+    // Inline scheme per test for hermeticity.
     let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);

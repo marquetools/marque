@@ -85,7 +85,7 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
 /// Per-entry structural penalty for SCI markings whose control system
-/// landed as [`SciControlSystem::Custom`]. Issue #133 PR 6.
+/// landed as [`SciControlSystem::Custom`]. Issue #133.
 ///
 /// **Why this penalty exists.** `marque_core::Parser`'s structural SCI
 /// subparser (CAPCO-2016 §A.6 grammar) accepts any alphanumeric
@@ -456,9 +456,9 @@ fn for_each_canonical_token(
     for ctrl in attrs.sci_controls.iter() {
         f(ctrl.as_str());
     }
-    // PR 9b (T132): the decoder feature extractor inserts dissem
-    // canonical tokens regardless of namespace — the feature vector
-    // captures "which control names appear?", not their attribution.
+    // The decoder feature extractor inserts dissem canonical tokens
+    // regardless of namespace — the feature vector captures "which
+    // control names appear?", not their attribution.
     for dis in attrs.dissem_iter() {
         f(dis.as_str());
     }
