@@ -139,7 +139,13 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),
         message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
+            // Engine-promotion-seal fixture (synthetic test rule);
+            // `UnrecognizedToken` is the generic closed-set
+            // template used by the engine's `stub_message()` fixture
+            // pattern. The point of this test is the seal mechanism,
+            // not the template — but the choice aligns with the
+            // audit-record contract (issue #709).
+            MessageTemplate::UnrecognizedToken,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,

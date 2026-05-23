@@ -36,7 +36,12 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
                 confidence: marque_rules::Confidence::strict(1.0),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
-                    MessageTemplate::BannerRollupMismatch,
+                    // Test-fixture FixIntent.message must agree with the
+                    // Diagnostic-side `stub_message()` template
+                    // (`UnrecognizedToken`) so the audit-record contract
+                    // `Diagnostic.message.template == AppliedFix.message.template`
+                    // (issue #709) holds.
+                    MessageTemplate::UnrecognizedToken,
                     MessageArgs::default(),
                 ),
                 source: FixSource::BuiltinRule,
@@ -239,7 +244,13 @@ fn synth_fix(rule: &'static str, start: usize, end: usize, replacement: &str) ->
             confidence: marque_rules::Confidence::strict(1.0),
             feature_ids: SmallVec::new(),
             message: Message::new(
-                MessageTemplate::BannerRollupMismatch,
+                // Test-fixture FixIntent.message; the splice/sort
+                // helpers under test only read `rule`/`span`/
+                // `replacement`. `UnrecognizedToken` agrees with the
+                // generic test-fixture `stub_message()` for the
+                // audit-record contract `Diagnostic.message.template
+                // == AppliedFix.message.template` (issue #709).
+                MessageTemplate::UnrecognizedToken,
                 MessageArgs::default(),
             ),
             source: FixSource::BuiltinRule,
@@ -486,7 +497,13 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
         confidence: marque_rules::Confidence::strict(1.0),
         feature_ids: SmallVec::new(),
         message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
+            // Synthetic AuditLine fixture; the R002-assembler tests
+            // exercising this only read `rule`/`span`. `UnrecognizedToken`
+            // pairs with the test-fixture `stub_message()`-style
+            // Diagnostic-side template so the audit-record contract
+            // `Diagnostic.message.template == AppliedFix.message.template`
+            // (issue #709) holds.
+            MessageTemplate::UnrecognizedToken,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,

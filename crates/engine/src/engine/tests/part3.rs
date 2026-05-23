@@ -572,10 +572,11 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
         },
         confidence: marque_rules::Confidence::strict(0.4),
         feature_ids: SmallVec::new(),
-        message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
-            MessageArgs::default(),
-        ),
+        // Phase-partition filtering test keyed on rule phase; message
+        // templates are irrelevant here. Reuse the shared stub so the
+        // fixture makes no template-parity claim (issue #709 removed the
+        // prior hardcoded `BannerRollupMismatch`).
+        message: stub_message(),
         source: FixSource::BuiltinRule,
         migration_ref: None,
     });
@@ -648,7 +649,12 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
                 confidence: marque_rules::Confidence::strict(1.0),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
-                    MessageTemplate::BannerRollupMismatch,
+                    // Test-fixture FixIntent.message must agree with the
+                    // Diagnostic-side `stub_message()` template
+                    // (`UnrecognizedToken`) so the audit-record contract
+                    // `Diagnostic.message.template == AppliedFix.message.template`
+                    // (issue #709) holds.
+                    MessageTemplate::UnrecognizedToken,
                     MessageArgs::default(),
                 ),
                 source: FixSource::BuiltinRule,

@@ -308,7 +308,13 @@ mod tests {
             confidence: Confidence::strict(1.0),
             feature_ids: SmallVec::new(),
             message: Message::new(
-                MessageTemplate::BannerRollupMismatch,
+                // Generic Recanonicalize FixIntent unit test —
+                // `NonCanonicalForm` is the closed-set template the
+                // Recanonicalize replacement intent semantically pairs
+                // with (the marking is in non-canonical form and the
+                // rule emits a whole-marking recanonicalization).
+                // Aligns with the audit-record contract (issue #709).
+                MessageTemplate::NonCanonicalForm,
                 MessageArgs::default(),
             ),
             source: FixSource::BuiltinRule,
