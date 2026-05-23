@@ -6,14 +6,14 @@
 // which is itself gated on the same feature (issue #454, WASM size).
 #![cfg(feature = "toml-loader")]
 
-//! Phase 5 — Config precedence chain and hard-fail validator tests (T052, T053).
+//! Config precedence chain and hard-fail validator tests.
 //!
-//! Tests the four-layer precedence chain (FR-007):
+//! Tests the four-layer precedence chain:
 //!   committed `.marque.toml` → `.marque.local.toml` → env vars → CLI flags
 //!
 //! And the three hard-fail scenarios from `contracts/cli.md`:
-//!   1. `[user]` section in committed config (FR-010, SC-006) → exit 65
-//!   2. Schema version mismatch (FR-011) → exit 65
+//!   1. `[user]` section in committed config → exit 65
+//!   2. Schema version mismatch → exit 65
 //!   3. Confidence threshold out of range → exit 65
 
 use marque_config::ConfigError;
@@ -29,7 +29,8 @@ fn make_tmpdir(name: &str) -> PathBuf {
     dir
 }
 
-/// The compiled schema version — config files must use this to pass FR-011.
+/// The compiled schema version — config files must use this to pass
+/// the schema-version validator.
 const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
 
 /// Global mutex serializing all env-var access in this test binary.
@@ -78,7 +79,7 @@ impl Drop for EnvGuard {
 }
 
 // -----------------------------------------------------------------------
-// T052: Four-layer precedence chain
+// Four-layer precedence chain
 // -----------------------------------------------------------------------
 
 #[test]
@@ -322,7 +323,7 @@ E001 = "off"
 }
 
 // -----------------------------------------------------------------------
-// T053: Hard-fail scenarios
+// Hard-fail scenarios
 // -----------------------------------------------------------------------
 
 #[test]

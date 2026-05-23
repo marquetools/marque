@@ -40,9 +40,9 @@ pub(crate) fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
                     })?;
         }
     }
-    // D19 B / plan §1.5b: MARQUE_CLOSURE_RULES_* env-var namespace.
+    // MARQUE_CLOSURE_RULES_* env-var namespace.
     //
-    // Naming convention (post-T044 wire-string form): the env-var
+    // Naming convention (wire-string form): the env-var
     // suffix encodes the closure-rule key segments separated by `__`
     // (double-underscore); single `_` within a segment becomes `-`.
     // The first segment is the scheme; subsequent segments are the

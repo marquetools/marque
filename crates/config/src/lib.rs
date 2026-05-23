@@ -9,11 +9,11 @@
 //!
 //! Precedence (highest wins): CLI flags → env vars → `.marque.local.toml` → `.marque.toml`
 //!
-//! # Hard-fail validators (T023)
+//! # Hard-fail validators
 //!
 //! The loader refuses to produce a `Config` if any of these conditions hold:
-//! - `.marque.toml` contains a `[user]` section (FR-010, SC-006) → exit 65
-//! - `[capco] version` mismatches `marque_ism::SCHEMA_VERSION` (FR-011) → exit 65
+//! - `.marque.toml` contains a `[user]` section → exit 65
+//! - `[capco] version` mismatches `marque_ism::SCHEMA_VERSION` → exit 65
 //! - `confidence_threshold` outside `[0.0, 1.0]` → exit 65
 
 use marque_ism::UtcOffset;
@@ -56,7 +56,7 @@ pub enum ConfigError {
     #[error("failed to parse config: {0}")]
     ParseError(#[from] toml::de::Error),
 
-    /// `.marque.toml` contains a `[user]` section (FR-010, SC-006).
+    /// `.marque.toml` contains a `[user]` section.
     #[error(
         "committed config file {path} contains a [user] section — classifier identity \
          must live only in .marque.local.toml or env vars (FR-010)"
@@ -185,10 +185,10 @@ pub struct Config {
     pub rules: RuleConfig,
     /// Per-closure-rule severity overrides from `[closure_rules]` in `.marque.toml`.
     ///
-    /// Keyed by closure rule name in the post-T044 wire-string form
+    /// Keyed by closure rule name in the wire-string form
     /// (e.g., `"capco:closure.dissem.noforn-if-caveated"`).
     /// `Severity::Fix` is rejected at config load — closure firings propagate
-    /// facts, not byte-level edits. See `decisions.md` D19 B.
+    /// facts, not byte-level edits.
     pub closure_rules: ClosureRuleConfig,
     /// Organization-specific typo corrections from `[corrections]` in `.marque.toml`.
     ///
@@ -249,8 +249,8 @@ pub struct RuleConfig {
 
 /// Per-closure-rule severity overrides.
 ///
-/// Per `decisions.md` D19 B + plan §1.5: section-isolated from `[rules]`.
-/// Keyed by `ClosureRule.name` in the post-T044 wire-string form
+/// Section-isolated from `[rules]`.
+/// Keyed by `ClosureRule.name` in the wire-string form
 /// (e.g. `"capco:closure.dissem.noforn-if-caveated"`).
 /// `Severity::Fix` is rejected at config load because closure firings
 /// are not byte-level fixes — see `ConfigError::InvalidClosureRuleSeverity`.

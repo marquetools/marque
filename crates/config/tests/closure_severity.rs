@@ -6,23 +6,19 @@
 // which is itself gated on the same feature (issue #454, WASM size).
 #![cfg(feature = "toml-loader")]
 
-//! Stage F — `[closure_rules]` config section tests (PR 3.7 T108f).
+//! `[closure_rules]` config section tests.
 //!
 //! Verifies per-closure-rule severity overrides, section isolation from
 //! `[rules]`, `Severity::Fix` rejection, TOML quoted-key parsing, and
 //! the `MARQUE_CLOSURE_RULES_*` env-var namespace.
 //!
-//! See `decisions.md` D19 B and `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
-//! Stage F for the binding spec.
+//! # Wire-string convention
 //!
-//! # T044 wire-string convention (HIGH-3 reviewer finding, 2026-05-22)
-//!
-//! Post-T044 closure-rule keys take the wire-string form
+//! Closure-rule keys take the wire-string form
 //! `<scheme>:closure.<category>.<predicate>` — e.g.,
-//! `"capco:closure.dissem.noforn-if-caveated"` (PM OD-1 + the
+//! `"capco:closure.dissem.noforn-if-caveated"` (matching the
 //! `closure_table.rs::CLOSURE_TABLE` row inventory in
-//! `crates/capco/src/scheme/closure_table.rs`). The legacy slash form
-//! (`"capco/noforn-if-no-fdr"`, etc.) was retired at T044.
+//! `crates/capco/src/scheme/closure_table.rs`).
 //!
 //! The engine does not yet consume `closure_rules.overrides` on the
 //! hot path — the config map is a forward-looking surface for the
@@ -31,9 +27,8 @@
 //! later starts with the right key shape.
 //!
 //! The `MARQUE_CLOSURE_RULES_*` env-var encoding in
-//! `crates/config/src/lib.rs::env_var_to_closure_rule_name` was
-//! migrated to the wire-string form in the Copilot reviewer pass
-//! (2026-05-22). The encoder splits the env-var suffix on `__` into
+//! `crates/config/src/lib.rs::env_var_to_closure_rule_name` uses the
+//! same wire-string form. The encoder splits the env-var suffix on `__` into
 //! N segments: the first becomes the scheme (joined with `:` to the
 //! predicate), subsequent segments join with `.`; single `_` within
 //! a segment becomes `-`. Example:
@@ -56,7 +51,8 @@ fn make_tmpdir(name: &str) -> PathBuf {
     dir
 }
 
-/// The compiled schema version — config files must use this to pass FR-011.
+/// The compiled schema version — config files must use this to pass
+/// the schema-version validator.
 const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
 
 /// Global mutex serializing all env-var access in this test binary.
@@ -511,7 +507,7 @@ fn rules_section_does_not_populate_closure_rules() {
 // Category 5: TOML quoted-key form
 // ---------------------------------------------------------------------------
 
-/// Post-T044 closure-rule names contain `:` and `.` (the wire-string
+/// Closure-rule names contain `:` and `.` (the wire-string
 /// `<scheme>:closure.<category>.<predicate>` form), which TOML requires
 /// to be quoted. Verify that the canonical wire-string keys parse
 /// correctly.
@@ -582,22 +578,18 @@ fn closure_rules_multiple_entries_all_loaded() {
 // ---------------------------------------------------------------------------
 
 /// `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__DISSEM__NOFORN_IF_CAVEATED=warn`
-/// is decoded by the env-var encoder to the post-T044 wire-string
+/// is decoded by the env-var encoder to the wire-string
 /// form `"capco:closure.dissem.noforn-if-caveated"` (per
 /// `config/src/lib.rs::env_var_to_closure_rule_name`). Encoder
 /// convention: `__` between segments (first occurrence becomes `:`,
 /// subsequent become `.`); `_` within a segment becomes `-`. This
-/// matches the `.marque.toml [closure_rules]` key shape (PM OD-1
-/// refinement; Copilot reviewer pass — the env-var encoder was
-/// migrated to the wire-string form in the same commit as the test
-/// reshape).
+/// matches the `.marque.toml [closure_rules]` key shape.
 ///
 /// The env-var override path is keyed by whatever the encoder
 /// produces; the test pins that file-level and env-var key shapes
 /// CONVERGE — both write `capco:closure.dissem.noforn-if-caveated`
 /// into `closure_rules.overrides` so the env var actually overrides
-/// the file value (the bug Copilot flagged was that they DIDN'T
-/// converge pre-migration).
+/// the file value.
 #[test]
 fn env_var_overrides_closure_rule_file_value() {
     let dir = make_tmpdir("closure-env-override");
@@ -630,7 +622,7 @@ fn env_var_overrides_closure_rule_file_value() {
 /// `MARQUE_CLOSURE_RULES_CAPCO__CLOSURE__NATO__REL_TO_USA_NATO_IF_NATO_CLASSIFICATION=error`
 /// without a file-level entry must add the override to
 /// `config.closure_rules.overrides` (the env var is the sole source
-/// of the row's severity). Encoder produces the post-T044 wire-string
+/// of the row's severity). Encoder produces the wire-string
 /// form — see the note on the preceding test for the encoding convention.
 #[test]
 fn env_var_adds_closure_rule_when_absent_in_file() {
