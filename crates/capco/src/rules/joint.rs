@@ -19,7 +19,6 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
 
-use super::helpers::canonicalize_trigraph_list;
 use crate::lattice::JointSet;
 use crate::scheme::CapcoScheme;
 
@@ -78,9 +77,10 @@ use crate::scheme::CapcoScheme;
 ///   contains USA out of first position, emitting a
 ///   `Recanonicalize { RecanonScope::Page }` fix intent.
 /// - If S003's fix is applied (org configures `S003 = "fix"`), the
-///   engine's `render_canonical` re-renders the JOINT block; the
-///   convention-bearing intent reaches the renderer as the canonical
-///   target, so the downstream canonical form respects USA-first.
+///   engine invokes `MarkingScheme::render_canonical`, which re-renders
+///   the JOINT block; the convention-bearing intent reaches the
+///   renderer as the canonical target, so the downstream canonical
+///   form respects USA-first.
 /// - If S003 is configured `off`, no JOINT-ordering rule fires and the
 ///   renderer produces pure-alphabetical order per §H.3 p56 — the
 ///   strict-conformance default.
@@ -192,12 +192,9 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             return vec![];
         }
 
-        // Canonicalize: USA first, remaining trigraphs alphabetical.
-        let canonical = canonicalize_trigraph_list(&j.countries, true);
-
         // Locate the `Classification` token to anchor the diagnostic
         // span; the replacement-bytes computation retired with the
-        // mvp-3 cutover (the engine's `render_canonical` produces
+        // mvp-3 cutover (`MarkingScheme::render_canonical` produces
         // canonical JOINT bytes at fix-application time).
         let Some(classification_tok) = attrs
             .token_spans
@@ -212,7 +209,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         // bytes by way of `j.countries.iter().map(|t| t.as_str())`.
         // The typed `Message` identifies the ordering-violation class
         // for the JOINT axis.
-        let _ = canonical; // canonical is consumed by the fix_intent path below
+        //
         // Build the category-bearing `Message` once and clone it for
         // both the parent diagnostic and the `FixIntent` (#739). Both
         // describe the same JOINT-axis ordering violation, so they
