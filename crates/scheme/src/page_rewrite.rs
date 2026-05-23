@@ -44,10 +44,12 @@ pub type RewriteId = &'static str;
 /// and the categories it mutates. They surface two properties the
 /// engine relies on:
 ///
-/// 1. **Topological ordering** — the engine sorts rewrites so a
-///    rewrite that writes category X runs before any rewrite that
-///    reads X. Cycles fail scheme construction
-///    (`EngineConstructionError::RewriteCycle`).
+/// 1. **Topological ordering / validation** — the engine validates
+///    rewrites at construction time to detect dependency cycles
+///    (`EngineConstructionError::RewriteCycle`). At runtime, rewrites
+///    are applied in declaration order (as declared in the scheme's
+///    `page_rewrites()` table); the topological sort is an inspection
+///    and validation artifact, not the execution order.
 /// 2. **Tooling** — scheme-exploration UIs and the declarative-
 ///    constraint catalog can render the dataflow graph without
 ///    executing scheme code.

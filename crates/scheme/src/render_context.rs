@@ -7,13 +7,14 @@
 //!
 //! Carries the projection scope, the desired emission form
 //! ([`EmissionForm`]), and the active audit-schema identifier
-//! ([`SchemaVersionId`]). Today every call site passes
-//! [`EmissionForm::Auto`] and the renderer routes on `Scope` alone; the
-//! §G.1 Table 4 four-form dispatch (Marking Title / Banner Line
-//! Abbreviation / Portion Mark + the `Auto` fallback) is reserved for a
-//! later CapcoScheme `render_canonical` body that branches on
-//! `ctx.emission_form` per the `crates/capco/CAPCO-CONTEXT.md` §G.1
-//! Table 4 column terms.
+//! ([`SchemaVersionId`]). Engine and trait-default call sites pass
+//! [`EmissionForm::Auto`]; test code and downstream callers may pass
+//! other variants. Current production renderers route on `Scope` alone
+//! and may ignore `emission_form`; the §G.1 Table 4 four-form dispatch
+//! (Marking Title / Banner Line Abbreviation / Portion Mark + the `Auto`
+//! fallback) is reserved for a later CapcoScheme `render_canonical` body
+//! that branches on `ctx.emission_form` per the
+//! `crates/capco/CAPCO-CONTEXT.md` §G.1 Table 4 column terms.
 
 use crate::scope::Scope;
 

@@ -23,10 +23,12 @@
 //!    arbitrary `N` and supplies its own `bytes` is constructing a
 //!    `Canonical<S>` with arguably forged provenance. The audit
 //!    emitter is the validation boundary: at audit-emit time it
-//!    cross-references the recorded `TokenId` against
-//!    [`crate::Vocabulary::lookup`] for the active scheme and rejects
-//!    records whose token does not resolve to a registered vocabulary
-//!    entry.
+//!    cross-references the recorded `TokenId` via
+//!    [`crate::Vocabulary::qualified_token_label`] for the active
+//!    scheme; unresolved tokens are rendered as a visible placeholder
+//!    label (e.g. `"unknown.unknown"`) rather than hard-rejected, so
+//!    the audit trail remains complete even when a caller constructs a
+//!    `TokenId` outside the registered vocabulary.
 //!
 //! 2. **Open-vocab — [`Canonical::from_render`]** — `pub(crate)` to
 //!    `marque-scheme`. Reachable from external crates ONLY through

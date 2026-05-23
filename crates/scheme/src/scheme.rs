@@ -600,11 +600,10 @@ pub trait MarkingScheme {
     /// ([`crate::SchemaVersionId`]).
     ///
     /// Currently only `ctx.scope` is actively consumed by every impl
-    /// body; `ctx.emission_form` is always
-    /// [`crate::EmissionForm::Auto`] (the §G.1 Table 4 dispatch body is
-    /// future work) and `ctx.schema_version` is reserved. Implementations
-    /// should read `ctx.scope`; the other fields are reserved for future
-    /// expansion.
+    /// body. Implementations should route on `ctx.scope` today and may
+    /// ignore `ctx.emission_form` and `ctx.schema_version` until those
+    /// are fully supported (the §G.1 Table 4 dispatch body is future
+    /// work; `ctx.schema_version` is reserved for future expansion).
     ///
     /// # Lattice-equal-byte-identical property
     ///

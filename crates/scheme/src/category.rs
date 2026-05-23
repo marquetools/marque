@@ -93,8 +93,9 @@ pub enum IntraOrdering {
 /// # Status
 ///
 /// `AggregationOp` is **not on the runtime dispatch path**. The engine
-/// reduces categories by calling [`Lattice::join`](crate::Lattice::join)
-/// on the category's value type; it does not consult this enum to decide
+/// reduces categories by calling
+/// [`JoinSemilattice::join`](crate::JoinSemilattice::join) on the
+/// category's value type; it does not consult this enum to decide
 /// which reducer to run. The variants survive as:
 ///
 /// 1. **Build-time shorthand** for authors declaring flat categories
@@ -172,9 +173,10 @@ pub struct Category {
 /// Runtime-inspectable shape of a category's lattice.
 ///
 /// `AggregationOp` is not a runtime dispatch point — the engine reduces
-/// categories by calling `Lattice::join` on their values.
-/// `CategoryShape` is the inspection counterpart to `AggregationOp`:
-/// a scheme-exploration UI or docs generator can walk
+/// categories by calling
+/// [`JoinSemilattice::join`](crate::JoinSemilattice::join) on their
+/// values. `CategoryShape` is the inspection counterpart to
+/// `AggregationOp`: a scheme-exploration UI or docs generator can walk
 /// `scheme.categories()`, call `Category::shape()` on each one, and
 /// render the aggregation semantics without instantiating any marking
 /// values. The engine never consults this.
@@ -182,8 +184,9 @@ pub struct Category {
 /// `Product` and `Optional` nest recursively so composed lattices
 /// (`Product<FlatSet<T>, OrdMax<U>>`) can describe their structure in
 /// full. `Custom` is the terminator for schemes whose category has a
-/// bespoke `impl Lattice` that doesn't decompose into built-ins (SCI's
-/// compartment tree, SAR's program hierarchy).
+/// bespoke `impl JoinSemilattice` (or `MeetSemilattice`) that doesn't
+/// decompose into built-ins (SCI's compartment tree, SAR's program
+/// hierarchy).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoryShape {
     /// `OrdMax` / `OrdMin` — total-order lattice.
