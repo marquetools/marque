@@ -55,11 +55,11 @@ pub(super) fn starts_with_fgi_prefix(s: &str) -> bool {
 /// The function stages per-country spans into a local `pending`
 /// buffer and flushes them to `token_spans` only after
 /// [`FgiMarker::acknowledged`] confirms a non-empty acknowledged
-/// result. The FR-016 closure (any token failing the shape gate, or
+/// result. The closure invariant (any token failing the shape gate, or
 /// an empty list after the prefix, returns `None` with no per-country
 /// spans leaked) is preserved through this staging step.
 ///
-/// # Three return cases (FR-015 / FR-016 closure, GH #280)
+/// # Three return cases (GH #280)
 ///
 /// Per CAPCO-2016 §H.7 p122 the FGI marker has exactly two lawful
 /// banner forms: bare `FGI` (source-concealed) and `FGI [LIST]`
@@ -73,12 +73,11 @@ pub(super) fn starts_with_fgi_prefix(s: &str) -> bool {
 /// | `"FGI " + tokens` where every token is a 2-, 3-, or 4-letter ASCII upper code (registered exception / Annex B trigraph / Annex A tetragraph) | `Some(Acknowledged { countries })` |
 /// | Anything else (malformed prefix, any token fails the country-token shape gate, OR empty list after `"FGI "`) | `None` |
 ///
-/// The third row is the FR-016 closure: a post-failure shape MUST
-/// be `None`, never a degraded `Some(SourceConcealed)`. The
-/// transitional T094 fallback (`...unwrap_or(SourceConcealed)`) was
-/// removed in T088+T093 so a parse failure surfaces honestly to the
-/// rule layer instead of being silently re-cast as lawful
-/// concealment. A diagnostic for malformed FGI input is the rule
+/// The third row is the closure invariant: a post-failure shape MUST
+/// be `None`, never a degraded `Some(SourceConcealed)`. A parse
+/// failure surfaces honestly to the rule layer instead of being
+/// silently re-cast as lawful concealment. A diagnostic for malformed
+/// FGI input is the rule
 /// layer's job; the parser's job is to refuse to mint a misleading
 /// AST.
 ///
@@ -107,7 +106,7 @@ pub(super) fn starts_with_fgi_prefix(s: &str) -> bool {
 /// AST nodes; the rule layer flags unknown tokens with actionable
 /// diagnostics). Decoder coordination tracked at #496.
 ///
-/// This is a deliberate FR-015 surface mismatch with the broader
+/// This is a deliberate surface mismatch with the broader
 /// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)` arm
 /// in `marque-capco/src/vocabulary.rs` — the vocabulary surface
 /// continues to call `admits_country_token` for round-trip
@@ -279,9 +278,9 @@ pub(super) fn parse_fgi_marker_with_spans(
     // Case 3 closure: `"FGI "` followed by zero shape-admitted
     // tokens (e.g., trailing whitespace only, or input like
     // `"FGI \t"`). `FgiMarker::acknowledged` returns `None` on an
-    // empty country list, which is exactly the FR-016 contract —
-    // propagate it directly. This is the line that retired the
-    // transitional `unwrap_or(SourceConcealed)` fallback (#280).
+    // empty country list, which is exactly the closure contract —
+    // propagate it directly rather than degrading to a
+    // `SourceConcealed` fallback (#280).
     //
     // Only commit the staged per-country spans on a successful
     // acknowledged parse — keeps the failure path span-clean.
@@ -303,7 +302,7 @@ pub(super) fn parse_fgi_marker_with_spans(
 /// Preserved only for ergonomic inline test fixtures that assert
 /// `FgiMarker` shape without driving token-span emission. See the
 /// production function's doc-comment for the full grammar, edge
-/// cases, FR-015 / FR-016 closure, and CAPCO §H.7 / §A.6 authority.
+/// cases, closure invariant, and CAPCO §H.7 / §A.6 authority.
 #[cfg(test)]
 pub(super) fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     let mut discarded: SmallVec<[TokenSpan; 16]> = SmallVec::new();
