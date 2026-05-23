@@ -302,12 +302,10 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
     let mut reads: BTreeSet<CategoryId> = BTreeSet::new();
     let mut writes: BTreeSet<CategoryId> = BTreeSet::new();
     for &i in indexes {
-        for r in rewrites[i].reads {
-            reads.insert(*r);
-        }
-        for w in rewrites[i].writes {
-            writes.insert(*w);
-        }
+        // Use `extend()` as a concise, idiomatic way to add all categories
+        // from this rewrite into the aggregate read/write sets.
+        reads.extend(rewrites[i].reads.iter().copied());
+        writes.extend(rewrites[i].writes.iter().copied());
     }
     let picked = reads.intersection(&writes).next().copied();
     debug_assert!(
