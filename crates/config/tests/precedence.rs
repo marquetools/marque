@@ -282,7 +282,7 @@ classifier_id = ""
     let _ = fs::remove_dir_all(&dir);
 }
 
-// F-07: local config intentionally carries only user identity, not rules.
+// Local config intentionally carries only user identity, not rules.
 #[test]
 fn layer2_local_config_does_not_override_rule_severities() {
     let dir = make_tmpdir("l2-rules-ignored");
@@ -439,7 +439,7 @@ fn hard_fail_env_threshold_not_a_float() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-// F-11: NaN parses as f32 but must be rejected by set_confidence_threshold.
+// NaN parses as f32 but must be rejected by set_confidence_threshold.
 #[test]
 fn hard_fail_env_threshold_nan() {
     let dir = make_tmpdir("hf-env-nan");
@@ -457,7 +457,7 @@ fn hard_fail_env_threshold_nan() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-// F-02: empty MARQUE_CLASSIFIER_ID must not overwrite a populated local value.
+// Empty MARQUE_CLASSIFIER_ID must not overwrite a populated local value.
 #[test]
 fn empty_env_classifier_id_does_not_overwrite_local() {
     let dir = make_tmpdir("env-empty-classifier");

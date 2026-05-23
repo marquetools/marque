@@ -57,7 +57,7 @@ async fn main() {
             std::process::exit(69);
         }
     };
-    // Spec 005 §10.2 — per-request deadline cap (default 60 s,
+    // Per-request deadline cap (default 60 s,
     // override via `MARQUE_MAX_DEADLINE`). Resolved here so an
     // unparseable / out-of-range value fails startup loudly instead
     // of silently degrading a per-request safety control.

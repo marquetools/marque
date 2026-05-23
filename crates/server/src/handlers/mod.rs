@@ -121,7 +121,7 @@ pub(super) fn reject_if_body_carries_corpus_override(
 /// default; otherwise it's the caller-supplied value (validated and
 /// in range).
 ///
-/// Validation rules per spec 005 §10.2:
+/// Validation rules:
 ///
 /// - Header absent → `Ok(default)` using the per-endpoint default.
 /// - Header present but empty (or whitespace-only) → same as absent.

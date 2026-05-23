@@ -258,10 +258,10 @@ mod tests {
 
     #[test]
     fn expected_rule_id_round_trips_through_json() {
-        // T044 §2.10: the corpus-fixture JSON shape carries the
-        // structured `(scheme, predicate_id)` form. Verify that
-        // `serde_json` deserializes the canonical shape without
-        // re-introducing the legacy flat-string form by accident.
+        // The corpus-fixture JSON shape carries the structured
+        // `(scheme, predicate_id)` form. Verify that `serde_json`
+        // deserializes the canonical shape without re-introducing the
+        // flat-string form by accident.
         let json = r#"{
             "scheme": "capco",
             "predicate_id": "portion.dissem.noforn-conflicts-rel-to"

@@ -282,10 +282,9 @@ pub fn parse_corpus_override(
 ///   same practical effect on candidate ranking without the
 ///   silent-deletion footgun.
 ///
-/// Phase 4 review M6 confirmed this policy. If a future scoring
-/// change makes infinite penalties first-class, this function can
-/// be relaxed; until then, the contract is "log_priors must be
-/// finite."
+/// If a future scoring change makes infinite penalties first-class,
+/// this function can be relaxed; until then, the contract is
+/// "log_priors must be finite."
 fn validate_log_prior(
     path: &Path,
     section: &'static str,

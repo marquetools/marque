@@ -518,8 +518,7 @@ fn text_correction_arm_dry_run_toggles() {
 #[test]
 fn project_preserves_record_kind_dispatch() {
     // Both arms emit one NDJSON line each, distinguished by the
-    // top-level `type` field. This is the dispatcher discipline per
-    // contract §107 vs §388.
+    // top-level `type` field.
     let fix_line = AuditLine::AppliedFix(synth_applied_fix(
         RULE_E002,
         FixSource::BuiltinRule,

@@ -140,9 +140,9 @@ pub enum ConfigError {
         reason: &'static str,
     },
 
-    /// Closure rule severity override uses "fix", which is rejected per
-    /// `decisions.md` D19 B. Closure firings propagate facts, not byte-level
-    /// edits, so the only valid severities for closure rules are
+    /// Closure rule severity override uses "fix", which is rejected.
+    /// Closure firings propagate facts, not byte-level edits, so the
+    /// only valid severities for closure rules are
     /// `off / suggest / info / warn / error`.
     #[error(
         "closure rule {rule:?} cannot use 'fix' severity; \

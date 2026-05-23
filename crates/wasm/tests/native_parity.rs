@@ -587,9 +587,8 @@ fn compute_banner_single_secret_portion() {
     // absent any FD&R-dominator. Primary authority CAPCO-2016
     // §B.3 Table 2 p21 ("Classified + uncaveated + on/after
     // 28 June 2010 → Mark as RELIDO"); grammar reference §H.8
-    // p154 (the RELIDO marking template). Pre-Phase-3 this
-    // returned plain `SECRET`; Phase 3 makes the implicit FD&R
-    // default explicit in the banner.
+    // p154 (the RELIDO marking template). The implicit FD&R
+    // default is made explicit in the banner.
     let banner = marque_wasm::compute_banner_native("(S) Only one portion here.")
         .expect("compute_banner single S");
     assert_eq!(
@@ -622,7 +621,7 @@ fn compute_banner_single_unclassified_portion() {
 #[test]
 fn compute_banner_ts_beats_secret_max_wins() {
     // Classification max: TOP SECRET takes precedence over SECRET.
-    // Phase 3 adds implicit RELIDO (see sibling tests).
+    // Implicit RELIDO applies (see sibling tests).
     let text = "(S) Lower classification.\n(TS) Higher classification.";
     let banner = marque_wasm::compute_banner_native(text).expect("compute_banner TS>S");
     assert_eq!(
@@ -680,8 +679,8 @@ fn compute_banner_with_rel_to() {
 #[test]
 fn compute_banner_mixed_classified_and_unclassified_portions() {
     // Unclassified portions must not drag the banner below the highest
-    // classified level. Phase 3 adds implicit RELIDO on the post-roll-up
-    // bare US SECRET (sibling tests cite the §4.7.5 trigger list).
+    // classified level. Implicit RELIDO applies to the post-roll-up
+    // bare US SECRET.
     let text =
         "(U) Public info.\n(C) Confidential portion.\n(U) More public info.\n(S) Secret item.";
     let banner =

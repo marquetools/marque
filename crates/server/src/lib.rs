@@ -150,7 +150,7 @@ fn classify_body_limit_var(var: Result<String, std::env::VarError>) -> Result<us
 }
 
 // ---------------------------------------------------------------------------
-// Per-request deadline cap (spec 005 §10.2)
+// Per-request deadline cap
 // ---------------------------------------------------------------------------
 
 /// Default ceiling for a caller-supplied `X-Marque-Deadline` header
@@ -472,8 +472,7 @@ mod tests {
 
     // -----------------------------------------------------------------
     // `classify_deadline_cap_var` — pure decision logic for the
-    // per-request deadline cap (spec 005 §10.2). Mirrors the
-    // body-limit suite above.
+    // per-request deadline cap. Mirrors the body-limit suite above.
     // -----------------------------------------------------------------
 
     #[test]

@@ -324,7 +324,7 @@ fn closure_rules_severity_error() {
 /// `ConfigError::InvalidClosureRuleSeverity` at config load.
 ///
 /// Closure firings propagate facts, not byte-level edits — "fix" severity
-/// is meaningless and rejected. See decisions.md D19 B.
+/// is meaningless and rejected.
 #[test]
 fn closure_rules_fix_severity_rejected() {
     let dir = make_tmpdir("closure-fix-rejected");
@@ -355,7 +355,7 @@ fn closure_rules_fix_severity_rejected() {
         msg.contains("capco:closure.dissem.noforn-if-caveated"),
         "error message must include the rule name; got: {msg:?}"
     );
-    // The message must suggest a valid alternative (per plan §1.5b / preflight F4).
+    // The message must suggest a valid alternative.
     assert!(
         msg.contains("warn") || msg.contains("error"),
         "error message must suggest 'warn' or 'error'; got: {msg:?}"
