@@ -439,8 +439,8 @@ mod tests {
             e005[0].citation
         );
         // PR 10.A.1 Commit 4: secondary-passage cross-reference to
-        // §D.1 p27 lives on `super::E005_CROSS_REFS`. The companion
-        // assertion (`E005_CROSS_REFS.contains(...)`) is in the
+        // §D.1 p27 lives on `super::DECLASSIFY_MISPLACED_CROSS_REFS`. The companion
+        // assertion (`DECLASSIFY_MISPLACED_CROSS_REFS.contains(...)`) is in the
         // dedicated `citation_cross_refs_tests` (bottom of this file) integration test
         // — this inline `mod tests` block is `#[cfg(any())]`-gated
         // dead code, so adding the guard here would not run. See
@@ -747,7 +747,7 @@ mod tests {
              ordering); got: {citation:?}"
         );
         // PR 10.A.1 Commit 4: secondary-passage cross-reference to
-        // §H.8 p150 lives on `super::S003_CROSS_REFS`. The companion
+        // §H.8 p150 lives on `super::JOINT_USA_FIRST_CROSS_REFS`. The companion
         // assertion is in `citation_cross_refs_tests` (bottom of this file) — see the
         // E005 site above for why this inline `mod tests` block
         // can't host the guard.
@@ -2273,7 +2273,7 @@ mod tests {
             e037[0].citation
         );
         // PR 10.A.1 Commit 4: secondary-passage cross-reference to
-        // §H.9 p174 lives on `super::E037_CROSS_REFS`. Companion
+        // §H.9 p174 lives on `super::NODIS_EXDIS_MUTEX_CROSS_REFS`. Companion
         // assertion in `citation_cross_refs_tests` (bottom of this file) (see the E005
         // site above for the cfg-gating rationale).
     }
@@ -2319,7 +2319,7 @@ mod tests {
             e038[0].citation
         );
         // PR 10.A.1 Commit 4: secondary-passage cross-reference to
-        // §H.9 p174 lives on `super::E038_CROSS_REFS`. Companion
+        // §H.9 p174 lives on `super::NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS`. Companion
         // assertion in `citation_cross_refs_tests` (bottom of this file).
     }
 
@@ -2398,7 +2398,7 @@ mod tests {
             e039[0].citation
         );
         // PR 10.A.1 Commit 4: secondary-passage cross-reference to
-        // §H.9 p174 lives on `super::E039_CROSS_REFS`. Companion
+        // §H.9 p174 lives on `super::NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS`. Companion
         // assertion in `citation_cross_refs_tests` (bottom of this file).
     }
 
@@ -2475,7 +2475,7 @@ mod tests {
             e039[0].citation
         );
         // PR 10.A.1 Commit 4: secondary-passage cross-reference to
-        // §H.9 p174 lives on `super::E039_CROSS_REFS`. Companion
+        // §H.9 p174 lives on `super::NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS`. Companion
         // assertion in `citation_cross_refs_tests` (bottom of this file).
     }
 

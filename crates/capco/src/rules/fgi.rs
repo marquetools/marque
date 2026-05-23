@@ -337,7 +337,7 @@ pub(crate) struct FgiInvalidOwnershipTokenRule;
 /// Citations E073 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E073_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 123)];
+const FGI_INVALID_OWNERSHIP_TOKEN_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 123)];
 
 impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
     fn id(&self) -> RuleId {
@@ -361,7 +361,7 @@ impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E073_AUTHORITIES
+        FGI_INVALID_OWNERSHIP_TOKEN_AUTHORITIES
     }
     /// Emits one `Severity::Error` diagnostic per token in the FGI
     /// ownership slot that fails the

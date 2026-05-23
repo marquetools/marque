@@ -280,7 +280,7 @@ fn s004_message(
 /// Citations S004 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const S004_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+const AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
 impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn id(&self) -> RuleId {
@@ -305,7 +305,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        S004_AUTHORITIES
+        AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};

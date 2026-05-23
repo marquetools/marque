@@ -76,7 +76,7 @@ pub(crate) struct MissingUsaTrigraphRule;
 /// in the REL TO list. §H.8 p150 is the section anchor (REL TO marking
 /// template) but the verbatim USA-first rule sits in the
 /// "Additional Marking Instructions" block on p151.
-const E002_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 151)];
+const MISSING_USA_TRIGRAPH_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 151)];
 
 impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn id(&self) -> RuleId {
@@ -98,7 +98,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E002_AUTHORITIES
+        MISSING_USA_TRIGRAPH_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.rel_to.is_empty() {

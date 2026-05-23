@@ -65,7 +65,7 @@ pub(crate) struct EyesOnlyConvertToRelToRule;
 /// Citations E064 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E064_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 157)];
+const AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 157)];
 
 impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     fn id(&self) -> RuleId {
@@ -90,7 +90,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E064_AUTHORITIES
+        AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();

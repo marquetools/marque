@@ -55,7 +55,7 @@ use crate::scheme::CapcoScheme;
 /// CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS rows is template-
 /// prose plus FD&R-defaults derivation, not "MUST"-mandate prose; the
 /// suggest channel is the right home.
-const S008_SUGGEST_CONFIDENCE: f32 = 0.85;
+const SUGGEST_CONFIDENCE: f32 = 0.85;
 
 /// Shared `CapcoScheme` used by S008's `check()` to apply the closure
 /// fixpoint to a portion's marking. Constructed lazily — `CapcoScheme::new()`
@@ -66,7 +66,7 @@ const S008_SUGGEST_CONFIDENCE: f32 = 0.85;
 /// in the post-#578 refactor); having an independent instance here
 /// survives that retirement without coupling S008 to a file being
 /// deleted.
-static S008_SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(CapcoScheme::new);
+static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(CapcoScheme::new);
 
 /// Rule **S008** — `relido-implied-by-closure`.
 ///
@@ -74,11 +74,11 @@ static S008_SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(
 /// in `dissem_us` AND whose source text does NOT already carry RELIDO.
 /// Emits a `Severity::Suggest` diagnostic with a
 /// `FactAdd(TOK_RELIDO, Scope::Portion)` intent at confidence
-/// [`S008_SUGGEST_CONFIDENCE`].
+/// [`SUGGEST_CONFIDENCE`].
 ///
 /// # Closure-based trigger detection
 ///
-/// The rule runs `S008_SCHEME.closure(marking)` and compares the
+/// The rule runs `SCHEME.closure(marking)` and compares the
 /// post-closure dissem axis against the pre-closure state. This is
 /// more robust than hand-rolling the closure trigger / suppressor
 /// logic because:
@@ -144,7 +144,7 @@ pub(crate) struct RelidoImpliedByClosureRule;
 /// Citations S008 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const S008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 154)];
+const AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 154)];
 
 impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn id(&self) -> RuleId {
@@ -165,7 +165,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        S008_AUTHORITIES
+        AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{CapcoMarking, TOK_RELIDO};
@@ -186,7 +186,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         }
 
         // Clause 3: run the closure and check the post-closure state.
-        // `S008_SCHEME.closure(marking)` short-circuits via
+        // `SCHEME.closure(marking)` short-circuits via
         // `any_closure_trigger_fires` when no closure rule's trigger
         // fires (the bench-corpus typical case), returning the input
         // marking identically. When a trigger fires, the fixpoint
@@ -194,7 +194,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         // (proptest harness pins MAX_CLOSURE_ITERATIONS as the
         // worst-case cap).
         let marking = CapcoMarking::new(attrs.clone());
-        let closed = S008_SCHEME.closure(marking);
+        let closed = SCHEME.closure(marking);
         let closure_adds_relido = closed
             .0
             .dissem_us
@@ -212,7 +212,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
                 token: FactRef::Cve(TOK_RELIDO),
                 scope: Scope::Portion,
             },
-            confidence: Confidence::strict(S008_SUGGEST_CONFIDENCE),
+            confidence: Confidence::strict(SUGGEST_CONFIDENCE),
             feature_ids: Default::default(),
             message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             source: FixSource::BuiltinRule,

@@ -32,12 +32,12 @@
 // Every literal §-reference asserted below was re-verified against
 // `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1 Commit 4 authorship
 // per Constitution VIII propagation rule. See the per-const doc
-// comments on `E005_CROSS_REFS` / `S003_CROSS_REFS` / `E037_CROSS_REFS`
-// / `E038_CROSS_REFS` / `E039_CROSS_REFS` for the source passages.
+// comments on `DECLASSIFY_MISPLACED_CROSS_REFS` / `JOINT_USA_FIRST_CROSS_REFS` / `NODIS_EXDIS_MUTEX_CROSS_REFS`
+// / `NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS` / `NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS` for the source passages.
 
-use crate::rules::joint::S003_CROSS_REFS;
-use crate::rules::nodis_exdis::{E037_CROSS_REFS, E038_CROSS_REFS, E039_CROSS_REFS};
-use crate::rules::text_handling::E005_CROSS_REFS;
+use crate::rules::joint::JOINT_USA_FIRST_CROSS_REFS;
+use crate::rules::nodis_exdis::{NODIS_EXDIS_MUTEX_CROSS_REFS, NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS, NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS};
+use crate::rules::text_handling::DECLASSIFY_MISPLACED_CROSS_REFS;
 use marque_scheme::{Citation, SectionLetter, capco};
 
 /// E005: secondary §D.1 p27 (banner categories exclude
@@ -50,9 +50,9 @@ use marque_scheme::{Citation, SectionLetter, capco};
 fn e005_cross_refs_pin_section_d_1_p27() {
     let expected: Citation = capco(SectionLetter::D, 1, 27);
     assert!(
-        E005_CROSS_REFS.contains(&expected),
-        "E005_CROSS_REFS must include §D.1 p27; got: {:?}",
-        E005_CROSS_REFS,
+        DECLASSIFY_MISPLACED_CROSS_REFS.contains(&expected),
+        "DECLASSIFY_MISPLACED_CROSS_REFS must include §D.1 p27; got: {:?}",
+        DECLASSIFY_MISPLACED_CROSS_REFS,
     );
 }
 
@@ -64,9 +64,9 @@ fn e005_cross_refs_pin_section_d_1_p27() {
 fn s003_cross_refs_pin_section_h_8_p150() {
     let expected: Citation = capco(SectionLetter::H, 8, 150);
     assert!(
-        S003_CROSS_REFS.contains(&expected),
-        "S003_CROSS_REFS must include §H.8 p150; got: {:?}",
-        S003_CROSS_REFS,
+        JOINT_USA_FIRST_CROSS_REFS.contains(&expected),
+        "JOINT_USA_FIRST_CROSS_REFS must include §H.8 p150; got: {:?}",
+        JOINT_USA_FIRST_CROSS_REFS,
     );
 }
 
@@ -78,9 +78,9 @@ fn s003_cross_refs_pin_section_h_8_p150() {
 fn e037_cross_refs_pin_section_h_9_p174() {
     let expected: Citation = capco(SectionLetter::H, 9, 174);
     assert!(
-        E037_CROSS_REFS.contains(&expected),
-        "E037_CROSS_REFS must include §H.9 p174; got: {:?}",
-        E037_CROSS_REFS,
+        NODIS_EXDIS_MUTEX_CROSS_REFS.contains(&expected),
+        "NODIS_EXDIS_MUTEX_CROSS_REFS must include §H.9 p174; got: {:?}",
+        NODIS_EXDIS_MUTEX_CROSS_REFS,
     );
 }
 
@@ -92,9 +92,9 @@ fn e037_cross_refs_pin_section_h_9_p174() {
 fn e038_cross_refs_pin_section_h_9_p174() {
     let expected: Citation = capco(SectionLetter::H, 9, 174);
     assert!(
-        E038_CROSS_REFS.contains(&expected),
-        "E038_CROSS_REFS must include §H.9 p174; got: {:?}",
-        E038_CROSS_REFS,
+        NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS.contains(&expected),
+        "NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS must include §H.9 p174; got: {:?}",
+        NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS,
     );
 }
 
@@ -108,8 +108,8 @@ fn e038_cross_refs_pin_section_h_9_p174() {
 fn e039_cross_refs_pin_section_h_9_p174() {
     let expected: Citation = capco(SectionLetter::H, 9, 174);
     assert!(
-        E039_CROSS_REFS.contains(&expected),
-        "E039_CROSS_REFS must include §H.9 p174; got: {:?}",
-        E039_CROSS_REFS,
+        NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS.contains(&expected),
+        "NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS must include §H.9 p174; got: {:?}",
+        NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS,
     );
 }

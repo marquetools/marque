@@ -84,13 +84,13 @@ pub(crate) struct NodisExdisClearsBannerRelToRule;
 /// EXDIS markings cannot be used together", mirroring §H.9 p172's
 /// EXDIS-side wording. Both passages are operative for E037.
 ///
-/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale.
+/// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
-pub(crate) const E037_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+pub(crate) const NODIS_EXDIS_MUTEX_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
 
 /// E038 secondary CAPCO §-citations.
 ///
-/// PR 10.A.1 Commit 4: identical mechanism to [`E037_CROSS_REFS`] —
+/// PR 10.A.1 Commit 4: identical mechanism to [`NODIS_EXDIS_MUTEX_CROSS_REFS`] —
 /// the declarative `Custom` row at
 /// `core_constraints()::"portion.dissem.nodis-or-exdis-requires-noforn"` carries
 /// only the primary §H.9 p172 anchor. The cross-reference to p174
@@ -103,9 +103,9 @@ pub(crate) const E037_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174
 /// "Requires NOFORN" clause that the rule's primary citation at p172
 /// establishes for EXDIS. Both passages are operative for E038.
 ///
-/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale.
+/// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
-pub(crate) const E038_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+pub(crate) const NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
 
 /// E039 secondary CAPCO §-citations.
 ///
@@ -124,16 +124,16 @@ pub(crate) const E038_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174
 /// rule that the rule's primary citation at p172 establishes for
 /// EXDIS. Both passages are operative for E039.
 ///
-/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale.
+/// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
-pub(crate) const E039_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+pub(crate) const NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
 
 /// Citations E039 may emit on diagnostics. Combines the primary
 /// `Diagnostic.citation` value (§H.9 p172 — EXDIS) with the
-/// [`E039_CROSS_REFS`] cross-references (§H.9 p174 — NODIS). See
+/// [`NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS`] cross-references (§H.9 p174 — NODIS). See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E039_AUTHORITIES: &[Citation] = &[
+const NODIS_EXDIS_CLEARS_BANNER_REL_TO_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 9, 172),
     capco(SectionLetter::H, 9, 174),
 ];
@@ -159,7 +159,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E039_AUTHORITIES
+        NODIS_EXDIS_CLEARS_BANNER_REL_TO_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
@@ -328,7 +328,7 @@ pub(crate) struct NodisSupersedesExdisInPortionRule;
 /// reference is also operative because both passages state the
 /// supersession rule verbatim. See [`Rule::cited_authorities`] for
 /// the F.1 corpus-fidelity gate contract.
-const E041_AUTHORITIES: &[Citation] = &[
+const NODIS_SUPERSEDES_EXDIS_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 9, 174),
     capco(SectionLetter::H, 9, 172),
 ];
@@ -353,7 +353,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E041_AUTHORITIES
+        NODIS_SUPERSEDES_EXDIS_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};

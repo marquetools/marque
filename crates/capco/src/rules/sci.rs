@@ -56,7 +56,7 @@ pub(crate) struct SciCustomControlInfoRule;
 /// Citations W034 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const W034_AUTHORITIES: &[Citation] = &[capco(SectionLetter::A, 6, 16)];
+const SCI_CUSTOM_CONTROL_INFO_AUTHORITIES: &[Citation] = &[capco(SectionLetter::A, 6, 16)];
 
 impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     fn id(&self) -> RuleId {
@@ -79,7 +79,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        W034_AUTHORITIES
+        SCI_CUSTOM_CONTROL_INFO_AUTHORITIES
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
@@ -161,7 +161,7 @@ pub(crate) struct HcsBareAtConfidentialLegacyRemarkRule;
 /// Citations E061 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E061_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
+const HCS_BARE_AT_CONFIDENTIAL_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
 impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     fn id(&self) -> RuleId {
@@ -187,7 +187,7 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E061_AUTHORITIES
+        HCS_BARE_AT_CONFIDENTIAL_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
@@ -263,7 +263,7 @@ pub(crate) struct HcsBareSuggestSubcompartmentRule;
 /// Citations E062 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E062_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
+const HCS_BARE_SUGGEST_SUB_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
 impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
     fn id(&self) -> RuleId {
@@ -286,7 +286,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E062_AUTHORITIES
+        HCS_BARE_SUGGEST_SUB_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
@@ -387,7 +387,7 @@ pub(crate) struct RsvBareRequiresCompartmentRule;
 /// Citations E063 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E063_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 70)];
+const RSV_BARE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 70)];
 
 impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
     fn id(&self) -> RuleId {
@@ -409,7 +409,7 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E063_AUTHORITIES
+        RSV_BARE_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{SciControlBare, SciControlSystem};

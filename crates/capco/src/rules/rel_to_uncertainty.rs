@@ -86,7 +86,7 @@ use crate::scheme::CapcoScheme;
 // member-country source per ODNI; §H.8 itself does not delegate to
 // ISMCAT (the string "ISMCAT" does not appear in
 // `crates/capco/docs/CAPCO-2016.md`). The two authorities compose;
-// they are not in a delegating relationship. `S005_CITATION` below
+// they are not in a delegating relationship. `CITATION` below
 // uses an additive `+` form; read it as "§H.8 (grammar) plus ISMCAT
 // (expansion data)", not as "§H.8 delegating to ISMCAT."
 //
@@ -442,7 +442,7 @@ fn analyze_uncertain_reduction(
             Severity::Suggest,
             span,
             message,
-            S005_CITATION,
+            CITATION,
             None,
         ));
     }
@@ -461,11 +461,11 @@ fn analyze_uncertain_reduction(
 /// (`ISMCAT_TETRA_VERSION`), which is not a CAPCO §-citation and
 /// thus does not encode into the typed `Citation` field. The
 /// per-rule doc comment carries the full provenance.
-const S005_CITATION: Citation = capco(SectionLetter::H, 8, 150);
+const CITATION: Citation = capco(SectionLetter::H, 8, 150);
 
-/// Citations S005 may emit on diagnostics. Wraps [`S005_CITATION`]
+/// Citations S005 may emit on diagnostics. Wraps [`CITATION`]
 /// for the [`Rule::cited_authorities`] surface.
-const S005_AUTHORITIES: &[Citation] = &[S005_CITATION];
+const AUTHORITIES: &[Citation] = &[CITATION];
 
 impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn id(&self) -> RuleId {
@@ -503,7 +503,7 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        S005_AUTHORITIES
+        AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)

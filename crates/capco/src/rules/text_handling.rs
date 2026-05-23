@@ -135,14 +135,14 @@ pub(crate) struct DeclassifyMisplacedRule;
 /// add to the production binary footprint, including the WASM-shipped
 /// crate surface).
 #[allow(dead_code)] // used by `citation_cross_refs_tests` at end of file
-pub(crate) const E005_CROSS_REFS: &[Citation] = &[capco(SectionLetter::D, 1, 27)];
+pub(crate) const DECLASSIFY_MISPLACED_CROSS_REFS: &[Citation] = &[capco(SectionLetter::D, 1, 27)];
 
 /// Citations E005 may emit on diagnostics. Combines the primary
 /// `Diagnostic.citation` value (§E.1 p31) with the
-/// [`E005_CROSS_REFS`] cross-references. See
+/// [`DECLASSIFY_MISPLACED_CROSS_REFS`] cross-references. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E005_AUTHORITIES: &[Citation] = &[
+const DECLASSIFY_MISPLACED_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::E, 1, 31),
     capco(SectionLetter::D, 1, 27),
 ];
@@ -167,7 +167,7 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E005_AUTHORITIES
+        DECLASSIFY_MISPLACED_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -238,7 +238,7 @@ pub(crate) struct XShorthandDateRule;
 /// Citations E007 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E007_AUTHORITIES: &[Citation] = &[capco(SectionLetter::E, 6, 33)];
+const X_SHORTHAND_DATE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::E, 6, 33)];
 
 impl Rule<CapcoScheme> for XShorthandDateRule {
     fn id(&self) -> RuleId {
@@ -261,7 +261,7 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E007_AUTHORITIES
+        X_SHORTHAND_DATE_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
@@ -479,7 +479,7 @@ pub(crate) struct UnknownTokenRule;
 /// Citations E008 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::G, 1, 36)];
+const UNKNOWN_TOKEN_AUTHORITIES: &[Citation] = &[capco(SectionLetter::G, 1, 36)];
 
 impl Rule<CapcoScheme> for UnknownTokenRule {
     fn id(&self) -> RuleId {
@@ -503,7 +503,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E008_AUTHORITIES
+        UNKNOWN_TOKEN_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Precompute whether a first SAR block parsed successfully. The

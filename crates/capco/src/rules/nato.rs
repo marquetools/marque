@@ -276,7 +276,7 @@ fn build_bare_nato_rel_to_augmentation(existing: &[CountryCode]) -> String {
 /// Citations S007 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const S007_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 127)];
+const BARE_NATO_REQUIRES_REL_TO_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 127)];
 
 impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
     fn id(&self) -> RuleId {
@@ -303,7 +303,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        S007_AUTHORITIES
+        BARE_NATO_REQUIRES_REL_TO_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -521,7 +521,7 @@ pub(crate) struct LegacyNatoCompoundRemarkRule;
 /// SCI position); the rule's `check()` selects per companion type.
 /// See [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const E066_AUTHORITIES: &[Citation] = &[
+const LEGACY_NATO_COMPOUND_REMARK_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 7, 122),
     capco(SectionLetter::H, 7, 127),
 ];
@@ -551,7 +551,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        E066_AUTHORITIES
+        LEGACY_NATO_COMPOUND_REMARK_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{

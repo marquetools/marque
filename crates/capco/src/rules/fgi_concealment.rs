@@ -53,20 +53,20 @@ use crate::scheme::CapcoScheme;
 //   Suggest: conceal all (drop trigraphs, keep FGI) + optional NF.
 
 /// Case A confidence: countries fully ⊆ REL TO; unambiguous acknowledged-source fix.
-const E071_ACK_ALL_CONFIDENCE: f32 = 1.0;
+const ACK_ALL_CONFIDENCE: f32 = 1.0;
 /// Case C primary confidence: conceal all (drop trigraphs).
-const E071_CONCEAL_ALL_CONFIDENCE: f32 = 0.8;
+const CONCEAL_ALL_CONFIDENCE: f32 = 0.8;
 /// Case C alternate confidence: acknowledge (drop FGI prefix).
-const E071_CASE_C_ALT_CONFIDENCE: f32 = 0.6;
+const CASE_C_ALT_CONFIDENCE: f32 = 0.6;
 /// Case D suggest confidence: partial overlap, both paths offered.
-const E071_CASE_D_CONFIDENCE: f32 = 0.6;
+const CASE_D_CONFIDENCE: f32 = 0.6;
 /// NOFORN companion confidence.
-const E071_NF_CONFIDENCE: f32 = 0.7;
+const NF_CONFIDENCE: f32 = 0.7;
 
 /// Overlap relationship between the FGI trigraphs in the classification
 /// block and the REL TO country list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum E071Containment {
+enum Containment {
     /// All FGI countries present in REL TO (countries ⊆ rel_to).
     Full,
     /// No FGI country in REL TO (or REL TO is empty).
@@ -75,35 +75,35 @@ enum E071Containment {
     Partial,
 }
 
-fn e071_rel_to_containment(countries: &[CountryCode], rel_to: &[CountryCode]) -> E071Containment {
+fn rel_to_containment(countries: &[CountryCode], rel_to: &[CountryCode]) -> Containment {
     if rel_to.is_empty() {
-        return E071Containment::Empty;
+        return Containment::Empty;
     }
     let matched = countries.iter().filter(|c| rel_to.contains(c)).count();
     if matched == 0 {
-        E071Containment::Empty
+        Containment::Empty
     } else if matched == countries.len() {
-        E071Containment::Full
+        Containment::Full
     } else {
-        E071Containment::Partial
+        Containment::Partial
     }
 }
 
 /// Drop the `"FGI"` token and any following whitespace.
 /// `"FGI DEU R"` → `"DEU R"`, `"FGI  DEU R"` → `"DEU R"`.
 /// Caller guarantees `tok_text` starts with `"FGI"` followed by whitespace.
-fn e071_strip_fgi_prefix(tok_text: &str) -> String {
+fn strip_fgi_prefix(tok_text: &str) -> String {
     tok_text["FGI".len()..].trim_start().to_owned()
 }
 
 /// Canonical concealed form: `"FGI {level}"` e.g. `"FGI R"`.
-fn e071_concealed_form(level: marque_ism::Classification) -> String {
+fn concealed_form(level: marque_ism::Classification) -> String {
     format!("FGI {}", level.portion_str())
 }
 
 /// Canonical acknowledged form: `"{trigraphs} {level}"` e.g. `"DEU GBR R"`.
 /// Sorts trigraphs alphabetically (canonical per §H.7 p124 / renderer).
-fn e071_acknowledged_form(countries: &[CountryCode], level: marque_ism::Classification) -> String {
+fn acknowledged_form(countries: &[CountryCode], level: marque_ism::Classification) -> String {
     let mut parts: Vec<&str> = countries.iter().map(|c| c.as_str()).collect();
     parts.sort_unstable();
     format!("{} {}", parts.join(" "), level.portion_str())
@@ -185,12 +185,12 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
 
         let noforn_present = attrs.dissem_iter().any(|d| matches!(d, DissemControl::Nf));
 
-        match e071_rel_to_containment(&fgi.countries, &attrs.rel_to) {
-            E071Containment::Full => {
+        match rel_to_containment(&fgi.countries, &attrs.rel_to) {
+            Containment::Full => {
                 // Case A: acknowledged source confirmed by REL TO.
                 // FGI + trigraph + REL TO(trigraph) is contradictory.
                 // Fix: drop "FGI " prefix from the classification token.
-                let replacement = e071_strip_fgi_prefix(tok_text);
+                let replacement = strip_fgi_prefix(tok_text);
                 out.push(Diagnostic::text_correction(
                     self.id(),
                     Severity::Error,
@@ -199,16 +199,16 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     replacement,
                     FixSource::BuiltinRule,
-                    Confidence::strict(E071_ACK_ALL_CONFIDENCE),
+                    Confidence::strict(ACK_ALL_CONFIDENCE),
                     None,
                 ));
             }
-            E071Containment::Empty => {
+            Containment::Empty => {
                 // Case C: no REL TO overlap — source must be concealed.
                 // §H.7 p124: no trigraph should appear with concealed FGI.
                 //
                 // Primary (Warn): drop trigraphs → "FGI {level}".
-                let conceal_form = e071_concealed_form(level);
+                let conceal_form = concealed_form(level);
                 out.push(Diagnostic::text_correction(
                     self.id(),
                     Severity::Warn,
@@ -217,11 +217,11 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     conceal_form,
                     FixSource::BuiltinRule,
-                    Confidence::strict(E071_CONCEAL_ALL_CONFIDENCE),
+                    Confidence::strict(CONCEAL_ALL_CONFIDENCE),
                     None,
                 ));
                 // Alternate Suggest: drop FGI → "DEU R" (acknowledged path).
-                let ack_form = e071_acknowledged_form(&fgi.countries, level);
+                let ack_form = acknowledged_form(&fgi.countries, level);
                 out.push(Diagnostic::text_correction(
                     self.id(),
                     Severity::Suggest,
@@ -230,7 +230,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     ack_form,
                     FixSource::BuiltinRule,
-                    Confidence::strict(E071_CASE_C_ALT_CONFIDENCE),
+                    Confidence::strict(CASE_C_ALT_CONFIDENCE),
                     None,
                 ));
                 // Optional NF companion: unacknowledged FGI is caveated per IC
@@ -241,7 +241,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                             token: FactRef::Cve(TOK_NOFORN),
                             scope: Scope::Portion,
                         },
-                        confidence: Confidence::strict(E071_NF_CONFIDENCE),
+                        confidence: Confidence::strict(NF_CONFIDENCE),
                         feature_ids: Default::default(),
                         message: Message::new(
                             MessageTemplate::RequiredByPresence,
@@ -261,7 +261,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     ));
                 }
             }
-            E071Containment::Partial => {
+            Containment::Partial => {
                 // Case D: partial overlap — some trigraphs ack'd, some not.
                 // Intent is ambiguous; no auto-fix.
                 out.push(Diagnostic::with_fix(
@@ -273,7 +273,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     None,
                 ));
                 // Suggest 1: acknowledge all (drop FGI, keep trigraphs).
-                let ack_all = e071_acknowledged_form(&fgi.countries, level);
+                let ack_all = acknowledged_form(&fgi.countries, level);
                 out.push(Diagnostic::text_correction(
                     self.id(),
                     Severity::Suggest,
@@ -282,11 +282,11 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     ack_all,
                     FixSource::BuiltinRule,
-                    Confidence::strict(E071_CASE_D_CONFIDENCE),
+                    Confidence::strict(CASE_D_CONFIDENCE),
                     None,
                 ));
                 // Suggest 2: conceal all (drop trigraphs, keep FGI).
-                let conceal_all = e071_concealed_form(level);
+                let conceal_all = concealed_form(level);
                 out.push(Diagnostic::text_correction(
                     self.id(),
                     Severity::Suggest,
@@ -295,7 +295,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     conceal_all,
                     FixSource::BuiltinRule,
-                    Confidence::strict(E071_CASE_D_CONFIDENCE),
+                    Confidence::strict(CASE_D_CONFIDENCE),
                     None,
                 ));
                 // NF companion for the conceal-all path.
@@ -305,7 +305,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                             token: FactRef::Cve(TOK_NOFORN),
                             scope: Scope::Portion,
                         },
-                        confidence: Confidence::strict(E071_NF_CONFIDENCE),
+                        confidence: Confidence::strict(NF_CONFIDENCE),
                         feature_ids: Default::default(),
                         message: Message::new(
                             MessageTemplate::RequiredByPresence,

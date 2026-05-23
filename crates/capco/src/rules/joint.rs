@@ -120,20 +120,20 @@ pub(crate) struct JointUsaFirstRule;
 /// holds a single page; the range "pp 150-151" lives in the rule
 /// doc-comment.
 ///
-/// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale —
+/// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale —
 /// this is rule-authoritative metadata read by
 /// `citation_cross_refs_tests` (bottom of this file). The runtime
-/// `Rule::cited_authorities()` surface reads [`S003_AUTHORITIES`]
+/// `Rule::cited_authorities()` surface reads [`JOINT_USA_FIRST_AUTHORITIES`]
 /// instead, which combines the primary `§H.3 p56` anchor with the
-/// `S003_CROSS_REFS` cross-references in one slice.
+/// `JOINT_USA_FIRST_CROSS_REFS` cross-references in one slice.
 #[allow(dead_code)]
-pub(crate) const S003_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+pub(crate) const JOINT_USA_FIRST_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
 /// Citations S003 may emit on diagnostics. Primary anchor §H.3 p56
 /// (the JOINT pure-alpha rule the IC convention layers above) plus
 /// the §H.8 p150 REL TO precedent S003 ports forward. See
 /// [`Rule::cited_authorities`] for the F.1 gate contract.
-const S003_AUTHORITIES: &[Citation] = &[
+const JOINT_USA_FIRST_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 3, 56),
     capco(SectionLetter::H, 8, 150),
 ];
@@ -158,7 +158,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        S003_AUTHORITIES
+        JOINT_USA_FIRST_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{CountryCode, MarkingType};
@@ -312,7 +312,7 @@ pub(crate) struct JointDisunityCollapseRule;
 /// Citations W004 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const W004_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 3, 57)];
+const JOINT_DISUNITY_COLLAPSE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 3, 57)];
 
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn id(&self) -> RuleId {
@@ -348,7 +348,7 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        W004_AUTHORITIES
+        JOINT_DISUNITY_COLLAPSE_AUTHORITIES
     }
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Phase::PageFinalization invariant: the engine's
