@@ -5,9 +5,11 @@
 //! single token, with sealed constructors for closed-CVE versus
 //! open-vocabulary provenance.
 //!
-//! This type closes the audit content-ignorance leak channel
-//! (Constitution V Principle V) at the type level rather than via
-//! convention-only enforcement.
+//! See source plan §8.1
+//! (`docs/plans/2026-05-02-engine-refactor-consolidated.md`) for the
+//! design rationale: this type is the keystone for closing the G13
+//! leak channel (Constitution V Principle V) at the type level
+//! rather than via convention-only enforcement.
 //!
 //! # Construction surface
 //!
@@ -18,15 +20,20 @@
 //!    TokenId(pub u32)`, so the type itself is publicly
 //!    constructible — the [`TokenSource::Cve`] tag is a *provenance
 //!    claim* by the rule, not a vocabulary-validated guarantee at
-//!    `from_cve` call time). There is no `Box<str> → Canonical<S>`
-//!    public path, but a rule that constructs `TokenId(N)` for
-//!    arbitrary `N` and supplies its own `bytes` is constructing a
-//!    `Canonical<S>` with arguably forged provenance. The audit
-//!    emitter is the validation boundary: at audit-emit time it
-//!    cross-references the recorded `TokenId` against
-//!    [`crate::Vocabulary::lookup`] for the active scheme and rejects
-//!    records whose token does not resolve to a registered vocabulary
-//!    entry.
+//!    `from_cve` call time). The seal that PR 3c.1 enforces is
+//!    weaker than "no input bytes can become a `Canonical<S>`":
+//!    there is no `Box<str> → Canonical<S>` public path that goes
+//!    through `from_cve` *automatically*, but a rule that
+//!    constructs `TokenId(N)` for arbitrary `N` and supplies its
+//!    own `bytes` is constructing a `Canonical<S>` with arguably
+//!    forged provenance. The audit emitter is the validation
+//!    boundary: at audit-emit time it cross-references the recorded
+//!    `TokenId` against [`crate::Vocabulary::lookup`] for the
+//!    active scheme and rejects records whose token does not
+//!    resolve to a registered vocabulary entry. The PR 3c.2 reshape
+//!    of [`Canonical::from_cve`] (removing caller-supplied `bytes`
+//!    in favor of engine-side rendering from the vocabulary) closes
+//!    the residual provenance-forgery channel by construction.
 //!
 //! 2. **Open-vocab — [`Canonical::from_render`]** — `pub(crate)` to
 //!    `marque-scheme`. Reachable from external crates ONLY through
@@ -34,15 +41,24 @@
 //!    via the sealed trait whose sole impl is
 //!    [`EngineConstructor`].
 //!
-//! # Cross-crate emission story
+//! # Cross-crate emission story (PR 3c.2 onward)
 //!
 //! External rule crates (`marque-capco` today, future `marque-cui` /
 //! `marque-nato` / partner-national crates) emit `FixIntent<S>`
 //! values; the engine — holding the only path that can drive
 //! [`CanonicalConstructor`] — renders them on the rule's behalf.
 //! This preserves the closed-construction property across the
-//! workspace boundary that Constitution VII opens up for new rule
-//! crate families.
+//! workspace boundary that Constitution VII §VII opens up for new
+//! rule crate families. See
+//! `specs/006-engine-rule-refactor/contracts/fix-intent.md` for the
+//! full contract.
+//!
+//! # PR 3c.1 status
+//!
+//! PR 3c.1 ships the types and the seal; no production code consumes
+//! them yet (rules still emit `FixProposal`, the engine still
+//! constructs `AppliedFix` via the existing path). PR 3c.2 wires the
+//! lifecycle.
 
 use core::marker::PhantomData;
 use core::panic::Location;
@@ -88,10 +104,10 @@ pub enum TokenSource {
     /// the render site; the `Cve` provenance tag tells them the
     /// emission was vocabulary-bound (closed-set), not free-form.
     ///
-    /// Form selection (which of the four to emit) is the engine's
-    /// rendering responsibility, driven by `scope` and the
-    /// `Vocabulary<S>` accessors; this tag only records that the
-    /// emission was vocabulary-bound.
+    /// PR 3c.2's `MarkingScheme::render_canonical_cve(token, scope,
+    /// vocab)` is the form-selection path: it chooses one of the
+    /// four based on `scope` (and any future `RenderContext`
+    /// refinement) using the `Vocabulary<S>` accessors.
     Cve(TokenId),
 
     /// Open-vocabulary: the canonical bytes were constructed by a
@@ -168,15 +184,14 @@ pub enum TokenSource {
 /// }
 /// ```
 ///
-/// **No `Serialize for Canonical<S>` impl.**
+/// **No `Serialize for Canonical<S>` impl** (PR 3c.2.D).
 ///
 /// The audit-emit path projects `Canonical<S>` to a structured JSON
 /// shape with a `bytes_digest` field rather than serializing the raw
 /// bytes. Direct `serde::Serialize` derivation is intentionally
-/// rejected to keep the audit content-ignorance boundary
-/// (Constitution V Principle V) at compile time — the renderer MUST go
-/// through the audit-record JSON projection that emits the BLAKE3
-/// digest, never the bytes.
+/// rejected to keep the G13 boundary (Constitution V Principle V) at
+/// compile time — the renderer MUST go through the audit-record JSON
+/// projection that emits the BLAKE3 digest, never the bytes.
 ///
 /// The doctest below asserts the property by demanding a
 /// `T: serde::Serialize` bound. The compile failure is specifically
@@ -217,8 +232,8 @@ pub struct Canonical<S: MarkingScheme + ?Sized> {
 // `_scheme: PhantomData<fn() -> S>` field is always `Clone` because
 // `PhantomData<T>: Clone` holds for any `T` regardless of `T: Clone`.
 //
-// Required by `marque_rules::AppliedReplacement<S>` to satisfy its own
-// manual `Clone` impl in turn.
+// Required by `marque_rules::AppliedReplacement<S>` (PR 3c.2.D / D2) to
+// satisfy its own manual `Clone` impl in turn.
 impl<S: MarkingScheme + ?Sized> Clone for Canonical<S> {
     fn clone(&self) -> Self {
         Self {
@@ -234,10 +249,11 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     /// **Closed-CVE constructor — public, callable from any crate.**
     ///
     /// `TokenId` itself can only be obtained from
-    /// [`crate::Vocabulary::lookup`] or from rule-side const tables
-    /// registered against the active scheme, so the `TokenId`
-    /// provenance tag carried in [`TokenSource::Cve`] is genuine —
-    /// auditors reading it know a closed-vocabulary token was named.
+    /// [`crate::Vocabulary::lookup`] (PR 3c.1) or from rule-side
+    /// const tables registered against the active scheme (PR 3c.2),
+    /// so the `TokenId` provenance tag carried in
+    /// [`TokenSource::Cve`] is genuine — auditors reading it know
+    /// a closed-vocabulary token was named.
     ///
     /// # Four-form ambiguity (read this before reasoning about `bytes`)
     ///
@@ -246,21 +262,40 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     /// Marking Title (long banner), Banner Abbreviation, and Portion
     /// Mark. See [`TokenSource::Cve`] for the worked example. The
     /// `bytes` parameter here is **whichever form the caller chose
-    /// to render** — `from_cve` does not select among the four. Form
-    /// selection is the engine's job, driven by the [`Vocabulary<S>`]
-    /// accessors (`portion_form`, `banner_form`, `banner_abbreviation`)
-    /// against `scope` and any further [`crate::RenderContext`]
-    /// refinement (e.g., long-title-vs-abbreviation within a
-    /// `Scope::Page`).
+    /// to render** — `from_cve` does not select among the four. That
+    /// selection is the point of PR 3c.2's
+    /// `MarkingScheme::render_canonical_cve(token, scope, vocab)`,
+    /// which will use the [`Vocabulary<S>`] accessors
+    /// (`portion_form`, `banner_form`, `banner_abbreviation`, plus a
+    /// future CVE-Value-by-token accessor) to pick a form based on
+    /// `scope` and any further [`crate::RenderContext`] refinement
+    /// (e.g., long-title-vs-abbreviation within a `Scope::Page`).
     ///
-    /// # Caveat
+    /// # Caveat (PR 3c.1 transitional shape — closes in PR 3c.2)
     ///
-    /// The `bytes` argument is caller-supplied. The `TokenId` records
-    /// which token was *named*; the `bytes` record which form the
-    /// caller *rendered*. This constructor does not validate that the
-    /// bytes equal any of the four vocabulary forms for that token —
-    /// the audit emitter is the validation boundary (it resolves the
-    /// `TokenId` against the active vocabulary).
+    /// The `bytes` argument is currently caller-supplied. The
+    /// `TokenId` records which token was *named*; the `bytes`
+    /// record which form the caller *rendered*. **PR 3c.1 does not
+    /// validate** that the bytes equal any of the four vocabulary
+    /// forms for that token; that validation lands at PR 3c.2 once
+    /// the form-selection question is resolved (see the design
+    /// doc's "Open question" section in
+    /// `docs/plans/2026-05-09-pr3c-foundation-plan.md`).
+    ///
+    /// During PR 3c.1 there are no production callers (the engine
+    /// promotion path still consumes `FixProposal::replacement` and
+    /// has not been re-wired through `Canonical<S>` yet). Test
+    /// fixtures that exercise the type may pass arbitrary bytes;
+    /// they are constructing test inputs, not minting audit records.
+    ///
+    /// # Audit invariant (post-PR-3c.2)
+    ///
+    /// Once PR 3c.2 lands the form-selection design, the `bytes`
+    /// argument is removed and the engine renders from the
+    /// vocabulary. The resulting [`Canonical::source`] is
+    /// [`TokenSource::Cve(token)`] and the bytes are guaranteed to
+    /// match the vocabulary's chosen form for `(token, scope,
+    /// render_context)`.
     pub fn from_cve(token: TokenId, scope: Scope, bytes: Box<str>) -> Self {
         Self {
             bytes,
@@ -276,7 +311,8 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     /// Reachable from external crates only via
     /// [`CanonicalConstructor::build_open_vocab`], whose sole impl
     /// is [`EngineConstructor`]. Records the `render_call_site` as
-    /// provenance — the call site is captured by `#[track_caller]` on
+    /// provenance per source plan §8.1 — the call site is captured
+    /// by `#[track_caller]` on
     /// [`EngineConstructor::build_open_vocab`].
     pub(crate) fn from_render(
         category: CategoryId,
@@ -377,10 +413,11 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
 /// associated-function-call form to bypass the
 /// `__engine_construct` mint path. They must first obtain an
 /// `EngineConstructor<S>` instance, and that path is the
-/// lint-guarded `__engine_construct()`. The snippet below is
-/// rejected: rustc reports "this function takes 4 arguments but
+/// FR-040-lint-guarded `__engine_construct()`. The snippet below
+/// is rejected: rustc reports "this function takes 4 arguments but
 /// 3 arguments were supplied" because the implicit `&self` receiver
-/// is missing. (Regression catch for the assoc-fn seal-bypass class.)
+/// is missing. (Regression catch for the assoc-fn seal-bypass class
+/// raised on PR 3c.1.)
 ///
 /// ```compile_fail
 /// use marque_scheme::canonical::{Canonical, CanonicalConstructor, EngineConstructor};
@@ -406,10 +443,11 @@ pub trait CanonicalConstructor<S: MarkingScheme + ?Sized>: sealed::Sealed<S> {
     /// from any crate that can name [`EngineConstructor`] (every
     /// crate, since it is `pub`) — bypassing the
     /// [`EngineConstructor::__engine_construct`] reserved-name path
-    /// that the promote-callsite lint relies on. The `&self` receiver
-    /// forces the caller to first obtain an [`EngineConstructor<S>`]
-    /// instance, which only [`EngineConstructor::__engine_construct`]
-    /// mints, which the lint flags.
+    /// that the FR-040 promote-callsite-lint relies on. The `&self`
+    /// receiver forces the caller to first obtain an
+    /// [`EngineConstructor<S>`] instance, which only
+    /// [`EngineConstructor::__engine_construct`] mints, which the
+    /// lint flags.
     ///
     /// The implementer (the engine, via [`EngineConstructor`]) is
     /// responsible for capturing the `render_call_site` via
@@ -425,20 +463,21 @@ pub trait CanonicalConstructor<S: MarkingScheme + ?Sized>: sealed::Sealed<S> {
 /// Lives in `marque-scheme` (not `marque-engine`) so the
 /// [`sealed::Sealed`] supertrait can be implemented locally —
 /// `Sealed` is private to `marque-scheme` and cannot be implemented
-/// from a downstream crate.
+/// from a downstream crate. See design doc §3 T035 (Option D) for
+/// the placement rationale.
 ///
 /// `EngineConstructor<S>` is `pub` so the engine can name it in
-/// `Engine::fix_inner`'s render dispatch. Construction is sealed via
-/// the `__engine_construct` reserved-name pattern (the same convention
-/// the audit-promotion seal in the rules crate uses; `marque-scheme`
-/// does not depend on `marque-rules` so we describe the convention
-/// here rather than naming a specific concrete type). The
-/// promote-callsite CI lint flags every call expression whose path's
-/// last segment is `__engine_construct` or `__engine_promote`
-/// regardless of leading qualifier; the lint's allow-list scopes the
-/// legitimate use sites to the engine.
+/// `Engine::fix_inner`'s render dispatch (PR 3c.2). Construction is
+/// sealed via the `__engine_construct` reserved-name pattern (the
+/// same convention the audit-promotion seal in the rules crate uses;
+/// `marque-scheme` does not depend on `marque-rules` so we describe
+/// the convention here rather than naming a specific concrete type).
+/// The `tools/promote-callsite-lint/` CI lint (FR-040) flags every
+/// call expression whose path's last segment is `__engine_construct`
+/// or `__engine_promote` regardless of leading qualifier; the lint's
+/// allow-list scopes the legitimate use sites to the engine.
 ///
-/// # Maintainability note
+/// # 5-year-maintainability note
 ///
 /// The `__engine_construct` `#[doc(hidden)] pub` is **not** the
 /// primary seal — the primary seal is the
@@ -447,14 +486,14 @@ pub trait CanonicalConstructor<S: MarkingScheme + ?Sized>: sealed::Sealed<S> {
 /// `__engine_construct` doc-hidden name is a secondary defense
 /// against accidental construction inside the engine's own
 /// rule-adjacent helpers; it signals "engine-only" to readers and
-/// the lint flags wrong call sites mechanically.
+/// the FR-040 lint flags wrong call sites mechanically.
 pub struct EngineConstructor<S: MarkingScheme + ?Sized> {
     _scheme: PhantomData<fn() -> S>,
     _seal: (),
 }
 
 impl<S: MarkingScheme + ?Sized> EngineConstructor<S> {
-    /// Reserved name (promote-callsite lint contract).
+    /// Reserved name (FR-040 lint contract).
     ///
     /// Mint via the engine-only path. The same audit-promotion
     /// reserved-name discipline applies; see
@@ -589,7 +628,7 @@ mod tests {
     fn engine_constructor_build_open_vocab_records_call_site() {
         // EngineConstructor is the sole CanonicalConstructor<S> impl;
         // the call site is captured by #[track_caller] so provenance
-        // reflects the calling render impl. The engine wires this from
+        // reflects the calling render impl. PR 3c.2 wires this from
         // `Engine::fix_inner` -> `MarkingScheme::render_canonical`.
         // Test-fixture carve-out per Constitution V Principle V.
         let ctor: EngineConstructor<TestScheme> = EngineConstructor::__engine_construct();
@@ -615,7 +654,7 @@ mod tests {
     fn engine_constructor_minted_via_reserved_name() {
         // The reserved-name pattern compiles from inside marque-scheme
         // because the crate IS the engine-side seal implementor; the
-        // promote-callsite lint flags external call sites.
+        // FR-040 lint flags external call sites.
         // Test-fixture carve-out per Constitution V Principle V.
         let _c: EngineConstructor<TestScheme> = EngineConstructor::__engine_construct();
     }

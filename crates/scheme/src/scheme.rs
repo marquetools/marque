@@ -42,22 +42,25 @@ pub trait MarkingScheme {
     /// The scheme's full-marking type — a **projection target**, not a
     /// lattice element.
     ///
-    /// `Marking` intentionally carries no `JoinSemilattice` bound.
-    /// The per-axis lattices (`RelToBlock`, `DissemSet`, `SciSet`,
-    /// `SarSet`, etc.) are sound lattices on their native domain
-    /// (expanded `2^{Trigraph}` for REL TO, etc.); `Marking` is the
+    /// PR 4b-D.2 (2026-05-18) relaxed the prior `JoinSemilattice` bound
+    /// after the Copilot R1 review surfaced an idempotence-law
+    /// violation on `CapcoMarking` driven by tetragraph expansion in
+    /// `RelToBlock::from_attrs_iter` (`m.rel_to = [NATO]` → after
+    /// `m.join(m)` → `m.rel_to = {30 expanded trigraphs}`; structural
+    /// `Eq` fails). The lattice consultant verdict was: the per-axis
+    /// lattices (`RelToBlock`, `DissemSet`, `SciSet`, `SarSet`, etc.)
+    /// are sound lattices on their native domain (expanded
+    /// `2^{Trigraph}` for REL TO, etc.); `Marking` is the
     /// **cross-axis fold** of those lattice values back into a single
     /// structural record. Cross-axis folding is a *projection*, not a
-    /// lattice operation. Claiming `JoinSemilattice` on the cross-axis
-    /// record-type would promise a law (idempotence on structural `Eq`)
-    /// the construction cannot keep: tetragraph expansion in
-    /// `RelToBlock::from_attrs_iter` means `m.join(m)` can expand
-    /// `m.rel_to = [NATO]` into `{30 expanded trigraphs}`, so structural
-    /// `Eq` fails idempotence. Keeping that law would require either
-    /// lossy eager canonicalization at construction or a quotient-`Eq`
-    /// on every `CanonicalAttrs`-shaped field — both rejected as
-    /// blast-radius-too-large. Omitting the bound removes the false
-    /// claim instead.
+    /// lattice operation. Claiming `JoinSemilattice` on the
+    /// cross-axis record-type promised a law (idempotence on
+    /// structural `Eq`) that the construction cannot keep without
+    /// either (a) lossy eager canonicalization at construction or
+    /// (b) replacing derived `Eq` with a quotient-`Eq` on every
+    /// `CanonicalAttrs`-shaped field. Both options were rejected as
+    /// blast-radius-too-large; the trait-bound relaxation here is the
+    /// surgical fix that removes the false claim instead.
     ///
     /// The per-axis lattices keep their own `JoinSemilattice` impls
     /// (sound on their respective domains). Schemes whose
@@ -67,10 +70,14 @@ pub trait MarkingScheme {
     /// bound; the engine's `project_from_attrs_slice` hot path takes
     /// exactly that shape.
     ///
+    /// See `marque-applied.md` §3 (PR 3b stall walkthrough) for the
+    /// "per-axis lattices are real; the cross-axis composition is
+    /// structural folding, not a lattice operation" framing.
     /// PR #502 (issue #456) introduced the
-    /// `JoinSemilattice`/`MeetSemilattice` split. The systematic audit
-    /// of per-axis lattices for structural-vs-lattice-`Eq` mismatches
-    /// (`DissemSet::relido_observed_unanimous`,
+    /// `JoinSemilattice`/`MeetSemilattice` split; PR 4b-D.2 D24 records
+    /// this further relaxation. The systematic
+    /// audit of per-axis lattices for structural-vs-lattice-`Eq`
+    /// mismatches (`DissemSet::relido_observed_unanimous`,
     /// `JointSet::Mixed`/`DisunityCollapse`, etc.) is tracked as a
     /// follow-up issue.
     type Marking;
@@ -95,8 +102,8 @@ pub trait MarkingScheme {
     /// `FixIntent<S>` across worker threads (Constitution VI);
     /// `'static` because open-vocab references must own their data
     /// (a SAR program identifier as a `Box<str>` or an enum, not a
-    /// `&'src str` into the input buffer — that would re-introduce an
-    /// audit content-ignorance leak channel).
+    /// `&'src str` into the input buffer — that would re-introduce a
+    /// G13 leak channel).
     ///
     /// Schemes with no open-vocab axes bind this to
     /// `std::convert::Infallible`, which carries no runtime values and
@@ -113,8 +120,9 @@ pub trait MarkingScheme {
     /// to `()` — the `unimplemented!()` default on
     /// [`Self::canonicalize`] is unreachable from their code paths.
     ///
-    /// This is a GAT; GATs stabilized in Rust 1.65 and the workspace
-    /// MSRV is 1.85.
+    /// GAT introduced at PR 3c.2.A per
+    /// `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. GATs
+    /// stabilized in Rust 1.65; workspace MSRV is 1.85.
     type Parsed<'src>;
 
     /// The scheme's owned canonical-attrs type — output of
@@ -127,9 +135,12 @@ pub trait MarkingScheme {
     /// Convert a parsed-attrs value into the scheme's canonical
     /// representation.
     ///
-    /// This is the **sole production path** for `Parsed → Canonical`.
-    /// The trait method has an `unimplemented!()` default; schemes that
-    /// canonicalize (CapcoScheme) override it.
+    /// This is the **sole production path** for `Parsed → Canonical`
+    /// per FR-043. PR 3c.2.A defined the trait method with a default
+    /// of `unimplemented!()`; PR 3c.2.B implemented the CapcoScheme
+    /// override; PR 3c.2.E retired the transitional
+    /// `marque_ism::from_parsed_unchecked` adapter and lifted the
+    /// structural rename body into the override.
     ///
     /// # Why the default is `unimplemented!()` (not delegation)
     ///
@@ -382,10 +393,13 @@ pub trait MarkingScheme {
     ///
     /// - `Scope::Portion` — identity; returns the first marking (or
     ///   the scheme's bottom if empty).
-    /// - `Scope::Page` — per-page banner roll-up. CAPCO composes the
-    ///   per-axis lattice constructors (`SciSet::from_markings`,
-    ///   `RelToBlock::from_attrs_iter`, etc.) via
-    ///   `CapcoMarking::join_via_lattice` then runs them through this
+    /// - `Scope::Page` — per-page banner roll-up. Prior to PR 4b-E,
+    ///   `marque-capco` implemented this operation through the
+    ///   `PageContext::expected_*` accessor surface; PR 4b-E retired
+    ///   that surface and migrated callers to per-axis lattice
+    ///   constructors (`SciSet::from_markings`,
+    ///   `RelToBlock::from_attrs_iter`, etc.) composed via
+    ///   `CapcoMarking::join_via_lattice` then run through this
     ///   `project` trait method. Implementations should apply
     ///   component-wise category joins first, then run
     ///   [`Self::page_rewrites`] in declaration order.
@@ -397,8 +411,9 @@ pub trait MarkingScheme {
     ///   still well-defined.
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking;
 
-    /// Convenience shim: project at page scope. Default implementation
-    /// calls `project(Scope::Page, portions)`.
+    /// Back-compat shim: project at page scope. Default implementation
+    /// calls `project(Scope::Page, portions)`. Kept so existing callers
+    /// (Phase A / Phase B tests, current CAPCO rules) don't churn.
     #[inline]
     fn project_banner(&self, portions: &[Self::Marking]) -> Self::Marking {
         self.project(Scope::Page, portions)
@@ -406,7 +421,7 @@ pub trait MarkingScheme {
 
     /// Cross-category rewrites applied after component-wise
     /// page-scope projection. CAPCO's canonical entry is
-    /// NOFORN-clears-REL-TO.
+    /// NOFORN-clears-REL-TO — see §7a of the Phase B design doc.
     ///
     /// Default: no rewrites. Schemes override to declare their table.
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
@@ -415,7 +430,8 @@ pub trait MarkingScheme {
 
     /// Declared closure rules for this scheme.
     ///
-    /// Closure rules implement implicit-fact propagation. They
+    /// Closure rules implement the §4.7 implicit-fact propagation operator
+    /// from `docs/plans/2026-05-01-lattice-design.md` §3 (e). They
     /// propagate facts that the marking system doesn't require to be written
     /// explicitly — for example, that a CAPCO marking with no explicit FD&R
     /// control implies NOFORN as the effective release restriction.
@@ -432,9 +448,15 @@ pub trait MarkingScheme {
     /// Returning closure rules without overriding `closure()` is a
     /// supported **catalog-data-only mode** used by tooling, scheme-
     /// exploration UIs, and proptest harnesses that walk
-    /// `should_fire` directly without applying the cone. This is a
-    /// PUBLIC catalog surface — visible to tooling, scheme-exploration
-    /// UIs, and docs generators — not a private engine detail.
+    /// `should_fire` directly without applying the cone. This is the
+    /// mode `CapcoScheme` ships in PR 3.7: the catalog is published
+    /// PUBLIC inspection surface (D18); the `closure()` override that
+    /// applies the cone at runtime lands in PR 4 alongside
+    /// `Engine::project::closure()` wiring.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
+    /// PUBLIC catalog surface — visible to tooling, scheme-exploration UIs,
+    /// and docs generators — not a private engine detail.
     ///
     /// Default: empty slice (no closure rules declared).
     fn closure_rules(&self) -> &[ClosureRule<Self>]
@@ -510,10 +532,13 @@ pub trait MarkingScheme {
     ///   matches `AnyInCategory(CAT_REL_TO)` to capture REL TO as an
     ///   FD&R-chain member without enumerating each country).
     ///
-    /// `AnyInCategory` is permitted so the output can align with
-    /// CapcoScheme's actual emission (`AnyInCategory(CAT_REL_TO)`,
-    /// `CAT_SCI`, `CAT_SAR`, `CAT_NON_US_CLASSIFICATION` for axis-level
-    /// facts) and the family-predicate idiom that depends on it.
+    /// An earlier rev of this contract restricted the output to
+    /// `TokenRef::Token` only; that restriction was lifted in PR 3.7
+    /// rev 3 to align with CapcoScheme's actual emission (which
+    /// emits `AnyInCategory(CAT_REL_TO)`, `CAT_SCI`, `CAT_SAR`, and
+    /// `CAT_NON_US_CLASSIFICATION` for axis-level facts) and the
+    /// family-predicate idiom that depends on it. Per Copilot
+    /// PR 3.7 review pass 3.
     ///
     /// Default: empty iterator (no present tokens enumerated).
     fn iter_present_tokens<'m>(
@@ -595,17 +620,23 @@ pub trait MarkingScheme {
     ///
     /// # `RenderContext` parameter
     ///
-    /// The `RenderContext` carries the projection scope, the emission
-    /// form ([`crate::EmissionForm`] — closes the §G.1 Table 4
-    /// four-form ambiguity), and the active schema version
+    /// PR 3c.2.A migrated the trait method from a bare `scope: Scope`
+    /// parameter to a `&RenderContext` carrier per
+    /// `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. The
+    /// `RenderContext` carries the projection scope (the pre-3c.2
+    /// parameter), the emission form
+    /// ([`crate::EmissionForm`] — closes the §G.1 Table 4 four-form
+    /// ambiguity), and the active schema version
     /// ([`crate::SchemaVersionId`]).
     ///
-    /// Currently only `ctx.scope` is actively consumed by every impl
-    /// body; `ctx.emission_form` is always
-    /// [`crate::EmissionForm::Auto`] (the §G.1 Table 4 dispatch body is
-    /// future work) and `ctx.schema_version` is reserved. Implementations
-    /// should read `ctx.scope`; the other fields are reserved for future
-    /// expansion.
+    /// At PR 3c.2.C, only `ctx.scope` is actively consumed by every
+    /// impl body; `ctx.emission_form` is always
+    /// [`crate::EmissionForm::Auto`] (a future PR will land the §G.1
+    /// Table 4 dispatch body) and `ctx.schema_version` is always
+    /// [`crate::SchemaVersionId::MarqueMvp3`] (the cutover to
+    /// `marque-1.0` lands at PR 3c.2.D). Implementations should read
+    /// `ctx.scope` exactly where they used to read the bare `scope`;
+    /// the other fields are reserved for future expansion.
     ///
     /// # Lattice-equal-byte-identical property
     ///
@@ -695,8 +726,8 @@ pub trait MarkingScheme {
         // empty `String` rather than a partial / subtly-wrong
         // canonical form (the trait-level "empty on Err" guarantee).
         //
-        // Construct an `Auto + MarqueMvp3` RenderContext; the §G.1
-        // Table 4 emission-form dispatch body is future work.
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
+        // a future PR will land the §G.1 Table 4 dispatch body.
         let ctx = RenderContext::new(
             crate::scope::Scope::Portion,
             crate::EmissionForm::Auto,
@@ -730,8 +761,8 @@ pub trait MarkingScheme {
     /// override this method MUST honor the same scope semantics.
     fn render_banner(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
-        // Construct an `Auto + MarqueMvp3` RenderContext; the §G.1
-        // Table 4 emission-form dispatch body is future work.
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
+        // a future PR will land the §G.1 Table 4 dispatch body.
         let ctx = RenderContext::new(
             crate::scope::Scope::Page,
             crate::EmissionForm::Auto,
