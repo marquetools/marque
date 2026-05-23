@@ -13,6 +13,7 @@
 /// markings** — they are stripped from banners. However, some controls propagate
 /// to classified banners: EXDIS, NODIS, LES, LES-NF, SSI, and NNPI. See
 /// [`NonIcDissem::propagates_to_classified_banner`] for the authoritative list.
+/// LIMDIS does not propagate to classified banners.
 /// When the page is **unclassified**, all non-IC dissem controls propagate to
 /// the banner.
 ///

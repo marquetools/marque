@@ -232,7 +232,7 @@ impl AeaMarking {
         }
 
         // Check for SIGMA/SG.
-        let sigma = parse_sigma_numbers(rest);
+        let sigma = parse_sigma_numbers(rest)?;
 
         if rest.is_empty() || !sigma.is_empty() {
             Some(Self::Rd(RdBlock {
@@ -247,7 +247,7 @@ impl AeaMarking {
     /// Parse FRD modifiers after the `FRD-` prefix.
     /// Handles: `SIGMA ##`, `SG ##`.
     fn parse_frd_modifiers(s: &str) -> Option<Self> {
-        let sigma = parse_sigma_numbers(s);
+        let sigma = parse_sigma_numbers(s)?;
         if !sigma.is_empty() {
             Some(Self::Frd(FrdBlock {
                 sigma: sigma.into(),
@@ -259,22 +259,23 @@ impl AeaMarking {
 }
 
 /// Parse SIGMA/SG numbers from a string like `SIGMA 18 20` or `SG 14`.
-fn parse_sigma_numbers(s: &str) -> Vec<u8> {
-    let rest = s
-        .strip_prefix("SIGMA ")
-        .or_else(|| s.strip_prefix("SG "))
-        .unwrap_or("");
+///
+/// Returns `None` when a SIGMA/SG-prefixed input contains any non-numeric token.
+fn parse_sigma_numbers(s: &str) -> Option<Vec<u8>> {
+    let Some(rest) = s.strip_prefix("SIGMA ").or_else(|| s.strip_prefix("SG ")) else {
+        return Some(vec![]);
+    };
     if rest.is_empty() {
-        return vec![];
+        return Some(vec![]);
     }
     let mut sigma = Vec::new();
     for n in rest.split_whitespace() {
         match n.parse::<u8>() {
             Ok(value) => sigma.push(value),
-            Err(_) => return vec![],
+            Err(_) => return None,
         }
     }
-    sigma
+    Some(sigma)
 }
 
 impl std::fmt::Display for AeaMarking {
