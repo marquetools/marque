@@ -25,7 +25,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::{DecoderRecognizer, StrictOrDecoderRecognizer};
-use marque_ism::{Classification, MarkingClassification};
+use marque_ism::{Classification, DissemControl, MarkingClassification, SciControl};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
@@ -190,24 +190,30 @@ fn decoder_recovers_rel_to_header_transposition() {
 
 #[test]
 fn decoder_recovers_sci_delimiter_hcsp_to_hcs_p() {
-    // HCSP → HCS-P via SCI delimiter insertion. The pass produces a
-    // repaired text but the scoring gate rejects every resulting
-    // candidate against the null hypothesis for this input shape, so
-    // the recognize call returns the zero-candidate Ambiguous form
-    // (no Unambiguous fix is auto-applied — this is FR-015: "we see
-    // signal, can't resolve"). Pin the observed shape so a future
-    // scoring tweak that changes the dispatch decision surfaces here.
+    // HCSP → HCS-P via SCI delimiter insertion (Pattern A) PLUS
+    // promotion of the trailing single `/` to `//` (Pattern D —
+    // issue #720). After #720, the recovery promotes intra-SCI `/`
+    // to category `//` when the next token is non-SCI; this fixture
+    // exercises that combined path. Strong assertion: the recovered
+    // input must parse **unambiguously** (the #720 bug was an
+    // empty-candidate `Ambiguous`; the contract is a single resolved
+    // marking) with Secret + HcsP + NOFORN in their canonical slots.
     let parsed = run_decoder("SECRET//HCSP/NOFORN");
-    match parsed {
-        Parsed::Ambiguous { candidates } => {
-            assert!(
-                candidates.is_empty(),
-                "expected zero-candidate Ambiguous; got {} candidates",
-                candidates.len()
-            );
-        }
-        other => panic!("expected zero-candidate Ambiguous; got {other:?}"),
-    }
+    let m = match parsed {
+        Parsed::Unambiguous(m) => m,
+        other => panic!("post-#720 contract is Parsed::Unambiguous; got {other:?}"),
+    };
+    assert_eq!(classification(&m), Some(Classification::Secret));
+    assert!(
+        m.0.sci_controls.contains(&SciControl::HcsP),
+        "HCS-P must land in sci_controls; attrs = {:?}",
+        m.0,
+    );
+    assert!(
+        m.0.dissem_iter().any(|d| d == &DissemControl::Nf),
+        "NOFORN must land in dissem_iter; attrs = {:?}",
+        m.0,
+    );
 }
 
 #[test]
