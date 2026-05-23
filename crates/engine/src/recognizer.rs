@@ -4,12 +4,11 @@
 
 //! [`Recognizer`] implementations for the engine's strict dispatch path.
 //!
-//! Phase-4 PR-2 (T058 + T063) wraps `marque-core`'s existing strict
-//! parser behind the domain-neutral [`Recognizer`] trait so
-//! [`crate::Engine::lint`] dispatches parsing through
-//! `Arc<dyn Recognizer<S>>` instead of instantiating `Parser` inline.
-//! Phase-4 PR-3 will add a `DecoderRecognizer` alongside this one;
-//! both coexist behind the same trait object.
+//! Wraps `marque-core`'s strict parser behind the domain-neutral
+//! [`Recognizer`] trait so [`crate::Engine::lint`] dispatches parsing
+//! through `Arc<dyn Recognizer<S>>` instead of instantiating `Parser`
+//! inline. The `DecoderRecognizer` coexists alongside this one behind
+//! the same trait object.
 //!
 //! ## Why this lives in `marque-engine`, not `marque-capco`
 //!
@@ -98,12 +97,9 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
         match parser.parse(&candidate, parse_bytes) {
             Ok(parsed) => {
                 // Canonicalization seam: `MarkingScheme::canonicalize`
-                // is the sole `ParsedAttrs → CanonicalAttrs` route per
-                // FR-043 (PR 3c.2.E retired the transitional
-                // `marque_ism::from_parsed_unchecked` adapter). The
+                // is the sole `ParsedAttrs → CanonicalAttrs` route. The
                 // recognizer receives the scheme via the `&S`
-                // parameter threaded through `recognize()` after
-                // `engine-S-generic-recognizer-cleanup` (#634) landed.
+                // parameter threaded through `recognize()` (#634).
                 let mut attrs = scheme.canonicalize(parsed.attrs);
                 // Two shifts collapsed into one (issue #431):
                 //   * `leading_ws` — the parser saw `parse_bytes`, which
@@ -589,7 +585,7 @@ mod tests {
     fn strict_recognizer_is_send_sync_as_trait_object() {
         // Compile-time assertion: the exact `Arc<dyn Recognizer<…>>`
         // storage Engine holds must be `Send + Sync` so `BatchEngine`
-        // workers can share one instance (Constitution VI, FR-023).
+        // workers can share one instance (Constitution VI).
         // Also assert the concrete `StrictRecognizer` and `Box<dyn …>`
         // directly so a regression in either the impl or the storage
         // choice trips this gate — the `Recognizer: Send + Sync`

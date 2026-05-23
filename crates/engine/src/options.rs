@@ -49,16 +49,8 @@ use web_time::Instant;
 
 /// Per-call options for [`Engine::lint_with_options`].
 ///
-/// **Phase 1 status (current build):** the type surface ships, but
-/// `Engine::lint_with_options` IGNORES `deadline`. The pass always
-/// runs to completion, returns `truncated: false`, and leaves
-/// `candidates_processed` / `candidates_total` at `0`. The semantics
-/// below describe the *Phase 2* behavior that lands in tasks
-/// T007–T009; consult the changelog (Appendix C in the security
-/// whitepaper) before relying on deadline behavior in production.
-///
 /// `deadline` is an absolute wall-clock instant after which the
-/// engine MUST abort cooperatively. Spec §R1, §R3:
+/// engine MUST abort cooperatively:
 ///
 /// - `None` (default) — no budget; lint runs to completion.
 /// - `Some(d)` where `d <= Instant::now()` — pre-pass abort returns
@@ -80,23 +72,18 @@ use web_time::Instant;
 #[derive(Debug, Clone, Default)]
 pub struct LintOptions {
     /// Absolute wall-clock deadline after which the lint pass MUST
-    /// abort cooperatively. See struct-level docs for semantics —
-    /// **and the Phase 1 status note**: the current build ignores
-    /// this field, deadline-driven cancellation lands in Phase 2.
+    /// abort cooperatively. See struct-level docs for semantics.
     pub deadline: Option<Instant>,
 }
 
 /// Per-call options for [`Engine::fix_with_options`].
 ///
-/// **Phase 1 status (current build):** `Engine::fix_with_options`
-/// IGNORES `deadline` (the field is plumbed but not honored), so
-/// `EngineError::DeadlineExceeded` cannot be observed yet. The
-/// `threshold_override` field IS active from Phase 1: invalid values
-/// produce `EngineError::InvalidThreshold` immediately. Deadline
-/// enforcement and the asymmetric `Err(DeadlineExceeded)` response
-/// described below land in Phase 2 (tasks T010–T012).
+/// The `threshold_override` field rejects invalid values with
+/// `EngineError::InvalidThreshold` immediately. `deadline` enforcement
+/// returns the asymmetric `Err(DeadlineExceeded)` response described
+/// below.
 ///
-/// Carries both the deadline (spec §R3) and the per-call confidence
+/// Carries both the deadline and the per-call confidence
 /// threshold override that previously lived on
 /// [`Engine::fix_with_threshold`]. The two are combined here so
 /// future per-call concerns (per-rule overrides, dry-run-without-mode
