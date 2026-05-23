@@ -383,14 +383,18 @@ fn closure_rel_to_usa_nato_fires_on_bare_nato() {
 
     assert!(
         rel_to_contains(&closed, CountryCode::USA),
-        "closure should inject USA into rel_to on bare-NATO classification \
+        "project / default-fill should inject USA into rel_to on \
+         bare-NATO classification via `default_fill::row7_should_fill` \
          (§H.7 p127 + §G.2 Table 5 p40); rel_to = {:?}",
         closed.0.rel_to
     );
     assert!(
         rel_to_contains(&closed, nato_country()),
-        "closure should inject NATO into rel_to on bare-NATO classification \
-         (§H.7 p127, open-vocab path via cone_derived); rel_to = {:?}",
+        "project / default-fill should inject NATO into rel_to on \
+         bare-NATO classification via `default_fill::apply_default_fill`'s \
+         direct CountryCode::NATO write (§H.7 p127; the pre-#704 \
+         open-vocab `cone_derived` path retired with `CLOSURE_REL_TO_USA_NATO`); \
+         rel_to = {:?}",
         closed.0.rel_to
     );
 }
@@ -428,14 +432,18 @@ fn project_default_fill_skips_nato_implicit_when_noforn_present() {
 
     assert!(
         !rel_to_contains(&out, CountryCode::USA),
-        "project must clear rel_to when NOFORN is present (overlay \
-         strips the closure-added USA per §H.8 p145); rel_to = {:?}",
+        "project must leave rel_to empty when NOFORN is present — \
+         `default_fill::row7_should_fill`'s gate `(post_close ∩ \
+         MASK_FDR_DOMINATORS == 0)` SKIPS because NOFORN is in \
+         MASK_FDR_DOMINATORS per §B.3.a p19; USA is never injected \
+         (the overlay has nothing to strip). rel_to = {:?}",
         out.0.rel_to
     );
     assert!(
         !rel_to_contains(&out, nato_country()),
-        "project must clear rel_to when NOFORN is present (overlay \
-         strips the closure-added NATO per §H.8 p145); rel_to = {:?}",
+        "project must leave rel_to empty when NOFORN is present — \
+         `default_fill::row7_should_fill`'s gate skips on NOFORN \
+         input so NATO is never injected. rel_to = {:?}",
         out.0.rel_to
     );
     assert!(
