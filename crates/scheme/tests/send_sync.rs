@@ -16,8 +16,8 @@
 //! property depends on the trait's supertraits, not on any particular
 //! `S`, and `marque-scheme` cannot depend on `marque-capco` without
 //! introducing a cycle (Constitution VII). See the companion assertion
-//! in `crates/capco/tests/send_sync.rs` (landing alongside Phase 4
-//! task T058) for the concrete `CapcoScheme` form.
+//! in `crates/capco/tests/send_sync.rs` for the concrete `CapcoScheme`
+//! form.
 
 use marque_scheme::{
     BoundedJoinSemilattice, BoundedMeetSemilattice, Candidate, Category, Constraint,

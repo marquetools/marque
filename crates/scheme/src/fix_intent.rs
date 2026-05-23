@@ -38,7 +38,7 @@ use crate::scope::Scope;
 /// without open-vocab axes bind `OpenVocabRef = Infallible`, making
 /// the `OpenVocab` variant statically unreachable.
 ///
-/// # Constitution V Principle V (G13 closure)
+/// # Constitution V Principle V (audit content-ignorance)
 ///
 /// `FactRef` carries no document content. `OpenVocab` payloads come
 /// from the scheme's *canonicalize* output — typed structural

@@ -4,22 +4,21 @@
 
 //! Property tests for the closure operator.
 //!
-//! Tests the mathematical properties required by
-//! `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
-//! (T108c, Stage B). Five properties land in this file:
+//! Tests the mathematical properties required of the closure operator.
+//! Five properties land in this file:
 //!
 //! 1. **Monotone**: if `m1 ⊑ m2` then `closure(m1) ⊑ closure(m2)`.
 //! 2. **Extensive**: `closure(m) ⊒ m` for all markings.
 //! 3. **Idempotent**: `closure(closure(m)) == closure(m)`.
 //! 4. **Unconditional-catalog monotonicity (chain-depth stress test)**:
 //!    a transitive-chain catalog (A→B and C→D rules) with NO suppressors
-//!    preserves monotonicity. NOTE (per Copilot PR 3.7 review #13):
-//!    this property does NOT cover suppression-stability. The plan's
-//!    "suppression-doesn't-break-monotonicity" property is satisfied
-//!    by the CAPCO catalog's disjoint-suppressor invariant (verified
-//!    structurally in `proptest_closure_rejects_non_monotone.rs`) and
-//!    by per-row CAPCO monotonicity attestation that lands in PR 4.
-//! 5. **G13 content-ignorance regression**: closure output contains no
+//!    preserves monotonicity. NOTE: this property does NOT cover
+//!    suppression-stability. The "suppression-doesn't-break-monotonicity"
+//!    property is satisfied by the CAPCO catalog's disjoint-suppressor
+//!    invariant (verified structurally in
+//!    `proptest_closure_rejects_non_monotone.rs`) and by per-row CAPCO
+//!    monotonicity attestation.
+//! 5. **Content-ignorance regression**: closure output contains no
 //!    input bytes verbatim (Constitution V Principle V).
 //!
 //! ## Stub scheme design
@@ -163,8 +162,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     },
     // Row 2: B→C (chains off row 1 — A→B→C is a true transitive
     // multi-iteration chain; without this row Property 4's
-    // "chain-depth stress test" framing was misleading per Copilot
-    // PR 3.7 review pass 3).
+    // "chain-depth stress test" framing would be misleading).
     ClosureRule {
         name: "stub/b-implies-c",
         display_label: "Stub B implies C",
@@ -260,7 +258,8 @@ impl MarkingScheme for ClosureStubScheme {
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         // Render as a hex byte: "bits=0x{:02x}". This does NOT include
-        // input document bytes — G13 compliance is structurally guaranteed.
+        // input document bytes — audit content-ignorance is structurally
+        // guaranteed.
         write!(out, "bits=0x{:02x}", m.bits)
     }
 
@@ -436,8 +435,7 @@ proptest! {
 //   express in property-test form without recreating CAPCO's specific
 //   FDR_DOMINATORS / cone separation. The CAPCO catalog enforces the
 //   invariant by construction; the per-row CAPCO monotonicity attestation
-//   that PR 3.7's §9 acceptance defers to PR 4 is the actual gate for
-//   suppression-stability in the production catalog.
+//   is the actual gate for suppression-stability in the production catalog.
 //
 //   The negative test in `proptest_closure_rejects_non_monotone.rs`
 //   demonstrates the suppressor-based violation scenario from the
@@ -471,7 +469,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Property 5: G13 content-ignorance regression.
+// Property 5: audit content-ignorance regression.
 //   Closure output (rendered as a string) must not contain any bytes from
 //   the input marking verbatim.
 //
@@ -505,11 +503,11 @@ proptest! {
         // Allowed lowercase: g, h, j, k, l, m, n, o, p, q, r, u, v, w, y, z.
         // Allowed uppercase: G, H, J, K, L, M, N, O, P, Q, R, U, V, W, Y, Z.
         //
-        // The proptest's actual G13 invariant is preserved: no
-        // document-content bytes surface in the closure operator's
-        // rendered output. The regex restriction only eliminates the
+        // The proptest's actual content-ignorance invariant is
+        // preserved: no document-content bytes surface in the closure
+        // operator's rendered output. The regex restriction only eliminates the
         // collision class for THIS particular stub render shape; the
-        // production CapcoScheme renderer (PR 4) will need a parallel
+        // production CapcoScheme renderer will need a parallel
         // exclusion against its own format-string constants.
         doc_content in "[ghjk-rmnop-rqu-wyzGHJK-RMNOP-RQU-WYZ]\
                         [ghjk-rmnop-rqu-wyzGHJK-RMNOP-RQU-WYZ ]{4,20}",

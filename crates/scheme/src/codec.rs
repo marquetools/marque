@@ -54,7 +54,7 @@ pub trait Codec<S: MarkingScheme + ?Sized>: Send + Sync {
 
 /// Errors surfaced by [`Codec::encode`] and [`Codec::decode`].
 ///
-/// # Content-ignorance contract (Constitution V G13)
+/// # Content-ignorance contract (Constitution V Principle V)
 ///
 /// Implementations MUST NOT embed document content (parsed bytes,
 /// classified text, marking values, free-form prose from the input)
@@ -73,7 +73,7 @@ pub trait Codec<S: MarkingScheme + ?Sized>: Send + Sync {
 /// vocabulary, not content). Forbidden: any substring of the input
 /// that originated outside the codec's own const tables.
 ///
-/// The G13 invariant is corpus-tested at the engine layer
+/// The content-ignorance invariant is corpus-tested at the engine layer
 /// (`crates/engine/tests/audit.rs::audit_stream_no_content_leak`)
 /// for `AppliedFix` and `Diagnostic`; codec error messages are
 /// implementation territory and rely on this contract being
@@ -84,8 +84,8 @@ pub enum CodecError {
     /// formed, JSON parse failure, etc.). Carries an implementation-
     /// defined message.
     ///
-    /// **G13 (see type-level docs):** `String` MUST NOT contain any
-    /// substring of the input bytes — position and class only.
+    /// **Content-ignorance (see type-level docs):** `String` MUST NOT
+    /// contain any substring of the input bytes — position and class only.
     Malformed(String),
     /// The codec does not implement this serialization format.
     /// Returned when a caller passes bytes in a format the codec was
@@ -94,8 +94,8 @@ pub enum CodecError {
     /// The input decoded structurally but referenced a schema version
     /// the codec does not support. Carries `(expected, observed)`.
     ///
-    /// **G13 (see type-level docs):** `observed` MUST be the schema-
-    /// version identifier read from a known-safe location in the
+    /// **Content-ignorance (see type-level docs):** `observed` MUST be
+    /// the schema-version identifier read from a known-safe location in the
     /// decoded structure (e.g., a `version=` attribute), not raw
     /// input bytes. A schema version is vocabulary; arbitrary input
     /// is not.

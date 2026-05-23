@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 US1 — Declarative constraint evaluator tests (T023–T025).
+//! Declarative constraint evaluator tests.
 //!
 //! Exercises [`marque_scheme::constraint::evaluate`] against a local
 //! `StubScheme` whose marking carries a presence set over sentinel
@@ -106,10 +106,10 @@ impl MarkingScheme for StubScheme {
     type Marking = StubMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
-    // PR 3c.2.A — GAT + plain associated type bindings. This stub
-    // never exercises the canonicalize path, so `()` is the
-    // lowest-information binding (the `unimplemented!()` default is
-    // unreachable from this stub's code paths).
+    // GAT + plain associated type bindings. This stub never exercises
+    // the canonicalize path, so `()` is the lowest-information binding
+    // (the `unimplemented!()` default is unreachable from this stub's
+    // code paths).
     type Parsed<'src> = ();
     type Canonical = ();
     fn name(&self) -> &str {
@@ -180,7 +180,7 @@ const TOK_C: TokenId = TokenId(12);
 const CAT_FOO: CategoryId = CategoryId(1);
 
 // ---------------------------------------------------------------------------
-// T023 — Determinism across threads.
+// Determinism across threads.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -231,7 +231,7 @@ fn evaluate_is_deterministic() {
 }
 
 // ---------------------------------------------------------------------------
-// T024 — Empty constraint set returns empty.
+// Empty constraint set returns empty.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -246,7 +246,7 @@ fn empty_constraints_returns_empty() {
 }
 
 // ---------------------------------------------------------------------------
-// T025 — Conflict violation carries the declared citation verbatim.
+// Conflict violation carries the declared citation verbatim.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -277,12 +277,11 @@ fn conflict_violation_preserves_citation() {
 
 #[test]
 fn dyadic_arm_violations_default_to_none_span_and_severity() {
-    // Sentinel test (review-pass MEDIUM, PR 3c.B Commit 7.2): the
-    // dyadic `Conflicts` / `Requires` arms of `evaluate` MUST emit
-    // violations with `span: None` and `severity: None`. The engine's
-    // constraint-catalog bridge (`crates/engine/src/engine.rs:776-851`)
-    // skips such violations as advisory-only — they are detected but
-    // not surfaced as `Diagnostic`s.
+    // Sentinel test: the dyadic `Conflicts` / `Requires` arms of
+    // `evaluate` MUST emit violations with `span: None` and
+    // `severity: None`. The engine's constraint-catalog bridge skips
+    // such violations as advisory-only — they are detected but not
+    // surfaced as `Diagnostic`s.
     //
     // A future PR that flips the dyadic arms to emit populated
     // `Option<Span>` / `Option<Severity>` (giving them user-facing
@@ -370,8 +369,8 @@ fn constraint_label_maps_to_declared_name_per_entry() {
 
 // ---------------------------------------------------------------------------
 // Bonus — Supersedes is quiet; Custom dispatches.
-// Note: Constraint::Implies was retired in PR 3.7 T108g (decisions.md D19 C).
-// Fact-propagation is now handled by the closure operator (ClosureRule).
+// Note: there is no Constraint::Implies variant. Fact-propagation is
+// handled by the closure operator (ClosureRule).
 // ---------------------------------------------------------------------------
 
 #[test]
