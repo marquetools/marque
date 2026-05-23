@@ -476,8 +476,11 @@ proptest! {
     /// FGI projection invariant: any `MarkingClassification::Fgi(_)`
     /// in `arb_attrs`'s output lights `FGI_PRESENT`. Catches the
     /// drift class where a future `MarkingClassification` FGI
-    /// variant is added without an `is_set(FGI_PRESENT)` update;
-    /// `MASK_FDR_OR_RELIDO_INCOMPAT`'s correctness depends on this.
+    /// variant is added without an `is_set(FGI_PRESENT)` update.
+    /// Pre-#704 `MASK_FDR_OR_RELIDO_INCOMPAT`'s correctness depended
+    /// on this; post-#704 the masks retired but the FGI_PRESENT bit
+    /// is still load-bearing for `derive_bits` correctness and any
+    /// future overlay that observes FGI presence.
     #[test]
     fn fgi_classification_axis_sets_fgi_present(attrs in arb_attrs()) {
         if matches!(attrs.classification, Some(MarkingClassification::Fgi(_))) {
