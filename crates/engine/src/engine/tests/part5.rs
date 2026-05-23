@@ -167,15 +167,12 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         },
         confidence: marque_rules::Confidence::strict(1.0),
         feature_ids: SmallVec::new(),
-        message: Message::new(
-            // E006 production-side template is `SupersededToken`
-            // (see `dissem.rs`'s deprecated-dissem-control rule).
-            // Pins the audit-record contract
-            // `Diagnostic.message.template == AppliedFix.message.template`
-            // (issue #709).
-            MessageTemplate::SupersededToken,
-            MessageArgs::default(),
-        ),
+        // Phase-partition filtering test keyed on (rule, span); message
+        // templates are irrelevant to what it asserts. Reuse the shared
+        // stub on both the diagnostic and the fix so the fixture makes no
+        // template-parity claim (issue #709 removed the prior hardcoded
+        // `BannerRollupMismatch` here).
+        message: stub_message(),
         source: FixSource::BuiltinRule,
         migration_ref: None,
     };

@@ -73,16 +73,16 @@ const RULE_E002: RuleId = RuleId::new("capco", "portion.dissem.rel-to-missing-us
 const RULE_E006: RuleId = RuleId::new("capco", "marking.deprecation.deprecated-dissem-control");
 const RULE_R001_DECODER: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
 
-/// Map a parity-corpus rule id to the production-side
-/// [`MessageTemplate`] it emits on both the lint-side
-/// [`marque_rules::Diagnostic`] and the audit-side [`AuditAppliedFix`].
+/// [`MessageTemplate`] for `rule` in the synthetic parity-corpus fixtures.
 ///
-/// The parity-test fixtures use `__engine_promote` to short-circuit the
-/// engine, so the helper must hand-carry the production template per
-/// rule to keep the synthetic `AppliedFix.message.template` field in
-/// agreement with what the engine actually emits — pinning the
-/// audit-record contract `Diagnostic.message.template ==
-/// AppliedFix.message.template` (issue #709).
+/// The fixtures use `__engine_promote` to short-circuit the engine, so the
+/// helper hand-carries the per-rule template that populates the synthetic
+/// `AppliedFix.message.template`, mirroring the `parity_corpus.json` rows
+/// for each predicate id. This is a per-rule selection — a rule's lint
+/// Diagnostic template and its fix template are NOT universally equal
+/// (e.g. E002 lints `NonCanonicalOrder` but its USA-injection `FactAdd`
+/// fix branch is `RequiredByPresence`). Issue #709 fixed the prior bug
+/// where every fixture hardcoded `BannerRollupMismatch` regardless of rule.
 ///
 /// Production sources of truth (PR T044 schema):
 ///
@@ -113,10 +113,10 @@ fn template_for_rule(rule: RuleId) -> MessageTemplate {
 /// carrying the production-side `MessageTemplate` for `rule`.
 ///
 /// Issue #709: prior to this refactor the helper hardcoded
-/// `MessageTemplate::BannerRollupMismatch`, which broke the audit-record
-/// contract `Diagnostic.message.template == AppliedFix.message.template`
-/// for every fixture (E002's lint-side template is `NonCanonicalOrder`,
-/// E006's is `SupersededToken`, R001's is `DecoderRecognized`).
+/// `MessageTemplate::BannerRollupMismatch` on every fixture regardless of
+/// rule, mislabeling the synthetic audit records. Each rule now carries
+/// its own production template via [`template_for_rule`] (E006
+/// `SupersededToken`, R001 `DecoderRecognized`, etc.).
 fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
     FixIntent {
         replacement: ReplacementIntent::Recanonicalize {

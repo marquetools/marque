@@ -572,15 +572,11 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
         },
         confidence: marque_rules::Confidence::strict(0.4),
         feature_ids: SmallVec::new(),
-        message: Message::new(
-            // c001 text-correction fixture: matches production-side
-            // `CorrectionsApplied` (see `pipeline.rs` C001 emission).
-            // Pins the audit-record contract
-            // `Diagnostic.message.template == AppliedFix.message.template`
-            // (issue #709) for the text-correction-with-fix arm.
-            MessageTemplate::CorrectionsApplied,
-            MessageArgs::default(),
-        ),
+        // Phase-partition filtering test keyed on rule phase; message
+        // templates are irrelevant here. Reuse the shared stub so the
+        // fixture makes no template-parity claim (issue #709 removed the
+        // prior hardcoded `BannerRollupMismatch`).
+        message: stub_message(),
         source: FixSource::BuiltinRule,
         migration_ref: None,
     });

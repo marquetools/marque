@@ -11,8 +11,8 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_rules::audit::AuditLine;
 use marque_rules::MessageTemplate;
+use marque_rules::audit::AuditLine;
 use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -283,14 +283,20 @@ fn r002_does_not_mint_applied_fix() {
 // ---------------------------------------------------------------------------
 //
 // Audit-record contract: for every fix-emitting rule reachable via a fixture,
-// `Diagnostic.message.template` (lint side, what `marque check` shows) MUST
-// equal `AppliedFix.message.template` / `AppliedTextCorrection.message.template`
-// (audit side, what `marque fix` emits to the NDJSON audit log).
+// the lint-side `Diagnostic.message.template` (what `marque check` shows) and
+// the fix-side template projected into `AppliedFix.message.template` /
+// `AppliedTextCorrection.message.template` (what `marque fix` writes to the
+// NDJSON audit log) MUST each match that rule's production-side template
+// assignment. The two sides COINCIDE for single-Message rules (R001, C001,
+// banner-rollup), but they deliberately DIFFER for rules whose violation
+// class and fix action differ — e.g. E002 lints `NonCanonicalOrder` but its
+// USA-injection fix emits `RequiredByPresence`. The invariant is "each side
+// matches production," not "the two sides are equal."
 //
 // Pre-issue-#709 the engine's test stubs and the wasm parity helper hardcoded
 // `MessageTemplate::BannerRollupMismatch` on the FixIntent message field of
 // every synthetic fixture, baking a mislabel into the test surface that
-// masked the contract.
+// masked the per-rule assignment.
 //
 // Build a config that turns off the corrections map / migration table by
 // using `Config::default()` and supply a small in-line corrections map so
@@ -357,7 +363,7 @@ struct TemplateParityFixture {
 /// - R001 (`recognition.decoder-recognized`): see
 ///   `r001_lint_and_applied_templates_agree`.
 #[test]
-fn lint_diag_template_equals_applied_fix_template() {
+fn diagnostic_and_fix_templates_match_production_per_rule() {
     let fixtures: &[TemplateParityFixture] = &[
         // E002 USA-missing path — Diagnostic carries the violation
         // template, FixIntent (FactAdd USA) carries the action template.
