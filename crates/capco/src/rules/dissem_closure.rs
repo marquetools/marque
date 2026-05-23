@@ -16,7 +16,7 @@ use marque_rules::{
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{
-    Citation, FactRef, MarkingScheme, ReplacementIntent, Scope, SectionLetter, capco,
+    Citation, FactRef, MarkingScheme, ReplacementIntent, SectionLetter, capco, capco_table,
 };
 
 use crate::scheme::CapcoScheme;
@@ -41,9 +41,13 @@ use crate::scheme::CapcoScheme;
 // proposes the byte-level insertion; the lattice-layer closure stays
 // out of the diagnostic surface.
 //
-// Authority: CAPCO-2016 §H.8 p154 (RELIDO template) + §D.2 Table 3
-// rule 17 (FD&R defaults for caveated content; verified against
-// `crates/capco/docs/CAPCO-2016.md`).
+// Authority: CAPCO-2016 §B.3 Table 2 p21 (trigger authority — the
+// "Classified + uncaveated + on/after 28 June 2010 → Mark as RELIDO"
+// row drives S008's "would the projection inject RELIDO?" check);
+// §B.3 paragraph b p19 (FD&R-absent gate); §D.2 Table 3 rule 17
+// (FD&R precedence for banner roll-up); §H.8 p154 (RELIDO marking
+// template — defines what RELIDO means once present). Verified
+// against `crates/capco/docs/CAPCO-2016.md` at authorship.
 // ---------------------------------------------------------------------------
 
 /// Confidence scalar emitted by S008 (`relido-implied-by-closure`)
@@ -53,10 +57,11 @@ use crate::scheme::CapcoScheme;
 /// example/closure-derived guidance that ships at `Severity::Suggest`
 /// with confidence high enough to clear a relaxed
 /// `confidence_threshold` when paired with `[rules] S008 = "fix"`.
-/// The §H.8 p154 RELIDO template + §D.2 Table 3 rule 17 backing the
-/// CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS rows is template-
-/// prose plus FD&R-defaults derivation, not "MUST"-mandate prose; the
-/// suggest channel is the right home.
+/// The §B.3 Table 2 p21 default-if-absent obligation + §H.8 p154
+/// RELIDO template + §D.2 Table 3 rule 17 backing the post-#704
+/// `default_fill::row{8,9}_should_fill` predicates is
+/// defaulting-rule prose plus FD&R-defaults derivation, not
+/// "MUST"-mandate prose; the suggest channel is the right home.
 const SUGGEST_CONFIDENCE: f32 = 0.85;
 
 /// Shared `CapcoScheme` used by S008's `check()` to apply the closure
@@ -78,33 +83,47 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 /// `FactAdd(TOK_RELIDO, Scope::Portion)` intent at confidence
 /// [`SUGGEST_CONFIDENCE`].
 ///
-/// # Closure-based trigger detection
+/// # Project-based trigger detection
 ///
-/// The rule runs `SCHEME.closure(marking)` and compares the
-/// post-closure dissem axis against the pre-closure state. This is
-/// more robust than hand-rolling the closure trigger / suppressor
-/// logic because:
+/// The rule runs `SCHEME.project(Scope::Page, &[marking])` over
+/// a single-portion page and compares the post-pipeline dissem axis
+/// against the input. This routes through the full pipeline (per-axis
+/// join + close() + default_fill + supersession overlay + page
+/// rewrites), which is the post-#704 canonical observable state.
+/// Calling `closure()` directly would observe only the per-marking
+/// unconditional implications (Rows 1-6 of `CLOSURE_TABLE`) — the
+/// RELIDO defaults retired from close() to
+/// `default_fill::row{8,9}_should_fill` because they are
+/// "default if absent" rules per §B.3 paragraph b p19's "NOT
+/// MARKED PREVIOUSLY" gate (non-monotone by §-design and unable
+/// to live in a closure operator that honors the
+/// `MarkingScheme::closure` monotone contract). Using `project()`
+/// keeps S008 aligned with the engine's final-state semantic by
+/// construction.
 ///
-/// - `CLOSURE_RELIDO_SCI` triggers on `CAT_SCI` presence and
-///   suppresses on `FDR_OR_RELIDO_INCOMPAT` (NOFORN / RELIDO / REL TO
-///   / DISPLAY ONLY / EYES plus six per-compartment SCI sentinels
-///   plus FGI / JOINT / NATO classification — at least 14 distinct
-///   tokens with subtle interactions).
-/// - `CLOSURE_RELIDO_US_CLASS` triggers on US collateral classification
-///   and suppresses on `RELIDO_US_CLASS_SUPPRESSORS` (the same FD&R
-///   dominators plus six per-compartment SCI sentinels).
-/// - Both closures interact with `with_noforn_injected` (the §H.8
-///   p145 supersession overlay) which strips RELIDO whenever NOFORN
-///   appears at any iteration.
+/// The post-#704 pipeline interacts with two default-fill
+/// predicates in canonical order:
 ///
-/// Replicating that decision tree inline would double the source-of-
-/// truth surface for the same policy decision. Calling
-/// `scheme.closure(...)` once and reading the result keeps S008
-/// aligned with the closure catalog by construction. The short-
-/// circuit in `CapcoScheme::closure` (line 561,
-/// `any_closure_trigger_fires`) returns the input identically when
-/// no trigger fires, so the cost on non-triggering portions is bounded
-/// to a single trigger check.
+/// - `default_fill::row8_should_fill`
+///   (`capco:closure.dissem.relido-if-sci-and-not-incompatible`)
+///   gates on `(post_close ∩ SCI_PRESENT != 0) ∧ (post_close ∩
+///   MASK_FDR_OR_RELIDO_INCOMPAT == 0)`; when both hold,
+///   `apply_default_fill` adds RELIDO. The supersession overlay
+///   then strips it if NOFORN is observed.
+/// - `default_fill::row9_should_fill`
+///   (`capco:closure.dissem.relido-if-us-collateral-class`) gates
+///   on `(post_close ∩ US_COLLATERAL_CLASSIFIED != 0) ∧
+///   (post_close ∩ MASK_RELIDO_US_CLASS_SUPPRESSORS == 0)`; same
+///   overlay strip pathway when NOFORN is present.
+///
+/// Both gates' FD&R-absent test (`MASK_FDR_OR_RELIDO_INCOMPAT` /
+/// `MASK_RELIDO_US_CLASS_SUPPRESSORS` include the NOFORN bit per
+/// §B.3.a p19) means the predicates SKIP entirely on NOFORN-
+/// present inputs — `apply_default_fill` never adds RELIDO there,
+/// so the supersession overlay's NOFORN-dominates strip is a
+/// no-op in that case. The overlay still fires correctly when
+/// RELIDO is user-explicit on the input alongside NOFORN
+/// (input-explicit §H.8 p145 contradiction).
 ///
 /// # Early-return clauses (in order)
 ///
@@ -113,10 +132,12 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 ///    RELIDO; firing on a banner would double-report.
 /// 2. **RELIDO already present**: `attrs.dissem_us` contains
 ///    `DissemControl::Relido`. Nothing to suggest.
-/// 3. **Closure does not inject RELIDO**: the closure short-circuited
-///    on `any_closure_trigger_fires`, OR a suppressor blocked the
-///    cone, OR the with_noforn_injected overlay stripped it. No
-///    diagnostic — the lattice-layer decided RELIDO is not implied.
+/// 3. **Projection does not inject RELIDO**: the post-#704 pipeline
+///    (close + default_fill + supersession overlay + page rewrites)
+///    decided RELIDO is not implied on this portion — either no
+///    Row-8/Row-9 trigger atom is present, OR the default-fill
+///    gate's FD&R-absent test failed, OR a downstream page-rewrite
+///    cleared RELIDO. No diagnostic.
 ///
 /// # Fix shape
 ///
@@ -146,7 +167,16 @@ pub(super) struct RelidoImpliedByClosureRule;
 /// Citations S008 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 154)];
+///
+/// Authority order matches the doc-comment: §B.3 Table 2 p21 is
+/// the trigger authority (the default-if-absent obligation that
+/// drives the RELIDO injection S008 surfaces); §H.8 p154 is the
+/// secondary authority (RELIDO marking template — what RELIDO
+/// means once present).
+const AUTHORITIES: &[Citation] = &[
+    capco_table(SectionLetter::B, 3, 2, 21),
+    capco(SectionLetter::H, 8, 154),
+];
 
 impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn id(&self) -> RuleId {
@@ -172,6 +202,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{CapcoMarking, TOK_RELIDO};
         use marque_ism::DissemControl;
+        use marque_scheme::Scope;
 
         // Clause 1: portion-only.
         if ctx.marking_type != MarkingType::Portion {
@@ -179,7 +210,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
         }
 
         // Clause 2: RELIDO already present — nothing to suggest. Cheap
-        // check that short-circuits before the closure call.
+        // check that short-circuits before the project call.
         if attrs
             .dissem_iter()
             .any(|d| matches!(d, DissemControl::Relido))
@@ -187,22 +218,74 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             return vec![];
         }
 
-        // Clause 3: run the closure and check the post-closure state.
-        // `SCHEME.closure(marking)` short-circuits via
-        // `any_closure_trigger_fires` when no closure rule's trigger
-        // fires (the bench-corpus typical case), returning the input
-        // marking identically. When a trigger fires, the fixpoint
-        // loop converges in 1–2 iterations on real-world inputs
-        // (proptest harness pins MAX_CLOSURE_ITERATIONS as the
-        // worst-case cap).
+        // Clause 2b (issue #704 fast-path): mirror
+        // `default_fill::row9_should_fill`'s FD&R-absent gate at the
+        // rule layer. If the input carries any FD&R dominator
+        // (REL TO / DISPLAY ONLY / EYES — RELIDO already handled by
+        // Clause 2), `default_fill::row9_should_fill` skips and no
+        // RELIDO will be added by the projection. Short-circuit here
+        // to avoid the project() call on the common case. This is a
+        // pure optimization; algebraically Clause 3's project-based
+        // check would reach the same conclusion.
+        //
+        // Authority: §B.3 paragraph b p19 ("not marked previously");
+        // §B.3.a p19 (FD&R dominator enumeration).
+        let input_has_explicit_fdr = !attrs.rel_to.is_empty()
+            || !attrs.display_only_to.is_empty()
+            || attrs
+                .dissem_iter()
+                .any(|d| matches!(d, DissemControl::Eyes));
+        if input_has_explicit_fdr {
+            return vec![];
+        }
+
+        // Clause 2c (issue #704 fast-path): RELIDO is an IC
+        // SFDRA-deferred marking per §H.8 p154 — IDO release authority
+        // is US-content-only. Non-US classification (NATO / JOINT /
+        // FGI) carries foreign equity and is in
+        // MASK_FDR_OR_RELIDO_INCOMPAT (the gate for
+        // `default_fill::row8_should_fill`). Short-circuit here so
+        // the project() call is skipped on non-US-classified inputs;
+        // algebraically Clause 3 would reach the same conclusion via
+        // default-fill Row 8's gate failing.
+        //
+        // Authority: §H.8 p154 (RELIDO grammar — US-originated
+        // content scope); §H.7 p123 (FGI foreign-equity bar);
+        // §H.3 p56 (JOINT co-ownership grammar); §G.1 Table 4 p38
+        // (NATO classification).
+        match attrs.classification {
+            Some(marque_ism::MarkingClassification::Nato(_))
+            | Some(marque_ism::MarkingClassification::Joint(_))
+            | Some(marque_ism::MarkingClassification::Fgi(_)) => return vec![],
+            _ => {}
+        }
+        if attrs.fgi_marker.is_some() {
+            return vec![];
+        }
+
+        // Clause 3: run project(Scope::Page) and check the post-pipeline
+        // state. Issue #704 retired the `CLOSURE_TABLE` suppressor_mask
+        // architecture (which violated the closure operator's algebraic
+        // monotonicity); the §H.8 p145 / §B.3.a p19 FD&R supersession
+        // semantics moved to `CapcoScheme::apply_supersession_overlays`,
+        // which runs after `closure()` returns. S008's "would closure
+        // inject RELIDO?" inspection therefore needs the post-overlay
+        // state — calling `scheme.closure()` directly would observe the
+        // pre-overlay state (RELIDO added by Row 9 even when NOFORN is
+        // in input, only to be stripped by the overlay), causing S008
+        // to suggest RELIDO that the page projection would immediately
+        // strip. `project(Scope::Page, &[marking])` over a single-
+        // portion page exercises the full pipeline (join +
+        // closure + supersession overlay + page rewrites) and gives
+        // S008 the canonical observable post-projection state.
         let marking = CapcoMarking::new(attrs.clone());
-        let closed = SCHEME.closure(marking);
-        let closure_adds_relido = closed
+        let projected = SCHEME.project(Scope::Page, &[marking]);
+        let projection_adds_relido = projected
             .0
             .dissem_us
             .iter()
             .any(|d| matches!(d, DissemControl::Relido));
-        if !closure_adds_relido {
+        if !projection_adds_relido {
             return vec![];
         }
 
@@ -231,9 +314,19 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             ctx.candidate_span,
             ctx.candidate_span,
             Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
-            // Typed Citation anchors at §H.8 p154 (RELIDO grammar);
-            // the §D.2 Table 3 row-17 cross-reference lives in the
-            // rule doc comment.
+            // Typed Citation anchors at §H.8 p154 (RELIDO marking
+            // template — what RELIDO means once present). The
+            // primary trigger authority §B.3 Table 2 p21 lives in
+            // the rule's `AUTHORITIES` slice + doc comment;
+            // emission stays at §H.8 p154 because per-Diagnostic
+            // emission is single-Citation by API shape and §H.8
+            // p154 is the marking-template anchor a reader will
+            // most directly use to interpret "what is RELIDO". The
+            // F.1 corpus-fidelity gate's EXPECTED_UNCOVERED list
+            // carries §B.3 Table 2 p21 for S008 — the trigger
+            // citation is declared in the rule's authority slice
+            // but not emitted in the per-Diagnostic Citation
+            // field, by intent.
             capco(SectionLetter::H, 8, 154),
             fix_intent,
         )]

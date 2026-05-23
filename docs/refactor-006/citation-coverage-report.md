@@ -393,6 +393,39 @@ PageRewrite rows declare §H.9 p185:
 
 Same architectural property as the SBU-NF entry.
 
+<a id="b3-table2-p21-s008-trigger-authority-not-emitted"></a>
+
+### `§B.3 Table 2 p21` — S008 trigger authority (declared, not emitted)
+
+Declared by `S008_AUTHORITIES` in `crates/capco/src/rules.rs` as the
+primary trigger authority for the `S008
+relido-implied-by-closure` rule. The cited table row —
+"Classified + uncaveated + on/after 28 June 2010 → Mark as
+RELIDO" — is the §-spec obligation that drives S008's
+`Severity::Suggest` emission when the project pipeline would
+inject implicit RELIDO via `default_fill::row{8,9}_should_fill`.
+
+The per-`Diagnostic` Citation field is single-valued by API shape
+(`Diagnostic::with_fix_at_span` takes a single `Citation`). S008
+emits `§H.8 p154` (RELIDO marking template — what RELIDO means
+once present) in that single-Citation slot because it's the
+marking-template anchor a reviewer will most directly use to
+interpret the diagnostic. `§B.3 Table 2 p21` IS exercised
+end-to-end by every S008-firing fixture; it's just not the
+per-Diagnostic emission target.
+
+This is a deliberate authority-slice / emission-slot decoupling
+introduced post-#704 review-cycle resolution Fix 2: the
+authority slice honestly reports all the §-anchors S008's
+behavior depends on; emission picks the single most reviewer-
+relevant anchor.
+
+**Resolution path**: when per-Diagnostic emission becomes
+multi-Citation (a future trait-surface change that's out of
+scope for #704), S008 would emit both `§B.3 Table 2 p21` and
+`§H.8 p154` and this whitelist row retires. Tracking: filed
+against the multi-Citation emission backlog at #704 merge.
+
 ## Removing a whitelist entry
 
 When a fixture starts exercising one of the citations above, the

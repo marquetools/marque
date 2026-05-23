@@ -146,6 +146,16 @@ fn phase_attribution(c: &mut Criterion) {
     });
 
     // Phase B: closure in isolation, applied to a pre-joined marking.
+    //
+    // Post-#704 scope note: `scheme.closure()` runs the 6-row
+    // `CLOSURE_TABLE` Kleene fixpoint only (Rows 1-6, per-marking
+    // unconditional implications from §H.4 marking templates). The
+    // four "default if absent" rules (Rows 0/7/8/9 pre-#704) retired
+    // to `marque_capco::scheme::default_fill`, which runs in
+    // `scheme.project()` between close() and the supersession
+    // overlay. `phase_b_closure` measures the additive Kleene
+    // fixpoint only; the default-fill stage's cost is measured
+    // separately as part of `phase_c_scheme_project`.
     let joined_attrs = CapcoMarking::join_via_lattice(&portions);
     let joined = CapcoMarking::new(joined_attrs);
     c.bench_function("phase_b_closure", |b| {

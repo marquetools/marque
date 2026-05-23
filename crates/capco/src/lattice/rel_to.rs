@@ -242,6 +242,75 @@ impl RelToBlock {
     pub fn is_empty_intersection(&self) -> bool {
         matches!(self, Self::Empty)
     }
+
+    /// Strip the REL TO block when an external NOFORN dominator
+    /// is observed on the dissem axis (§H.8 p145).
+    ///
+    /// Issue #704 (closure-monotonicity-via-supersession): the
+    /// `CapcoScheme::closure` operator is purely additive
+    /// post-#704 — Trio 3 (`capco:closure.nato.rel-to-usa-nato-if-nato-classification`)
+    /// fires whenever the trigger atom (`NATO_CLASS`) is present
+    /// even when NOFORN is also present in the input. The §H.8
+    /// p145 NOFORN-dominates semantic that the previous
+    /// `MASK_FDR_DOMINATORS` suppressor encoded moves here: when
+    /// the caller observes NOFORN in the post-closure dissem
+    /// axis, this overlay transitions the REL TO block to
+    /// [`Self::NofornSuperseded`] so the writeback in
+    /// `CapcoScheme::project` strips the closure-added USA / NATO
+    /// (and any input-provided trigraphs) from `attrs.rel_to`.
+    ///
+    /// Behavior: if `noforn_present` is true, return
+    /// `NofornSuperseded` unconditionally. Otherwise return
+    /// `self` unchanged. The overlay is **idempotent**
+    /// (`f(f(x)) == f(x)` because the function ignores `self`
+    /// when `noforn_present` is true and is identity otherwise).
+    /// It is **join-monotone** with the caller's `noforn_present`
+    /// monotonically growing on `a ⊑ b`: if `noforn_present(a)`
+    /// implies `noforn_present(b)` (which holds in the closure
+    /// pipeline because NOFORN can only be added, never stripped,
+    /// by `close`), then `f(a) ⊑ f(b)` because (a) if both true,
+    /// both reach `NofornSuperseded` (equal, ⊑ holds); (b) if
+    /// only b is true, f(a) is identity and f(b) is the
+    /// `NofornSuperseded` absorbing top, and `x ⊑ NofornSuperseded`
+    /// holds for every x via the join lattice's absorbing-element
+    /// semantics.
+    ///
+    /// **Pure function.** Takes ownership and returns a new
+    /// `RelToBlock`; no `&mut self`. Composes with `join` and
+    /// `from_attrs_iter` without re-entrancy concerns.
+    ///
+    /// **Visibility (`pub(crate)`) + `#[allow(dead_code)]`.** Issue
+    /// #704 review-cycle resolution Fix 3 downgraded from `pub` to
+    /// `pub(crate)`. The production strip in
+    /// `CapcoScheme::apply_supersession_overlays` clears
+    /// `attrs.rel_to` directly without going through this typed
+    /// method (operating at the `CanonicalAttrs` boundary where the
+    /// lattice round-trip would be wasted work). The method stays
+    /// as the typed surface for in-crate lattice-test fixtures +
+    /// future refactors that operate on `RelToBlock` values
+    /// directly; `pub(crate)` keeps the FR-049 stability freeze
+    /// surface honest by not exporting an untested-in-production
+    /// API. `#[allow(dead_code)]` is required because the
+    /// `#[cfg(test)]` inline test module's calls are the only
+    /// callers today — without the allow, the stable-clippy
+    /// `dead_code` lint fires under `-D warnings`. The
+    /// `#[cfg(test)]` alternative would forbid the future-refactor
+    /// use case the method exists for.
+    ///
+    /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
+    /// RELIDO, EYES ONLY, or DISPLAY ONLY"); §H.7 p127 (the
+    /// `capco:closure.nato.rel-to-usa-nato-if-nato-classification`
+    /// row's primary authority; this overlay resolves the §H.8
+    /// p145 conflict between the §H.7 p127 implicit `REL TO USA,
+    /// NATO` default and an explicit NOFORN).
+    #[allow(dead_code)]
+    pub(crate) fn with_nato_implicit_stripped(self, noforn_present: bool) -> Self {
+        if noforn_present {
+            Self::NofornSuperseded
+        } else {
+            self
+        }
+    }
 }
 
 impl JoinSemilattice for RelToBlock {
@@ -300,5 +369,87 @@ impl MeetSemilattice for RelToBlock {
                 Self::Lattice { countries: union }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `with_nato_implicit_stripped` unit tests (issue #704)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod with_nato_implicit_stripped_tests {
+    use super::*;
+
+    fn lattice_usa_gbr() -> RelToBlock {
+        let mut countries = BTreeSet::new();
+        countries.insert(CountryCode::USA);
+        countries.insert(CountryCode::GBR);
+        RelToBlock::Lattice { countries }
+    }
+
+    #[test]
+    fn empty_input_with_no_noforn_returns_empty() {
+        let stripped = RelToBlock::Bottom.with_nato_implicit_stripped(false);
+        assert_eq!(stripped, RelToBlock::Bottom);
+    }
+
+    #[test]
+    fn empty_input_with_noforn_returns_noforn_superseded() {
+        let stripped = RelToBlock::Bottom.with_nato_implicit_stripped(true);
+        assert_eq!(stripped, RelToBlock::NofornSuperseded);
+    }
+
+    #[test]
+    fn lattice_with_noforn_present_strips_to_noforn_superseded() {
+        // The §H.8 p145 conflict: REL TO USA, GBR cannot coexist
+        // with NOFORN. Overlay forces NofornSuperseded.
+        let stripped = lattice_usa_gbr().with_nato_implicit_stripped(true);
+        assert_eq!(stripped, RelToBlock::NofornSuperseded);
+    }
+
+    #[test]
+    fn lattice_with_no_noforn_is_kept() {
+        // No external NOFORN observation → overlay is identity.
+        let block = lattice_usa_gbr();
+        let stripped = block.clone().with_nato_implicit_stripped(false);
+        assert_eq!(stripped, block);
+    }
+
+    #[test]
+    fn idempotent_no_noforn() {
+        let block = lattice_usa_gbr();
+        let once = block.clone().with_nato_implicit_stripped(false);
+        let twice = once.clone().with_nato_implicit_stripped(false);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn idempotent_with_noforn() {
+        let once = lattice_usa_gbr().with_nato_implicit_stripped(true);
+        let twice = once.clone().with_nato_implicit_stripped(true);
+        assert_eq!(once, twice);
+        assert_eq!(once, RelToBlock::NofornSuperseded);
+    }
+
+    /// Join-monotone given a monotone `noforn_present` indicator
+    /// — if NOFORN-presence grows along the lattice order,
+    /// `f(a) ⊑ f(b)` in `RelToBlock`'s join order
+    /// (`Bottom < Lattice{..} < Empty < NofornSuperseded`).
+    #[test]
+    fn join_monotone_under_growing_noforn() {
+        // a ⊑ b in input states; noforn(a)=false, noforn(b)=true.
+        // f(a) = a (identity); f(b) = NofornSuperseded. The
+        // join lattice satisfies `x ⊑ NofornSuperseded` for any
+        // x, so monotonicity holds.
+        let a = lattice_usa_gbr();
+        let b = lattice_usa_gbr();
+        let fa = a.with_nato_implicit_stripped(false);
+        let fb = b.with_nato_implicit_stripped(true);
+        // Witness: fa.join(fb) == fb (NofornSuperseded absorbs).
+        assert_eq!(fa.join(&fb), RelToBlock::NofornSuperseded);
+        // Also witness: fa.join(fb) == fb (fb is the joined
+        // upper bound, so fa ⊑ fb).
+        assert_eq!(fa.join(&fb), fb);
     }
 }

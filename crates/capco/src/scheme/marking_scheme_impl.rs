@@ -576,54 +576,55 @@ impl MarkingScheme for CapcoScheme {
 
     /// Residual fn-pointer closure-rule catalog (PR-D — issue #371).
     ///
-    /// Post-PR-D of the FactBitmask refactor, CAPCO's closure operator
-    /// executes as a bitwise Kleene fixpoint over
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) — a 10-row
-    /// `(trigger_mask, suppressor_mask, cone_mask)` catalog over a
-    /// `u128` atom bitmask. The fn-pointer slice this trait method
-    /// returns is the **residual** catalog: rows whose cone cannot be
-    /// expressed as a static closed-vocab bit and therefore retain
-    /// fn-pointer form. Today that is exactly one row:
+    /// Post-#704, CAPCO's closure operator executes as a bitwise
+    /// Kleene fixpoint over
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) — a
+    /// 6-row `(trigger_mask, cone_mask)` catalog over a `u128`
+    /// atom bitmask. The six rows are the per-marking unconditional
+    /// implications from §H.4 marking templates (HCS-O / HCS-P[sub]
+    /// → NOFORN + ORCON per §H.4 p64 / p68; SI-G → ORCON per §H.4
+    /// p80; TK-{BLFH, IDIT, KAND} → NOFORN per §H.4 p87 / p91 /
+    /// p95). All six fire unconditionally with no `suppressor_mask`
+    /// gating (the pre-#704 `suppressor_mask` field retired in
+    /// issue #704 — see the `closure_table.rs` module doc-comment
+    /// for the algebraic-monotonicity rationale).
     ///
-    /// | Rule key                                            | Why fn-pointer                                                                                                       |
-    /// |-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-    /// | `capco/rel-to-usa-nato-if-nato-classification`      | Open-vocab `cone_derived` injects `CountryCode::NATO`, which has no closed-vocab `TokenId`. Bitmask cannot represent it. |
+    /// **Post-#704: the fn-pointer slice this trait method returns
+    /// is empty (`&[]`)**. The pre-#704 residual fn-pointer rule
+    /// `CLOSURE_REL_TO_USA_NATO` (Row 7's open-vocab NATO
+    /// tetragraph tail) retired alongside Rows 0/7/8/9 to
+    /// [`crate::scheme::default_fill`] (`row7_should_fill` and
+    /// sibling predicates). The fn-pointer surface is reserved as
+    /// a stable seam for any future CAPCO closure rule that ships
+    /// an open-vocab cone which cannot project onto a closed-vocab
+    /// bit; today there are no such rules.
     ///
-    /// The static `cone` half of this row (`TOK_USA`) IS in the
-    /// bitmask (`closure_table::CONE_REL_TO_USA`); only the open-vocab
-    /// NATO leg rides this fn-pointer surface, as a single post-Kleene
-    /// tail invoked from [`Self::closure`] when the bitmask Row 7 has
-    /// fired (i.e., the `REL_TO_USA` cone bit appears in the
-    /// closed_bits delta).
+    /// Why Rows 0/7/8/9 retired: those four are "default if absent"
+    /// rules per §B.3 paragraph b p19's "NOT MARKED PREVIOUSLY"
+    /// gate — inherently non-monotone by §-spec design and
+    /// therefore unable to live in a closure operator that honors
+    /// the [`MarkingScheme::closure`] monotone contract. The §H.8
+    /// p145 NOFORN-dominates / §B.3.a p19 FD&R supersession
+    /// semantics they previously encoded now split two ways:
+    /// the "default if absent" half moved to
+    /// [`crate::scheme::default_fill::apply_default_fill`]; the
+    /// "post-close re-apply per-axis supersession" half moved to
+    /// [`CapcoScheme::apply_supersession_overlays`]. The
+    /// [`super::closure::FDR_DOMINATORS`] slice remains the
+    /// canonical FD&R enumeration consumed by
+    /// `Vocabulary::is_fdr_dissem` and the supersession overlays.
     ///
-    /// All other pre-PR-D rows — Trio 1 CAVEATED (the 20-trigger
-    /// algebraic union covering SAR · RD/FRD/TFNI · UCNI · FGI · ORCON
-    /// / ORCON-USGOV · RSEN / IMCON / PROPIN / DSEN / FISA / RAWFISA ·
-    /// LIMDIS / LES / NNPI / SBU / SSI), the per-marking SCI
-    /// implications (HCS-O / HCS-P[sub] ⇒ {NOFORN, ORCON}; SI-G ⇒
-    /// {ORCON} with NOFORN supplied transitively via Trio 1;
-    /// TK-{BLFH, IDIT, KAND} ⇒ {NOFORN}), and the two Trio 2 RELIDO
-    /// rows — live exclusively in [`CLOSURE_TABLE`] now. Their
-    /// §-citations are preserved verbatim on the bitmask row `label`
-    /// fields and the per-row doc-comments in
-    /// [`super::closure_table`](super::closure_table).
+    /// All bitmask rows ship at [`Severity::Info`] per
+    /// `decisions.md` D19 B (closure firings are silent
+    /// lattice-layer fact propagation, not byte-level fixes);
+    /// user-visible byte diffs ride on independent
+    /// `Severity::Suggest` text-layer rules (e.g., S007 for the
+    /// NATO row — see `decisions.md` D20).
     ///
-    /// Every surviving row is suppressed by `FDR_DOMINATORS` (any
-    /// present FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES,
-    /// DISPLAY ONLY) — see [`super::closure::FDR_DOMINATORS`] and
-    /// its bitmask projection
-    /// [`crate::fact_bitmask::MASK_FDR_DOMINATORS`]. All rows ship at
-    /// [`Severity::Info`] per `decisions.md` D19 B (closure firings
-    /// are silent lattice-layer fact propagation, not byte-level
-    /// fixes); user-visible byte diffs ride on independent
-    /// `Severity::Suggest` text-layer rules (e.g., S007 for the NATO
-    /// row — see `decisions.md` D20).
-    ///
-    /// `closure_rules()` intentionally remains the residual executable
-    /// fn-pointer catalog (1 row post-PR-D). Scheme-agnostic discovery
-    /// should use [`Self::closure_inventory()`], which unifies metadata
-    /// across this residual catalog and the 10-row bitmask
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
+    /// Scheme-agnostic discovery should use
+    /// [`Self::closure_inventory()`], which projects the bitmask
+    /// `CLOSURE_TABLE` rows onto `ClosureRuleMetadata` for unified
+    /// downstream consumption.
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
     }
@@ -668,13 +669,12 @@ impl MarkingScheme for CapcoScheme {
     }
 
     /// CAPCO closure operator — bitwise Kleene fixpoint over
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) +
-    /// post-Kleene Row 7 NATO open-vocab tail.
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
     ///
     /// Implements the section 4.7 implicit-fact propagation per
     /// `docs/plans/2026-05-01-lattice-design.md` section 3 (e).
     ///
-    /// # Algorithm (post-PR-D, issue #371)
+    /// # Algorithm (post-#704)
     ///
     /// 1. **Project** the input `CanonicalAttrs` to a `u128`
     ///    `FactBitmask` via [`derive_bits`]. Closed-vocab atoms (SAR
@@ -686,25 +686,38 @@ impl MarkingScheme for CapcoScheme {
     /// 2. **HOT-1 short-circuit**: if no trigger atom is set, return
     ///    the input verbatim. `close` is extensive (bits are only
     ///    added) — no row can fire across any iteration if no trigger
-    ///    is set at iteration 0.
+    ///    is set at iteration 0. Post-#704 the trigger mask covers
+    ///    the six SCI per-marking sentinel bits only; non-SCI inputs
+    ///    hit this short-circuit.
     /// 3. **Kleene fixpoint**: [`close`] runs a bitwise loop over
-    ///    [`CLOSURE_TABLE`] — for each row, if
-    ///    `(next & trigger_mask) != 0 && (next & suppressor_mask) == 0`,
-    ///    OR `cone_mask` into `next`. Iterate until stable or panic at
-    ///    [`MAX_CLOSURE_ITERATIONS`] (= 16). The CAPCO catalog's
-    ///    longest causal chain is depth 2; typical inputs converge in
-    ///    1–3 iterations.
+    ///    the 6-row [`CLOSURE_TABLE`] — for each row, if
+    ///    `(next & trigger_mask) != 0`, OR `cone_mask` into `next`.
+    ///    Post-#704 the operator is purely additive — no per-row
+    ///    suppressor gate — so each row's firing predicate is the
+    ///    upward-closed presence check on its trigger atom. Iterate
+    ///    until stable or panic at [`MAX_CLOSURE_ITERATIONS`] (= 16).
+    ///    Post-#704 the catalog's longest causal chain is depth 1
+    ///    (each Row 1-6 fires at most once on its trigger atom; the
+    ///    pre-#704 SI-G → ORCON → Trio-1-NOFORN depth-2 chain
+    ///    crosses the close()/default_fill boundary in the full
+    ///    pipeline). Typical inputs converge in 1 iteration.
     /// 4. **Write-back**: [`apply_closed_bits_to`] materializes every
     ///    new bit in `closed_bits & !input_bits` to the corresponding
-    ///    `CanonicalAttrs` axis (`dissem_us` push, `rel_to` insert,
-    ///    etc.).
-    /// 5. **Row 7 open-vocab tail**: `CountryCode::NATO` has no
-    ///    closed-vocab `TokenId`, so it cannot ride the bitmask. If
-    ///    the bitmask Row 7 fired (observable as
-    ///    `(closed_bits & !input_bits) & CONE_REL_TO_USA != 0`), call
-    ///    [`super::closure::CLOSURE_REL_TO_USA_NATO`]'s `cone_derived`
-    ///    once and route the resulting `FactRef::OpenVocab(NATO)`
-    ///    through `apply_closure_fact`.
+    ///    `CanonicalAttrs` axis (`dissem_us` push, etc.). Post-#704
+    ///    only the dissem-axis writeback fires — the surviving rows
+    ///    emit `NOFORN` and `ORCON` cone bits, both of which route
+    ///    through the dissem-axis arm.
+    ///
+    /// (Post-#704: there is no step 5. The pre-#704 Row 7 open-vocab
+    /// NATO tetragraph tail — which invoked the retired fn-pointer
+    /// rule `CLOSURE_REL_TO_USA_NATO`'s `cone_derived` via
+    /// `apply_closure_fact` — relocated to
+    /// [`crate::scheme::default_fill::apply_default_fill`] alongside
+    /// Row 7's trigger. `closure()` no longer touches `rel_to`;
+    /// `apply_default_fill` writes `CountryCode::USA` and
+    /// `CountryCode::NATO` directly when its Row-7 predicate fires.
+    /// `apply_default_fill` is called separately by
+    /// `project_attrs_pipeline`, NOT by `closure()`.)
     ///
     /// # Invariants preserved
     ///
@@ -713,66 +726,52 @@ impl MarkingScheme for CapcoScheme {
     /// 2. **Idempotent**: `closure(closure(m)) == closure(m)` — the
     ///    bitmask Kleene loop runs to fixpoint, and `apply_closed_bits_to`
     ///    is a no-op for bits already present in the input.
-    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` — every
-    ///    catalog row's suppressors are disjoint from every cone (the
-    ///    section 4.7.3 table-design property). Bitmask regressions
-    ///    are pinned by `proptest_closure_table.rs` (P1–P4 algebraic
-    ///    properties) and the
+    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` —
+    ///    post-#704 every row fires by a pure presence check
+    ///    `(working & trigger_mask) != 0` and writes only via `|=`
+    ///    on `cone_mask`. No row has a suppressor; the firing
+    ///    predicate is upward-closed in `working` and the body is
+    ///    purely additive. Bitmask regressions are pinned by
+    ///    `proptest_closure_table.rs` (P1–P4 algebraic properties)
+    ///    and the
     ///    [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE)
     ///    positional pin in `post_4b_lattice_inventory_pin.rs`.
     ///
     /// # Non-convergence
     ///
     /// Per the [`MarkingScheme::closure`] trait contract, exceeding
-    /// `MAX_CLOSURE_ITERATIONS` panics. A monotone catalog cannot
-    /// reach this branch (the fact universe is bounded by the union
-    /// of every category's value set); non-convergence here indicates
-    /// a catalog regression — a non-monotone row whose suppressor
-    /// depends on a bit in another row's cone. [`close`] panics
+    /// `MAX_CLOSURE_ITERATIONS` panics. Post-#704 the 6-row catalog
+    /// has max causal depth 1 (no row's cone is in any other row's
+    /// trigger mask); non-convergence is unreachable on the current
+    /// catalog. Reaching the panic branch means a future row added
+    /// a cycle — a catalog regression. [`close`] panics
     /// unconditionally on non-convergence (release builds included)
     /// per the documented contract.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
-        // Bitmask Kleene fast path (issue #371, PR-D).
+        // Bitmask Kleene fast path (issue #371, PR-D; issue #704 refinement).
         //
-        // PR-C landed `CLOSURE_TABLE` + `close()`: a 10-row bitmask catalog
-        // and Kleene fixpoint loop covering the closed-vocab atoms of every
-        // CAPCO closure rule. PR-D wires it into production. The bitmask
-        // path replaces the previous fn-pointer walk of `CAPCO_CLOSURE_RULES`
-        // for every closed-vocab cone — only Row 7's `cone_derived` open-
-        // vocab NATO tetragraph survives outside the bitmask (see below).
+        // Post-#704: CLOSURE_TABLE carries the 6 per-marking unconditional
+        // implication rows (HCS-O / HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND})
+        // from §H.4 marking templates. The 4 "default if absent" rules
+        // that pre-#704 occupied Rows 0/7/8/9 (caveated→NOFORN,
+        // NATO→REL TO USA, SCI→RELIDO, US-class→RELIDO) relocated to
+        // `crate::scheme::default_fill::apply_default_fill`, which runs
+        // in `project_attrs_pipeline` AFTER this closure() converges.
+        // Splitting the monotone Rows 1-6 from the non-monotone Rows
+        // 0/7/8/9 lets close() honor the `MarkingScheme::closure` trait
+        // contract's algebraic monotonicity property.
         //
         // # Cost shape
         //
         // - HOT-1: `derive_bits` is single-pass + branchless; the
         //   `ALL_TRIGGER_MASK` short-circuit gates everything else.
+        //   The post-#704 mask covers the six SCI sentinel bits only.
         // - Kleene loop: bitwise AND/OR/cmp on a `u128` per row per
-        //   iteration, capped at `MAX_CLOSURE_ITERATIONS` (= 16). The CAPCO
-        //   catalog's longest causal chain is depth 2; typical inputs
-        //   converge in 1–3 iterations.
-        // - `apply_closed_bits_to`: O(set bits in delta). Most closures
-        //   touch 1–3 atoms.
-        //
-        // # Row 7 open-vocab tail
-        //
-        // `CLOSURE_REL_TO_USA_NATO` carries an open-vocab `cone_derived`
-        // that injects `CountryCode::NATO` into `rel_to`. `CountryCode::NATO`
-        // has no closed-vocab `TokenId`, so it routes via
-        // `FactRef::OpenVocab(_)`. The bitmask handles the static `TOK_USA`
-        // cone via the `REL_TO_USA` bit; the open-vocab NATO injection
-        // happens here, AFTER the Kleene fixpoint, as a single post-pass.
-        //
-        // The Row 7 trigger / suppressor decision is NOT re-evaluated
-        // against the fn-pointer rule's predicates here — it was already
-        // made INSIDE [`close`] when CLOSURE_TABLE Row 7's
-        // `trigger_mask` / `suppressor_mask` decided whether to OR the
-        // `REL_TO_USA` cone bit into the accumulator. The post-Kleene
-        // tail observes that decision via the bit-delta gate
-        // `row7_fired` (computed just below) and runs the open-vocab
-        // injection iff Row 7 actually contributed its closed-vocab
-        // cone. See the doc-comment on `row7_fired` for why the delta
-        // (`closed & !input`) is required rather than a naive
-        // re-evaluation of the fn-pointer predicates against post-
-        // closure `working`.
+        //   iteration, capped at `MAX_CLOSURE_ITERATIONS` (= 16).
+        //   Post-#704 the longest causal chain is depth 1 (each Row
+        //   1-6 fires at most once on its trigger atom).
+        // - `apply_closed_bits_to`: O(set bits in delta). Per-marking
+        //   cones touch 1-2 atoms (NOFORN, ORCON).
         //
         // # Trait contract
         //
@@ -781,77 +780,21 @@ impl MarkingScheme for CapcoScheme {
         // `closure_table::close` doc-comment for the panic semantics.
 
         use crate::fact_bitmask::{apply_closed_bits_to, derive_bits};
-        use crate::scheme::closure::CLOSURE_REL_TO_USA_NATO;
-        use crate::scheme::closure_table::{ALL_TRIGGER_MASK, CONE_REL_TO_USA, close};
+        use crate::scheme::closure_table::{ALL_TRIGGER_MASK, close};
 
         let input_bits = derive_bits(&marking.0);
 
         // HOT-1: pre-Kleene short-circuit. If no trigger fires on the
         // input, no row can fire across any iteration (close is extensive,
-        // bits are only added). Return the input verbatim, skipping both
-        // the Kleene loop AND the Row 7 open-vocab tail (which requires
-        // NATO classification — a trigger atom).
+        // bits are only added). Return the input verbatim.
         if (input_bits.bits() & ALL_TRIGGER_MASK) == 0 {
             return marking;
         }
 
         let closed_bits = close(input_bits);
 
-        // Row 7 open-vocab tail decision: did the bitmask Row 7 fire?
-        // Equivalent to `(trigger ∧ ¬suppressor)` over `input_bits` for
-        // Row 7's masks — observable as "the bitmask added the
-        // `REL_TO_USA` cone bit to the accumulator". Computed BEFORE
-        // `apply_closed_bits_to` writes back to `CanonicalAttrs` so
-        // there is no `rel_to` non-empty ambiguity: at this point
-        // `working.0.rel_to` is still the input marking's value, and
-        // the bitmask path's decision is the load-bearing one.
-        //
-        // # Why not re-evaluate against post-`apply_closed_bits_to` state
-        //
-        // The fn-pointer walker that PR-D retired called
-        // `cone_derived(&working)` inside the same row-dispatch
-        // iteration where the static cone (`TOK_USA`, applied via
-        // `apply_fact_add`'s CAT_REL_TO arm) had just run — meaning
-        // `working.rel_to` was already non-empty when `cone_derived`
-        // returned NATO, and the suppressor `AnyInCategory(CAT_REL_TO)`
-        // would have stripped Row 7 in iteration 2 (after USA injection
-        // made `rel_to` non-empty). The fn-pointer fixpoint still
-        // contained NATO because iteration 1 ran the derived-cone pass
-        // before iteration 2 even started.
-        //
-        // The bitmask path collapses every iteration into a single
-        // `close()` call. To preserve the fn-pointer fixpoint, the
-        // open-vocab tail must observe Row 7's "did it ever fire?"
-        // decision — not "does it still fire after the bitmask
-        // converged?". The bitmask's `REL_TO_USA` cone bit IS that
-        // decision: it is set in `closed_bits` iff Row 7 fired in some
-        // Kleene iteration. (The bitmask `MASK_FDR_DOMINATORS` does
-        // NOT contain `REL_TO_USA` — only `REL_TO_PRESENT`, which
-        // remains an input-only sentinel by construction in
-        // `derive_bits` — so adding `REL_TO_USA` mid-Kleene cannot
-        // retroactively suppress Row 7. Match that here by gating on
-        // `closed_bits.is_set(REL_TO_USA)`.)
-        // Use the bit-delta `(closed & !input)`, not the post-state, so
-        // an input marking that already carries USA in `rel_to`
-        // (REL_TO_USA already set, REL_TO_PRESENT also set ⇒ FD&R
-        // dominator suppresses Row 7 in the bitmask Kleene → no cone
-        // delta) is correctly distinguished from one where Row 7's
-        // cone ran and added USA.
-        let row7_fired = (closed_bits.bits() & !input_bits.bits()) & CONE_REL_TO_USA != 0;
-
         let mut working = marking;
         apply_closed_bits_to(&mut working.0, closed_bits, input_bits);
-
-        if row7_fired && let Some(derived_fn) = CLOSURE_REL_TO_USA_NATO.cone_derived {
-            for fact_ref in derived_fn(&working) {
-                // The return value (changed-bit) is consumed by the
-                // fn-pointer walker that retired in PR-D; in the
-                // bitmask path the Row 7 NATO post-pass runs exactly
-                // once after the Kleene fixpoint converges, so we
-                // intentionally discard the bool.
-                let _ = apply_closure_fact(self, &mut working, &fact_ref);
-            }
-        }
 
         working
     }
@@ -965,6 +908,133 @@ impl CapcoScheme {
         self.project_attrs_pipeline(raw)
     }
 
+    /// Issue #704 — re-apply per-axis supersession overlays to the
+    /// post-`close()` / post-`apply_default_fill` CanonicalAttrs.
+    ///
+    /// Runs as part of [`Self::project_attrs_pipeline`] between
+    /// `apply_default_fill` and the declarative `PageRewrites`.
+    /// The post-#704 R2-1 refactor split this method into two
+    /// honest steps:
+    ///
+    /// 1. **Dissem-axis overlay re-application (unconditional)** —
+    ///    calls
+    ///    [`crate::lattice::dissem::DissemSet::with_all_overlays_reapplied`]
+    ///    which runs all three `DissemSet` overlays:
+    ///    - Overlay 1: OC > OC-USGOV supersession (§H.8 p140 +
+    ///      §H.8 p136). NOFORN-independent.
+    ///    - Overlay 2: RELIDO observed-unanimity (§H.8 pp155-156).
+    ///      NOFORN-independent.
+    ///    - Overlay 3: NOFORN-dominates supersession (§H.8 p145 +
+    ///      §B.3.a p19 + §D.2 Table 3 rows 1-2). NOFORN-dependent.
+    ///
+    ///    Pre-R2-1 this step was gated on `has_noforn` because it
+    ///    was framed as just the §H.8 p145 strip. The misframing
+    ///    silently disabled Overlays 1 + 2 for inputs whose
+    ///    close() / default_fill outputs would have triggered them.
+    ///    Post-R2-1 the step runs unconditionally; the
+    ///    `has_noforn` gate moved to Step 2 (the only NOFORN-
+    ///    dependent action).
+    ///
+    /// 2. **REL TO + DISPLAY ONLY country-list clear (NOFORN-gated)** —
+    ///    §H.8 p145 country-list strip: if `Nf` ended up in
+    ///    `attrs.dissem_us` after Step 1, clear `attrs.rel_to` and
+    ///    `attrs.display_only_to`. §H.8 p145 is symmetric across
+    ///    the dissem-axis tokens and the country-list axes — both
+    ///    sides of NOFORN's mutual exclusion list must be evicted.
+    ///    Mirrors
+    ///    [`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`]
+    ///    at the CanonicalAttrs boundary.
+    ///
+    /// Idempotent: rerunning observes the post-overlay state.
+    /// Step 1 is idempotent because each overlay strips strictly
+    /// (a second pass finds nothing to strip); Step 2 is
+    /// idempotent because cleared axes stay cleared.
+    ///
+    /// Authority: §H.8 p140 + §H.8 p136 (OC > OC-USGOV — Overlay 1);
+    /// §H.8 pp155-156 (RELIDO observed-unanimity — Overlay 2);
+    /// §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO, EYES
+    /// ONLY, or DISPLAY ONLY") + §B.3.a p19 (FD&R dominator
+    /// enumeration) + §D.2 Table 3 rows 1-2 (NOFORN dominates
+    /// dominated FD&R at banner roll-up) — Overlay 3 + Step 2.
+    fn apply_supersession_overlays(attrs: &mut CanonicalAttrs) {
+        use crate::lattice::DissemSet;
+        use marque_ism::DissemControl;
+
+        // Step 1 — dissem-axis overlay re-application.
+        //
+        // **Runs unconditionally** post-#704 R2-1. Pre-R2-1 this
+        // step was gated on `has_noforn` because it was framed as
+        // "the §H.8 p145 NOFORN-dominates strip." Copilot R2's
+        // structural review caught the misframing: `DissemSet`
+        // carries THREE overlays (`apply_overlays` →
+        // `with_all_overlays_reapplied`), only one of which is
+        // NOFORN-dependent:
+        //
+        // - Overlay 1: OC > OC-USGOV supersession (§H.8 p140 +
+        //   §H.8 p136). NOFORN-independent: fires when both `Oc`
+        //   and `OcUsgov` are present in the post-close /
+        //   post-default-fill dissem state, regardless of NOFORN.
+        // - Overlay 2: RELIDO observed-unanimity (§H.8 pp155-156).
+        //   NOFORN-independent: drops `Relido` when not all
+        //   contributing portions carried it.
+        // - Overlay 3: NOFORN-dominates (§H.8 p145 + §B.3.a p19
+        //   + §D.2 Table 3 rows 1-2). NOFORN-dependent: only
+        //   fires when `Nf` is in the set.
+        //
+        // The pre-R2-1 `has_noforn` gate prevented Overlays 1 + 2
+        // from re-running when close() / default_fill added an
+        // Overlay-1- or Overlay-2-relevant bit that interacts with
+        // input bits. No production CAPCO row exposes the gap
+        // today (the gap is structural, not observable on the
+        // current 6-row CLOSURE_TABLE + 4-row default-fill
+        // catalog), but the defensive guard prevents future
+        // catalog edits from regressing the §H.8 p140 / pp155-156
+        // contracts.
+        //
+        // The unconditional rebuild cost is bounded by
+        // `attrs.dissem_us.len()` (typically 1-3 tokens) plus the
+        // `from_attrs_iter` BTreeSet round-trip — cheap enough
+        // that the defensive guard pays for itself even on the
+        // common (no-Nf) case.
+        let view = DissemSet::from_attrs_iter(std::slice::from_ref(attrs));
+        let rebuilt = view.with_all_overlays_reapplied();
+        let next = rebuilt.into_boxed_slice();
+        if next[..] != attrs.dissem_us[..] {
+            attrs.dissem_us = next;
+        }
+
+        // Step 2 — country-list clear. NOFORN-conditional per
+        // §H.8 p145: "NOFORN cannot be used with REL TO, RELIDO,
+        // EYES ONLY, or DISPLAY ONLY". When NOFORN is present in
+        // the post-overlay dissem state, `rel_to` and
+        // `display_only_to` MUST be cleared. This is the only step
+        // that gates on `has_noforn` — Overlays 1 + 2 in Step 1
+        // are NOFORN-independent and ran unconditionally.
+        //
+        // Re-read `has_noforn` AFTER Step 1 because Step 1's
+        // overlay rebuild does not remove NOFORN (it only removes
+        // DOMINATED controls; NOFORN itself is the dominator that
+        // survives). Re-read is defensive: a future overlay edit
+        // that did remove NOFORN under some condition would be
+        // observable here.
+        let has_noforn = attrs.dissem_us.contains(&DissemControl::Nf);
+        if has_noforn {
+            if !attrs.rel_to.is_empty() {
+                attrs.rel_to = Box::new([]);
+            }
+            if !attrs.display_only_to.is_empty() {
+                attrs.display_only_to = Box::new([]);
+            }
+        }
+        // Note: the `RelToBlock::with_nato_implicit_stripped` lattice
+        // method is the typed surface for this strip. The CanonicalAttrs
+        // path above is the production write-back since project()
+        // operates on attrs after the lattice round-trip in
+        // `join_via_lattice`. The method exists for callers that
+        // want the typed overlay (test fixtures, future refactors
+        // that operate on RelToBlock directly).
+    }
+
     /// Shared body of the page-projection pipeline. Both
     /// [`MarkingScheme::project`] (trait entry, after a per-portion
     /// `.0.clone()`) and [`Self::project_from_attrs_slice`] (engine
@@ -1009,6 +1079,63 @@ impl CapcoScheme {
 
         let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(raw));
         let mut out = self.closure(joined);
+
+        // Issue #704 — pre-supersession default-fill stage.
+        //
+        // The `CapcoScheme::closure` operator is purely additive (Kleene
+        // fixpoint over `CLOSURE_TABLE`; the `suppressor_mask` gate that
+        // previously prevented Trio 1 / Trio 2 / Trio 3 cones from firing
+        // when an FD&R dominator was already present was retired because
+        // it broke the closure operator's algebraic monotonicity property
+        // `a ⊑ b ⟹ Cl(a) ⊑ Cl(b)`).
+        //
+        // The §B.3 paragraph b p19 "NOT MARKED PREVIOUSLY" / §B.3
+        // Table 2 p21 "default if absent" / §H.7 p127 NATO-default /
+        // §H.8 p154 RELIDO-default rules that the suppressors encoded
+        // are **inherently non-monotone** — they fire only when the
+        // input lacks explicit FD&R. They live in their own post-close
+        // stage (`apply_default_fill`) so close()'s monotone contract
+        // is honored while the default-if-absent semantics are
+        // faithfully reproduced.
+        //
+        // Pipeline order post-#704:
+        //
+        //   1. join_via_lattice (existing per-axis overlays)
+        //   2. closure (purely additive Kleene fixpoint over Rows 1-6)
+        //   3. apply_default_fill (Rows 0/7/8/9 — §B.3.b/§H.7/§H.8
+        //      "default if absent" rules; non-monotone by §-design)
+        //   4. apply_supersession_overlays (§H.8 p145 strip for
+        //      input-explicit-NOFORN-vs-REL-TO contradictions)
+        //   5. PageRewrites (declarative catalog below)
+        //
+        // Default-fill MUST run BEFORE the supersession overlay: when
+        // input has `{S, ORCON}`, default-fill Row 0 adds NOFORN; the
+        // supersession overlay then has no work to do (NOFORN-vs-REL-TO
+        // contradiction only arises when input has BOTH explicit).
+        // When input has `{S, NOFORN, REL_TO_USA}` (user-explicit
+        // contradiction), default-fill skips Row 9 (REL_TO_PRESENT in
+        // gate); the supersession overlay then strips REL TO per §H.8
+        // p145.
+        crate::scheme::default_fill::apply_default_fill(&mut out.0);
+
+        // Issue #704 — FD&R supersession overlay (post-default-fill).
+        //
+        // Narrowed scope post-#704 refinement: the overlay now ONLY
+        // handles input-explicit FD&R contradictions per §H.8 p145
+        // ("NOFORN ... Cannot be used with REL TO, RELIDO, EYES ONLY,
+        // or DISPLAY ONLY"). The default-if-absent semantics moved to
+        // `apply_default_fill` above; the overlay strips dominated
+        // controls when NOFORN ended up coexisting with REL TO /
+        // DISPLAY ONLY / EYES / RELIDO on the marking (input-explicit
+        // case the closure operator cannot prevent without violating
+        // monotonicity).
+        //
+        // `apply_closed_bits_to` already strips dominated controls
+        // when NOFORN is in the Kleene delta (closure-added NOFORN
+        // via Rows 1-6 — HCS-O / HCS-P[sub] / TK-BLFH/IDIT/KAND, all
+        // of which carry NOFORN in their cone). The overlay closes
+        // the gap when NOFORN was in the input.
+        Self::apply_supersession_overlays(&mut out.0);
 
         #[cfg(debug_assertions)]
         {

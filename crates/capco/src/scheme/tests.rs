@@ -779,61 +779,99 @@ fn any_closure_trigger_fires_false_on_bottom() {
     assert!(!scheme.any_closure_trigger_fires(&m));
 }
 
-/// The short-circuit predicate returns `true` on `(S)` — uncaveated
-/// US-classified markings became a Trio 2 closure trigger in Issue
-/// #524 Phase 3 (`CLOSURE_RELIDO_US_CLASS`, `marque-applied.md`
-/// Section 4.7.5). Pre-Phase-3 this case returned `false`; the
-/// behavior flipped intentionally with the implicit-RELIDO row.
+/// Post-#704: the short-circuit predicate returns `false` on bare
+/// `(S)` — the pre-#704 Row 9 (`CLOSURE_RELIDO_US_CLASS`) retired to
+/// `default_fill::row9_should_fill` because it's a non-monotone
+/// "default if absent" rule. `close()` no longer triggers on
+/// `US_COLLATERAL_CLASSIFIED`; the default-fill stage in
+/// `project_attrs_pipeline` picks up the RELIDO injection.
 #[test]
-fn any_closure_trigger_fires_true_on_uncaveated_us_classified() {
+fn any_closure_trigger_fires_false_on_uncaveated_us_classified_post_704() {
     let scheme = CapcoScheme::new();
     let m = CapcoMarking::new(mk_attrs());
     assert!(
-        scheme.any_closure_trigger_fires(&m),
-        "uncaveated US-classified should trip the Trio 2 US_CLASS trigger \
-         (`CLOSURE_RELIDO_US_CLASS` per marque-applied Section 4.7.5)"
+        !scheme.any_closure_trigger_fires(&m),
+        "post-#704: uncaveated US-classified is a `default_fill` trigger, \
+         not a `close()` trigger. close()'s ALL_TRIGGER_MASK covers only \
+         the six SCI per-marking sentinels (Rows 1-6); US_COLLATERAL_CLASSIFIED \
+         retired with Row 9 to default-fill."
     );
 }
 
-/// The short-circuit predicate returns `true` when ORCON is present
-/// (Trio-1 NOFORN trigger).
+/// Post-#704: the short-circuit predicate returns `false` when only
+/// ORCON is present. Pre-#704 Row 0 (`CLOSURE_NOFORN_CAVEATED`) had
+/// ORCON in its trigger mask; post-#704 that row retired to
+/// `default_fill::row0_should_fill`, so ORCON-alone no longer trips
+/// `close()`. The default-fill stage in project_attrs_pipeline reads
+/// the post-close bitmask (which still has ORCON from the input) and
+/// fires Row 0's NOFORN cone.
 #[test]
-fn any_closure_trigger_fires_true_on_orcon() {
+fn any_closure_trigger_fires_false_on_orcon_alone_post_704() {
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs();
     a.dissem_us = vec![DissemControl::Oc].into();
     let m = CapcoMarking::new(a);
-    assert!(scheme.any_closure_trigger_fires(&m));
+    assert!(
+        !scheme.any_closure_trigger_fires(&m),
+        "post-#704: bare ORCON is a `default_fill` Row 0 trigger, not a \
+         `close()` trigger."
+    );
 }
 
-/// The short-circuit predicate returns `true` on bare NATO classification
-/// (CLOSURE_REL_TO_USA_NATO trigger via TOK_NATO_CLASS).
+/// Post-#704: bare NATO classification retired from close()'s trigger
+/// mask (Row 7 → default_fill).
 #[test]
-fn any_closure_trigger_fires_true_on_bare_nato() {
+fn any_closure_trigger_fires_false_on_bare_nato_post_704() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(
         marque_ism::NatoClassification::NatoSecret,
     ));
     let m = CapcoMarking::new(a);
-    assert!(scheme.any_closure_trigger_fires(&m));
+    assert!(
+        !scheme.any_closure_trigger_fires(&m),
+        "post-#704: bare NATO classification is a `default_fill` Row 7 \
+         trigger, not a `close()` trigger."
+    );
 }
 
-/// The short-circuit predicate consults `trigger_fires` only — NOT
-/// `should_fire` (which also checks suppression). When ORCON + NOFORN
-/// coexist (NOFORN is in FDR_DOMINATORS so it suppresses the closure),
-/// the predicate must return `true`. The fixpoint runs and finds
-/// nothing to add (suppressed), but the short-circuit must not skip.
+/// Post-#704: ORCON + NOFORN no longer trips close()'s mask (Row 0
+/// retired). The default-fill stage observes the input has NOFORN
+/// and skips Row 0 (FD&R already present per §B.3 paragraph b p19).
 #[test]
-fn any_closure_trigger_fires_returns_true_even_when_suppressed() {
+fn any_closure_trigger_fires_false_on_orcon_plus_noforn_post_704() {
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs();
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
     let m = CapcoMarking::new(a);
     assert!(
+        !scheme.any_closure_trigger_fires(&m),
+        "post-#704: ORCON is a default_fill trigger, not a close() trigger. \
+         close()'s ALL_TRIGGER_MASK covers six SCI per-marking sentinels."
+    );
+}
+
+/// Post-#704: the short-circuit predicate fires on SCI per-marking
+/// triggers (the six rows that survived close()). HCS-O is the
+/// canonical example — Row 1 in the post-#704 CLOSURE_TABLE.
+#[test]
+fn any_closure_trigger_fires_true_on_hcs_o_post_704() {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+    use smol_str::SmolStr;
+    let scheme = CapcoScheme::new();
+    let mut a = mk_attrs();
+    a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    let comp = SciCompartment::new(SmolStr::new("O"), Box::new([]));
+    a.sci_markings = Box::new([SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Hcs),
+        Box::new([comp]),
+        None,
+    )]);
+    let m = CapcoMarking::new(a);
+    assert!(
         scheme.any_closure_trigger_fires(&m),
-        "predicate must consult triggers only, not suppressors — \
-         ORCON trigger is present even though NOFORN suppresses"
+        "post-#704: HCS-O is a Row 1 close() trigger (per-marking \
+         unconditional implication per §H.4 p64)."
     );
 }
 
@@ -1050,38 +1088,61 @@ fn axis_mask_fgi_marker_sets_bit() {
 // pre-loop fast path correctly rejects markings with no triggerable
 // axis.  Semantics must be byte-identical to the pre-HOT-1 closure.
 
-/// HOT-1: `closure()` semantics are unchanged for a marking that triggers
-/// `CLOSURE_NOFORN_CAVEATED` via the ORCON dissem path (writable axis —
-/// ORCON can be added by prior compartment cone rules).  The axis guard
-/// must NOT short-circuit this path.
+/// HOT-1: post-#704 `project()` semantics inject NOFORN on a marking
+/// carrying ORCON via the `default_fill::row0_should_fill` path.
+/// Pre-#704 the injection happened inside `close()`'s Kleene fixpoint
+/// (Row 0); post-#704 close() is purely additive over Rows 1-6, and
+/// the NOFORN injection happens in `apply_default_fill` after close()
+/// converges. End-to-end behavior preserved.
 #[test]
-fn hot1_closure_semantics_preserved_for_orcon_trigger() {
+fn hot1_pipeline_semantics_preserved_for_orcon_trigger() {
+    use marque_scheme::Scope;
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs();
     a.dissem_us = vec![DissemControl::Oc].into();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
-        closed.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
-        "closure should inject NOFORN on ORCON — HOT-1 guard must not \
-         short-circuit the writable dissem path"
+        out.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
+        "post-#704 project() must inject NOFORN on ORCON via default-fill \
+         Row 0 (the pre-#704 Row 0 in close()'s Kleene fixpoint retired \
+         to default_fill::row0_should_fill); dissem_us = {:?}",
+        out.0.dissem_us
     );
 }
 
-/// HOT-1: `closure()` is a no-op on a bare US classified marking WITH
-/// NOFORN already present — both RELIDO rules are suppressed.  The
-/// fixpoint exits after one iteration (changed = false); the output
-/// must be identical to the input.
+/// Post-#704 FD&R supersession at the project() boundary:
+/// `project(Page)` on a bare US classified marking WITH NOFORN
+/// already present is a no-op on the dissem axis. Post-#704
+/// `default_fill::row9_should_fill`'s gate `(post_close ∩
+/// US_COLLATERAL_CLASSIFIED != 0) ∧ (post_close ∩
+/// MASK_RELIDO_US_CLASS_SUPPRESSORS == 0)` SKIPS when NOFORN is
+/// in the input — NOFORN is in `MASK_RELIDO_US_CLASS_SUPPRESSORS`
+/// per §B.3.a p19. RELIDO is never injected; the supersession
+/// overlay's NOFORN-dominates-RELIDO strip is a no-op (nothing
+/// to strip). End state: input `{NOFORN}` → output `{NOFORN}`.
+///
+/// Authority: §B.3 paragraph b p19 ("not marked previously" gate
+/// applies to default_fill Row 9); §B.3.a p19 (NOFORN is canonical
+/// FD&R, in MASK_FDR_DOMINATORS and therefore in
+/// MASK_RELIDO_US_CLASS_SUPPRESSORS); §H.8 p145 (NOFORN dominates
+/// RELIDO, irrelevant on this input because no RELIDO is ever
+/// added).
 #[test]
-fn hot1_closure_noop_on_classified_with_noforn() {
+fn project_noop_on_classified_with_noforn_via_default_fill_gate() {
+    use marque_scheme::Scope;
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs(); // US(Secret)
     a.dissem_us = vec![DissemControl::Nf].into();
     let before = CapcoMarking::new(a);
-    let after = scheme.closure(before.clone());
+    let after = scheme.project(Scope::Page, std::slice::from_ref(&before));
     assert_eq!(
         before.0.dissem_us, after.0.dissem_us,
-        "closure must be a no-op when NOFORN already present (both RELIDO rules suppressed); HOT-1 must not add spurious facts"
+        "project must converge to `{{NOFORN}}` when NOFORN is already \
+         present (default_fill::row9_should_fill SKIPS because NOFORN \
+         is in MASK_RELIDO_US_CLASS_SUPPRESSORS per §B.3.a p19 — \
+         RELIDO is never added so the §H.8 p145 supersession overlay \
+         has nothing to strip)"
     );
 }
 

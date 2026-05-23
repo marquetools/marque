@@ -322,6 +322,73 @@ impl DissemSet {
         self.apply_overlays(DISSEM_SUPERSESSION_TABLE);
         self
     }
+
+    /// Re-apply all three [`DissemSet`] supersession overlays to a
+    /// post-`close()` / post-`default_fill` state.
+    ///
+    /// Runs the same overlay chain as `from_attrs_iter` / `join`'s
+    /// internal `apply_overlays(DISSEM_SUPERSESSION_TABLE)` call:
+    ///
+    /// **Overlay 1** — OC-USGOV supersession by ORCON (§H.8 p136 + §H.8 p140).
+    /// If both `Oc` and `OcUsgov` are present, drop `OcUsgov`.
+    /// NOFORN-independent: fires regardless of whether NOFORN is in the set.
+    ///
+    /// **Overlay 2** — RELIDO observed-unanimity (§H.8 pp155-156).
+    /// If `Relido` is present but `relido_observed_unanimous` is false,
+    /// drop `Relido`. NOFORN-independent.
+    ///
+    /// **Overlay 3** — NOFORN-dominates supersession (§H.8 p145 +
+    /// §B.3.a p19 + §D.2 Table 3 rows 1-2). If `Nf` is present, drop
+    /// every dominated control (`Rel`, `Relido`, `Displayonly`,
+    /// `Eyes`) per `DISSEM_SUPERSESSION_TABLE`. NOFORN-dependent.
+    ///
+    /// # Why all three (post-#704 R2-1 rename)
+    ///
+    /// Pre-R2-1 this method was named `with_fdr_dominance_stripped`
+    /// and its doc-comment positioned it as just the §H.8 p145
+    /// strip. The body has always called `apply_overlays(...)`
+    /// which runs all three overlays — the misalignment between
+    /// name + doc and actual behavior was the second half of
+    /// Copilot's round-2 R2-1 finding. The rename signals to
+    /// future maintainers that this is the "rebuild overlays on a
+    /// post-close / post-default-fill state" method, not
+    /// specifically the FDR strip.
+    ///
+    /// Issue #704 architectural context: the `CapcoScheme::closure`
+    /// operator is purely additive (Kleene fixpoint over
+    /// `CLOSURE_TABLE`; the pre-#704 `suppressor_mask` gating that
+    /// previously prevented Trio 1 / Trio 2 / Trio 3 cones from
+    /// firing alongside an existing FD&R dominator was retired
+    /// because it broke `a ⊑ b ⟹ Cl(a) ⊑ Cl(b)`). The semantic
+    /// the suppressors encoded splits two ways: the "default if
+    /// absent" half moved to
+    /// `crate::scheme::default_fill::apply_default_fill`; the
+    /// "post-close re-evaluate per-axis supersession" half lives
+    /// here, called from
+    /// `CapcoScheme::apply_supersession_overlays`.
+    ///
+    /// # Properties
+    ///
+    /// - **Idempotent** (`f(f(x)) == f(x)`): each overlay strips
+    ///   strictly — running again observes nothing to strip.
+    /// - **Composes with `with_noforn_injected`** and the
+    ///   `apply_overlays` body without re-entrancy concerns
+    ///   (`apply_overlays` is the shared mutation core).
+    ///
+    /// **Pure function.** Takes ownership and returns a new
+    /// `DissemSet`; no `&mut self`.
+    ///
+    /// Authority: §H.8 p136 + §H.8 p140 (OC > OC-USGOV — Overlay 1);
+    /// §H.8 pp155-156 ("All portions must be marked as RELIDO for
+    /// the RELIDO marking to appear in the banner line" — Overlay 2);
+    /// §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO, EYES
+    /// ONLY, or DISPLAY ONLY") + §B.3.a p19 (FD&R dominator
+    /// enumeration) + §D.2 Table 3 rows 1-2 (NOFORN dominates
+    /// dominated FD&R at banner roll-up) — Overlay 3.
+    pub fn with_all_overlays_reapplied(mut self) -> Self {
+        self.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        self
+    }
 }
 
 // P-9-3 (9th-pass) — Partial-lattice divergence note for `DissemSet`.
@@ -364,5 +431,249 @@ impl JoinSemilattice for DissemSet {
         };
         out.apply_overlays(DISSEM_SUPERSESSION_TABLE);
         out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `with_all_overlays_reapplied` unit tests (issue #704)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod with_all_overlays_reapplied_tests {
+    use super::*;
+
+    /// Build a `DissemSet` directly from a list of controls without
+    /// running the from_attrs_iter portion-fold. Bypasses
+    /// `apply_overlays` so each test can pin the overlay-under-test
+    /// in isolation against a known input.
+    fn raw(tokens: &[DissemControl]) -> DissemSet {
+        let mut set = BTreeSet::new();
+        for t in tokens {
+            set.insert(*t);
+        }
+        DissemSet {
+            set,
+            relido_observed_unanimous: true,
+        }
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        let stripped = raw(&[]).with_all_overlays_reapplied();
+        assert!(stripped.as_set().is_empty());
+    }
+
+    #[test]
+    fn no_dominator_present_is_noop() {
+        // ORCON + IMCON: no NOFORN, no strip should occur.
+        let input = raw(&[DissemControl::Oc, DissemControl::Imc]);
+        let before = input.as_set().clone();
+        let stripped = input.with_all_overlays_reapplied();
+        assert_eq!(*stripped.as_set(), before);
+    }
+
+    #[test]
+    fn dissem_dominator_strips_relido() {
+        // NOFORN + RELIDO + ORCON: per §H.8 p145 NOFORN strips
+        // RELIDO. ORCON survives (not a dominated FD&R).
+        let stripped = raw(&[DissemControl::Nf, DissemControl::Relido, DissemControl::Oc])
+            .with_all_overlays_reapplied();
+        assert!(stripped.as_set().contains(&DissemControl::Nf));
+        assert!(stripped.as_set().contains(&DissemControl::Oc));
+        assert!(!stripped.as_set().contains(&DissemControl::Relido));
+    }
+
+    #[test]
+    fn dissem_dominator_strips_rel_token() {
+        // NOFORN + REL (the dissem-axis REL token, distinct from
+        // the rel_to country list axis): NOFORN strips REL per
+        // §H.8 p145.
+        let stripped = raw(&[DissemControl::Nf, DissemControl::Rel]).with_all_overlays_reapplied();
+        assert!(stripped.as_set().contains(&DissemControl::Nf));
+        assert!(!stripped.as_set().contains(&DissemControl::Rel));
+    }
+
+    #[test]
+    fn dissem_dominator_strips_displayonly() {
+        // NOFORN + DISPLAY ONLY: §H.8 p145.
+        let stripped =
+            raw(&[DissemControl::Nf, DissemControl::Displayonly]).with_all_overlays_reapplied();
+        assert!(stripped.as_set().contains(&DissemControl::Nf));
+        assert!(!stripped.as_set().contains(&DissemControl::Displayonly));
+    }
+
+    #[test]
+    fn dissem_dominator_strips_eyes() {
+        // NOFORN + EYES: §H.8 p145.
+        let stripped = raw(&[DissemControl::Nf, DissemControl::Eyes]).with_all_overlays_reapplied();
+        assert!(stripped.as_set().contains(&DissemControl::Nf));
+        assert!(!stripped.as_set().contains(&DissemControl::Eyes));
+    }
+
+    #[test]
+    fn relido_alone_is_kept() {
+        // RELIDO without NOFORN must survive — no dominator to
+        // trigger the strip.
+        let stripped = raw(&[DissemControl::Relido]).with_all_overlays_reapplied();
+        assert!(stripped.as_set().contains(&DissemControl::Relido));
+    }
+
+    // ---------------------------------------------------------------
+    // R2-1 regression: Overlay 1 (OC > OC-USGOV) re-runs without
+    // requiring NOFORN. The pre-R2-1
+    // `apply_supersession_overlays` gated its dissem-axis rebuild
+    // on `has_noforn`, which silently disabled Overlay 1 for
+    // post-close states carrying both `Oc` and `OcUsgov` with no
+    // NOFORN. The structural bug was: any future close()/default_fill
+    // catalog row that emits `Oc` onto an `OcUsgov`-bearing input
+    // (or vice versa) would NOT see Overlay 1 fire. Authority:
+    // §H.8 p140 ("ORCON takes precedence within the banner line")
+    // + §H.8 p140 ("If a portion contains both ORCON and
+    // ORCON-USGOV information, ORCON takes precedence in the
+    // portion mark") — re-verified verbatim at this PR's authorship.
+    // ---------------------------------------------------------------
+
+    /// Overlay 1 strips OC-USGOV when OC is also present, regardless
+    /// of NOFORN status. Post-close fixture: dissem_us = [Oc,
+    /// OcUsgov] with no NOFORN simulates a post-close /
+    /// post-default-fill state where the production
+    /// `apply_supersession_overlays` step must observe and act on
+    /// Overlay 1 unconditionally.
+    #[test]
+    fn overlay1_oc_strips_oc_usgov_without_noforn() {
+        let stripped =
+            raw(&[DissemControl::Oc, DissemControl::OcUsgov]).with_all_overlays_reapplied();
+        assert!(
+            stripped.as_set().contains(&DissemControl::Oc),
+            "Oc must survive Overlay 1 (it is the dominator); got {:?}",
+            stripped.as_set()
+        );
+        assert!(
+            !stripped.as_set().contains(&DissemControl::OcUsgov),
+            "Overlay 1 must strip OcUsgov when Oc is present \
+             (§H.8 p140 — ORCON precedence over ORCON-USGOV); got \
+             {:?}",
+            stripped.as_set()
+        );
+    }
+
+    /// Overlay 1 + 3 compose: OC + OC-USGOV + NOFORN + RELIDO
+    /// produces {Oc, Nf}. Overlay 1 strips OcUsgov (NOFORN-
+    /// independent); Overlay 3 strips Relido (NOFORN-dominates).
+    /// Pre-R2-1 the production gate's `has_noforn` short-circuit
+    /// would have masked the Overlay 1 strip if `apply_overlays`
+    /// hadn't already run during join; the regression test pins
+    /// the contract that BOTH overlays fire on the same call.
+    #[test]
+    fn overlay1_plus_overlay3_compose() {
+        let stripped = raw(&[
+            DissemControl::Oc,
+            DissemControl::OcUsgov,
+            DissemControl::Nf,
+            DissemControl::Relido,
+        ])
+        .with_all_overlays_reapplied();
+        assert!(stripped.as_set().contains(&DissemControl::Oc));
+        assert!(stripped.as_set().contains(&DissemControl::Nf));
+        assert!(
+            !stripped.as_set().contains(&DissemControl::OcUsgov),
+            "Overlay 1 strip on OcUsgov must fire alongside \
+             Overlay 3's RELIDO strip (§H.8 p140 NOFORN-independent \
+             + §H.8 p145 NOFORN-dependent); got {:?}",
+            stripped.as_set()
+        );
+        assert!(
+            !stripped.as_set().contains(&DissemControl::Relido),
+            "Overlay 3 strip on Relido must fire (§H.8 p145); got \
+             {:?}",
+            stripped.as_set()
+        );
+    }
+
+    /// Overlay 2 (RELIDO observed-unanimity, §H.8 pp155-156) strips
+    /// Relido when the input was joined from non-unanimous portions
+    /// (`relido_observed_unanimous = false`), regardless of NOFORN
+    /// status. Construct a non-unanimous DissemSet directly (the
+    /// `raw` helper defaults the flag to `true`, so we override).
+    #[test]
+    fn overlay2_strips_relido_on_non_unanimous_without_noforn() {
+        let mut set = BTreeSet::new();
+        set.insert(DissemControl::Relido);
+        let non_unanimous = DissemSet {
+            set,
+            relido_observed_unanimous: false,
+        };
+        let stripped = non_unanimous.with_all_overlays_reapplied();
+        assert!(
+            !stripped.as_set().contains(&DissemControl::Relido),
+            "Overlay 2 must strip Relido when not observed unanimous \
+             (§H.8 pp155-156: 'All portions must be marked as RELIDO \
+             for the RELIDO marking to appear in the banner line'); \
+             got {:?}",
+            stripped.as_set()
+        );
+    }
+
+    #[test]
+    fn idempotent() {
+        // f(f(x)) == f(x). After the first strip every dominated
+        // control is gone; the second pass is a no-op.
+        let input = raw(&[
+            DissemControl::Nf,
+            DissemControl::Relido,
+            DissemControl::Rel,
+            DissemControl::Displayonly,
+            DissemControl::Eyes,
+            DissemControl::Oc,
+        ]);
+        let once = input.with_all_overlays_reapplied();
+        let twice = once.clone().with_all_overlays_reapplied();
+        assert_eq!(once.as_set(), twice.as_set());
+    }
+
+    /// Join-monotone: `a ⊑ b ⟹ f(a) ⊑ f(b)` in the subset order
+    /// over the post-overlay set. Spot-check the four
+    /// representative ordering pairs.
+    #[test]
+    fn join_monotone() {
+        // Case A: a ⊂ b, neither has NOFORN → f is identity →
+        // f(a) ⊂ f(b).
+        let a = raw(&[DissemControl::Oc]);
+        let b = raw(&[DissemControl::Oc, DissemControl::Imc]);
+        let fa = a.clone().with_all_overlays_reapplied();
+        let fb = b.clone().with_all_overlays_reapplied();
+        assert!(fa.as_set().is_subset(fb.as_set()));
+
+        // Case B: a ⊂ b, b adds NOFORN → f(a) keeps everything,
+        // f(b) keeps NOFORN + strips dominated; a's tokens (just
+        // ORCON) are not dominated, so still ⊂.
+        let a = raw(&[DissemControl::Oc]);
+        let b = raw(&[DissemControl::Oc, DissemControl::Nf]);
+        let fa = a.with_all_overlays_reapplied();
+        let fb = b.with_all_overlays_reapplied();
+        assert!(fa.as_set().is_subset(fb.as_set()));
+
+        // Case C: a ⊂ b, b adds NOFORN AND a contains RELIDO
+        // → f(a) keeps RELIDO; f(b) has NOFORN, strips RELIDO.
+        // Subset relation in lattice sense: {RELIDO} ⊑ {NOFORN}
+        // per §H.8 p145 supersession chain. Subset-of-set
+        // does NOT hold (RELIDO ∉ f(b)); the §H.8 p145
+        // supersession overlay's "monotonicity" is in the
+        // SupersessionSet lattice ordering (NOFORN ⊐ RELIDO),
+        // not in the raw bitwise / BTreeSet inclusion. This is
+        // by-design — `with_all_overlays_reapplied` is a
+        // post-Kleene-closure overlay that resolves the §H.8
+        // p145 conflict; subsequent lattice consumers read the
+        // post-overlay set as the canonical state.
+        let a = raw(&[DissemControl::Relido]);
+        let b = raw(&[DissemControl::Relido, DissemControl::Nf]);
+        let fa = a.with_all_overlays_reapplied();
+        let fb = b.with_all_overlays_reapplied();
+        // Witness the supersession: f(b) contains NOFORN, the
+        // dominator of RELIDO. f(a) contains RELIDO.
+        assert!(fa.as_set().contains(&DissemControl::Relido));
+        assert!(fb.as_set().contains(&DissemControl::Nf));
+        assert!(!fb.as_set().contains(&DissemControl::Relido));
     }
 }

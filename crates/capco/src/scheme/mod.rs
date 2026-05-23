@@ -85,6 +85,7 @@ pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod class_floor;
 pub(crate) mod closure;
+pub(crate) mod default_fill;
 // `closure_table` is `#[doc(hidden)] pub mod` (not `pub(crate)`)
 // because integration tests in `crates/capco/tests/` need to reach
 // `CLOSURE_TABLE` + `close` via the `marque_capco::closure_table::*`

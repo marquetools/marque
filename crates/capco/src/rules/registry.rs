@@ -179,16 +179,22 @@ impl CapcoRuleSet {
                 // out via `ProjectedMarking::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
                 // #559 close-out C1 (PM decision 2026-05-19): byte-
-                // surfacing twin of `CLOSURE_RELIDO_SCI` /
-                // `CLOSURE_RELIDO_US_CLASS`. Mirrors S007's
-                // text-layer pattern (byte rule alongside an existing
-                // lattice closure). Authority: CAPCO-2016 §H.8 p154 +
-                // §D.2 Table 3 rule 17. The rule runs the closure to
-                // detect whether RELIDO would be injected and emits a
-                // `Severity::Suggest` `FactAdd(RELIDO, Scope::Portion)`
-                // intent at confidence `SUGGEST_CONFIDENCE = 0.85`
-                // (file-private in `rules/dissem_closure.rs`) — matching
-                // the bare-NATO suggest-channel calibration precedent.
+                // surfacing twin of the post-#704
+                // `default_fill::row{8,9}_should_fill` predicates
+                // (which retired from `CLOSURE_RELIDO_SCI` /
+                // `CLOSURE_RELIDO_US_CLASS` in the bitmask catalog).
+                // Mirrors S007's text-layer pattern (byte rule
+                // alongside an existing lattice closure). Authority:
+                // §B.3 Table 2 p21 (trigger authority — the
+                // default-if-absent obligation); §D.2 Table 3 rule
+                // 17 (FD&R precedence); §H.8 p154 (RELIDO marking
+                // template). The rule runs the project pipeline to
+                // detect whether RELIDO would be injected and emits
+                // a `Severity::Suggest` `FactAdd(RELIDO,
+                // Scope::Portion)` intent at confidence
+                // `SUGGEST_CONFIDENCE = 0.85` (file-private in
+                // `rules/dissem_closure.rs`) — matching S007's
+                // calibration precedent.
                 Box::new(RelidoImpliedByClosureRule),
                 // Issue #261: FGI classification with an explicit trigraph
                 // when the source must be concealed, or with a trigraph that
