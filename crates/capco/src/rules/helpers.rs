@@ -13,6 +13,9 @@
 //!   code list canonicalization used by E002 and S003.
 //! - [`is_fgi_invalid_ownership_token`] — FGI ownership-token shape
 //!   predicate used by E073 and the E008 suppression chain.
+//! - [`build_rel_to_replacement`] — canonical `REL TO USA, <list>`
+//!   replacement-string builder used by the EYES → REL TO conversion
+//!   rule and the bare-NATO REL TO suggest rule.
 
 use std::collections::HashSet;
 
@@ -251,4 +254,43 @@ pub(crate) fn is_fgi_invalid_ownership_token(text: &str) -> bool {
         }
     }
     !saw_token
+}
+
+/// Build the canonical `REL TO USA, <list>` replacement string.
+///
+/// Per CAPCO-2016 §A.6 p16 + §H.8 p150-151 the country list begins
+/// with USA when USA is present; remaining codes are sorted
+/// alphabetically. The list separator is `, ` (comma-space) per
+/// §A.6 p16. (§H.3's USA-first rule applies to JOINT's own
+/// `[LIST]`, not to REL TO.)
+///
+/// Consumers: the EYES / EYES ONLY → REL TO conversion rule
+/// ([`EyesOnlyConvertToRelToRule`](super::eyes::EyesOnlyConvertToRelToRule))
+/// for §H.8 p157-158, and the bare-NATO REL TO suggest rule
+/// ([`BareNatoRequiresRelToRule`](super::nato::BareNatoRequiresRelToRule))
+/// for §H.7 p127. Both rules need the same byte-canonical form so the
+/// resulting replacement is idempotent under re-lint.
+pub(crate) fn build_rel_to_replacement(trigraphs: &[String]) -> String {
+    if trigraphs.is_empty() {
+        return String::new();
+    }
+    let mut deduped: Vec<String> = Vec::with_capacity(trigraphs.len());
+    for t in trigraphs {
+        if !deduped.contains(t) {
+            deduped.push(t.clone());
+        }
+    }
+    // After dedup the list is non-empty by virtue of the caller's
+    // parser shape gate plus the early-return above; `rest` may be
+    // empty (input was just `USA`), but `out` always starts with
+    // `REL TO USA`, so no truncated partial output is possible.
+    let mut rest: Vec<String> = deduped.into_iter().filter(|t| t != "USA").collect();
+    rest.sort();
+    let mut out = String::with_capacity(8 + 5 * (rest.len() + 1));
+    out.push_str("REL TO USA");
+    for code in rest {
+        out.push_str(", ");
+        out.push_str(&code);
+    }
+    out
 }

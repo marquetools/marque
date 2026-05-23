@@ -12,6 +12,7 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, SectionLetter, capco};
 
+use super::helpers::build_rel_to_replacement;
 use crate::scheme::CapcoScheme;
 
 // ===========================================================================
@@ -202,34 +203,3 @@ fn parse_eyes_trigraphs(prefix: &str) -> Vec<String> {
         .collect()
 }
 
-/// Build the canonical `REL TO USA, <list>` replacement string.
-///
-/// Per CAPCO-2016 §A.6 p16 + §H.8 p150-151 the country list begins
-/// with USA when USA is present; remaining codes are sorted
-/// alphabetically. The list separator is `, ` (comma-space) per
-/// §A.6 p16. (§H.3's USA-first rule applies to JOINT's own
-/// `[LIST]`, not to REL TO.)
-pub(crate) fn build_rel_to_replacement(trigraphs: &[String]) -> String {
-    if trigraphs.is_empty() {
-        return String::new();
-    }
-    let mut deduped: Vec<String> = Vec::with_capacity(trigraphs.len());
-    for t in trigraphs {
-        if !deduped.contains(t) {
-            deduped.push(t.clone());
-        }
-    }
-    // After dedup the list is non-empty by virtue of the caller's
-    // parser shape gate plus the early-return above; `rest` may be
-    // empty (input was just `USA`), but `out` always starts with
-    // `REL TO USA`, so no truncated partial output is possible.
-    let mut rest: Vec<String> = deduped.into_iter().filter(|t| t != "USA").collect();
-    rest.sort();
-    let mut out = String::with_capacity(8 + 5 * (rest.len() + 1));
-    out.push_str("REL TO USA");
-    for code in rest {
-        out.push_str(", ");
-        out.push_str(&code);
-    }
-    out
-}

@@ -20,7 +20,7 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
 
-use super::eyes::build_rel_to_replacement;
+use super::helpers::build_rel_to_replacement;
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
