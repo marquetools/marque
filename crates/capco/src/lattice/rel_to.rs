@@ -279,13 +279,25 @@ impl RelToBlock {
     /// `RelToBlock`; no `&mut self`. Composes with `join` and
     /// `from_attrs_iter` without re-entrancy concerns.
     ///
+    /// **Visibility (`pub(crate)`).** Issue #704 review-cycle
+    /// resolution Fix 3 downgraded from `pub` to `pub(crate)`. The
+    /// production strip in `CapcoScheme::apply_supersession_overlays`
+    /// clears `attrs.rel_to` directly without going through this
+    /// typed method (operating at the `CanonicalAttrs` boundary
+    /// where the lattice round-trip would be wasted work). The
+    /// method stays as the typed surface for in-crate lattice-test
+    /// fixtures + future refactors that operate on `RelToBlock`
+    /// values directly; `pub(crate)` keeps the FR-049 stability
+    /// freeze surface honest by not exporting an untested-in-
+    /// production API.
+    ///
     /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
     /// RELIDO, EYES ONLY, or DISPLAY ONLY"); §H.7 p127 (the
     /// `capco:closure.nato.rel-to-usa-nato-if-nato-classification`
     /// row's primary authority; this overlay resolves the §H.8
     /// p145 conflict between the §H.7 p127 implicit `REL TO USA,
     /// NATO` default and an explicit NOFORN).
-    pub fn with_nato_implicit_stripped(self, noforn_present: bool) -> Self {
+    pub(crate) fn with_nato_implicit_stripped(self, noforn_present: bool) -> Self {
         if noforn_present {
             Self::NofornSuperseded
         } else {
