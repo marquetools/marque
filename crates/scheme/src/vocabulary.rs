@@ -346,7 +346,7 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     ///    implicit-NOFORN inference.
     /// 3. The canonical FD&R-set-membership accessor. In `marque-capco`
     ///    the implementation iterates a private `FDR_DOMINATORS` slice
-    ///    (in `crates/capco/src/scheme.rs`); that same slice is the
+    ///    (in `crates/capco/src/scheme/closure.rs`); that same slice is the
     ///    data backing `Constraint::ConflictsWithFamily` predicates
     ///    such as `is_fdr_dominator`. **The two predicates answer
     ///    different questions** and intentionally diverge on RELIDO:
@@ -356,7 +356,7 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     ///    family role and excludes RELIDO (RELIDO-vs-RELIDO is a
     ///    tautology). Do not delegate `is_fdr_dissem` through
     ///    `is_fdr_dominator` — see the maintenance contract on
-    ///    `FDR_DOMINATORS` in `crates/capco/src/scheme.rs`.
+    ///    `FDR_DOMINATORS` in `crates/capco/src/scheme/closure.rs`.
     ///
     /// # Default impl returns `false`
     ///

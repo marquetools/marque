@@ -451,7 +451,7 @@ fn rel_to_intersect_empty() {
     //
     // Pre-staging-convergence this was a documented divergence — the
     // lattice path (via RelToBlock::Empty → is_empty_intersection()
-    // check in scheme.rs project()) injected NOFORN, while the
+    // check in the scheme's project() path) injected NOFORN, while the
     // PageContext path did not. Staging's PageContext changes
     // (DISPLAY ONLY Phase 2 / page-rewrite `capco/noforn-clears-
     // fdr-family`) implemented the same NF-on-empty-REL-TO injection
@@ -1095,7 +1095,8 @@ fn explicit_fgi_marker_merges_with_classification_derived_producers() {
 // classification (`us: Classification`). `PageContext::expected_classification`
 // uses `effective_level()` over every variant — including Conflict — and
 // wraps the result in `Us(_)`. The lattice path's `join_via_lattice`
-// gate-check at scheme.rs:334 originally only counted explicit
+// gate-check in `join_via_lattice` (`crates/capco/src/scheme/marking.rs`)
+// originally only counted explicit
 // `MarkingClassification::Us(_)` portions as US-bearing, so a page with
 // a Conflict portion (or Conflict mixed with NATO/FGI) skipped the
 // `solely_non_us = false` branch and the §H.7 pp123-125 reciprocal-raise
@@ -1103,7 +1104,8 @@ fn explicit_fgi_marker_merges_with_classification_derived_producers() {
 // returned `Us(level)` → parity broke for Conflict inputs.
 //
 // G-9 closes the gap by treating Conflict as US-bearing in the
-// `has_us_class` accumulation at scheme.rs:334.
+// `has_us_class` accumulation in `join_via_lattice`
+// (`crates/capco/src/scheme/marking.rs`).
 //
 // Citation: §H.7 pp123-125 (reciprocal-classification rule — same
 // authority that motivated G-3 for explicit US+NATO/FGI mixes). The
@@ -1216,7 +1218,7 @@ fn conflict_plus_us_flattens_to_us() {
 //
 // This case reaches the gate because `JointSet::Mixed` returns `None`
 // from `to_marking_classification`, which falls through to the gate
-// branch at scheme.rs.
+// branch in `join_via_lattice` (`crates/capco/src/scheme/marking.rs`).
 //
 // Citation: §H.3 p56 (JOINT requires USA in producer list) +
 // §H.7 pp123-125 (reciprocal-classification rule for mixed US +
@@ -2848,7 +2850,8 @@ fn pattern_b_fouo_with_rawfisa_unclassified_strip() {
 //
 // These tests pin two declaration-order invariants the runtime
 // evaluator relies on, both documented inline at the relevant row
-// doc-comments in `crates/capco/src/scheme.rs`. They are deliberately
+// doc-comments in the `crates/capco/src/scheme/` submodules
+// (`rewrites/`, `closure.rs`). They are deliberately
 // position-pin tests, not lattice-output tests — the runtime semantics
 // are exercised by the Pattern-C fixtures above; these guard against
 // a future refactor that quietly reorders the catalog into a
@@ -2865,8 +2868,9 @@ fn pin_ucni_promote_before_strip_declaration_order() {
     // position of the rows in the declaration `Vec`, not from the
     // scheduler's topological resolution.
     //
-    // See `scheme.rs` doc-comment on
-    // `capco/dod-ucni-promotes-noforn-when-classified` for the full
+    // See the doc-comment on
+    // `capco/dod-ucni-promotes-noforn-when-classified` in
+    // `crates/capco/src/scheme/rewrites/pattern_c.rs` for the full
     // rationale.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
@@ -2916,7 +2920,8 @@ fn pin_pattern_b_row_2_before_noforn_clears_fdr_family() {
     // `pattern_b_fouo_with_{relido,noforn}_unclassified_keeps_fouo`
     // fixtures above pin that side.
     //
-    // See `scheme.rs::PATTERN_B_NON_FDR_READS` doc-comment + plan
+    // See the `PATTERN_B_NON_FDR_READS` doc-comment in
+    // `crates/capco/src/scheme/rewrites/pattern_b.rs` + plan
     // §3.4 risk #4 for the full rationale.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();

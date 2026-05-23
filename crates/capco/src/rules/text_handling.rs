@@ -91,7 +91,7 @@ use crate::scheme::CapcoScheme;
 // the "declass belongs in CAB" invariant.
 //
 // Structural blocker (why Path A in PR 3c.B Commit 9):
-// `MarkingScheme::evaluate_custom` (crates/scheme/src/scheme.rs:124-130)
+// `MarkingScheme::evaluate_custom` (in crates/scheme/src/scheme.rs)
 // receives only `&Self::Marking`. It has no access to
 // `RuleContext.marking_type`, so a constraint-catalog predicate cannot
 // reproduce the existing `Banner | Portion` gate (lines below). Without

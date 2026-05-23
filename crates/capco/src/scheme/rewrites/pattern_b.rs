@@ -84,8 +84,8 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // INCLUDES RELIDO) — NOT `is_fdr_dominator` (which
         // EXCLUDES RELIDO; that helper answers the conflict-
         // dominator question, not the FD&R-membership question).
-        // See `scheme.rs:5018-5039` doc-comment on `FDR_DOMINATORS`
-        // for the distinction.
+        // See the `FDR_DOMINATORS` doc-comment in
+        // `crates/capco/src/scheme/closure.rs` for the distinction.
         //
         // Row 1 `capco/classification-evicts-fouo` overlaps with
         // Commit 3 row 7 (`capco/fouo-evicted-by-classified`) on

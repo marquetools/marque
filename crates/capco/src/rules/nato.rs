@@ -40,7 +40,8 @@ use crate::scheme::CapcoScheme;
 // followup at
 // `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`
 // tracks why that shape cannot land yet: `MarkingScheme::evaluate_custom`
-// (`crates/capco/src/scheme.rs`) receives `&CanonicalAttrs` only — no
+// (CAPCO impl in `crates/capco/src/scheme/marking_scheme_impl.rs`)
+// receives `&CanonicalAttrs` only — no
 // `&PageContext` access — so a per-portion gate that needs to enumerate
 // sibling portions ("not a solely-NATO document") cannot be a
 // `Constraint::Custom` today. Hand-written rule with page-context access
