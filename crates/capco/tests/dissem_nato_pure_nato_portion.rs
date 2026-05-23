@@ -118,9 +118,24 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
     // Page rollup composes namespaces independently. A pure-NATO
     // portion contributes only to `dissem_nato`; `dissem_us`
     // remains empty.
+    //
+    // Post-#704 (refined per redirect brief): the §B.3 paragraph b
+    // p19 "NOT MARKED PREVIOUSLY" gate preserves the pure-NATO
+    // input. REL TO USA, NATO is in MASK_FDR_DOMINATORS via
+    // REL_TO_PRESENT, so `default_fill::row0_should_fill`'s
+    // FD&R-absent gate fails on the ORCON caveat trigger. The
+    // implicit NOFORN default does NOT fire — `dissem_us` stays
+    // empty, ORCON survives in `dissem_nato`. Same behavior as
+    // pre-#704; the pre-#704 `MASK_FDR_DOMINATORS` suppressor's
+    // job moved to the default-fill gate.
+    //
+    // Authority: §B.3 paragraph b p19 ("not marked previously");
+    // §B.3.a p19 (REL TO is canonical FD&R); §H.7 p123 (FGI/NATO
+    // markings may include US FD&R).
     assert!(
         projected.0.dissem_us.is_empty(),
-        "pure-NATO page rollup must leave dissem_us empty; got {:?}",
+        "pure-NATO page rollup must leave dissem_us empty (CAPCO-2016 \
+         §B.3 paragraph b p19 + §B.3.a p19); got dissem_us = {:?}",
         projected.0.dissem_us,
     );
     assert!(

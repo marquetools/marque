@@ -16,9 +16,14 @@
 //!   SI-G / HCS-O / HCS-P / TK-{BLFH,IDIT,KAND}) is present, AND RELIDO
 //!   is not already in the portion's dissem_us.
 //!
-//! Authority: CAPCO-2016 §H.8 p154 (RELIDO template) + §D.2 Table 3
-//! rule 17 (FD&R defaults for caveated content). Verified against
-//! `crates/capco/docs/CAPCO-2016.md` at the time of authorship.
+//! Authority: CAPCO-2016 §B.3 Table 2 p21 (trigger authority — the
+//! "Classified + uncaveated + on/after 28 June 2010 → Mark as
+//! RELIDO" row drives S008's "would the projection inject RELIDO?"
+//! check); §B.3 paragraph b p19 (FD&R-absent gate); §D.2 Table 3
+//! rule 17 (FD&R precedence for banner roll-up); §H.8 p154 (RELIDO
+//! marking template — defines what RELIDO means once present).
+//! Verified against `crates/capco/docs/CAPCO-2016.md` at the time
+//! of authorship.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;

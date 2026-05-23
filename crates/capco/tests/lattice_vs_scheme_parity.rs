@@ -422,7 +422,14 @@ fn relido_plus_nf_noforn_dominates_parity() {
 
 #[test]
 fn rel_to_intersect_common() {
-    // §H.8 p152 worked example.
+    // §H.8 p152 worked example. Post-#704 (refined per redirect
+    // brief): the scheme path's `default_fill::row9_should_fill`
+    // gate is `(post_close ∩ MASK_RELIDO_US_CLASS_SUPPRESSORS == 0)`
+    // and `MASK_RELIDO_US_CLASS_SUPPRESSORS` includes REL_TO_PRESENT
+    // per §B.3.a p19. Input portions carry REL TO, so REL_TO_PRESENT
+    // is set on the post-close bitmask → Row 9's gate fails → no
+    // implicit RELIDO added. Lattice path also doesn't add RELIDO
+    // (no closure rules). Both paths agree: `dissem_us` is empty.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["USA", "GBR", "CAN"]),
         portion_with_rel_to(Classification::Secret, &["USA", "GBR", "AUS"]),
@@ -469,6 +476,10 @@ fn rel_to_intersect_empty() {
 
 #[test]
 fn rel_to_tetragraph_fvey() {
+    // Post-#704 (refined): same shape as `rel_to_intersect_common`
+    // — default-fill Row 9's gate fails because REL_TO_PRESENT is
+    // in MASK_RELIDO_US_CLASS_SUPPRESSORS. No closure-added RELIDO;
+    // both paths agree on empty `dissem_us`.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["FVEY"]),
         portion_with_rel_to(Classification::Secret, &["USA", "GBR", "CAN"]),
@@ -483,7 +494,10 @@ fn rel_to_tetragraph_fvey() {
 
 #[test]
 fn rel_to_usa_first_sort() {
-    // §H.8 p151: USA first, rest alphabetical.
+    // §H.8 p151: USA first, rest alphabetical. Post-#704 (refined):
+    // default-fill Row 9 skipped by REL_TO_PRESENT in
+    // MASK_RELIDO_US_CLASS_SUPPRESSORS; both paths agree on empty
+    // `dissem_us`.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["GBR", "USA", "CAN"]),
         portion_with_rel_to(Classification::Secret, &["GBR", "USA", "CAN"]),
@@ -3354,6 +3368,24 @@ fn issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example() {
     // `(//GBR S//REL TO USA, GBR)`; this fixture uses the
     // commingled US+FGI shape (same invariant; the segregation choice
     // is orthogonal to the §H.7 p124 precedence rule).
+    //
+    // **Post-#704 (refined per redirect brief)**: REL TO survives on
+    // both paths. The `default_fill::row0_should_fill` gate is
+    // `(post_close ∩ MASK_FDR_DOMINATORS == 0)` and
+    // `MASK_FDR_DOMINATORS` includes REL_TO_PRESENT per §B.3.a p19.
+    // Input portions carry REL TO USA, GBR → REL_TO_PRESENT is set
+    // on the post-close bitmask → default-fill Row 0's gate fails
+    // → no implicit NOFORN added → §H.7 p124's "FGI may include US
+    // FD&R as circumstances warrant" reading preserved. The
+    // pre-#704 `MASK_FDR_DOMINATORS` suppressor encoded this
+    // exactly; the post-#704 default-fill gate is the same mask in
+    // the new location.
+    //
+    // Authority: §H.7 p124 (FGI may include US FD&R); §B.3
+    // paragraph b p19 ("not marked previously"); §B.3.d p20 (REL
+    // TO USA, [LIST] MUST be used when allowed; default-NOFORN
+    // only when "does not have FD&R marking(s)"); §D.2 Table 3
+    // row 21 (REL TO with common LIST → REL TO [common LIST]).
     let portions = [
         {
             let mut p =
@@ -3390,7 +3422,10 @@ fn issue_688_fgi_mixed_with_rel_to_carried_through_canonical_p124_example() {
     );
     assert_eq!(
         scheme_rel, expected_rel_to,
-        "§D.2 Table 3 row 21: scheme rel_to must be [USA, GBR]; got {scheme_rel:?}",
+        "§D.2 Table 3 row 21 + §H.7 p124 (refined): scheme rel_to must \
+         be [USA, GBR]; got {scheme_rel:?}. Post-#704 default-fill Row 0 \
+         skips on FGI+REL TO inputs (REL_TO_PRESENT in \
+         MASK_FDR_DOMINATORS per §B.3.a p19); REL TO survives.",
     );
 }
 

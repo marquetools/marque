@@ -128,6 +128,25 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Knitli Inc."
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 
+# proptest persistent failure seeds. Each `*.proptest-regressions` file
+# carries a real property-test failure seed, checked in so CI re-tries
+# the same input before any new shrink work. The pattern is named here
+# directly (rather than inherited from `tests/**` above) so a future
+# narrowing of the test-coverage block cannot silently strip license
+# coverage from these files. The .gitignore carries a matching policy
+# comment forbidding `*.proptest-regressions` exclusion. Issue #704
+# (P3 monotonicity violation in CAPCO closure) is the canonical case:
+# the failing seed `cc e88bf36f...` became permanently regression-tested
+# once tracked. Annotation is `aggregate` so per-file `.license`
+# sidecars (where they exist) continue to apply alongside.
+[[annotations]]
+path = [
+  "**/*.proptest-regressions",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+
 # Local Claude Code skill content (lattice-consultant). Default for the skill
 # tree is Knitli-authored skill tooling. `closest` precedence so files with
 # their own SPDX header (e.g., references/capco-context.md, which carries

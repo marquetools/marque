@@ -9,25 +9,37 @@
 //!
 //! PR-F of the FactBitmask refactor (issue #371). Measures the bitmask
 //! Kleene fixpoint path landed in PR-D against six representative input
-//! profiles that exercise distinct code paths through the 10-row
-//! [`CLOSURE_TABLE`](marque_capco::closure_table::CLOSURE_TABLE):
+//! profiles that exercise distinct code paths through the 6-row
+//! [`CLOSURE_TABLE`](marque_capco::closure_table::CLOSURE_TABLE)
+//! (post-#704; Rows 0/7/8/9 retired to
+//! `marque_capco::scheme::default_fill`):
 //!
 //! 1. **`hot1_exit`** — UNCLASSIFIED, no special markings. The HOT-1
 //!    early-exit guard `(derive_bits(attrs).bits() & ALL_TRIGGER_MASK) == 0`
 //!    returns immediately; zero table rows evaluated.
-//! 2. **`row9_us_classified`** — SECRET, no SCI/SAR/AEA/dissem. Only Row 9
-//!    (`capco/relido-if-us-collateral-class`) fires; one-iteration fixpoint.
-//! 3. **`rows_1_0_hcs_o`** — TOP SECRET + HCS-O compartment. Row 1
-//!    (`capco/hcs-o-implies-noforn-orcon`) fires, then Row 0
-//!    (`capco/noforn-if-caveated`) fires transitively via the ORCON cone;
-//!    two-iteration fixpoint.
-//! 4. **`row7_nato_class`** — NATO Secret classification. Row 7
-//!    (`capco/rel-to-usa-nato-if-nato-classification`) fires; the
-//!    closed-vocab cone adds `REL_TO_USA` and the open-vocab NATO
-//!    tetragraph cone is applied by `closure()` after the Kleene loop.
+//! 2. **`row9_us_classified`** — SECRET, no SCI/SAR/AEA/dissem. Post-#704
+//!    this bench measures the HOT-1 exit cost on US-classified input (Row 9
+//!    retired; no closure rows fire). Rewriting to call `scheme.project()`
+//!    would more accurately measure the default-fill stage; tracked as a
+//!    follow-up issue at #704 merge.
+//! 3. **`rows_1_0_hcs_o`** — TOP SECRET + HCS-O compartment. Post-#704
+//!    Row 1 (`capco:closure.dissem.hcs-o-implies-noforn-orcon`) fires
+//!    producing ORCON + NOFORN. The pre-#704 Row 0 transitive NOFORN
+//!    chain retired with Row 0 to `default_fill::row0_should_fill`; HCS-O
+//!    via close() now produces NOFORN+ORCON directly (Row 1's cone),
+//!    not via the transitive chain.
+//! 4. **`row7_nato_class`** — NATO Secret classification. Post-#704 Row 7
+//!    retired; NATO classification no longer triggers any closure row.
+//!    The REL TO USA, NATO injection moved to
+//!    `default_fill::row7_should_fill`. This bench now measures the
+//!    HOT-1 exit cost on NATO input (NATO_CLASS is not in the post-#704
+//!    `ALL_TRIGGER_MASK`).
 //! 5. **`worst_case_all_rows`** — TOP SECRET + all 6 SCI compartment
-//!    sentinels + SAR present + AEA/RD. All applicable rows fire across
-//!    multiple Kleene iterations; maximum dispatch cost.
+//!    sentinels + SAR present + AEA/RD. Post-#704 close() walks 6 rows;
+//!    SCI sentinel rows fire (HCS-O / HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND}).
+//!    SAR / AEA / US-classification no longer trigger any closure row
+//!    (Rows 0/9 retired); they're default-fill triggers in the full
+//!    pipeline.
 //! 6. **`batch_closure`** — applies closure to 50 identical TS+HCS-O markings
 //!    in sequence; measures throughput across a document batch.
 //!
@@ -73,17 +85,27 @@ fn unclassified_no_markings() -> CapcoMarking {
     CapcoMarking::new(a)
 }
 
-/// SECRET, no SCI/SAR/AEA/dissem/NATO. Only Row 9
-/// (`capco/relido-if-us-collateral-class`) fires; one-iteration fixpoint.
+/// SECRET, no SCI/SAR/AEA/dissem/NATO. Post-#704: Row 9 retired to
+/// `default_fill::row9_should_fill`; this bench now measures the
+/// HOT-1 exit cost on US-classified input (no closure rows fire on
+/// bare US classification post-#704; `US_COLLATERAL_CLASSIFIED` is
+/// not in the post-#704 `ALL_TRIGGER_MASK`). Rewriting to call
+/// `scheme.project()` would measure the default-fill stage; tracked
+/// as a follow-up issue at #704 merge.
 fn secret_no_special() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     CapcoMarking::new(a)
 }
 
-/// TOP SECRET + HCS-O compartment. Row 1 (`capco/hcs-o-implies-noforn-orcon`)
-/// fires; Row 0 (`capco/noforn-if-caveated`) follows transitively via the ORCON
-/// cone; two-iteration fixpoint on first call.
+/// TOP SECRET + HCS-O compartment. Post-#704: Row 1
+/// (`capco:closure.dissem.hcs-o-implies-noforn-orcon`) fires producing
+/// NOFORN + ORCON directly via its cone. The pre-#704 Row 0 transitive
+/// chain (ORCON triggers caveated → NOFORN) retired with Row 0 to
+/// `default_fill::row0_should_fill`; the SI-G → ORCON → NOFORN chain
+/// still works end-to-end but crosses the close()/default_fill boundary
+/// in the full project() pipeline. close() alone produces NOFORN +
+/// ORCON in one Kleene iteration on HCS-O.
 fn top_secret_hcs_o() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
@@ -97,8 +119,11 @@ fn top_secret_hcs_o() -> CapcoMarking {
     CapcoMarking::new(a)
 }
 
-/// NATO Secret classification. Row 7 fires; closed-vocab `REL_TO_USA` cone plus
-/// the open-vocab NATO tetragraph cone applied by `closure()` outside the loop.
+/// NATO Secret classification. Post-#704: Row 7 retired to
+/// `default_fill::row7_should_fill`; NATO classification no longer
+/// triggers any closure row. `NATO_CLASS` is not in the post-#704
+/// `ALL_TRIGGER_MASK`, so this bench measures the HOT-1 exit cost on
+/// NATO input. The REL TO USA, NATO injection moved to default-fill.
 fn nato_secret() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
@@ -106,7 +131,13 @@ fn nato_secret() -> CapcoMarking {
 }
 
 /// TOP SECRET + all 6 SCI compartment sentinels + SAR present + AEA/RD.
-/// All applicable rows fire across multiple Kleene iterations; maximum dispatch.
+/// Post-#704: close() walks 6 rows; the SCI sentinel rows fire (HCS-O /
+/// HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND}). SAR / AEA / US-classification
+/// retired to default-fill so they no longer trigger any closure row;
+/// this bench now measures dispatch cost across the 6 surviving rows
+/// rather than the pre-#704 10-row catalog. The "worst case" framing
+/// is still correct against the post-#704 catalog (every surviving row
+/// can fire in one Kleene iteration on this input).
 fn worst_case_all_rows() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
@@ -149,15 +180,19 @@ fn worst_case_all_rows() -> CapcoMarking {
     );
     a.sci_markings = Box::new([si_g, hcs_o, hcs_p_sub, tk_blfh, tk_idit, tk_kand]);
 
-    // SAR present — lights `SAR_PRESENT` (bit 36); triggers Row 0 (Trio 1).
+    // SAR present — lights `SAR_PRESENT` (bit 36). Post-#704 this
+    // bit is in `default_fill::ROW0_CAVEATED_TRIGGERS` (Row 0 retired
+    // from close() to default-fill); close() ignores it.
     let sar_prog = SarProgram::new(SmolStr::new("BP"), Box::new([]));
     a.sar_markings = Some(SarMarking::new(SarIndicator::Abbrev, Box::new([sar_prog])));
 
-    // AEA/RD — lights `AEA_RD` (bit 22); triggers Row 0 (Trio 1) via the
-    // `AEA_RD` entry in `ROW0_NOFORN_IF_CAVEATED_TRIGGERS`.
+    // AEA/RD — lights `AEA_RD` (bit 22). Post-#704 this bit is also
+    // in `default_fill::ROW0_CAVEATED_TRIGGERS`; close() ignores it.
     a.aea_markings = Box::new([AeaMarking::Rd(Default::default())]);
 
-    // RELIDO suppressor absent: rows 8-9 should fire for SCI + US class.
+    // Post-#704: Rows 8-9 retired to default-fill; close() walks
+    // the 6 SCI per-marking rows only. The "all rows fire" framing
+    // applies to the surviving 6-row catalog.
     CapcoMarking::new(a)
 }
 
@@ -184,7 +219,12 @@ fn closure_profiles(c: &mut Criterion) {
         });
     });
 
-    // 2. Single-row (Row 9): US collateral classified → RELIDO.
+    // 2. Single-row (post-#704: was Row 9, retired to default-fill):
+    //    US collateral classified. Post-#704 this measures the HOT-1
+    //    exit cost on US-classified input; the Row 9 RELIDO injection
+    //    moved to `default_fill::row9_should_fill`. Bench name kept
+    //    for criterion-history continuity; follow-up issue tracks
+    //    rewriting to `scheme.project()` for accurate measurement.
     let row9 = secret_no_special();
     c.bench_function("closure_row9_us_classified", |b| {
         b.iter(|| {
@@ -193,7 +233,13 @@ fn closure_profiles(c: &mut Criterion) {
         });
     });
 
-    // 3. Two-step (Rows 1 then 0): HCS-O → NOFORN+ORCON; ORCON triggers Trio 1.
+    // 3. Single-row (post-#704: was rows 1 then 0 transitively):
+    //    HCS-O via close() now produces NOFORN+ORCON directly via
+    //    Row 1's cone in one Kleene iteration. The pre-#704
+    //    transitive ORCON → Trio 1 → NOFORN chain retired with Row
+    //    0 to `default_fill::row0_should_fill`; the full project()
+    //    pipeline still produces the same end-to-end state via
+    //    close() + default-fill.
     let hcs_o = top_secret_hcs_o();
     c.bench_function("closure_rows_1_0_hcs_o", |b| {
         b.iter(|| {
@@ -202,7 +248,11 @@ fn closure_profiles(c: &mut Criterion) {
         });
     });
 
-    // 4. Trio 3: NATO classification → REL_TO_USA + open-vocab NATO cone.
+    // 4. Post-#704: Row 7 retired to `default_fill::row7_should_fill`;
+    //    NATO classification no longer triggers any closure row. This
+    //    bench now measures the HOT-1 exit cost on NATO input. Bench
+    //    name kept for criterion-history continuity; follow-up issue
+    //    tracks rewriting to `scheme.project()` for accurate measurement.
     let nato = nato_secret();
     c.bench_function("closure_row7_nato_class", |b| {
         b.iter(|| {
@@ -211,8 +261,13 @@ fn closure_profiles(c: &mut Criterion) {
         });
     });
 
-    // 5. Worst case: all 6 SCI sentinels + SAR + AEA/RD → all non-NATO rows fire
-    //    across multiple Kleene iterations (Row 7 requires NATO_CLASS, absent here).
+    // 5. Worst case across the post-#704 6-row catalog: TOP SECRET +
+    //    all 6 SCI compartment sentinels fires all 6 surviving rows
+    //    (HCS-O / HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND}) in one
+    //    Kleene iteration. SAR / AEA / US-classification on the
+    //    fixture do NOT trigger any close() row post-#704 (Rows 0/9
+    //    retired to default-fill); they're carried for fixture
+    //    completeness but don't contribute to close() dispatch cost.
     let worst = worst_case_all_rows();
     c.bench_function("closure_worst_case_all_rows", |b| {
         b.iter(|| {

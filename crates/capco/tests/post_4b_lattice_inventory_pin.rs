@@ -200,56 +200,41 @@ const EXPECTED_PAGE_REWRITES: &[&str] = &[
 ];
 
 /// Closed list of the residual ClosureRule IDs from
-/// `CAPCO_CLOSURE_RULES` after PR-D of the FactBitmask refactor
-/// (issue #371). Nine of the original ten fn-pointer rules retired —
-/// their cones (NOFORN / ORCON / RELIDO / REL_TO_USA) all sit in the
-/// closed-vocab atom inventory and project cleanly to bitmask cone
-/// masks (`CLOSURE_TABLE` Rows 0-6, 8-9 in `closure_table.rs`). Only
-/// `capco/rel-to-usa-nato-if-nato-classification` (Row 7 in the
-/// bitmask catalog) survives the fn-pointer slice because its
-/// `cone_derived` open-vocab NATO tetragraph injection cannot be
-/// projected onto a closed-vocab bit; the production closure body in
-/// `marking_scheme_impl.rs::CapcoScheme::closure` applies the static
-/// USA leg via the bitmask path's `REL_TO_USA` atom and runs the
-/// surviving `cone_derived` as a single post-Kleene tail.
-const EXPECTED_CLOSURE_RULES: &[&str] =
-    &["capco:closure.nato.rel-to-usa-nato-if-nato-classification"];
+/// `CAPCO_CLOSURE_RULES` after issue #704's architectural refinement.
+/// All fn-pointer rules retired — the four "default if absent" rules
+/// (caveated → NOFORN; NATO → REL TO USA, NATO; SCI → RELIDO;
+/// US-class → RELIDO) relocated to `crate::scheme::default_fill`
+/// because they are non-monotone by §-design and cannot live in a
+/// closure operator that honors the `MarkingScheme::closure` monotone
+/// contract. The six per-marking unconditional rows (HCS-O, HCS-P[sub],
+/// SI-G, TK-BLFH, TK-IDIT, TK-KAND) live in `CLOSURE_TABLE`'s bitmask
+/// form. Net: the fn-pointer trait surface is empty post-#704.
+const EXPECTED_CLOSURE_RULES: &[&str] = &[];
 
-/// Closed list of 10 `ClosureRow` names in the positional order of
-/// `marque_capco::closure_table::CLOSURE_TABLE`. PR-D moved the
-/// drift-catch property that the retired 9 fn-pointer rows used to
-/// provide onto this parallel pin against the bitmask catalog.
+/// Closed list of 6 `ClosureRow` names in the positional order of
+/// `marque_capco::closure_table::CLOSURE_TABLE`. Issue #704 trimmed
+/// the pre-#704 10-row catalog to the 6 per-marking unconditional
+/// implications from §H.4 marking templates; Rows 0/7/8/9 (the four
+/// "default if absent" rules) relocated to
+/// `crate::scheme::default_fill`. Walk order is no longer load-bearing
+/// at the closure layer (the retired chain dependency between Row 3
+/// SI-G→ORCON and Row 0 ORCON→NOFORN now crosses the
+/// close()/default_fill boundary; default_fill snapshots the
+/// post-close bitmask once and evaluates all four default-fill
+/// predicates against it).
 ///
-/// Walk order is load-bearing for the Kleene-fixpoint pass per
-/// `closure_table.rs::CLOSURE_TABLE` doc-comment: per-marking
-/// implication rows precede the Trio-2 RELIDO rows so the
-/// NOFORN/ORCON cones populate the bitmask accumulator before
-/// suppressor checks fire in the same iteration.
-///
-/// Positional sequence:
-///
-/// - Row 0 — `noforn-if-caveated` per §B.3 Table 2 p21 (caveated → NOFORN).
-/// - Rows 1 through 6 — per-marking implications per §H.4 SCI per-system
-///   rows (HCS-O / HCS-P-sub / SI-G / TK-BLFH / TK-IDIT / TK-KAND).
-/// - Row 7 — `rel-to-usa-nato-if-nato-classification` per §H.7 p127
-///   (NATO REL TO portion-level closure).
-/// - Rows 8 and 9 — RELIDO closure rows per §H.8 pp 155-156
-///   (RELIDO observed-unanimity for SCI-portion / US-classified-portion).
-// T044: closure-rule names use the canonical wire-string form per
-// PM-decisions OD-1.B refinement (`closure` as a fifth `<surface>`
-// segment). Legacy slash form `capco/<predicate>` retired in lockstep
-// with the closure_table.rs rename.
+/// Authority per row:
+/// - HCS-O / HCS-P[sub] → NOFORN+ORCON per §H.4 p64 / p68.
+/// - SI-G → ORCON per §H.4 p80 (NOFORN reaches SI-G via the
+///   close()/default_fill boundary).
+/// - TK-BLFH / TK-IDIT / TK-KAND → NOFORN per §H.4 p87 / p91 / p95.
 const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
-    "capco:closure.dissem.noforn-if-caveated",
     "capco:closure.dissem.hcs-o-implies-noforn-orcon",
     "capco:closure.dissem.hcs-p-sub-implies-noforn-orcon",
     "capco:closure.dissem.si-g-implies-orcon",
     "capco:closure.dissem.tk-blfh-implies-noforn",
     "capco:closure.dissem.tk-idit-implies-noforn",
     "capco:closure.dissem.tk-kand-implies-noforn",
-    "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
-    "capco:closure.dissem.relido-if-sci-and-not-incompatible",
-    "capco:closure.dissem.relido-if-us-collateral-class",
 ];
 
 /// Closed **sorted set** of 39 `Constraint::Custom` row names from the
@@ -384,12 +369,14 @@ fn post_pr_d_declares_exact_residual_closure_rules() {
 
     let raw_len = rules.len();
     assert_eq!(
-        raw_len, 1,
-        "post-PR-D ClosureRule slice length drifted from 1: raw_len={raw_len}. \
-         PR-D of the FactBitmask refactor (issue #371) retired 9 of 10 fn-pointer \
-         closure rules into the bitmask `CLOSURE_TABLE`; only \
-         `capco/rel-to-usa-nato-if-nato-classification` survives because its \
-         `cone_derived` open-vocab NATO tetragraph has no closed-vocab bit."
+        raw_len, 0,
+        "post-#704 ClosureRule slice length drifted from 0: raw_len={raw_len}. \
+         Issue #704 retired the residual `CLOSURE_REL_TO_USA_NATO` fn-pointer \
+         rule along with the rest of the pre-#704 'default if absent' \
+         architecture — Rows 0/7/8/9 relocated to \
+         `crate::scheme::default_fill`. The fn-pointer trait surface is \
+         empty post-#704; the 6 per-marking unconditional rows live in \
+         the bitmask `CLOSURE_TABLE`."
     );
 
     let actual: Vec<&str> = rules.iter().map(|r| r.name).collect();
@@ -397,8 +384,8 @@ fn post_pr_d_declares_exact_residual_closure_rules() {
 
     assert_eq!(
         expected.len(),
-        1,
-        "EXPECTED_CLOSURE_RULES does not contain 1 entry: \
+        0,
+        "EXPECTED_CLOSURE_RULES does not contain 0 entries: \
          test data drifted, not the catalog"
     );
 
@@ -408,7 +395,7 @@ fn post_pr_d_declares_exact_residual_closure_rules() {
         let missing: Vec<&str> = expected_set.difference(&actual_set).copied().collect();
         let unexpected: Vec<&str> = actual_set.difference(&expected_set).copied().collect();
         panic!(
-            "post-PR-D ClosureRule list drifted.\n\
+            "post-#704 ClosureRule list drifted.\n\
              Missing: {missing:?}.\n\
              Unexpected: {unexpected:?}.\n\
              If both diffs are empty, the rows were reordered. Bumping \
@@ -426,9 +413,10 @@ fn post_pr_d_declares_unified_closure_inventory_in_registry_order() {
 
     let raw_len = inventory.len();
     assert_eq!(
-        raw_len, 10,
-        "post-PR-D closure inventory length drifted from 10: raw_len={raw_len}. \
-         Unified inventory must include the full 10-row closure catalog."
+        raw_len, 6,
+        "post-#704 closure inventory length drifted from 6: raw_len={raw_len}. \
+         Unified inventory now mirrors the 6-row `CLOSURE_TABLE` directly \
+         (Rows 0/7/8/9 retired to `default_fill`)."
     );
 
     let actual: Vec<&str> = inventory.iter().map(|row| row.name).collect();
@@ -450,21 +438,18 @@ fn post_pr_d_declares_unified_closure_inventory_in_registry_order() {
     );
 }
 
-/// Post-PR-D parallel pin against the 10-row bitmask `CLOSURE_TABLE`.
-/// The retired fn-pointer `CAPCO_CLOSURE_RULES` 10-row pin's drift-
-/// catch property moves here. Walk order is load-bearing for the
-/// Kleene-fixpoint pass per `closure_table.rs::CLOSURE_TABLE`
-/// doc-comment.
+/// Post-#704 parallel pin against the 6-row bitmask `CLOSURE_TABLE`.
 #[test]
-fn post_pr_d_declares_exact_10_bitmask_closure_rows_in_order() {
+fn post_pr_d_declares_exact_6_bitmask_closure_rows_in_order() {
     use marque_capco::closure_table::CLOSURE_TABLE;
 
     let raw_len = CLOSURE_TABLE.len();
     assert_eq!(
-        raw_len, 10,
-        "post-PR-D CLOSURE_TABLE row count drifted from 10: raw_len={raw_len}. \
-         The bitmask catalog is the post-PR-D source-of-truth for closure rows; \
-         a count change here means a row was added or removed."
+        raw_len, 6,
+        "post-#704 CLOSURE_TABLE row count drifted from 6: raw_len={raw_len}. \
+         The bitmask catalog is the source-of-truth for the per-marking \
+         unconditional closure rows; a count change here means a row was \
+         added or removed."
     );
 
     let actual: Vec<&str> = CLOSURE_TABLE.iter().map(|r| r.name).collect();
@@ -472,8 +457,8 @@ fn post_pr_d_declares_exact_10_bitmask_closure_rows_in_order() {
 
     assert_eq!(
         expected.len(),
-        10,
-        "EXPECTED_BITMASK_CLOSURE_ROWS does not contain 10 entries: \
+        6,
+        "EXPECTED_BITMASK_CLOSURE_ROWS does not contain 6 entries: \
          test data drifted, not the catalog"
     );
 

@@ -90,12 +90,29 @@ fn display_only_clears_relido_cross_portion() {
     // Cross-portion: portion A has REL TO + RELIDO (so it carries
     // release permission via REL TO and survives the §D.2 row-19
     // all-or-nothing gate), portion B has DISPLAY ONLY GBR.
-    // Both portions carry release permission, so DisplayOnlyBlock
-    // rolls up to {GBR} (intersection of {USA, GBR} from REL TO
-    // expansion ∩ {GBR} from DISPLAY ONLY). With display_only_to
-    // populated at page scope, the `capco/display-only-clears-relido`
-    // PageRewrite fires and removes RELIDO. §H.8 p154 —
-    // DISPLAY ONLY supersedes RELIDO at page roll-up.
+    //
+    // Post-#704 (refined per redirect brief): pre-#704 the
+    // `MASK_RELIDO_US_CLASS_SUPPRESSORS` mask (which includes
+    // REL_TO_PRESENT) suppressed Row 9 inside `close()`, so closure
+    // didn't add the RELIDO that the join overlay had stripped.
+    // Post-#704 the SAME mask gates
+    // `default_fill::row9_should_fill`: input portion A carries
+    // REL TO USA, GBR → REL_TO_PRESENT is set on the post-close
+    // bitmask → default-fill Row 9's gate fails → no implicit
+    // RELIDO added. End-to-end identical to pre-#704.
+    //
+    // The §B.3 paragraph b p19 "NOT MARKED PREVIOUSLY" conservatism
+    // the pre-#704 suppressor encoded ("don't add implicit RELIDO
+    // when explicit REL TO present") is preserved post-#704 because
+    // the same mask (now on the default-fill gate) implements the
+    // same gate.
+    //
+    // Authority: §B.3 Table 2 p21 (trigger authority — the
+    // implicit-RELIDO default obligation); §B.3 paragraph b p19
+    // (FD&R-absent gate); §B.3.a p19 (REL TO is canonical FD&R, in
+    // MASK_FDR_DOMINATORS and therefore in
+    // MASK_RELIDO_US_CLASS_SUPPRESSORS); §H.8 p154 (RELIDO marking
+    // template — what RELIDO means once triggered).
     let scheme = CapcoScheme::new();
     assert!(
         !banner_carries_relido(
@@ -103,9 +120,9 @@ fn display_only_clears_relido_cross_portion() {
             &["(S//REL TO USA, GBR/RELIDO)", "(S//DISPLAY ONLY GBR)"]
         ),
         "DISPLAY ONLY on one portion must evict RELIDO from another \
-         portion at page projection (§H.8 p154); cross-portion case \
-         requires both portions to carry release permission so the \
-         §D.2 row-19 gate passes",
+         portion at page projection (§H.8 p154 + §B.3.a p19 FD&R \
+         dominator gate on default-fill Row 9); end-to-end behavior \
+         identical to pre-#704.",
     );
 }
 
