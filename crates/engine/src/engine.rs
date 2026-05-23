@@ -4337,14 +4337,26 @@ fn build_decoder_diagnostic(
     // on the new 2-tuple `RuleId` makes the let-binding free.
     let rule = DECODER_RULE_ID;
     // Audit-shape contract: the decoder-path engine-minted record
-    // carries no
-    // document bytes (Constitution V Principle V / G13). The span
-    // identifies *where* the fix landed; the engine's synthesis path
-    // re-renders the canonical form from a `Recanonicalize` intent at
-    // promotion time. The unused `original` / `replacement` bindings
-    // document that we held UTF-8 validity for the input + canonical
-    // bytes but intentionally do not route them into the audit record.
-    let _ = (original, replacement);
+    // carries no document bytes (Constitution V Principle V / G13). The
+    // span identifies *where* the fix landed; the engine's synthesis
+    // path re-renders the canonical form from a `Recanonicalize` intent
+    // at promotion time.
+    //
+    // Issue #699: the lint-side `Diagnostic.recognized_canonical` field
+    // DOES carry the canonical bytes so user-facing renderers can show
+    // the recognized form in `check` output without running `fix`. The
+    // asymmetry is intentional and pinned by
+    // `lint_carries_recognized_canonical_fix_audit_does_not` — lint
+    // shows the bytes; the audit envelope continues to carry only the
+    // BLAKE3 digest + structural intent. The `original` binding is
+    // dropped here; only `replacement` (the canonical form) flows
+    // forward, wrapped in a `SecretBox` (Constitution II — wipes on
+    // drop, every readout goes through `expose_secret()`).
+    let _ = original;
+    let recognized_canonical = Some(secrecy::SecretBox::new(Box::new(Box::from(
+        provenance.canonical_bytes.as_ref(),
+    ))));
+    let _ = replacement;
     use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
@@ -4359,21 +4371,24 @@ fn build_decoder_diagnostic(
         source: fix_source,
         migration_ref: None,
     };
-    Some(Diagnostic::with_fix_at_span(
-        rule,
-        severity,
-        span,
-        span,
-        marque_rules::Message::new(
-            marque_rules::MessageTemplate::DecoderRecognized,
-            marque_rules::MessageArgs {
-                span: Some(span),
-                ..marque_rules::MessageArgs::default()
-            },
-        ),
-        DECODER_CITATION_TYPED,
-        intent,
-    ))
+    Some(
+        Diagnostic::with_fix_at_span(
+            rule,
+            severity,
+            span,
+            span,
+            marque_rules::Message::new(
+                marque_rules::MessageTemplate::DecoderRecognized,
+                marque_rules::MessageArgs {
+                    span: Some(span),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
+            DECODER_CITATION_TYPED,
+            intent,
+        )
+        .with_recognized_canonical(recognized_canonical),
+    )
 }
 
 /// Build the synthetic `R002 reparse-failed` diagnostic the engine

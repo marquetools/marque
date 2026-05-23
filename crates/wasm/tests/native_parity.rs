@@ -51,6 +51,13 @@ struct DiagnosticJson<'a> {
     message: MessageJson<'a>,
     citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors the
+    /// CLI / WASM `recognized_canonical` field for SC-008 NDJSON
+    /// byte-identity. `skip_serializing_if = "Option::is_none"` keeps
+    /// the field absent for every non-R001 diagnostic, so existing
+    /// fixtures continue to produce identical NDJSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -99,6 +106,14 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
 }
 
 fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — third copy of the projection, used only
+    // by this parity test (issue #699). The CLI and WASM emitters
+    // each have their own copy; the parity test must produce the
+    // same shape both produce.
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(sb.expose_secret().as_ref()).ok());
     DiagnosticJson {
         rule: (&d.rule).into(),
         severity: d.severity.as_str(),
@@ -132,6 +147,7 @@ fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJs
             }),
             (None, None) => None,
         },
+        recognized_canonical,
     }
 }
 
@@ -848,5 +864,35 @@ fn generate_cab_both_custom_fields() {
     assert!(
         cab.contains("Derived From: NSS 2024 Guidance"),
         "custom derived_from must appear, got: {cab}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #699 — recognized_canonical NDJSON parity (CLI vs WASM)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn wasm_lint_recognized_canonical_byte_identical_to_cli() {
+    // `(TS//SAR-fk)` — drives R001 with a populated
+    // `recognized_canonical` field. The native parity projection and
+    // the WASM `lint_native` projection MUST produce byte-identical
+    // NDJSON for SC-008 — including the new `recognized_canonical`
+    // field. A regression that adds the field on one side and not
+    // the other (e.g., CLI updated but WASM mirror missed) trips
+    // this test.
+    let input: &[u8] = b"(TS//SAR-fk)";
+    let text = std::str::from_utf8(input).expect("UTF-8 fixture");
+
+    let native_ndjson = engine_lint_to_ndjson(input);
+    let wasm_ndjson = marque_wasm::lint_native(text, None).expect("lint_native must succeed");
+
+    assert_eq!(
+        native_ndjson, wasm_ndjson,
+        "SC-008 NDJSON byte-identity must hold for R001 + recognized_canonical",
+    );
+    assert!(
+        native_ndjson.contains(r#""recognized_canonical":"(TS//SAR-FK)""#),
+        "the parity NDJSON must include the recognized_canonical \
+         field (issue #699); got: {native_ndjson}",
     );
 }

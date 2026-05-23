@@ -499,11 +499,9 @@ impl SarCompartment {
     /// parser/decoder split is intentional: the parser is strict so
     /// the decoder can be lenient and informative.
     ///
-    // TODO(decoder): the current SAR INFO message is generic
-    // ("you're on your own here"). Enhancing the decoder to emit
-    // specific demangling suggestions for compartment / sub-
-    // compartment case-mismatches is future work tracked separately
-    // from this strict-shape fix (issue #280).
+    /// SAR demangling (case-mismatch, program/compartment/sub-compartment)
+    /// is covered by `crates/engine/tests/decoder_dispatch_post_280.rs`
+    /// and `crates/engine/tests/recognized_canonical_field_scoping.rs`.
     ///
     /// # Examples
     ///

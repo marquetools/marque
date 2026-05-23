@@ -517,3 +517,102 @@ fn canonical_fgi_portion_emits_no_decoder_diagnostic() {
         diags_summary(&lint.diagnostics),
     );
 }
+
+// ============================================================================
+// Issue #699 — decoder-recognized canonical form surfaced on
+// `Diagnostic.recognized_canonical`.
+//
+// `build_decoder_diagnostic` populates the field with the bytes the
+// decoder canonicalized to, wrapped in `SecretBox<Box<[u8]>>`
+// (Constitution Principle II — wipes on drop, every readout goes
+// through `expose_secret()`). The field is lint-side only; the audit
+// envelope continues to carry the BLAKE3 digest + structural intent
+// (Constitution V Principle V / G13). The asymmetry is pinned by
+// `lint_carries_recognized_canonical_fix_audit_does_not` in
+// `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
+// ============================================================================
+
+/// Read the recognized-canonical bytes from a diagnostic via the
+/// single sanctioned readout site. Principle II readout — test
+/// fixture (issue #699).
+fn recognized_canonical_bytes(d: &Diagnostic<CapcoScheme>) -> Option<Vec<u8>> {
+    d.recognized_canonical
+        .as_ref()
+        .map(|sb| sb.expose_secret().as_ref().to_vec())
+}
+
+#[test]
+fn r001_sar_lowercase_program_id_emits_recognized_canonical_field() {
+    // `(TS//SAR-fk)` — lowercase program identifier. R001 fires
+    // post-#280; `recognized_canonical` carries the canonical
+    // uppercase form so `marque check` can show it without the user
+    // having to run `marque fix` and diff the output.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-fk)");
+    let r001 = find_r001(&lint.diagnostics).expect("R001 must fire on SAR lowercase program id");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(TS//SAR-FK)".as_ref()),
+        "decoder-recognized canonical bytes must surface on the \
+         diagnostic so the user can see the recognized form without \
+         running `fix`",
+    );
+}
+
+#[test]
+fn r001_sar_full_lowercase_compartment_emits_recognized_canonical() {
+    // `(TS//SAR-FK-blue42)` — uppercase program, lowercase
+    // compartment. Same surface contract as the program-id case.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK-blue42)");
+    let r001 = find_r001(&lint.diagnostics).expect("R001 must fire on SAR lowercase compartment");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(TS//SAR-FK-BLUE42)".as_ref()),
+    );
+}
+
+#[test]
+fn r001_fgi_lowercase_trigraph_emits_recognized_canonical() {
+    // `(S//FGI deu)` — lowercase ownership trigraph. The well-trodden
+    // decoder path emits R001 at Severity::Fix and the canonical form
+    // surfaces on the diagnostic.
+    let engine = build_engine();
+    let lint = engine.lint(b"(S//FGI deu)");
+    let r001 = find_r001(&lint.diagnostics).expect("R001 must fire on FGI lowercase trigraph");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(S//FGI DEU)".as_ref()),
+    );
+}
+
+#[test]
+fn r001_sar_sub_compartment_emits_recognized_canonical() {
+    // `(TS//SAR-FK-BLUE 42a)` — uppercase program + compartment,
+    // lowercase sub-compartment trailing letter. Pins the
+    // sub-compartment shape's canonical bytes on the diagnostic.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK-BLUE 42a)");
+    let r001 =
+        find_r001(&lint.diagnostics).expect("R001 must fire on SAR lowercase sub-compartment");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(TS//SAR-FK-BLUE 42A)".as_ref()),
+    );
+}
+
+#[test]
+fn r001_idempotent_input_emits_no_diagnostic() {
+    // `(TS//SAR-FK)` — already canonical. Build_decoder_diagnostic's
+    // no-op-rewrite gate short-circuits (canonical == original); no
+    // R001 fires at all, and consequently no recognized_canonical is
+    // surfaced. This pins the "decoder is silent on canonical input"
+    // contract that the field's `Some(_)` invariant rests on.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK)");
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "no R001 expected on canonical input; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+}
