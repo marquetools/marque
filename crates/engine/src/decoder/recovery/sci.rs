@@ -45,8 +45,11 @@ use marque_ism::{DissemControl, NonIcDissem, SciControl, SciControlBare, marking
 ///   cleanly into two bare control systems) AND the following
 ///   delimiter is a single `/` (not `//`) AND the NEXT token is a
 ///   known non-SCI hard splitter (`DissemControl::parse(...)`,
-///   `NonIcDissem::parse(...)`, or their long-form banner / title
-///   equivalents via `marking_forms`), the single `/` is promoted to
+///   `NonIcDissem::parse(...)`, or their single-word banner-abbreviation
+///   equivalents via `marking_forms::banner_to_portion` — the next token
+///   is one whitespace-delimited word, so multi-word long-form titles
+///   are out of scope; see `is_non_sci_hard_splitter_token`), the single
+///   `/` is promoted to
 ///   `//` — the canonical category separator per CAPCO-2016 §A.6 p16.
 ///   Fires standalone: covers both inputs where Pattern A/B/C already
 ///   rewrote the SCI token (`HCSP/NOFORN → HCS-P//NOFORN`) and
@@ -183,11 +186,13 @@ pub(in crate::decoder) fn try_sci_delimiter_repair(text: &str) -> Option<String>
             }
             last_copied = token_end;
             if promote_delim {
-                // Copy the original `/` and inject a second `/` to
-                // make `//`. last_copied is left pointing at the
-                // original single `/` so the next iteration's
-                // `text[last_copied..]` copy includes it followed by
-                // the rest of the source.
+                // Inject only the SECOND `/` here. The original single
+                // `/` is NOT copied at this point — `last_copied` was
+                // just set to `token_end` (the index of that original
+                // `/`), so the final `r.push_str(&text[last_copied..])`
+                // tail copy emits it ahead of the rest of the source.
+                // The injected `/` plus the tail's original `/` together
+                // render the canonical `//`.
                 r.push('/');
             }
         }

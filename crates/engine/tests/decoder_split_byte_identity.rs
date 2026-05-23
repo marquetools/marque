@@ -194,13 +194,14 @@ fn decoder_recovers_sci_delimiter_hcsp_to_hcs_p() {
     // promotion of the trailing single `/` to `//` (Pattern D —
     // issue #720). After #720, the recovery promotes intra-SCI `/`
     // to category `//` when the next token is non-SCI; this fixture
-    // exercises that combined path. Strong assertion: Secret + HcsP
-    // + NOFORN must all land in their canonical slots.
+    // exercises that combined path. Strong assertion: the recovered
+    // input must parse **unambiguously** (the #720 bug was an
+    // empty-candidate `Ambiguous`; the contract is a single resolved
+    // marking) with Secret + HcsP + NOFORN in their canonical slots.
     let parsed = run_decoder("SECRET//HCSP/NOFORN");
     let m = match parsed {
         Parsed::Unambiguous(m) => m,
-        Parsed::Ambiguous { candidates } if !candidates.is_empty() => candidates[0].marking.clone(),
-        other => panic!("expected non-empty result; got {other:?}"),
+        other => panic!("post-#720 contract is Parsed::Unambiguous; got {other:?}"),
     };
     assert_eq!(classification(&m), Some(Classification::Secret));
     assert!(
