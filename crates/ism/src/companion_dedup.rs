@@ -9,9 +9,9 @@
 //!
 //! # The bug this closes
 //!
-//! PR 9c.1 T134 (`crates/core/src/parser.rs` legacy-compound path,
-//! the canonicalization site around line 387) unconditionally pushes
-//! an [`AeaMarking::Atomal`] companion into the AEA axis, or a
+//! The `crates/core/src/parser.rs` legacy-compound path
+//! unconditionally pushes an [`AeaMarking::Atomal`] companion into
+//! the AEA axis, or a
 //! [`SciControlSystem::NatoSap`]-anchored [`SciMarking`] into the SCI
 //! axis, whenever the parser recognizes a legacy NATO compound text
 //! (`CTSA` / `NSAT` / `CTS-B` / `CTS-BALK` / banner-form equivalents
@@ -52,10 +52,9 @@
 //!    have unrelated surrounding control flow; a per-site dedup check
 //!    would duplicate the predicate at every push site and remain
 //!    fragile to future push-site additions.
-//! 2. Centralizing dedup mirrors the [`attribute_dissems`] pattern
-//!    introduced in PR 9b — both passes treat the parser's per-token
-//!    output as "intent" and let a post-pass resolve cross-token
-//!    invariants.
+//! 2. Centralizing dedup mirrors the [`attribute_dissems`] pattern —
+//!    both passes treat the parser's per-token output as "intent" and
+//!    let a post-pass resolve cross-token invariants.
 //! 3. Future axes that grow companion-write paths (e.g., a SAR
 //!    companion path) inherit the same dedup property without
 //!    auditing every push site.
@@ -97,9 +96,9 @@ use crate::parsed::{ParsedAea, ParsedAttrs, ParsedSciMarking};
 /// **Stable.** Source order is preserved among the retained entries —
 /// the function never reorders surviving items.
 ///
-/// **Order of consumption.** In the current `crates/core/src/parser.rs`
+/// **Order of consumption.** In the `crates/core/src/parser.rs`
 /// dispatch, the legacy-compound canonicalization at the classification
-/// block (`idx == 1`, line ~372 / ~386) emits the companion FIRST, and
+/// block emits the companion FIRST, and
 /// the canonical-form AEA / SCI block parse runs LATER in the block
 /// loop. The surviving entry is therefore the legacy-compound
 /// canonicalization companion; the canonical-form entry is dropped.
@@ -110,8 +109,8 @@ use crate::parsed::{ParsedAea, ParsedAttrs, ParsedSciMarking};
 /// **Hot-path cost.** Both axes typically hold ≤ 4 entries in practice
 /// (RD / FRD / TFNI / ATOMAL is the upper bound for AEA; SCI is bounded
 /// by the registered control-system count). The O(n²) `retain` walk
-/// runs in single-digit microseconds and stays well under the SC-001
-/// p95 ≤ 16 ms budget.
+/// runs in single-digit microseconds and stays well under the
+/// interactive-latency budget (p95 ≤ 16 ms).
 pub fn dedup_companions<'src>(attrs: &mut ParsedAttrs<'src>) {
     dedup_aea(&mut attrs.aea_markings);
     dedup_sci_markings(&mut attrs.sci_markings);
