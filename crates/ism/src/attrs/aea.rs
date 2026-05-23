@@ -267,9 +267,14 @@ fn parse_sigma_numbers(s: &str) -> Vec<u8> {
     if rest.is_empty() {
         return vec![];
     }
-    rest.split_whitespace()
-        .filter_map(|n| n.parse::<u8>().ok())
-        .collect()
+    let mut sigma = Vec::new();
+    for n in rest.split_whitespace() {
+        match n.parse::<u8>() {
+            Ok(value) => sigma.push(value),
+            Err(_) => return vec![],
+        }
+    }
+    sigma
 }
 
 impl std::fmt::Display for AeaMarking {

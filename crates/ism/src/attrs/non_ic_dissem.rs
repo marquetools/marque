@@ -11,7 +11,7 @@
 /// These operate under a separate authority framework from IC dissem controls.
 /// In classified documents, most non-IC dissem controls appear **only in portion
 /// markings** — they are stripped from banners. However, some controls propagate
-/// to classified banners: LIMDIS (NGA Title 10), LES, LES-NF, and SSI. See
+/// to classified banners: EXDIS, NODIS, LES, LES-NF, SSI, and NNPI. See
 /// [`NonIcDissem::propagates_to_classified_banner`] for the authoritative list.
 /// When the page is **unclassified**, all non-IC dissem controls propagate to
 /// the banner.

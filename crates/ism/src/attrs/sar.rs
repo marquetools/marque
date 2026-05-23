@@ -97,7 +97,7 @@ impl SarProgram {
     }
 
     /// SAR program identifier abbreviation shape gate: 2 or 3 ASCII
-    /// alphanumeric bytes, any case.
+    /// uppercase alphanumeric bytes.
     ///
     /// This is the byte-class admission predicate for the `SAR-`
     /// indicator form (the abbreviated, portion-mark-and-banner form).
@@ -297,7 +297,7 @@ impl SarCompartment {
     }
 
     /// SAR compartment / sub-compartment identifier shape gate:
-    /// one or more ASCII alphanumeric bytes, any case.
+    /// one or more ASCII uppercase alphanumeric bytes.
     ///
     /// CAPCO-2016 §H.5 pp 99-100 places compartments and
     /// sub-compartments under one rule: both are alphanumeric values
