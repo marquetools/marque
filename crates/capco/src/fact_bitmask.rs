@@ -17,14 +17,16 @@
 //! - [`fact_bit`] — the 51-atom CAPCO inventory (bit indices 0..51,
 //!   the remaining 77 bits split between CAPCO future-growth at
 //!   51..96 and foreign-grammar future use at 96..128).
-//! - Pre-#704: three aggregate masks (`MASK_FDR_DOMINATORS`,
-//!   `MASK_FDR_OR_RELIDO_INCOMPAT`, `MASK_RELIDO_US_CLASS_SUPPRESSORS`)
-//!   backed `CLOSURE_TABLE`'s `suppressor_mask` field. Issue #704
-//!   retired the entire suppressor architecture (it violated the
-//!   closure operator's algebraic monotonicity property); the §H.8
-//!   p145 / §B.3.a p19 FD&R supersession semantics moved to
-//!   `CapcoScheme::apply_supersession_overlays`. The aggregate
-//!   masks retired with the suppressor field.
+//! - [`MASK_FDR_DOMINATORS`] / [`MASK_FDR_OR_RELIDO_INCOMPAT`] /
+//!   [`MASK_RELIDO_US_CLASS_SUPPRESSORS`] — precomputed aggregate
+//!   "FD&R already present" gates consumed by the
+//!   [`crate::scheme::default_fill`] module's per-row predicates.
+//!   Issue #704 retired these from the `CLOSURE_TABLE` suppressor
+//!   field (the suppressor architecture violated the closure
+//!   operator's algebraic monotonicity) and relocated them to the
+//!   post-close default-fill stage, which encodes the §B.3
+//!   paragraph b p19 / §B.3.d p20 / §H.7 p123 / §H.8 p154
+//!   "default if absent" rules that the suppressors implemented.
 //! - [`derive_bits`] — forward projection
 //!   `&CanonicalAttrs → FactBitmask` over the closed-vocab fields.
 //! - [`apply_closed_bits_to`] — inverse projection that writes the
@@ -201,17 +203,80 @@ const _: () = {
     );
 };
 
-// `MASK_FDR_DOMINATORS`, `MASK_FDR_OR_RELIDO_INCOMPAT`, and
-// `MASK_RELIDO_US_CLASS_SUPPRESSORS` were retired in issue #704
-// along with the rest of the `CLOSURE_TABLE` suppressor architecture.
-// The §H.8 p145 NOFORN-dominates and §B.3.a p19 FD&R supersession
-// semantics that the masks gated moved to
-// `CapcoScheme::apply_supersession_overlays` and the per-axis
-// `DissemSet::with_fdr_dominance_stripped` /
-// `RelToBlock::with_nato_implicit_stripped` overlays. The canonical
-// FD&R-membership source remains the `FDR_DOMINATORS` `TokenRef`
-// slice in `crates/capco/src/scheme/closure.rs`, which is consumed
-// by `Vocabulary::is_fdr_dissem` and the supersession overlays.
+/// "FD&R already present on the marking" gate for the
+/// [`crate::scheme::default_fill`] Row-0 (`capco/noforn-if-caveated`)
+/// and Row-7 (`capco/rel-to-usa-nato-if-nato-classification`)
+/// default-fill predicates. Bitmask form of the §B.3.a p19 FD&R
+/// dominator enumeration (NOFORN / REL TO / RELIDO / DISPLAY ONLY)
+/// + §H.8 p157 (EYES legacy).
+///
+/// The default-fill predicate is `(input ∩ TRIGGER != ∅) ∧
+/// (input ∩ MASK_FDR_DOMINATORS == ∅)` — "fire only when the
+/// input has the trigger AND no FD&R is present." The §-evidence
+/// for the "no FD&R present" gate is §B.3 paragraph b p19's
+/// "NOT MARKED PREVIOUSLY" condition combined with the §B.3
+/// introductory "carry forward the FD&R markings from the source
+/// document(s)" rule.
+///
+/// Authority: §B.3.a p19 (FD&R-set enumeration); §B.3 paragraph b
+/// p19 ("NOT MARKED PREVIOUSLY" gate); §B.3 Table 2 p21
+/// (caveated-default consequents); §H.8 p145 (NOFORN supersession);
+/// §H.8 p155-157 (FD&R chain); §H.8 p157 (EYES legacy designation).
+pub(crate) const MASK_FDR_DOMINATORS: u128 = (1u128 << fact_bit::NOFORN)
+    | (1u128 << fact_bit::RELIDO)
+    | (1u128 << fact_bit::DISPLAY_ONLY)
+    | (1u128 << fact_bit::REL_TO_PRESENT)
+    | (1u128 << fact_bit::EYES);
+
+/// `MASK_FDR_DOMINATORS` ∪ RELIDO-incompatible (FGI / JOINT / NATO
+/// classification + per-compartment SCI sentinels with NOFORN/ORCON
+/// per-marking implications).
+///
+/// Used as the `MASK_FDR_DOMINATORS`-equivalent gate for the
+/// [`crate::scheme::default_fill`] Row-8
+/// (`capco/relido-if-sci-and-not-incompatible`) default-fill
+/// predicate. The SCI sentinels appear because their per-marking
+/// unconditional implications (§H.4 marking templates) make RELIDO
+/// inapplicable by definition; FGI / JOINT / NATO classification
+/// markings carry foreign equity which forecloses the
+/// IDO-deferred-release semantic that RELIDO encodes.
+///
+/// Authority: §H.7 p123 (FGI foreign-equity bar); §H.3 p56 (JOINT
+/// co-ownership grammar); §G.1 Table 4 p38 + §H.7 p127 (NATO
+/// classification); §H.4 marking templates for the six SCI
+/// sentinels (pp64 / 68 / 80 / 87 / 91 / 95); §H.8 p154 (RELIDO
+/// grammar — IC-content-only scope).
+pub(crate) const MASK_FDR_OR_RELIDO_INCOMPAT: u128 = MASK_FDR_DOMINATORS
+    | (1u128 << fact_bit::FGI_PRESENT)
+    | (1u128 << fact_bit::JOINT_PRESENT)
+    | (1u128 << fact_bit::NATO_CLASS)
+    | (1u128 << fact_bit::SCI_SI_G)
+    | (1u128 << fact_bit::SCI_HCS_O)
+    | (1u128 << fact_bit::SCI_HCS_P_SUB)
+    | (1u128 << fact_bit::SCI_TK_BLFH)
+    | (1u128 << fact_bit::SCI_TK_IDIT)
+    | (1u128 << fact_bit::SCI_TK_KAND);
+
+/// `MASK_FDR_DOMINATORS` ∪ six per-compartment SCI sentinels.
+/// Used as the gate for the [`crate::scheme::default_fill`] Row-9
+/// (`capco/relido-if-us-collateral-class`) default-fill predicate.
+///
+/// Drops the FGI / JOINT / NATO inclusion vs
+/// [`MASK_FDR_OR_RELIDO_INCOMPAT`] because Row 9 already gates on
+/// US-collateral classification (`US_COLLATERAL_CLASSIFIED` is set
+/// only on `MarkingClassification::Us(...)`); an FGI / JOINT / NATO
+/// portion is not US-collateral by definition so the foreign-equity
+/// suppressor would be redundant.
+///
+/// Authority: §B.3 Table 2 p21 (uncaveated US-classified →
+/// RELIDO); §H.8 p154 (RELIDO grammar).
+pub(crate) const MASK_RELIDO_US_CLASS_SUPPRESSORS: u128 = MASK_FDR_DOMINATORS
+    | (1u128 << fact_bit::SCI_SI_G)
+    | (1u128 << fact_bit::SCI_HCS_O)
+    | (1u128 << fact_bit::SCI_HCS_P_SUB)
+    | (1u128 << fact_bit::SCI_TK_BLFH)
+    | (1u128 << fact_bit::SCI_TK_IDIT)
+    | (1u128 << fact_bit::SCI_TK_KAND);
 
 /// Closure-cone outputs that [`apply_closed_bits_to`] is willing to
 /// write back to [`CanonicalAttrs`].
@@ -965,19 +1030,42 @@ mod tests {
     }
 
     #[test]
-    fn apply_eligible_mask_within_inventory() {
-        // The three pre-#704 aggregate suppressor masks
-        // (MASK_FDR_DOMINATORS / MASK_FDR_OR_RELIDO_INCOMPAT /
-        // MASK_RELIDO_US_CLASS_SUPPRESSORS) retired in issue #704
-        // along with the rest of the `CLOSURE_TABLE` suppressor
-        // architecture. The remaining APPLY_ELIGIBLE_MASK still gates
-        // the apply_closed_bits_to writeback set and must stay inside
-        // the active atom inventory.
+    fn mask_constants_are_disjoint_subsets_of_inventory() {
         let inventory = (1u128 << CAPCO_ATOM_COUNT) - 1;
+        assert_eq!(
+            MASK_FDR_DOMINATORS & !inventory,
+            0,
+            "FDR_DOMINATORS contains a bit outside the atom inventory",
+        );
+        assert_eq!(
+            MASK_FDR_OR_RELIDO_INCOMPAT & !inventory,
+            0,
+            "FDR_OR_RELIDO_INCOMPAT contains a bit outside the atom inventory",
+        );
+        assert_eq!(
+            MASK_RELIDO_US_CLASS_SUPPRESSORS & !inventory,
+            0,
+            "RELIDO_US_CLASS_SUPPRESSORS contains a bit outside the atom inventory",
+        );
         assert_eq!(
             APPLY_ELIGIBLE_MASK & !inventory,
             0,
             "APPLY_ELIGIBLE_MASK contains a bit outside the atom inventory",
+        );
+    }
+
+    #[test]
+    fn mask_aggregates_satisfy_documented_supersets() {
+        // FDR_OR_RELIDO_INCOMPAT must be a superset of FDR_DOMINATORS.
+        assert_eq!(
+            MASK_FDR_DOMINATORS & MASK_FDR_OR_RELIDO_INCOMPAT,
+            MASK_FDR_DOMINATORS,
+        );
+        // RELIDO_US_CLASS_SUPPRESSORS must be a superset of
+        // FDR_DOMINATORS.
+        assert_eq!(
+            MASK_FDR_DOMINATORS & MASK_RELIDO_US_CLASS_SUPPRESSORS,
+            MASK_FDR_DOMINATORS,
         );
     }
 
