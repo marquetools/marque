@@ -142,7 +142,7 @@ pub struct RuleContext<'a> {
     /// **Phase::PageFinalization invariant (issue #461).** For
     /// `Phase::PageFinalization` dispatches the engine force-initializes
     /// this to `Some` before invoking the rule; see
-    /// [`Phase::PageFinalization`]. PageFinalization rules MAY rely on
+    /// [`crate::Phase::PageFinalization`]. PageFinalization rules MAY rely on
     /// `Some(_)` for both this field and [`Self::page_portions`].
     ///
     /// Banner-validation rules read fields directly:
@@ -194,7 +194,7 @@ pub struct RuleContext<'a> {
     /// [`MarkingScheme::render_canonical`]) re-render the whole
     /// banner from the page-level lattice projection
     /// ([`Self::page_marking`]). This is necessary because
-    /// [`Rule::check`] does NOT receive the source byte buffer — the
+    /// [`crate::Rule::check`] does NOT receive the source byte buffer — the
     /// rule cannot read `&[u8]` slices itself from the span. The
     /// single-span shape matches the existing [`crate::FixProposal`]
     /// contract (one `span`, one `replacement`) and avoids storing

@@ -90,7 +90,7 @@ pub use marque_scheme::Severity;
 // Phase
 // ---------------------------------------------------------------------------
 
-/// Dispatch phase declared by each [`Rule`] at registration. Drives the
+/// Dispatch phase declared by each [`crate::Rule`] at registration. Drives the
 /// engine's two-pass fix pipeline (PR 7 of the engine refactor).
 ///
 /// FR-021 (`specs/006-engine-rule-refactor/spec.md`) makes the phase a
@@ -163,8 +163,8 @@ pub enum Phase {
     /// when used. Pass-2 sees post-pass-1 attrs and, in PR 7c, the
     /// pre-pass-1 attrs cache for FR-023 disambiguation.
     ///
-    /// This is the default returned by [`Rule::phase`] for rules that
-    /// do not override the method (see [`Rule::phase`]'s documentation
+    /// This is the default returned by [`crate::Rule::phase`] for rules that
+    /// do not override the method (see [`crate::Rule::phase`]'s documentation
     /// for the design rationale per PM decision D-7.2 in
     /// `docs/refactor-006/pr-7-pm-decisions.md`).
     WholeMarking,

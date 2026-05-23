@@ -29,7 +29,7 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// `span` field points at a sub-region (e.g., a single token).
     /// Rules whose [`Self::fix`] payload is a `FixIntent` (i.e.,
     /// every fix-emitting rule post Commit 10) set this from
-    /// [`RuleContext::candidate_span`] so the engine's
+    /// [`crate::RuleContext::candidate_span`] so the engine's
     /// intent-synthesis path knows which scope-bytes to re-render
     /// via [`marque_scheme::MarkingScheme::apply_intent`] +
     /// [`marque_scheme::MarkingScheme::render_canonical`].
@@ -55,8 +55,8 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// PM-C-4. [`Citation::Display`] emits the canonical citation-lint
     /// regex form (`§<L>[.<sub>] [Table <N>] p<page>`) for CAPCO
     /// citations and a bare `[<source>]` tag for non-CAPCO sentinels
-    /// ([`AuthoritativeSource::Config`] /
-    /// [`AuthoritativeSource::EngineInternal`]).
+    /// ([`marque_scheme::AuthoritativeSource::Config`] /
+    /// [`marque_scheme::AuthoritativeSource::EngineInternal`]).
     pub citation: Citation,
     /// Structural fix intent, if the rule can generate one. `None`
     /// for diagnostics that consciously decline to propose a fix
@@ -234,7 +234,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// [`FixIntent<S>`] anchored at a marking-scope span.
     ///
     /// Identical to [`Self::with_fix`] but also populates
-    /// [`Self::candidate_span`] from [`RuleContext::candidate_span`].
+    /// [`Self::candidate_span`] from [`crate::RuleContext::candidate_span`].
     /// Use when:
     ///
     /// - The diagnostic's `span` points at a *sub-region* of the
@@ -273,8 +273,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// the CAPCO `CorrectionsMapRule`. The replacement bytes are
     /// carried in [`Self::text_correction`]; the engine's
     /// `apply_text_corrections` reads this field and promotes it
-    /// to an [`AppliedTextCorrection`] via
-    /// [`AppliedTextCorrection::__engine_promote_text_correction`].
+    /// to an [`crate::AppliedTextCorrection`] via
+    /// [`crate::AppliedTextCorrection::__engine_promote_text_correction`].
     // 9 args is the irreducible carrying capacity of a text-correction
     // diagnostic: id/severity/span/message/citation for the diagnostic
     // surface + replacement/source/confidence/migration_ref for the

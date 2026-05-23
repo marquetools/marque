@@ -17,7 +17,7 @@ pub enum FixSource {
     /// candidate's posterior (Phase D, see
     /// `docs/plans/2026-04-16-probabilistic-recognition.md`). Paired
     /// with a non-trivial `features` list in
-    /// [`FixIntent::confidence`] so auditors can reconstruct the
+    /// [`crate::FixIntent::confidence`] so auditors can reconstruct the
     /// scoring path.
     DecoderPosterior,
     /// Decoder produced this fix via a position-aware short-token
@@ -32,9 +32,9 @@ pub enum FixSource {
     /// adjacent to a known classification" rather than "this token
     /// is edit-distance ≤ 2 from a known canonical token in a
     /// closed vocabulary." The engine therefore (a) emits the
-    /// diagnostic at [`Severity::Warn`] (the fix-and-warn pattern —
+    /// diagnostic at [`crate::Severity::Warn`] (the fix-and-warn pattern —
     /// always visible, non-zero exit code in `--check`), and
-    /// (b) caps [`Confidence::rule`] at `0.80` so `combined ≤ 0.80`
+    /// (b) caps [`crate::Confidence::rule`] at `0.80` so `combined ≤ 0.80`
     /// stays below the default `confidence_threshold` of `0.95`.
     /// The fix only auto-applies when the user has explicitly
     /// lowered the threshold to opt into the heuristic's bar.
@@ -77,7 +77,7 @@ pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
 // for the active type definition + engine-promotion constructor.
 // ---------------------------------------------------------------------------
 
-/// Engine-only proof-of-construction token for [`AppliedFix::__engine_promote`].
+/// Engine-only proof-of-construction token for [`crate::AppliedFix::__engine_promote`].
 ///
 /// `AppliedFix::__engine_promote` accepts an `EnginePromotionToken`; the
 /// only way to obtain one is [`EnginePromotionToken::__engine_construct`].
@@ -91,7 +91,7 @@ pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
 ///
 /// This is the type-level seal for Constitution V Principle V's
 /// engine-only contract on audit-record promotion. See
-/// [`AppliedFix::__engine_promote`] for the binding contract and the
+/// [`crate::AppliedFix::__engine_promote`] for the binding contract and the
 /// test-fixture carve-out.
 ///
 /// # Compile-fail proof of the seal

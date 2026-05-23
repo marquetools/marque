@@ -114,7 +114,7 @@ impl std::fmt::Display for RuleId {
 /// # Generic over the marking scheme
 ///
 /// `Rule<S>` is generic post-PR 3c.B so `check`'s return type can
-/// carry scheme-typed [`FixIntent<S>`] payloads through
+/// carry scheme-typed [`crate::FixIntent<S>`] payloads through
 /// [`Diagnostic<S>`]. Every consumer crate instantiates
 /// `Rule<CapcoScheme>`. The `Box<dyn Rule<S>>` shape stays sound;
 /// `Box<dyn Rule<CapcoScheme>>` is the production form used by
