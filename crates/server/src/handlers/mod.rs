@@ -32,6 +32,9 @@ pub(super) const TRUNCATED_HEADER: &str = "marque-truncated";
 /// `?corpus-override=file:...`, and percent-encoded variants like
 /// `?corpus%5Foverride=1` (where `%5F` → `_`) are all caught. Values
 /// are never examined.
+///
+/// Kept `pub(crate)` so crate-root unit tests can exercise this helper
+/// directly without duplicating the parser logic.
 pub(crate) fn query_carries_corpus_override(query: &str) -> bool {
     form_urlencoded::parse(query.as_bytes()).any(|(name, _value)| {
         name.eq_ignore_ascii_case("corpus_override") || name.eq_ignore_ascii_case("corpus-override")
@@ -91,6 +94,10 @@ pub(super) fn reject_if_corpus_override(
 /// Reject a deserialized request if its body carries a T3
 /// corpus-override claim. Pairs with [`reject_if_corpus_override`]
 /// (which handles header + query before deserialization).
+///
+/// Runs after `serde_json::from_slice` so request DTOs can record
+/// whether the `corpus_override` JSON key was present without
+/// deserializing or examining the payload.
 pub(super) fn reject_if_body_carries_corpus_override(
     endpoint: &str,
     has_corpus_override: bool,
@@ -113,6 +120,15 @@ pub(super) fn reject_if_body_carries_corpus_override(
 /// header is absent — or present but empty — this is the per-endpoint
 /// default; otherwise it's the caller-supplied value (validated and
 /// in range).
+///
+/// Validation rules per spec 005 §10.2:
+///
+/// - Header absent → `Ok(default)` using the per-endpoint default.
+/// - Header present but empty (or whitespace-only) → same as absent.
+/// - Header present and parseable as `u64` milliseconds, in the
+///   range `[MIN_DEADLINE_MS, deadline_cap]` → `Ok(parsed_duration)`.
+/// - Anything else (non-UTF-8, non-numeric, negative, overflow,
+///   below floor, above cap) → `Err(BAD_REQUEST)`.
 pub(super) fn resolve_request_deadline(
     headers: &HeaderMap,
     deadline_cap: Duration,
@@ -149,6 +165,10 @@ pub(super) fn resolve_request_deadline(
 
 /// Stamp `Instant::now() + duration`, mapping platform-clock overflow
 /// to `500 Internal Server Error`.
+///
+/// Client values are range-checked against the server cap before this
+/// point; overflow here indicates server-side misconfiguration rather
+/// than malformed client input, so this maps to 500 rather than 400.
 pub(super) fn stamp_request_deadline(duration: Duration) -> Result<Instant, StatusCode> {
     Instant::now()
         .checked_add(duration)
