@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Acceptance test for the type-level seal on [`AppliedFix::__engine_promote`]
-//! (gap register #5, Constitution V Principle V).
+//! (Constitution V Principle V).
 //!
 //! `EnginePromotionToken` has a private `_seal: ()` field, so external
 //! crates cannot brace-construct one. The single bypass surface is
@@ -22,11 +22,8 @@
 //! library, so this file sees only the public API surface — the same
 //! visibility a downstream consumer would see.
 //!
-//! PR 3c.2.D / D6 migration: this test exercises the v2 (`marque-1.0`)
-//! [`marque_rules::audit::AppliedFix`] type via its v2
-//! `__engine_promote` constructor. The v1 path at
-//! [`marque_rules::AppliedFix::__engine_promote`] (crate root) retires
-//! at D-A5 / D7 atomically with the schema cutover.
+//! This test exercises the [`marque_rules::audit::AppliedFix`] type
+//! via its `__engine_promote` constructor.
 
 use marque_rules::audit::AppliedFix as AuditAppliedFix;
 use marque_rules::{
@@ -47,9 +44,9 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 // Local stub scheme so the test compiles without depending on
-// `marque-capco`. `AppliedFix<S>` is generic over the marking scheme
-// post-PR 3c.B; the seal test only exercises the legacy promotion
-// path so the scheme choice is incidental.
+// `marque-capco`. `AppliedFix<S>` is generic over the marking scheme;
+// the seal test exercises only the promotion path, so the scheme
+// choice is incidental.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct StubMarking;
 
@@ -130,7 +127,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     // synthetic `AppliedFix` exists only inside `tests/` and is
     // never commingled with engine output. The point of the test is
     // to prove the documented engine-only door is usable across the
-    // crate boundary. Exercises the v2 (`marque-1.0`) constructor at
+    // crate boundary, via
     // [`marque_rules::audit::AppliedFix::__engine_promote`].
     let intent: FixIntent<StubScheme> = FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
@@ -140,21 +137,21 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         feature_ids: Default::default(),
         message: Message::new(
             // Engine-promotion-seal fixture (synthetic test rule);
-            // `UnrecognizedToken` is the generic closed-set
-            // template used by the engine's `stub_message()` fixture
-            // pattern. The point of this test is the seal mechanism,
-            // not the template — but the choice aligns with the
-            // audit-record contract (issue #709).
+            // `UnrecognizedToken` is the generic closed-set template
+            // used by the engine's `stub_message()` fixture pattern.
+            // The point of this test is the seal mechanism, not the
+            // template (the choice aligns with the audit-record
+            // contract — issue #709).
             MessageTemplate::UnrecognizedToken,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,
         migration_ref: None,
     };
-    // v2 needs a `Canonical<StubScheme>`. The public `from_cve`
-    // constructor takes a `TokenId` + `Scope` + `Box<str>`; no scheme-
-    // specific token surface is required, so the seal test passes
-    // through here cleanly without depending on `marque-capco`.
+    // The promotion path needs a `Canonical<StubScheme>`. The public
+    // `from_cve` constructor takes a `TokenId` + `Scope` + `Box<str>`;
+    // no scheme-specific token surface is required, so the seal test
+    // passes through here cleanly without depending on `marque-capco`.
     let canonical: Canonical<StubScheme> =
         Canonical::from_cve(TokenId(0), Scope::Portion, Box::from("(S)"));
     let original_bytes: &[u8] = b"(S)";
@@ -162,11 +159,9 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V
     let applied: AuditAppliedFix<StubScheme> = AuditAppliedFix::__engine_promote(
-        // T044: legacy `E001` was retired (PR 3c.B Commit 6); this is a
         // Constitution V Principle V test-fixture carve-out exercising
         // the seal mechanism — the rule identity is incidental, so use
-        // the reserved `test` scheme per the
-        // `docs/refactor-006/legacy-rule-id-map.md` §10 convention.
+        // the reserved `test` scheme.
         RuleId::new("test", "synthetic.engine-promotion-seal-fixture"),
         Severity::Fix,
         Span::new(0, 4),
@@ -180,9 +175,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         token,
     );
     // The wire-string form via `Display` is the user-facing identifier:
-    // `"<scheme>:<predicate_id>"`. Pre-T044 this assertion read
-    // `applied.rule.as_str()`; post-T044 `.as_str()` is removed and the
-    // `Display` impl produces the canonical wire string.
+    // `"<scheme>:<predicate_id>"`.
     assert_eq!(
         applied.rule.to_string(),
         "test:synthetic.engine-promotion-seal-fixture"

@@ -4,12 +4,12 @@
 
 /// Rule severity level. Configurable per rule in `.marque.toml`.
 ///
-/// `Severity` lives in `marque-scheme` as of PR 3c.B Commit 7 prep
-/// (so [`marque_scheme::constraint::ConstraintViolation`] and other
+/// `Severity` lives in `marque-scheme` so
+/// [`marque_scheme::constraint::ConstraintViolation`] and other
 /// scheme-layer types can carry per-row severity without violating
-/// Constitution VII's leaf-only rule for the scheme crate).
-/// `marque_rules::Severity` is a re-export so existing import sites
-/// continue to work unchanged.
+/// Constitution VII's leaf-only rule for the scheme crate.
+/// `marque_rules::Severity` is a re-export so import sites use either
+/// path interchangeably.
 ///
 /// # Ordering
 ///
@@ -91,10 +91,10 @@ pub use marque_scheme::Severity;
 // ---------------------------------------------------------------------------
 
 /// Dispatch phase declared by each [`crate::Rule`] at registration. Drives the
-/// engine's two-pass fix pipeline (PR 7 of the engine refactor).
+/// engine's two-pass fix pipeline.
 ///
-/// FR-021 (`specs/006-engine-rule-refactor/spec.md`) makes the phase a
-/// rule-level promise about the span shape of every `Diagnostic` the
+/// The phase is a rule-level promise about the span shape of every
+/// `Diagnostic` the
 /// rule emits — the `Diagnostic::span` field, regardless of whether
 /// the rule's fix payload is a structural `FixIntent` or a
 /// `Diagnostic::text_correction` (e.g., C001 corrections-map, E006
@@ -105,10 +105,10 @@ pub use marque_scheme::Severity;
 ///
 /// The engine partitions the registered rule set by phase once at
 /// `Engine::new`; pass-1 dispatches `Phase::Localized` rules against
-/// the post-C001 buffer and applies their fixes, then re-parses;
-/// pass-2 dispatches `Phase::WholeMarking` rules against the post-pass-1
-/// attrs (with the pre-pass-1 attrs cached for FR-023 disambiguation;
-/// the cache plumbing lands in PR 7c).
+/// the post-corrections buffer and applies their fixes, then
+/// re-parses; pass-2 dispatches `Phase::WholeMarking` rules against the
+/// post-pass-1 attrs (with the pre-pass-1 attrs cached for
+/// two-pass-reshape disambiguation).
 ///
 /// No `Phase::Both` escape hatch. A defect class that genuinely needs
 /// detection in both phases registers two rule entries (one per phase)
@@ -118,16 +118,10 @@ pub use marque_scheme::Severity;
 /// per-marking pass and a page-level fixpoint pass registers two
 /// entries, not a Phase::Both wildcard.
 ///
-/// PR 7a (this commit) plumbs the type into `Rule` and stashes a
-/// partition on `Engine`; pass-split dispatch lands in 7b. Issue
-/// #461 (PR refactor-006-pr-pagefinalization) adds
-/// [`Phase::PageFinalization`] as a third dispatch bucket.
-///
 /// **`#[non_exhaustive]`** (issue #461): adding a future dispatch
 /// phase (e.g., document-finalization once cross-page rules land)
 /// should be a non-breaking change for downstream consumers. The
-/// project is pre-1.0 with no published external rule crates today
-/// (the engine refactor's API stability freeze begins at PR 10), so
+/// project is pre-1.0 with no published external rule crates today, so
 /// the cost of adding it now is zero and the long-term option value
 /// is high.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -146,13 +140,13 @@ pub enum Phase {
     /// re-parse between passes recomputes spans from scratch. The
     /// reason pass-1 fixes must stay inside one token is that crossing
     /// a token boundary (separators, structural delimiters) risks
-    /// producing an unparseable buffer — handled by the FR-024 R002
+    /// producing an unparseable buffer — handled by the reparse-failed
     /// path, but better avoided by construction.
     ///
-    /// First-fire span-shape enforcement lives in `Engine::fix_inner`
-    /// (PR 7b); a rule that misdeclares `Localized` and emits a wider
-    /// span is dropped from pass-1 with a `tracing::error!`, not
-    /// promoted to `AppliedFix`.
+    /// First-fire span-shape enforcement lives in `Engine::fix_inner`;
+    /// a rule that misdeclares `Localized` and emits a wider span is
+    /// dropped from pass-1 with a `tracing::error!`, not promoted to
+    /// `AppliedFix`.
     Localized,
     /// `Diagnostic::span` (and `Diagnostic::candidate_span`, when
     /// populated) covers a portion, banner, or page scope. Examples:
@@ -160,13 +154,12 @@ pub enum Phase {
     /// whose `FixIntent` carries `ReplacementIntent::FactAdd` /
     /// `FactRemove` / `Recanonicalize`. `Diagnostic::text_correction`
     /// is rare in this phase but follows the same span-shape contract
-    /// when used. Pass-2 sees post-pass-1 attrs and, in PR 7c, the
-    /// pre-pass-1 attrs cache for FR-023 disambiguation.
+    /// when used. Pass-2 sees post-pass-1 attrs plus the pre-pass-1
+    /// attrs cache for two-pass-reshape disambiguation.
     ///
     /// This is the default returned by [`crate::Rule::phase`] for rules that
     /// do not override the method (see [`crate::Rule::phase`]'s documentation
-    /// for the design rationale per PM decision D-7.2 in
-    /// `docs/refactor-006/pr-7-pm-decisions.md`).
+    /// for the design rationale).
     WholeMarking,
     /// Dispatched exactly once per page on the **closed** page-level
     /// fixpoint — at every scanner-emitted page-break boundary (BEFORE
@@ -221,9 +214,9 @@ pub enum Phase {
     /// — and stays accurate: PageFinalization rules ride pass-2 at
     /// fix-time if they ever produce fixes.
     ///
-    /// Issue #461 (PR refactor-006-pr-pagefinalization) introduces
-    /// this phase. The §9.1 "no Phase::Both escape hatch" rationale
-    /// (above) extends here: a rule needing both a per-marking pass
-    /// and a page-level pass registers two entries.
+    /// Issue #461 introduces this phase. The §9.1 "no Phase::Both
+    /// escape hatch" rationale (above) extends here: a rule needing
+    /// both a per-marking pass and a page-level pass registers two
+    /// entries.
     PageFinalization,
 }
