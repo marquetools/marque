@@ -32,6 +32,8 @@ pub(crate) mod banner;
 pub(crate) mod dissem;
 pub(crate) mod dissem_closure;
 pub(crate) mod eyes;
+pub(crate) mod fgi;
+pub(crate) mod fgi_concealment;
 pub(crate) mod form_mismatch;
 pub(crate) mod helpers;
 pub(crate) mod joint;
