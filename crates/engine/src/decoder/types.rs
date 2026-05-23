@@ -1,8 +1,11 @@
 //! Decoder-internal types: scored candidates, feature entries, canonical attempts.
 //!
 //! These are pure data carriers consumed by the scoring and recognizer pipelines.
-//! Field visibility stays crate-private (`pub(super)`) so the surrounding decoder
-//! sub-modules can construct and read them; nothing here leaks past `decoder/mod.rs`.
+//! Field visibility is `pub(super)` (parent-module-visible: the surrounding
+//! `decoder/` module) so sibling sub-modules can construct and read them. The
+//! items are not re-exported from `decoder/mod.rs` and never leak past it.
+//! `pub(super)` is narrower than `pub(crate)` — engine code outside `decoder/`
+//! cannot reach these types.
 
 use marque_rules::confidence::FeatureId;
 use marque_scheme::ambiguity::EvidenceFeature;
