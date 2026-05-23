@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! Stray-character `/X/` recovery.
 //!
 //! Collapse `(S/X/NF)` / `(TS / X / NF)` style inputs where a stray

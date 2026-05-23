@@ -196,7 +196,8 @@ scorer penalties.
 | `recovery/delimiter.rs` | Missing-`//` delimiter insertion |
 | `recovery/sar.rs` | SAR indicator-keyword structural repair (§H.5 p100) |
 | `recovery/stray.rs` | Stray-character `/X/` recovery |
-| `recovery/rel_to.rs` | REL TO recovery (structural + trigraph fuzzy + USA injection) |
+| `recovery/rel_to.rs` | REL TO structural repair (header + entry normalization, §H.8 grammar) |
+| `recovery/rel_to_trigraph.rs` | REL TO trigraph fuzzy expansion + USA injection (corpus-weighted priors) |
 | `recovery/sci.rs` | SCI delimiter recovery (`HCSP` → `HCS-P` shape) |
 | `recovery/nato.rs` | NATO longhand → portion fold (`NATO SECRET` → `NS`) per §G.1 Table 4 |
 | `recovery/reorder.rs` | Canonical reorder + non-US prefix injection + `meets_classification_floor` |
@@ -227,3 +228,49 @@ identifiers):
 Three small files touched (the new file, recovery/mod.rs,
 candidates.rs). The existing recovery files don't move; the existing
 tests don't move.
+
+### REL TO recovery — historical archaeology
+
+This section preserves decision-archaeology for the REL TO recovery passes
+relocated from `recovery/rel_to.rs` inline comments in issue #718 (split at the
+structural / trigraph seam). Citations are intact per Constitution VIII.
+
+**Deferred #186 note** (formerly `rel_to.rs` lines 30-34):
+
+The riskier per-trigraph fuzzy-correction cluster (e.g., `USB → USA`, `AUT →
+AUS`) was deferred from the original structural-repair implementation because it
+requires corpus-weighted priors + block-level CAPCO §H.8 invariants to
+disambiguate safely. Issue #186 is the tracking issue. The fuzzy / prior-weighted
+trigraph correction cluster now lives in the sibling `rel_to_trigraph.rs`, which
+was split from `rel_to.rs` at the line-443 seam in issue #718.
+
+**Trigraph dedup rationale** (formerly `rel_to.rs` lines 507-525):
+
+Drop candidates that would duplicate a trigraph already present elsewhere in this
+REL TO block. CAPCO-2016 §H.8 does not state "no duplicates" as an explicit
+textual prohibition — the REL TO grammar (§A.6 / §H.8 p131-150) describes a list
+of country codes ordered USA-first then ascending alphabetic, which structurally
+implies a set of distinct codes but does not forbid repetition in so many words.
+The reason we drop duplicates here is mechanical, not citational: the bag-of-tokens
+scorer happens to *reward* duplicates (each instance adds its log-prior again), so
+without this filter an ambiguous typo adjacent to a popular trigraph could collapse
+to "REL TO USA, USA, GBR" because USA's log-prior contribution is additive.
+Emitting a duplicate-creating candidate would therefore be structurally redundant
+and cause the scorer to erroneously favor it. The block's other entries are computed
+by re-walking `block.split(',')` and taking the trigraph form of any 3-char
+ASCII-uppercase entry that's in the CVE recognition set.
+
+**PR-A / PR-B partition rationale** (formerly `rel_to.rs` lines 622-643):
+
+`try_rel_to_usa_injection_candidates` complements `try_rel_to_fuzzy_trigraph_candidates`
+(both in `rel_to_trigraph.rs` as of issue #718) by handling 1- and 2-char first
+entries that fall below the fuzzy function's 3-char floor (`MIN_FUZZY_LEN = 3`).
+`phf`-style fuzzy matching is unreliable on inputs shorter than 3 chars — a 2-char
+input is edit-distance-1 from many distinct trigraphs and the mapper has no signal
+to break the tie. For REL TO specifically, the §H.8 p150–151 grammar gives a
+stronger signal: USA must always appear first. So when the first entry is 1- or
+2-chars ASCII-uppercase, the USA-injection path emits the substitution candidate
+and lets the corpus-weighted prior (issue #233) decide at score time. The partition
+is shape-based (1/2-char vs. 3-char floor), not vocabulary-based. The fixture at
+`tests/fixtures/mangled/typo/ad2bcfe3ac0b0765.json` (`REL TO SA, AUS, GBR` →
+`REL TO USA, AUS, GBR`) is the canonical motivating case.

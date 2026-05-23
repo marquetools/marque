@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
 //! NATO longhand → canonical portion fold.
 //!
 //! Map `NATO SECRET` / `NATO CONFIDENTIAL` / etc. banner-form longhand
