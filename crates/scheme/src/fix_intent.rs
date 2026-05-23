@@ -5,22 +5,15 @@
 //!
 //! These three types name *what* a structural fix is — adding a token,
 //! removing a token, or recanonicalizing a scope's rendering — without
-//! ever referring to source bytes. They were originally introduced in
-//! `marque-rules` (PR 3c.1, Commit 2) but moved to `marque-scheme` in
-//! the PR 3c.B engine-prereq because the new
-//! [`MarkingScheme::apply_intent`](crate::MarkingScheme::apply_intent)
+//! ever referring to source bytes. They live in `marque-scheme` because
+//! the [`MarkingScheme::apply_intent`](crate::MarkingScheme::apply_intent)
 //! trait method needs to reference them at the trait surface, and
 //! `marque-rules` already depends on `marque-scheme` — importing in
 //! the other direction would create a cycle.
 //!
-//! See `specs/006-engine-rule-refactor/architecture.md` "What fixes
-//! are" for the binding structural commitment. The three-variant
-//! vocabulary — `FactAdd` / `FactRemove` / `Recanonicalize` — is the
-//! full surface. The pre-Commit-2 directive-enum design (closed-CVE
-//! token, open-vocab `RenderDirective<S>`, byte-`Delete`) is retired
-//! per architecture.md "What was lost during PR 3c.1": rules emit
-//! fact-set deltas at a `Scope`, not `(span, replacement_bytes)`
-//! pairs.
+//! The three-variant vocabulary — `FactAdd` / `FactRemove` /
+//! `Recanonicalize` — is the full surface: rules emit fact-set deltas at
+//! a `Scope`, not `(span, replacement_bytes)` pairs.
 
 use core::fmt::Debug;
 use core::hash::Hash;
@@ -132,9 +125,8 @@ impl<S: MarkingScheme + ?Sized> Hash for FactRef<S> {
 ///   reordering, and banner roll-up form.
 ///
 /// No `Box<str>` payloads. No multi-span carriers. No `Delete` /
-/// `Render` byte-surgery variants. The directive-enum design was the
-/// wrong abstraction layer (per architecture.md "What was lost
-/// during PR 3c.1").
+/// `Render` byte-surgery variants — those were the wrong abstraction
+/// layer.
 ///
 /// `Debug` and `Clone` are written manually rather than derived for
 /// the same reason as on [`FactRef`] — to avoid over-constraining

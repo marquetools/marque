@@ -103,7 +103,7 @@ pub struct ParseContext {
     /// the current region (e.g., isolated single-region recognition,
     /// or the page has no strict-path portion seen yet).
     pub classification_floor: Option<u8>,
-    /// Reference date for temporal membership queries (Phase 3 plumbing).
+    /// Reference date for temporal membership queries.
     ///
     /// When set, rules that evaluate time-limited memberships (e.g.,
     /// tetragraph membership active as of a particular date) use this as the

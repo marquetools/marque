@@ -4,8 +4,8 @@
 
 //! Built-in lattice constructors.
 //!
-//! Phase B ships a small family of generic lattice types that cover the
-//! bulk of category shapes across CAPCO, CUI, and NATO. A scheme author
+//! A small family of generic lattice types that cover the bulk of
+//! category shapes across CAPCO, CUI, and NATO. A scheme author
 //! picks a constructor appropriate to their category rather than writing
 //! `impl JoinSemilattice` / `impl MeetSemilattice` by hand every time.
 //!

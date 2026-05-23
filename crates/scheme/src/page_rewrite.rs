@@ -17,8 +17,6 @@
 //! inside per-axis scheme methods — means tooling (constraint
 //! catalog, scheme-exploration UI, docs generator) can render the
 //! scheme's full aggregation semantics without executing scheme code.
-//!
-//! See §7a of the Phase B design doc.
 
 use crate::category::CategoryId;
 use crate::citation::Citation;
@@ -48,15 +46,15 @@ pub type RewriteId = &'static str;
 ///
 /// 1. **Topological ordering** — the engine sorts rewrites so a
 ///    rewrite that writes category X runs before any rewrite that
-///    reads X (Phase 3 / T031–T032). Cycles fail scheme construction
+///    reads X. Cycles fail scheme construction
 ///    (`EngineConstructionError::RewriteCycle`).
 /// 2. **Tooling** — scheme-exploration UIs and the declarative-
 ///    constraint catalog can render the dataflow graph without
 ///    executing scheme code.
 ///
 /// For declarative triggers and actions the fields can be derived
-/// from the variants themselves (Phase 3 / T029 adds const-fn
-/// derivation in [`PageRewrite::declarative`]). For `Custom` triggers
+/// from the variants themselves (see [`PageRewrite::declarative`]).
+/// For `Custom` triggers
 /// and actions the caller MUST supply them explicitly via
 /// [`PageRewrite::custom`] because the function-pointer bodies are
 /// opaque to the engine.
@@ -68,8 +66,7 @@ pub struct PageRewrite<S: MarkingScheme + ?Sized> {
     /// audit records. Convention: `"scheme/snake-case-description"`
     /// (e.g., `"capco/noforn-clears-rel-to"`).
     pub id: RewriteId,
-    /// The rewrite's typed authoritative-source citation. Migrated from
-    /// `&'static str` to [`Citation`] in PR 10.A.1 so the catalog
+    /// The rewrite's typed authoritative-source citation. The catalog
     /// declaration carries the same closed-template citation surface
     /// the engine emits on `Diagnostic.citation`.
     pub citation: Citation,
@@ -91,7 +88,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     ///
     /// The caller still passes `reads` / `writes` explicitly. The
     /// scheduler in `marque-engine` uses them to build the topological
-    /// ordering between rewrites (task T031). For a pure-declarative
+    /// ordering between rewrites. For a pure-declarative
     /// rewrite the slices should be derivable from the `trigger` and
     /// `action` categories; callers that want a single-category hint
     /// can construct the slices as `const`s at the call site. Deriving

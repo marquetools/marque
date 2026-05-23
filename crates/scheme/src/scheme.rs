@@ -184,9 +184,8 @@ pub trait MarkingScheme {
     /// that category is present in the marking."
     ///
     /// The default implementation returns `false` so a scheme that
-    /// does not declare dyadic constraints in Phase 3 is still
-    /// well-formed — only the variants the scheme actually uses need
-    /// coverage.
+    /// does not declare dyadic constraints is still well-formed — only
+    /// the variants the scheme actually uses need coverage.
     fn satisfies(&self, _marking: &Self::Marking, _token_ref: &TokenRef) -> bool {
         false
     }

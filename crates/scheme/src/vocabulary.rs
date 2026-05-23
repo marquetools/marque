@@ -63,7 +63,7 @@ pub struct Authority {
 /// Kind of owner/producer.
 ///
 /// The ODNI `CVEnumISMCATOwnerProducer` values split along these
-/// categories. Phase 5's build.rs derives this from the XML's union
+/// categories. `marque-ism/build.rs` derives this from the XML's union
 /// pattern (NATO prefix, trigraph enumeration, FGI marker).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnerProducerKind {

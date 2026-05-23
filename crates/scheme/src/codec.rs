@@ -5,11 +5,10 @@
 //! Grammar serialization — pinned trait surface.
 //!
 //! A [`Codec`] round-trips a scheme's `Marking` to bytes for transport
-//! (XML, JSON, CBOR, ...). Phase E publishes the trait; Phase G lands
-//! concrete XML and JSON impls without further trait evolution (FR-019,
-//! SC-010).
+//! (XML, JSON, CBOR, ...). This is a pinned trait surface; concrete XML
+//! and JSON impls land later without further trait evolution.
 //!
-//! No concrete impls ship in Phase E. The shape exists so downstream
+//! No concrete impls ship in-tree yet. The shape exists so downstream
 //! work can target a stable surface.
 //!
 //! # Ambiguity preservation
@@ -19,8 +18,7 @@
 //! same ambiguity that the parser surfaces: a serialized marking that
 //! contains a genuinely ambiguous production (the `(C)` case is the
 //! canonical example) decodes as `Parsed::Ambiguous` so the engine's
-//! resolver can run even on pre-serialized input. See
-//! foundational-plan §9.
+//! resolver can run even on pre-serialized input.
 
 use crate::ambiguity::Parsed;
 use crate::scheme::MarkingScheme;
@@ -34,7 +32,7 @@ use crate::scheme::MarkingScheme;
 /// `Arc<dyn Codec<S>>` or moved/shared into blocking workers, so the
 /// engine would fail to compile rather than degrading to serialized
 /// single-worker batch processing. Pinning the bound on the trait
-/// surface here means Phase G implementers see the constraint at the
+/// surface here means implementers see the constraint at the
 /// definition site instead of discovering it through a downstream
 /// `Send`/`Sync` compile error. Mirrors the bound on
 /// [`crate::recognizer::Recognizer`].
