@@ -300,4 +300,3 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
         evaluate: evaluate_fgi_marker_banner_rollup,
     },
 ];
-

@@ -24,7 +24,6 @@ use crate::rules::rel_to_suggest::{
 };
 use crate::scheme::CapcoScheme;
 
-
 // ---------------------------------------------------------------------------
 // Rule: capco:portion.fgi.ownership-trigraph-suggest (issue #545)
 // ---------------------------------------------------------------------------

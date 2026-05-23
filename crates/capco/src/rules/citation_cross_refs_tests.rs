@@ -36,7 +36,10 @@
 // / `NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS` / `NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS` for the source passages.
 
 use crate::rules::joint::JOINT_USA_FIRST_CROSS_REFS;
-use crate::rules::nodis_exdis::{NODIS_EXDIS_MUTEX_CROSS_REFS, NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS, NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS};
+use crate::rules::nodis_exdis::{
+    NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS, NODIS_EXDIS_MUTEX_CROSS_REFS,
+    NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS,
+};
 use crate::rules::text_handling::DECLASSIFY_MISPLACED_CROSS_REFS;
 use marque_scheme::{Citation, SectionLetter, capco};
 

@@ -196,8 +196,7 @@ pub(crate) struct NonIcInClassifiedBannerRule;
 /// Citations W003 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const NON_IC_IN_CLASSIFIED_BANNER_AUTHORITIES: &[Citation] =
-    &[capco(SectionLetter::H, 9, 169)];
+const NON_IC_IN_CLASSIFIED_BANNER_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 9, 169)];
 
 impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     fn id(&self) -> RuleId {

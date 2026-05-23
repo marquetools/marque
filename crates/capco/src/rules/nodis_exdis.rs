@@ -14,9 +14,7 @@ use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
     Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::{
-    Citation, FactRef, ReplacementIntent, Scope, SectionLetter, capco,
-};
+use marque_scheme::{Citation, FactRef, ReplacementIntent, Scope, SectionLetter, capco};
 
 use crate::scheme::CapcoScheme;
 
@@ -105,7 +103,8 @@ pub(crate) const NODIS_EXDIS_MUTEX_CROSS_REFS: &[Citation] = &[capco(SectionLett
 ///
 /// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
-pub(crate) const NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+pub(crate) const NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS: &[Citation] =
+    &[capco(SectionLetter::H, 9, 174)];
 
 /// E039 secondary CAPCO §-citations.
 ///
@@ -126,7 +125,8 @@ pub(crate) const NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS: &[Citation] = &[capco(S
 ///
 /// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
-pub(crate) const NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
+pub(crate) const NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS: &[Citation] =
+    &[capco(SectionLetter::H, 9, 174)];
 
 /// Citations E039 may emit on diagnostics. Combines the primary
 /// `Diagnostic.citation` value (§H.9 p172 — EXDIS) with the
@@ -242,7 +242,6 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
         )]
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Rule: E041 — Portion-level NODIS supersedes EXDIS

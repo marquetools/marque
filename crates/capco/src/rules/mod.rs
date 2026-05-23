@@ -39,8 +39,8 @@ pub(crate) mod rel_to_uncertainty;
 pub(crate) mod sci;
 pub(crate) mod text_handling;
 
-pub use registry::CapcoRuleSet;
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
+pub use registry::CapcoRuleSet;
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

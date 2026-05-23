@@ -9,9 +9,7 @@
 //! the surrounding REL TO countries (concealment-vs-acknowledgment
 //! conflict). Authority: CAPCO-2016 §H.7 p124.
 
-use marque_ism::{
-    CanonicalAttrs, CountryCode, MarkingClassification, MarkingType, TokenKind,
-};
+use marque_ism::{CanonicalAttrs, CountryCode, MarkingClassification, MarkingType, TokenKind};
 use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
     Rule, RuleContext, RuleId, Severity,

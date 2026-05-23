@@ -20,7 +20,9 @@ use marque_rules::{
 use marque_scheme::{Citation, SectionLetter, capco};
 
 use crate::rules::dissem::is_dissem_replacement;
-use crate::rules::helpers::{FixDiagnosticParams, is_fgi_invalid_ownership_token, make_fix_diagnostic};
+use crate::rules::helpers::{
+    FixDiagnosticParams, is_fgi_invalid_ownership_token, make_fix_diagnostic,
+};
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
