@@ -66,7 +66,7 @@ pub(crate) struct CapcoConfigFile {
 ///    `MARQUE_LOG`, `MARQUE_DEFAULT_TIMEZONE`, and the
 ///    `MARQUE_CLOSURE_RULES_*` parallel namespace for `[closure_rules]`
 ///    per-row severity overrides — see [`Config::closure_rules`] and the
-///    naming convention documented at [`env_var_to_closure_rule_name`]).
+///    naming convention documented at [`crate::env::env_var_to_closure_rule_name`]).
 ///
 /// Hard-fail validators run after merging all layers.
 pub fn load(start: &Path) -> Result<Config, ConfigError> {
