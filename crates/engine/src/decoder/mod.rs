@@ -74,76 +74,32 @@ pub use candidates::diagnostic_canonical_attempts;
 /// advisory, not a correctness invariant.
 pub(super) const K_MAX_CANDIDATES: usize = 8;
 
-/// Runner-up posterior-ratio threshold for emitting `Unambiguous`.
+/// Runner-up posterior-margin threshold gating `Unambiguous` vs.
+/// `Ambiguous` emission: top wins outright only when its posterior
+/// beats the runner-up by at least this log-odds delta.
 ///
-/// The decoder computes `log_margin = top_posterior - runner_up_posterior`
-/// in natural-log space. When `log_margin >= UNAMBIGUOUS_LOG_MARGIN`,
-/// the decoder collapses to `Unambiguous(top)`; below the threshold it
-/// returns `Ambiguous { candidates }` so the engine can surface a
-/// diagnostic rather than auto-apply a close call.
+/// `1.6` ≈ 5× odds ratio (`e^1.6 ≈ 4.95`) — large enough that the top
+/// candidate is meaningfully more likely than the runner-up, small
+/// enough that close calls surface as diagnostics rather than
+/// auto-fixes.
 ///
-/// `1.6` corresponds to a posterior odds ratio of `e^1.6 ≈ 4.95` —
-/// i.e., the top candidate is roughly five times as likely as the
-/// runner-up given the observed bytes. This is the **odds** ratio
-/// (`P(top)/P(runner_up)`), not a probability ratio.
+/// See `docs/refactor-006/decoder-architecture.md` § "Scoring approach"
+/// for the corpus-derived derivation.
 pub(super) const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 
-/// Minimum log-margin a candidate's marking-side posterior must hold
-/// over its prose null posterior to clear the per-candidate prose
-/// filter (issue #258, expanded after the documents-corpus marking
-/// stratum landed in PR1).
+/// Per-candidate prose-null gate: a `MarkingType::Portion` candidate's
+/// marking-side posterior must beat its observed prose-side posterior
+/// by at least this log-margin before the decoder dispatches it.
 ///
-/// Originally the filter required only `posterior >= null_posterior`
-/// (a zero-margin gate). That was sufficient when the marking
-/// stratum was just `tests/corpus/valid/` (~34 short fixtures); the
-/// per-token marking-vs-prose delta `log P(token|marking) − log
-/// P(token|prose)` for short tokens like `S` and `U` stayed near
-/// zero and the Federalist `(s)` mid-prose case suppressed cleanly.
+/// `2.5` ≈ 12× odds ratio (`e^2.5 ≈ 12.2×`) — sized to suppress short
+/// single-letter prose false-positives (Federalist `(s)`, `(c)`) while
+/// leaving canonical bare classification tokens and `//`-bearing
+/// shapes (banner/CAB and bare-classification whitelist) on the
+/// bypass path.
 ///
-/// After PR1 added `tests/corpus/documents/marked/` (40 multi-page
-/// synthetic-positive documents with hundreds of `(S//*)` portion
-/// marks) the marking-side prior for `S` strengthened from
-/// `log_prior ≈ -3.97` to `-3.28`, while the prose-side prior
-/// (Enron + Congressional Record + GAO + CIA CREST) sat at `-5.11` —
-/// a `+1.83` delta. The zero-margin filter let the marking
-/// hypothesis win for isolated `(s)` candidates and re-introduced
-/// the SC-003a regression on `Notwithstanding (s) the early`.
-///
-/// `2.5` (e^2.5 ≈ 12.2×) is the smallest margin that suppresses the
-/// Federalist `(s)` regression at its actual marking-vs-null delta of
-/// `+2.21` (`S`: marking `-3.28`, prose `-5.49`). `(c)` at `+1.08`
-/// and most other single-letter portions are rejected at the same
-/// threshold by construction. `(u)` at `+2.86` survives this margin
-/// — a lowercase `(u)` mid-prose canonicalizing to UNCLASSIFIED is
-/// the residual false-positive surface; it has not been observed in
-/// the test corpus, and the prose-glue heuristic
-/// (`preceded_by_whitespace = false`) suppresses the much more
-/// common `letter(s)` / `function(c)` cases independently.
-///
-/// **Where the gate applies.** The recognizer applies this margin to
-/// every `MarkingType::Portion` input EXCEPT:
-///
-/// - portions containing `//` (`has_double_slash`): the category
-///   separator is a marking-grammar signal English prose does not
-///   produce, so the marking interpretation is the only plausible
-///   reading.
-/// - portions whose inner content is exactly a canonical
-///   classification token (`is_bare_classification_shape`): the
-///   whitelist is `(U)`, `(C)`, `(S)`, `(TS)`, `(R)` plus the NATO
-///   abbreviations `(NU)`, `(NR)`, `(NC)`, `(NS)`, `(CTS)`. Pinning
-///   a positive margin on these would reject legitimate NATO/IC
-///   abbreviation recovery (NU at marking `-8.43`, prose `-8.34`,
-///   delta `-0.09`; NC at marking `-8.43`, prose `-5.89`, delta
-///   `-2.54`) where the marking stratum has zero examples but the
-///   strict grammar still recognizes the token.
-///
-/// Banner and CAB shapes bypass the filter entirely — their forms
-/// are long enough that English prose doesn't fabricate them by
-/// glyph coincidence. Multi-letter Portion candidates outside the
-/// classification whitelist (e.g., `(SI)`, `(HCS)`) ARE subject to
-/// the margin; the structural discrimination the strict parser
-/// provides is not by itself sufficient when prose can produce the
-/// same token by glyph coincidence.
+/// See `docs/refactor-006/decoder-architecture.md` §
+/// "Null-hypothesis dispatch" for the corpus-derived derivation,
+/// per-token measurements, and the full bypass / whitelist enumeration.
 pub(super) const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
 
 // ---------------------------------------------------------------------------
