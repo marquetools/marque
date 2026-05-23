@@ -264,7 +264,12 @@ fn fix_excludes_explicit_suggest_severity_from_auto_apply() {
                 confidence: marque_rules::Confidence::strict(1.0),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
-                    MessageTemplate::BannerRollupMismatch,
+                    // Test-fixture FixIntent.message must agree with the
+                    // Diagnostic-side template (`stub_message()` =
+                    // `UnrecognizedToken`) so the audit-record contract
+                    // `Diagnostic.message.template == AppliedFix.message.template`
+                    // (issue #709) holds.
+                    MessageTemplate::UnrecognizedToken,
                     MessageArgs::default(),
                 ),
                 source: FixSource::BuiltinRule,
