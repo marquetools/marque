@@ -61,10 +61,6 @@ pub mod provenance;
 pub(crate) mod render;
 pub mod rules;
 pub(crate) mod rules_declarative;
-// Issue #561 quarantine: `#[cfg(any())]`-gated dead test block
-// extracted from `rules.rs` pre-split. Disposition tracked in #722.
-#[cfg(any())]
-mod _disabled_tests;
 pub mod scheme;
 pub mod vocab;
 // `vocabulary` is implementation detail — it carries the
