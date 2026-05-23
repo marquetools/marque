@@ -35,8 +35,8 @@ use super::super::*;
 // — which INCLUDES RELIDO. The neighboring `is_fdr_dominator`
 // function deliberately EXCLUDES RELIDO; it answers a different
 // question (RELIDO-conflict dominators) and is the wrong helper here.
-// See the `scheme.rs:5018-5039` doc-comment on `FDR_DOMINATORS` for
-// the full distinction.
+// See the `FDR_DOMINATORS` doc-comment in
+// `crates/capco/src/scheme/closure.rs` for the full distinction.
 
 /// `true` when the dissem axis carries at least one IC dissem token
 /// that is NOT in the FD&R-membership set (everything except
@@ -47,7 +47,8 @@ use super::super::*;
 ///
 /// The `FDR_DOMINATORS` slice includes `AnyInCategory(CAT_REL_TO)` to
 /// cover bare REL marker membership, but `DissemControl::Rel` has no
-/// `TOK_*` sentinel (verified `scheme.rs:4885` inventory comment), so
+/// `TOK_*` sentinel (verified against the `TOK_*` sentinel block in
+/// `crates/capco/src/scheme/mod.rs`), so
 /// the per-variant token lookup naturally skips REL — `dissem_to_tok`
 /// returns `None` and the caller treats `None` as non-FD&R. That is
 /// CORRECT for the §H.8 p134 reading: bare `Rel` IS an FD&R marker by
@@ -158,14 +159,14 @@ pub(crate) fn dissem_to_tok(d: marque_ism::DissemControl) -> Option<TokenId> {
         // variant without extending this match arm + the catalog is a
         // silent-drift class — the debug_assert below catches it under
         // `cargo test` before it can mask a Pattern-B trigger that
-        // would otherwise have fired. See `scheme.rs:4885` for the full
-        // sentinel inventory.
+        // would otherwise have fired. See the `TOK_*` sentinel block in
+        // `crates/capco/src/scheme/mod.rs` for the full inventory.
         other => {
             debug_assert!(
                 matches!(other, DC::Rel | DC::ExemptFromIcd501Discovery),
                 "dissem_to_tok hit an unexpected None arm for {other:?} — \
                  a DissemControl variant was added without a paired TOK_* \
-                 sentinel. Extend `scheme.rs::dissem_to_tok` (and the broad-\
+                 sentinel. Extend this `dissem_to_tok` function (and the broad-\
                  set `is_fdr_dissem_token` helper if the new control is \
                  FD&R-class) so Pattern-B / Pattern-C predicates can see it.",
             );

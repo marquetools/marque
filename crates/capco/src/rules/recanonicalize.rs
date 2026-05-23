@@ -2,6 +2,20 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! Bare-form → canonical-compound portion-mark rewriters.
+//!
+//! [`BareCanonicalCompoundRule`] (wire ID
+//! `capco:marking.recanonicalize.bare-canonical-compound`) is a
+//! hand-written catalog walker, not a declarative `Constraint`: it
+//! matches legacy bare short-form *source text* the parser tagged
+//! `TokenKind::Unknown` against a static catalog and rewrites it to the
+//! canonical CAPCO-2016 compound form. Because it predicates on raw,
+//! unrecognized token text rather than parsed category facts, it cannot
+//! be expressed as a dyadic `Constraint` over the marking model — hence
+//! a walker. (It lived in `rules_declarative/` until that module was
+//! retired; it is a sibling of `nato::LegacyNatoCompoundRemarkRule`,
+//! which performs the same recanonicalization in the NATO axis.)
+
 use marque_ism::{CanonicalAttrs, TokenKind};
 use marque_rules::{
     Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
@@ -12,7 +26,7 @@ use marque_scheme::{Citation, SectionLetter, capco};
 use crate::scheme::CapcoScheme;
 
 // ===========================================================================
-// E067 — bare-canonical-compound rewriters (issue #407)
+// Bare-canonical-compound rewriters (issue #407)
 // ===========================================================================
 //
 // Three legacy bare-form portion-mark tokens that have canonical
@@ -49,7 +63,7 @@ use crate::scheme::CapcoScheme;
 // Per-row confidence `Confidence::strict(1.0)`: authoritative §-citation
 // for each row and the canonical compound form is unambiguous.
 
-/// One row of the E067 bare-canonical-compound catalog.
+/// One row of the bare-canonical-compound catalog.
 struct BareCanonicalCompoundRow {
     /// Source text the parser tags as `TokenKind::Unknown`.
     source: &'static str,
@@ -64,7 +78,7 @@ struct BareCanonicalCompoundRow {
     message: &'static str,
 }
 
-/// E067 catalog: bare legacy portion-mark short-forms → canonical
+/// Catalog: bare legacy portion-mark short-forms → canonical
 /// CAPCO-2016 compound portion marks. Iteration is exact-match per row;
 /// no prefix/suffix logic.
 const BARE_CANONICAL_COMPOUND_CATALOG: &[BareCanonicalCompoundRow] = &[
@@ -94,11 +108,11 @@ const BARE_CANONICAL_COMPOUND_CATALOG: &[BareCanonicalCompoundRow] = &[
     },
 ];
 
-/// Public lookup: does `text` match any E067 bare-canonical-compound
+/// Public lookup: does `text` match any bare-canonical-compound
 /// catalog source? Exposed at `pub(crate)` so E008
-/// (`UnknownTokenRule`) can suppress co-firing on tokens that E067
+/// (`UnknownTokenRule`) can suppress co-firing on tokens that this rule
 /// owns. Exact-string match only — keeps the walker's category gate
-/// (`TokenKind::Unknown`) the sole decision point for E067 firing.
+/// (`TokenKind::Unknown`) the sole decision point for firing.
 pub(crate) fn is_bare_canonical_compound_form(text: &str) -> bool {
     BARE_CANONICAL_COMPOUND_CATALOG
         .iter()
@@ -166,7 +180,7 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
         for token in attrs.token_spans.iter() {
-            // Category gate: only `Unknown` tokens are E067-candidates.
+            // Category gate: only `Unknown` tokens are candidates.
             // The bare CNWDI / NK / EU forms always land as Unknown
             // (verified 2026-05-16); EU in REL TO position is
             // `RelToTrigraph` and EU in FGI position is FGI-routed —

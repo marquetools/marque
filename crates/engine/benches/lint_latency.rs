@@ -642,15 +642,16 @@ fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
 //
 // E058 class-floor diagnostics carry `fix: None` today
 // (`CapcoScheme::fix_intent_by_name` returns `None` for those rows
-// — see scheme.rs), so a class-floor-only fixture would measure an
+// — see `crates/capco/src/scheme/adapter.rs`), so a class-floor-only
+// fixture would measure an
 // intent-light path even though it triggers lots of diagnostics.
 // E014 is the right driver for the intent-heavy worst case because
-// `e014_add_country_intent` (in `marque-capco`
-// `rules_declarative.rs`) produces a `FactAdd` `FixIntent` per
-// missing JOINT participant. The rule itself
-// (`DeclarativeJointRelToRule`) is registered in the live
-// `CapcoRuleSet` at `crates/capco/src/rules.rs`, so the fixture
-// exercises a production code path. `joint_disunity_collapse_to_FGI`
+// the JOINT REL-TO-coverage fix produces a `FactAdd` `FixIntent` per
+// missing JOINT participant — the open-vocab `CountryCode` FactAdd
+// applied by `crate::scheme::actions::intent::apply_fact_add` in
+// `marque-capco`. The constraint is evaluated for the live
+// `CapcoRuleSet` (`crates/capco/src/rules/registry.rs`), so the
+// fixture exercises a production code path. `joint_disunity_collapse_to_FGI`
 // and other JOINT-block tests in `crates/capco/tests/` are the
 // active CI guards covering this rule's predicate; the
 // `e014_fact_add_engine.rs` file is disabled

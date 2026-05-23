@@ -91,7 +91,7 @@ use crate::scheme::CapcoScheme;
 // the "declass belongs in CAB" invariant.
 //
 // Structural blocker (why Path A in PR 3c.B Commit 9):
-// `MarkingScheme::evaluate_custom` (crates/scheme/src/scheme.rs:124-130)
+// `MarkingScheme::evaluate_custom` (in crates/scheme/src/scheme.rs)
 // receives only `&Self::Marking`. It has no access to
 // `RuleContext.marking_type`, so a constraint-catalog predicate cannot
 // reproduce the existing `Banner | Portion` gate (lines below). Without
@@ -560,7 +560,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                 find_migration(text).is_none()
                     && !looks_like_deprecated_x_shorthand(text)
                     && !is_repeated_sar_owned_by_e030(text, has_first_sar)
-                    && !crate::rules_declarative::is_bare_canonical_compound_form(text)
+                    && !super::recanonicalize::is_bare_canonical_compound_form(text)
                     && !is_fgi_invalid_ownership_token(text)
             })
             .map(|t| {

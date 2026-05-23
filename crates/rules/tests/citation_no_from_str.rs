@@ -105,7 +105,7 @@ fn citation_is_copy_through_function_call() {
 #[test]
 fn citation_const_fn_evaluation_from_external_crate() {
     // All three helpers must be `const fn` so catalog rows in
-    // crates/capco/src/scheme.rs can use them in `const` contexts.
+    // `crates/capco/src/scheme/` submodules can use them in `const` contexts.
     // This test pins const-fn evaluation from outside marque-rules.
     const SCI_GRAMMAR: Citation = capco(SectionLetter::H, 4, 61);
     const CAVEATED_FDR: Citation = capco_table(SectionLetter::B, 3, 2, 21);

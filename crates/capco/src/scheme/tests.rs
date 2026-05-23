@@ -435,7 +435,7 @@ fn apply_intent_recanonicalize_returns_unchanged_marking() {
 /// FactRemove's "absent token is inapplicable" policy: both axes
 /// report per-intent inapplicability when the requested mutation
 /// is a no-op, per the `MarkingScheme::apply_intent` trait
-/// contract (crates/scheme/src/scheme.rs:185-194).
+/// contract (`MarkingScheme::apply_intent` in crates/scheme/src/scheme.rs).
 ///
 /// Case (c): FactAdd against an unwired axis (CAT_SCI via
 /// `TOK_HCS`) returns `Err(IntentInapplicable)`. The routing
@@ -467,7 +467,7 @@ fn apply_fact_add_noforn_adds_to_dissem_us_idempotent() {
 
     // Case (b): marking already containing NOFORN — the whole
     // batch is a per-intent no-op. Per `MarkingScheme::apply_intent`
-    // contract (scheme/src/scheme.rs:185-194), this aggregates to
+    // contract (in scheme/src/scheme.rs), this aggregates to
     // `Err(IntentInapplicable)` so the engine drops the synthesized
     // fix. A FactAdd of an already-present token returns per-intent
     // `IntentInapplicable` from `apply_fact_add`; the lone intent
@@ -615,7 +615,7 @@ fn apply_intent_whole_batch_inapplicable_returns_err() {
 // REL TO when NOFORN is present per §H.8 p145. The three cases
 // below cover: (a) wired-axis success path on a populated REL TO
 // axis; (b) per-intent inapplicability on an empty axis (trait
-// contract `crates/scheme/src/scheme.rs:185-194`); (c) regression
+// contract `MarkingScheme::apply_intent` in crates/scheme/src/scheme.rs); (c) regression
 // guard that the pre-existing TOK_USA single-country removal
 // path still works post-extension.
 

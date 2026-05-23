@@ -42,9 +42,9 @@ use std::collections::BTreeSet;
 ///   `DissemControl::Eyes` during lint runs. P-4 (8th-pass): corrected
 ///   prior docstring that falsely claimed "EYES retired... already migrated
 ///   to REL TO at parse time so not represented here" — the parser does NOT
-///   migrate at parse time; `scheme.rs:190` and `scheme.rs:3677` confirm
-///   `DissemControl::Eyes` survives parse and appears in `dissem_us` during
-///   intermediate lattice composition. NOFORN must dominate EYES ONLY in
+///   migrate at parse time; `DissemControl::Eyes` survives parse and appears
+///   in `dissem_us` during intermediate lattice composition (see
+///   `join_via_lattice` in `crates/capco/src/scheme/marking.rs`). NOFORN must dominate EYES ONLY in
 ///   the supersession table for the lattice path to be correct per §H.8 p145.
 ///   E064 handles the EYES → REL TO migration as a separate rule at fix time.)
 static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
@@ -54,7 +54,7 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
     //
     // P-4 (8th-pass): added EYES ONLY. Pre-fix the table omitted it based on
     // a false assumption that the parser migrated EYES → REL TO at parse time.
-    // The parser preserves DissemControl::Eyes (see scheme.rs:190); E064 is
+    // The parser preserves DissemControl::Eyes (parser lives in `marque-core`); E064 is
     // the engine-time migration rule. During lint runs and intermediate lattice
     // composition, EYES can appear and must be stripped when NOFORN is present.
     (DissemControl::Nf, DissemControl::Rel),

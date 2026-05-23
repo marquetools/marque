@@ -7,8 +7,8 @@
 //! Hosts the `CapcoScheme` struct, the manual `Debug` / `Default` impls,
 //! the two ctor `impl CapcoScheme` blocks (`new` / `with_rewrites` /
 //! `with_extra_rewrite_for_tests`), the `CapcoParseError` enum, and the
-//! ~336-LOC inherent `impl CapcoScheme { evaluate_named_constraint /
-//! fix_intent_by_name / has_diagnostic_constraints /
+//! ~336-LOC inherent `impl CapcoScheme { fix_intent_by_name /
+//! message_by_name / has_diagnostic_constraints /
 //! bridge_emitted_rule_ids / bridge_sci_per_system_diagnostics }` block
 //! that hosts the scheme-private predicate helpers for the engine
 //! bridge.

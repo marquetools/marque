@@ -144,7 +144,8 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // — adds NOFORN to the projected page dissem axis. Monotone-
         // additive: FactAdd with an already-present token is a
         // per-intent no-op (IntentInapplicable, silent) per the
-        // idempotence policy in `apply_fact_add` (scheme.rs:624-639).
+        // idempotence policy in `apply_fact_add`
+        // (`crates/capco/src/scheme/actions/intent.rs`).
         //
         // Axis annotations: reads `[CAT_NON_IC_DISSEM]`, writes
         // `[CAT_DISSEM]`. The Kahn scheduler (engine/src/scheduler.rs)
