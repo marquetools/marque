@@ -7,8 +7,8 @@
 //! free-form `Box<str>`, closing the `format!`-built-string leak
 //! channel (interpolating input bytes) that Constitution V Principle
 //! V's audit-content-ignorance invariant forbids. The engine's decoder
-//! synthesis site (`build_decoder_synthesized_diagnostic` in
-//! `crates/engine/src/engine.rs`) constructs
+//! synthesis helper (`build_decoder_diagnostic` in
+//! `crates/engine/src/engine/synthesis.rs`) constructs
 //! `Message::new(MessageTemplate::DecoderRecognized, ...)`.
 //!
 //! # Closed-template invariant
@@ -131,9 +131,9 @@ pub enum MessageTemplate {
     /// recognizer rejected. Args: `actual_token` (the canonical the
     /// decoder produced).
     ///
-    /// Constructed by the engine's decoder synthesis site
-    /// (`build_decoder_synthesized_diagnostic` in
-    /// `crates/engine/src/engine.rs`). Engine-synthetic — no
+    /// Constructed by the engine's decoder synthesis helper
+    /// (`build_decoder_diagnostic` in
+    /// `crates/engine/src/engine/synthesis.rs`). Engine-synthetic — no
     /// §-citation.
     DecoderRecognized,
 
