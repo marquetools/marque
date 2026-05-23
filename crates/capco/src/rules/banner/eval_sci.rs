@@ -121,10 +121,24 @@ pub(super) fn evaluate_sci_banner_rollup(
         // so the author inserts the block by hand.
         // G13: per-system detail dropped from the typed `Message`;
         // category=CAT_SCI identifies the axis.
+        //
+        // Anchor at the banner's classification token (the marking's
+        // leading token), falling back to the first available token
+        // span. The `(0, 0)` last-resort fires only in the degenerate
+        // case where the marking carries no token spans at all (which a
+        // banner that reached this rule should never be); the diagnostic
+        // carries no fix, so the anchor only needs to point at a real
+        // location inside the marking when one exists.
+        let anchor = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+            .or_else(|| attrs.token_spans.first())
+            .map_or(Span::new(0, 0), |t| t.span);
         return vec![Diagnostic::new(
             row.rule_id,
             Severity::Error,
-            Span::new(0, 0),
+            anchor,
             Message::new(
                 MessageTemplate::BannerRollupMismatch,
                 MessageArgs {
