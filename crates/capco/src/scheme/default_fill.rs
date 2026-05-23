@@ -200,11 +200,17 @@ fn row7_should_fill(post_close: u128) -> bool {
 /// `(post_close ∩ SCI_PRESENT != 0) ∧
 ///  (post_close ∩ MASK_FDR_OR_RELIDO_INCOMPAT == 0)`.
 ///
-/// Authority: §H.8 p154 (RELIDO grammar — defaulting marking for
-/// IC SCI content absent FD&R); §H.7 p123 + §H.3 p56 + §G.1 Table 4
-/// p38 (foreign-equity bar on RELIDO eligibility); §H.4 marking
-/// templates for the six SCI sentinels (pp 64 / 68 / 80 / 87 / 91 /
-/// 95) — sentinels are excluded because their per-marking
+/// Authority: §B.3 Table 2 p21 (trigger authority — the
+/// "Classified + uncaveated + on/after 28 June 2010 → Mark as
+/// RELIDO" row drives the implicit-RELIDO default; SCI alone is
+/// uncaveated per §B.3 p20 Note); §B.3 paragraph b p19
+/// (FD&R-absent gate); §H.8 p154 (RELIDO marking template —
+/// defines what RELIDO means once triggered: SFDRA-deferred
+/// release for uncaveated IC intelligence). Foreign-equity bar
+/// on RELIDO eligibility per §H.7 p123 (FGI) + §H.3 p56 (JOINT)
+/// + §G.1 Table 4 p38 (NATO classification); §H.4 marking
+/// templates for the six SCI sentinels (pp 64 / 68 / 80 / 87 /
+/// 91 / 95) — sentinels are excluded because their per-marking
 /// implications already drive NOFORN/ORCON and make RELIDO
 /// inapplicable.
 #[inline]
@@ -217,9 +223,13 @@ fn row8_should_fill(post_close: u128) -> bool {
 /// `(post_close ∩ US_COLLATERAL_CLASSIFIED != 0) ∧
 ///  (post_close ∩ MASK_RELIDO_US_CLASS_SUPPRESSORS == 0)`.
 ///
-/// Authority: §B.3 Table 2 p21 ("uncaveated, on/after 28 Jun 2010 →
-/// RELIDO" obligation) + §H.8 p154 (RELIDO grammar) + §B.3
-/// paragraph b p19 (FD&R-absent gate).
+/// Authority: §B.3 Table 2 p21 (trigger authority — the
+/// "Classified + uncaveated + on/after 28 June 2010 → Mark as
+/// RELIDO" row drives the implicit-RELIDO default for bare US
+/// collateral classification); §B.3 paragraph b p19 (FD&R-absent
+/// gate); §H.8 p154 (RELIDO marking template — defines what
+/// RELIDO means once triggered: SFDRA-deferred release for
+/// uncaveated IC intelligence).
 #[inline]
 fn row9_should_fill(post_close: u128) -> bool {
     (post_close & ROW9_US_COLLATERAL_TRIGGER) != 0

@@ -131,7 +131,7 @@ use marque_rules::{
 };
 use marque_scheme::{
     Citation, FactRef, MarkingScheme, RecanonScope, ReplacementIntent, Scope, SectionLetter, capco,
-    capco_section,
+    capco_section, capco_table,
 };
 use std::collections::HashSet;
 
@@ -404,15 +404,21 @@ impl CapcoRuleSet {
                 // out via `ProjectedMarking::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
                 // #559 close-out C1 (PM decision 2026-05-19): byte-
-                // surfacing twin of `CLOSURE_RELIDO_SCI` /
-                // `CLOSURE_RELIDO_US_CLASS`. Mirrors S007's
-                // text-layer pattern (byte rule alongside an existing
-                // lattice closure). Authority: CAPCO-2016 §H.8 p154 +
-                // §D.2 Table 3 rule 17. The rule runs the closure to
-                // detect whether RELIDO would be injected and emits a
-                // `Severity::Suggest` `FactAdd(RELIDO, Scope::Portion)`
-                // intent at confidence `S008_SUGGEST_CONFIDENCE = 0.85`
-                // — matching S007's calibration precedent.
+                // surfacing twin of the post-#704
+                // `default_fill::row{8,9}_should_fill` predicates
+                // (which retired from `CLOSURE_RELIDO_SCI` /
+                // `CLOSURE_RELIDO_US_CLASS` in the bitmask catalog).
+                // Mirrors S007's text-layer pattern (byte rule
+                // alongside an existing lattice closure). Authority:
+                // §B.3 Table 2 p21 (trigger authority — the
+                // default-if-absent obligation); §D.2 Table 3 rule
+                // 17 (FD&R precedence); §H.8 p154 (RELIDO marking
+                // template). The rule runs the project pipeline to
+                // detect whether RELIDO would be injected and emits
+                // a `Severity::Suggest` `FactAdd(RELIDO,
+                // Scope::Portion)` intent at confidence
+                // `S008_SUGGEST_CONFIDENCE = 0.85` — matching S007's
+                // calibration precedent.
                 Box::new(RelidoImpliedByClosureRule),
                 // Issue #261: FGI classification with an explicit trigraph
                 // when the source must be concealed, or with a trigraph that
@@ -4465,9 +4471,13 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 // proposes the byte-level insertion; the lattice-layer closure stays
 // out of the diagnostic surface.
 //
-// Authority: CAPCO-2016 §H.8 p154 (RELIDO template) + §D.2 Table 3
-// rule 17 (FD&R defaults for caveated content; verified against
-// `crates/capco/docs/CAPCO-2016.md`).
+// Authority: CAPCO-2016 §B.3 Table 2 p21 (trigger authority — the
+// "Classified + uncaveated + on/after 28 June 2010 → Mark as RELIDO"
+// row drives S008's "would the projection inject RELIDO?" check);
+// §B.3 paragraph b p19 (FD&R-absent gate); §D.2 Table 3 rule 17
+// (FD&R precedence for banner roll-up); §H.8 p154 (RELIDO marking
+// template — defines what RELIDO means once present). Verified
+// against `crates/capco/docs/CAPCO-2016.md` at authorship.
 // ---------------------------------------------------------------------------
 
 /// Confidence scalar emitted by S008 (`relido-implied-by-closure`)
@@ -4477,10 +4487,11 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 /// example/closure-derived guidance that ships at `Severity::Suggest`
 /// with confidence high enough to clear a relaxed
 /// `confidence_threshold` when paired with `[rules] S008 = "fix"`.
-/// The §H.8 p154 RELIDO template + §D.2 Table 3 rule 17 backing the
-/// CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS rows is template-
-/// prose plus FD&R-defaults derivation, not "MUST"-mandate prose; the
-/// suggest channel is the right home.
+/// The §B.3 Table 2 p21 default-if-absent obligation + §H.8 p154
+/// RELIDO template + §D.2 Table 3 rule 17 backing the post-#704
+/// `default_fill::row{8,9}_should_fill` predicates is
+/// defaulting-rule prose plus FD&R-defaults derivation, not
+/// "MUST"-mandate prose; the suggest channel is the right home.
 const S008_SUGGEST_CONFIDENCE: f32 = 0.85;
 
 /// Shared `CapcoScheme` used by S008's `check()` to apply the closure
@@ -4567,7 +4578,16 @@ struct RelidoImpliedByClosureRule;
 /// Citations S008 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const S008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 154)];
+///
+/// Authority order matches the doc-comment: §B.3 Table 2 p21 is
+/// the trigger authority (the default-if-absent obligation that
+/// drives the RELIDO injection S008 surfaces); §H.8 p154 is the
+/// secondary authority (RELIDO marking template — what RELIDO
+/// means once present).
+const S008_AUTHORITIES: &[Citation] = &[
+    capco_table(SectionLetter::B, 3, 2, 21),
+    capco(SectionLetter::H, 8, 154),
+];
 
 impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn id(&self) -> RuleId {
@@ -4705,9 +4725,19 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             ctx.candidate_span,
             ctx.candidate_span,
             Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
-            // Typed Citation anchors at §H.8 p154 (RELIDO grammar);
-            // the §D.2 Table 3 row-17 cross-reference lives in the
-            // rule doc comment.
+            // Typed Citation anchors at §H.8 p154 (RELIDO marking
+            // template — what RELIDO means once present). The
+            // primary trigger authority §B.3 Table 2 p21 lives in
+            // the rule's `S008_AUTHORITIES` slice + doc comment;
+            // emission stays at §H.8 p154 because per-Diagnostic
+            // emission is single-Citation by API shape and §H.8
+            // p154 is the marking-template anchor a reader will
+            // most directly use to interpret "what is RELIDO". The
+            // F.1 corpus-fidelity gate's EXPECTED_UNCOVERED list
+            // carries §B.3 Table 2 p21 for S008 — the trigger
+            // citation is declared in the rule's authority slice
+            // but not emitted in the per-Diagnostic Citation
+            // field, by intent.
             capco(SectionLetter::H, 8, 154),
             fix_intent,
         )]

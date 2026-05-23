@@ -101,15 +101,18 @@ fn display_only_clears_relido_cross_portion() {
     // bitmask → default-fill Row 9's gate fails → no implicit
     // RELIDO added. End-to-end identical to pre-#704.
     //
-    // The §H.8 p154 RELIDO conservatism the pre-#704 suppressor
-    // encoded ("don't add implicit RELIDO when explicit REL TO
-    // present") is preserved post-#704 because the same mask
-    // (now on the default-fill gate) implements the same gate.
+    // The §B.3 paragraph b p19 "NOT MARKED PREVIOUSLY" conservatism
+    // the pre-#704 suppressor encoded ("don't add implicit RELIDO
+    // when explicit REL TO present") is preserved post-#704 because
+    // the same mask (now on the default-fill gate) implements the
+    // same gate.
     //
-    // Authority: §H.8 p154 (RELIDO grammar — defaulting marking
-    // applies absent explicit FD&R); §B.3.a p19 (REL TO is
-    // canonical FD&R, in MASK_FDR_DOMINATORS and therefore in
-    // MASK_RELIDO_US_CLASS_SUPPRESSORS).
+    // Authority: §B.3 Table 2 p21 (trigger authority — the
+    // implicit-RELIDO default obligation); §B.3 paragraph b p19
+    // (FD&R-absent gate); §B.3.a p19 (REL TO is canonical FD&R, in
+    // MASK_FDR_DOMINATORS and therefore in
+    // MASK_RELIDO_US_CLASS_SUPPRESSORS); §H.8 p154 (RELIDO marking
+    // template — what RELIDO means once triggered).
     let scheme = CapcoScheme::new();
     assert!(
         !banner_carries_relido(

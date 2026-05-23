@@ -184,10 +184,15 @@ fn closure_fires_noforn_on_classified_with_rsen() {
 /// `default_fill::row0_should_fill`'s `(post_close ∩ MASK_FDR_DOMINATORS == 0)`
 /// gate. End-to-end behavior is preserved.
 ///
-/// Authority: §B.3 paragraph b p19 ("not marked previously by the
-/// originator"); §B.3.a p19 (FD&R dominator enumeration — RELIDO
-/// is canonical); §H.8 p154 (RELIDO grammar — defaulting marking
-/// applies absent explicit FD&R).
+/// Authority: §B.3 Table 2 p21 (trigger authority — the
+/// "Classified + uncaveated + on/after 28 June 2010 → Mark as
+/// RELIDO" row that would otherwise fire on this caveated input
+/// is not the relevant row; the §B.3 paragraph b p19 "NOT MARKED
+/// PREVIOUSLY" gate is what blocks any implicit-RELIDO/NOFORN
+/// default-fill on this input); §B.3 paragraph b p19 (FD&R-absent
+/// gate); §B.3.a p19 (FD&R dominator enumeration — RELIDO is
+/// canonical); §H.8 p154 (RELIDO marking template — defines what
+/// RELIDO means once present).
 #[test]
 fn project_preserves_orcon_plus_relido_input() {
     let scheme = CapcoScheme::new();
@@ -449,19 +454,23 @@ fn project_default_fill_skips_nato_implicit_when_noforn_present() {
 // ---------------------------------------------------------------------------
 
 /// Brief scenario #3: bare SCI portion (no FD&R, no caveat) projects
-/// to a marking carrying RELIDO via closure Row 8
-/// (`relido-if-sci-and-not-incompatible`).
+/// to a marking carrying RELIDO via `default_fill::row8_should_fill`.
 ///
-/// Pipeline trace: closure() Row 8 fires (`SCI_PRESENT` trigger;
-/// post-#704 no suppressor on the bitmask row). RELIDO added to
-/// `dissem_us` via `apply_closed_bits_to`. The supersession overlay
-/// observes no NOFORN → no strip. PageRewrites: none of the
-/// RELIDO-eviction rewrites trigger (no DISPLAY ONLY, no ORCON,
-/// no ORCON-USGOV in the marking).
+/// Pipeline trace (post-#704): close() Rows 1-6 don't fire (no
+/// per-marking SCI sentinel match). `default_fill::row8_should_fill`'s
+/// gate `(post_close ∩ SCI_PRESENT != 0) ∧ (post_close ∩
+/// MASK_FDR_OR_RELIDO_INCOMPAT == 0)` passes — SCI_PRESENT is set,
+/// no FD&R / foreign-equity / per-compartment-SCI sentinel is
+/// present. RELIDO added to `dissem_us` via the cone-delta
+/// writeback. The supersession overlay observes no NOFORN → no
+/// strip. PageRewrites: none of the RELIDO-eviction rewrites
+/// trigger (no DISPLAY ONLY, no ORCON, no ORCON-USGOV).
 ///
-/// Authority: §H.8 p154 (RELIDO grammar — defaulting marking for
-/// SCI content absent FD&R); CAPCO-2016 §H.4 (SCI control system
-/// grammar).
+/// Authority: §B.3 Table 2 p21 (trigger authority — the
+/// "Classified + uncaveated + on/after 28 June 2010 → Mark as
+/// RELIDO" row; SCI alone is uncaveated per §B.3 p20 Note);
+/// §H.8 p154 (RELIDO marking template — defines what RELIDO means
+/// once present); §H.4 (SCI control system grammar).
 #[test]
 fn project_sci_alone_adds_relido() {
     use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
@@ -472,8 +481,8 @@ fn project_sci_alone_adds_relido() {
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     // Use a synthetic SI compartment `Z9` that doesn't match any
     // per-marking SCI sentinel (SI-G / HCS-O / HCS-P[sub] / TK-*) so
-    // only Row 8 (SCI_PRESENT default) fires. SI itself is admitted
-    // per §H.4 p74 (SI grammar).
+    // only `default_fill::row8_should_fill` (SCI_PRESENT default)
+    // fires. SI itself is admitted per §H.4 p74 (SI grammar).
     let comp = SciCompartment::new(SmolStr::new("Z9"), Box::new([]));
     a.sci_markings = Box::new([SciMarking::new(
         SciControlSystem::Published(SciControlBare::Si),
@@ -485,8 +494,9 @@ fn project_sci_alone_adds_relido() {
     let out = scheme.project(Scope::Page, &[m]);
     assert!(
         dissem_us_contains(&out, DissemControl::Relido),
-        "project must add RELIDO on bare SCI (Trio 2 defaulting per \
-         §H.8 p154); dissem_us = {:?}",
+        "project must add RELIDO on bare SCI via default-fill Row 8 \
+         (§B.3 Table 2 p21 default-if-absent for SCI/uncaveated); \
+         dissem_us = {:?}",
         out.0.dissem_us
     );
     assert!(
@@ -497,21 +507,22 @@ fn project_sci_alone_adds_relido() {
     );
 }
 
-/// Brief scenario #3: bare SCI + NOFORN. RELIDO is closure-added
-/// via Row 8 (post-#704 unsuppressed) and immediately stripped by
-/// the §H.8 p145 supersession overlay (NOFORN dominates RELIDO).
-/// Net: dissem_us contains NOFORN only on the SCI axis.
+/// Brief scenario #3: bare SCI + NOFORN.
+/// `default_fill::row8_should_fill`'s gate fails because NOFORN is
+/// in `MASK_FDR_OR_RELIDO_INCOMPAT` (per §B.3.a p19); no implicit
+/// RELIDO is added. Net: dissem_us contains NOFORN only on the
+/// dissem axis.
 ///
-/// Pipeline trace: closure() Row 8 fires → RELIDO in delta;
-/// `apply_closed_bits_to` skips the RELIDO add per `apply_closed_bits_to`'s
-/// existing NOFORN-in-input dedup logic (NOFORN was input). The
-/// supersession overlay confirms — RELIDO would also have been
-/// stripped by the post-closure §H.8 p145 strip if it had been
-/// added.
+/// Pipeline trace (post-#704): close() Rows 1-6 don't fire (no
+/// per-marking SCI sentinel match). `default_fill::row8_should_fill`'s
+/// FD&R-absent gate fails on NOFORN-in-input. The supersession
+/// overlay observes the user-explicit NOFORN and finds nothing to
+/// strip (no dominated peer was added). End-to-end NOFORN survives.
 ///
-/// Authority: §H.8 p145 (NOFORN dominates RELIDO); §H.8 p154
-/// (RELIDO grammar — defaulting marking yields when an explicit
-/// dominator is present).
+/// Authority: §B.3 paragraph b p19 ("not marked previously");
+/// §B.3.a p19 (NOFORN is canonical FD&R, in MASK_FDR_OR_RELIDO_INCOMPAT);
+/// §H.8 p145 (NOFORN supersession — separately enforced for
+/// input-explicit contradictions).
 #[test]
 fn project_sci_plus_noforn_resolves_to_noforn_only() {
     use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
