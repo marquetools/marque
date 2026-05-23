@@ -54,8 +54,8 @@ use crate::scheme::CapcoScheme;
 ///   portions the same category set. A declass token appearing between
 ///   `//` separators of a banner or portion is unambiguously misplaced.
 ///
-/// The invariant is safely broader than CAPCO's OCA (§E.1) vs derivative
-/// (§E.2) vs FGI (§E.4) distinctions — all variants place declass in the
+/// The invariant is safely broader than CAPCO's OCA (§E.1 p31) vs
+/// derivative (§E.2 p32) distinctions — both place `Declassify On` in the
 /// CAB, so the predicate does not branch on classification source.
 ///
 /// # Scope

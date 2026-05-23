@@ -426,6 +426,39 @@ scope for #704), S008 would emit both `§B.3 Table 2 p21` and
 `§H.8 p154` and this whitelist row retires. Tracking: filed
 against the multi-Citation emission backlog at #704 merge.
 
+<a id="a6-p16-fgi-separator-grammar-not-emitted"></a>
+
+### `§A.6 p16` — FGI trigraph-separator grammar (declared, not emitted)
+
+Declared by `FGI_OWNERSHIP_SUGGEST_AUTHORITIES` in
+`crates/capco/src/rules/fgi.rs` for `FgiOwnershipTrigraphSuggestRule`.
+The cited passage — "Multiple FGI trigraph country codes or tetragraph
+codes must be separated by a single space" — is the §A.6 p16 formatting
+rule the FGI rule's grammar relies on, and is correct authority-set
+metadata (re-verified against `crates/capco/docs/CAPCO-2016.md` per
+Constitution VIII).
+
+The per-`Diagnostic` Citation field is single-valued by API shape.
+`FgiOwnershipTrigraphSuggestRule` emits the more-specific `§H.7 p122`
+(the FGI ownership-list grammar — what a `[LIST]` value may contain) in
+that single slot on both its `text_correction` and no-fix branches,
+because that is the anchor a reviewer will most directly use to
+interpret the diagnostic. `§A.6 p16` is therefore never harvestable
+from FGI corpus fixtures.
+
+This latent declared-but-not-emitted gap was previously masked: W034
+(`SciCustomControlInfoRule`) used to emit `§A.6 p16` on its own
+diagnostics, so the corpus harvested it incidentally. Issue #738
+re-anchored W034 to its substantive backing — `§H.4 p61`, the
+"registered but unpublished SCI control systems" registry text — which
+removed that incidental coverage and exposed the FGI gap. Same class as
+the `§H.8 p150` and `§B.3 Table 2 p21` entries above.
+
+**Resolution path**: when per-Diagnostic emission becomes
+multi-Citation, the FGI rule would emit both `§H.7 p122` and `§A.6 p16`
+and this whitelist row retires. Until then, tracked for a follow-up
+fixture-coverage PR.
+
 ## Removing a whitelist entry
 
 When a fixture starts exercising one of the citations above, the
