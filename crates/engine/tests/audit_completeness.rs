@@ -355,7 +355,8 @@ struct TemplateParityFixture {
 ///
 /// - E002 (`portion.dissem.rel-to-missing-usa`):
 ///   lint `NonCanonicalOrder`, fix `RequiredByPresence` (USA-missing
-///   case) — intentional asymmetry, see `rel_to.rs::E002Rule::check`.
+///   case) — intentional asymmetry, see `rel_to.rs`'s
+///   `MissingUsaTrigraphRule`.
 /// - Banner-rollup rules (SAR, non-IC dissem):
 ///   both sides emit `BannerRollupMismatch`.
 /// - C001 (`marking.correction.token-typo`): see
@@ -379,11 +380,13 @@ fn diagnostic_and_fix_templates_match_production_per_rule() {
         // Banner-rollup rules: both sides emit `BannerRollupMismatch`
         // (the rule's emit body uses a single Message for both the
         // diagnostic and the optional FixIntent attached to it).
-        // Banner-rollup SAR: the rule emits a Diagnostic without a
-        // FixIntent on the in-process surface; the parity_corpus.json
-        // "TextCorrection" intent_kind is a downstream projection
-        // applied in the renderer, not a FixIntent attached to the
-        // Diagnostic.fix field.
+        // Banner-rollup SAR: the rule itself emits via
+        // `Diagnostic::text_correction` (see `banner/eval_sar.rs`), so the
+        // `TextCorrection` intent_kind is engine lint output — not a
+        // renderer projection. This fixture pins only the `Diagnostic.fix`
+        // (FixIntent) vs AppliedFix arm, so it expects no FixIntent here
+        // (`expected_fix_template: None`); the text-correction arm is
+        // covered by `lint_diag_template_equals_text_correction_template_for_c001`.
         TemplateParityFixture {
             name: "banner-rollup SAR portions",
             source: b"(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",

@@ -73,16 +73,22 @@ const RULE_E002: RuleId = RuleId::new("capco", "portion.dissem.rel-to-missing-us
 const RULE_E006: RuleId = RuleId::new("capco", "marking.deprecation.deprecated-dissem-control");
 const RULE_R001_DECODER: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
 
-/// [`MessageTemplate`] for `rule` in the synthetic parity-corpus fixtures.
+/// [`MessageTemplate`] for `rule`'s **Recanonicalize-branch** fix in the
+/// synthetic parity-corpus fixtures.
 ///
-/// The fixtures use `__engine_promote` to short-circuit the engine, so the
-/// helper hand-carries the per-rule template that populates the synthetic
-/// `AppliedFix.message.template`, mirroring the `parity_corpus.json` rows
-/// for each predicate id. This is a per-rule selection — a rule's lint
-/// Diagnostic template and its fix template are NOT universally equal
-/// (e.g. E002 lints `NonCanonicalOrder` but its USA-injection `FactAdd`
-/// fix branch is `RequiredByPresence`). Issue #709 fixed the prior bug
-/// where every fixture hardcoded `BannerRollupMismatch` regardless of rule.
+/// Every fixture here is built via [`make_recanonicalize_intent`] — a
+/// `ReplacementIntent::Recanonicalize` fix — so this helper returns the
+/// template that branch carries per rule, populating the synthetic
+/// `AppliedFix.message.template` to mirror the `parity_corpus.json` rows.
+///
+/// A `RuleId` alone does NOT determine a rule's fix template in general —
+/// the template is branch-dependent. E002 is the clear case: its
+/// Recanonicalize (USA-not-first reorder) branch carries `NonCanonicalOrder`
+/// (returned here), while its USA-missing `FactAdd` branch carries
+/// `RequiredByPresence` (see `crates/capco/src/rules/rel_to.rs`'s
+/// `MissingUsaTrigraphRule`; that branch is exercised by the engine-side
+/// `audit_completeness` test, not modeled here). Issue #709 fixed the prior
+/// bug where every fixture hardcoded `BannerRollupMismatch` regardless of rule.
 ///
 /// Production sources of truth (PR T044 schema):
 ///
@@ -396,13 +402,13 @@ fn applied_fix_message_default_args_emit_empty_map() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let message = &v["message"];
-    // E002's production-side template is `NonCanonicalOrder` (see
-    // `parity_corpus.json` E002 rows + `template_for_rule` above).
-    // Pre-issue-#709 this asserted "BannerRollupMismatch" because the
-    // `make_recanonicalize_intent` helper hardcoded that template,
-    // baking the bug into the parity-test golden. The assert now pins
-    // the audit-record contract `Diagnostic.message.template ==
-    // AppliedFix.message.template` for E002.
+    // This fixture models E002's Recanonicalize (USA-not-first) branch,
+    // whose fix template is `NonCanonicalOrder` (see `template_for_rule`
+    // above + the `parity_corpus.json` E002 row). E002's other branch
+    // (USA-missing `FactAdd`) carries `RequiredByPresence` and is not
+    // modeled here. Pre-issue-#709 this asserted "BannerRollupMismatch"
+    // because `make_recanonicalize_intent` hardcoded that template,
+    // baking the bug into the parity-test golden.
     assert_eq!(message["template"], "NonCanonicalOrder");
     let args = message["args"].as_object().unwrap();
     assert!(
