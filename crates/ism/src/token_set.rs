@@ -90,7 +90,7 @@ const CLASSIFICATION_STRUCTURAL_KEYWORDS: &[&str] = &["TOP"];
 ///
 /// Authority: CAPCO-2016 §H.2 p55 (Non-US Protective Markings,
 /// referring to Manual Appendix B for NATO Protective Markings).
-/// Vocabulary anchor: §G.1 Table 4 p36, COSMIC TOP SECRET / ATOMAL /
+/// Vocabulary anchor: §G.1 Table 4 p37, COSMIC TOP SECRET / ATOMAL /
 /// BOHEMIA rows under category "2. Non-US Protective Markings".
 const NATO_CLASSIFICATION_KEYWORDS: &[&str] = &["ATOMAL", "BALK", "BOHEMIA", "COSMIC"];
 
