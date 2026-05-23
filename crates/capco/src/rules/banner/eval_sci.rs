@@ -9,7 +9,7 @@ use marque_rules::{Diagnostic, FixSource, Message, MessageArgs, MessageTemplate,
 use marque_scheme::{Citation, SectionLetter, capco};
 
 use crate::rules::helpers::{FixDiagnosticParams, make_fix_diagnostic};
-use crate::rules_legacy::{render_sci_block, sci_system_text};
+use crate::rules::sci::{render_sci_block, sci_system_text};
 use crate::scheme::CapcoScheme;
 
 use super::BannerCategoryRow;
