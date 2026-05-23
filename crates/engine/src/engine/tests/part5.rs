@@ -168,7 +168,12 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         confidence: marque_rules::Confidence::strict(1.0),
         feature_ids: SmallVec::new(),
         message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
+            // E006 production-side template is `SupersededToken`
+            // (see `dissem.rs`'s deprecated-dissem-control rule).
+            // Pins the audit-record contract
+            // `Diagnostic.message.template == AppliedFix.message.template`
+            // (issue #709).
+            MessageTemplate::SupersededToken,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,

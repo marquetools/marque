@@ -573,7 +573,12 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
         confidence: marque_rules::Confidence::strict(0.4),
         feature_ids: SmallVec::new(),
         message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
+            // c001 text-correction fixture: matches production-side
+            // `CorrectionsApplied` (see `pipeline.rs` C001 emission).
+            // Pins the audit-record contract
+            // `Diagnostic.message.template == AppliedFix.message.template`
+            // (issue #709) for the text-correction-with-fix arm.
+            MessageTemplate::CorrectionsApplied,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,
@@ -648,7 +653,12 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
                 confidence: marque_rules::Confidence::strict(1.0),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
-                    MessageTemplate::BannerRollupMismatch,
+                    // Test-fixture FixIntent.message must agree with the
+                    // Diagnostic-side `stub_message()` template
+                    // (`UnrecognizedToken`) so the audit-record contract
+                    // `Diagnostic.message.template == AppliedFix.message.template`
+                    // (issue #709) holds.
+                    MessageTemplate::UnrecognizedToken,
                     MessageArgs::default(),
                 ),
                 source: FixSource::BuiltinRule,

@@ -73,18 +73,58 @@ const RULE_E002: RuleId = RuleId::new("capco", "portion.dissem.rel-to-missing-us
 const RULE_E006: RuleId = RuleId::new("capco", "marking.deprecation.deprecated-dissem-control");
 const RULE_R001_DECODER: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
 
-/// Build the synthetic `FixIntent<CapcoScheme>` for a Recanonicalize fix.
-fn make_recanonicalize_intent() -> FixIntent<CapcoScheme> {
+/// Map a parity-corpus rule id to the production-side
+/// [`MessageTemplate`] it emits on both the lint-side
+/// [`marque_rules::Diagnostic`] and the audit-side [`AuditAppliedFix`].
+///
+/// The parity-test fixtures use `__engine_promote` to short-circuit the
+/// engine, so the helper must hand-carry the production template per
+/// rule to keep the synthetic `AppliedFix.message.template` field in
+/// agreement with what the engine actually emits — pinning the
+/// audit-record contract `Diagnostic.message.template ==
+/// AppliedFix.message.template` (issue #709).
+///
+/// Production sources of truth (PR T044 schema):
+///
+/// - `RULE_E002` (`portion.dissem.rel-to-missing-usa`) →
+///   `NonCanonicalOrder` — see `crates/capco/src/rules/rel_to.rs`
+///   (and `parity_corpus.json` rows for the same predicate id).
+/// - `RULE_E006` (`marking.deprecation.deprecated-dissem-control`) →
+///   `SupersededToken` — see `crates/capco/src/rules/dissem.rs`.
+/// - `RULE_R001_DECODER` (`recognition.decoder-recognized`) →
+///   `DecoderRecognized` — see
+///   `crates/engine/src/engine/synthesis.rs::build_decoder_diagnostic`.
+fn template_for_rule(rule: RuleId) -> MessageTemplate {
+    if rule == RULE_E002 {
+        MessageTemplate::NonCanonicalOrder
+    } else if rule == RULE_E006 {
+        MessageTemplate::SupersededToken
+    } else if rule == RULE_R001_DECODER {
+        MessageTemplate::DecoderRecognized
+    } else {
+        panic!(
+            "template_for_rule: unmapped rule {rule}; \
+             add the production-side MessageTemplate mapping here"
+        );
+    }
+}
+
+/// Build the synthetic `FixIntent<CapcoScheme>` for a Recanonicalize fix
+/// carrying the production-side `MessageTemplate` for `rule`.
+///
+/// Issue #709: prior to this refactor the helper hardcoded
+/// `MessageTemplate::BannerRollupMismatch`, which broke the audit-record
+/// contract `Diagnostic.message.template == AppliedFix.message.template`
+/// for every fixture (E002's lint-side template is `NonCanonicalOrder`,
+/// E006's is `SupersededToken`, R001's is `DecoderRecognized`).
+fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
     FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
         confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),
-        message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
-            MessageArgs::default(),
-        ),
+        message: Message::new(template_for_rule(rule), MessageArgs::default()),
         source: FixSource::BuiltinRule,
         migration_ref: None,
     }
@@ -106,7 +146,7 @@ fn synth_applied_fix(
     dry_run: bool,
     input: Option<Arc<str>>,
 ) -> AuditAppliedFix<CapcoScheme> {
-    let mut intent = make_recanonicalize_intent();
+    let mut intent = make_recanonicalize_intent(rule);
     intent.source = source;
     // Build canonical via EngineConstructor (the open-vocab path the
     // engine uses at promotion). CategoryId::MARKING since the intent
@@ -356,7 +396,14 @@ fn applied_fix_message_default_args_emit_empty_map() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let message = &v["message"];
-    assert_eq!(message["template"], "BannerRollupMismatch");
+    // E002's production-side template is `NonCanonicalOrder` (see
+    // `parity_corpus.json` E002 rows + `template_for_rule` above).
+    // Pre-issue-#709 this asserted "BannerRollupMismatch" because the
+    // `make_recanonicalize_intent` helper hardcoded that template,
+    // baking the bug into the parity-test golden. The assert now pins
+    // the audit-record contract `Diagnostic.message.template ==
+    // AppliedFix.message.template` for E002.
+    assert_eq!(message["template"], "NonCanonicalOrder");
     let args = message["args"].as_object().unwrap();
     assert!(
         args.is_empty(),
@@ -369,7 +416,11 @@ fn applied_fix_message_populated_args_round_trip() {
     // Populated MessageArgs — partial-emit covers token, expected_token,
     // and feature_ids in a single fixture. Per Constitution V Principle V,
     // every populated field belongs to the closed permitted-identifier set.
-    let mut intent = make_recanonicalize_intent();
+    // The intent.message is overwritten below to exercise the
+    // populated-args round-trip path on a `SupersededToken` template;
+    // the seed-template choice (E006's) is internally consistent with
+    // the fixture's `RULE_E006` rule id, but unused after the rebind.
+    let mut intent = make_recanonicalize_intent(RULE_E006);
     // TokenId(100) → NOFORN, TokenId(111) → RD (both real CAPCO
     // tokens registered in `SENTINEL_TO_CANONICAL` —
     // `qualified_token_label` resolves them to namespaced labels).

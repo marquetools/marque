@@ -255,7 +255,15 @@ impl Rule<CapcoScheme> for StubRule {
                         confidence: p.confidence.clone(),
                         feature_ids: SmallVec::new(),
                         message: Message::new(
-                            MessageTemplate::BannerRollupMismatch,
+                            // Test-fixture FixIntent.message must agree
+                            // with the test's `stub_message()` (Diagnostic-
+                            // side) template — both `UnrecognizedToken` —
+                            // so the audit-record contract
+                            // `Diagnostic.message.template ==
+                            // AppliedFix.message.template` (issue #709)
+                            // holds in this synthetic fixture's audit
+                            // line.
+                            MessageTemplate::UnrecognizedToken,
                             MessageArgs::default(),
                         ),
                         source: FixSource::BuiltinRule,
@@ -399,7 +407,12 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
         confidence: marque_rules::Confidence::strict(1.0),
         feature_ids: SmallVec::new(),
         message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
+            // Test-fixture FixIntent.message must agree with the
+            // Diagnostic-side template (`stub_message()` =
+            // `UnrecognizedToken`) so the audit-record contract
+            // `Diagnostic.message.template == AppliedFix.message.template`
+            // (issue #709) holds in this synthetic fixture's audit line.
+            MessageTemplate::UnrecognizedToken,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,
