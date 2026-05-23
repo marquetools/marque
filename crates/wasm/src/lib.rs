@@ -292,6 +292,12 @@ struct DiagnosticJson<'a> {
     message: MessageJson<'a>,
     citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors
+    /// `marque::render::DiagnosticJson::recognized_canonical` for
+    /// CLI/WASM NDJSON byte-identity (SC-008). Audit-side WASM NDJSON
+    /// does NOT mirror this field — Constitution V Principle V / G13.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
 }
 
 /// JSON projection of a [`RuleId`] as a `{scheme, predicate_id}` 2-tuple
@@ -356,6 +362,15 @@ fn fix_source_str(source: FixSource) -> &'static str {
 }
 
 fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — projecting the decoder-recognized
+    // canonical bytes into the WASM-side NDJSON surface (issue #699).
+    // Mirrors `marque::render::diagnostic_to_json` for SC-008 byte-
+    // identical NDJSON parity. Defensive `from_utf8` guard (the engine
+    // validates UTF-8 before populating `recognized_canonical`).
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
         rule: (&d.rule).into(),
         severity: d.severity.as_str(),
@@ -389,6 +404,7 @@ fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
             }),
             (None, None) => None,
         },
+        recognized_canonical,
     }
 }
 

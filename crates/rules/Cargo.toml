@@ -35,6 +35,14 @@ marque-ism = { workspace = true }
 # through marque-ism; the graph stays acyclic because marque-scheme is still
 # leaf-only.")
 marque-scheme = { workspace = true }
+# Issue #699 — `Diagnostic.recognized_canonical` carries the decoder's
+# canonical bytes in a `SecretBox<Box<[u8]>>` so the field obeys
+# Constitution Principle II (Marque-owned content wipes on drop; every
+# readout site goes through `expose_secret()` and is grep-auditable for
+# security review). The field is lint-side only — never serialized into
+# the audit envelope (Constitution V Principle V / G13). See the field's
+# doc comment for the asymmetry rationale.
+secrecy = { workspace = true }
 serde = { workspace = true, optional = true }
 # PR 3c.1 (T032/T037) — MessageArgs.feature_ids and FixIntent.feature_ids
 # both use SmallVec<[FeatureId; 4]> to keep the inline-4 case heap-free.
