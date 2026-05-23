@@ -31,11 +31,17 @@ use crate::scheme::CapcoScheme;
 // Rule: W034 — SCI custom-control audit visibility
 // ---------------------------------------------------------------------------
 
-/// Per CAPCO-2016 §A.6 p16 + §H.4 p61: unpublished (agency-allocated) SCI
-/// control systems are legitimate — the manual describes ODNI/P&S's
-/// unpublished registry and explicitly permits these markings. This rule
-/// surfaces each Custom control identifier so a classifier can verify the
-/// allocation is registered.
+/// Per CAPCO-2016 §H.4 p61 (primary) + §A.6 p15: unpublished
+/// (agency-allocated) SCI control systems are legitimate. §H.4 p61 is the
+/// substantive backing — "In addition to the published SCI control
+/// systems, the ODNI/P&S maintains a list of registered but unpublished
+/// SCI control systems. … Individuals encountering information with
+/// unpublished markings in the SCI or SAP marking category should contact
+/// ODNI/P&S/IMD for guidance." §A.6 p15 confirms the formatting layer
+/// anticipates them: the ascending-sort guidance "applies for both
+/// published and unpublished markings." This rule surfaces each Custom
+/// control identifier so a classifier can verify the allocation is
+/// registered.
 ///
 /// # Severity: Warn (default)
 ///
@@ -62,7 +68,10 @@ pub(super) struct SciCustomControlInfoRule;
 /// Citations W034 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
 /// contract.
-const SCI_CUSTOM_CONTROL_INFO_AUTHORITIES: &[Citation] = &[capco(SectionLetter::A, 6, 16)];
+const SCI_CUSTOM_CONTROL_INFO_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::H, 4, 61),
+    capco(SectionLetter::A, 6, 15),
+];
 
 impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     fn id(&self) -> RuleId {
@@ -99,14 +108,19 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
         for (idx, marking) in attrs.sci_markings.iter().enumerate() {
             if let SciControlSystem::Custom(text) = &marking.system {
                 // Plausible-allocation suppression: 1-3 ASCII-uppercase
-                // identifiers are within the typical CAPCO-2016 §A.6 p15
-                // agency-allocated shape and don't warrant per-marking
+                // identifiers resemble a registered-but-unpublished SCI
+                // control system (CAPCO-2016 §H.4 p61: "the ODNI/P&S
+                // maintains a list of registered but unpublished SCI
+                // control systems") and §A.6 p15 ("SCI markings are
+                // alphanumeric values"), so they don't warrant per-marking
                 // audit-visibility noise. W034 still fires on anything
-                // outside this shape (digits, longer identifiers,
-                // unusual casing) where the chance of typo or
-                // unregistered use is materially higher. Citation:
-                // CAPCO-2016 §A.6 p15 (agency-allocated control
-                // identifier shape) + §H.4 p61 (publication channel).
+                // outside this shape (digits, longer identifiers, unusual
+                // casing) where the chance of typo or unregistered use is
+                // materially higher. The 1-3-uppercase bound is a Marque
+                // heuristic, not a §A.6 length rule (the source does not
+                // specify identifier length); the §-citations back the
+                // legitimacy of unpublished controls, not the heuristic
+                // bound.
                 let s = text.as_str();
                 let is_plausible_allocation =
                     (1..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_uppercase());
@@ -128,7 +142,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
                         MessageTemplate::UnpublishedSciControl,
                         MessageArgs::default(),
                     ),
-                    capco(SectionLetter::A, 6, 16),
+                    capco(SectionLetter::H, 4, 61),
                     None,
                 ));
             }

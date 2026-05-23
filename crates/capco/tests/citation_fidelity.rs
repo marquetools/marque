@@ -172,6 +172,25 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
         capco_table(SectionLetter::B, 3, 2, 21),
         "b3-table2-p21-s008-trigger-authority-not-emitted",
     ),
+    // #738: §A.6 p16 is declared by `FgiOwnershipTrigraphSuggestRule`
+    // (the verified FGI trigraph-separator grammar — "Multiple FGI
+    // trigraph country codes or tetragraph codes must be separated by a
+    // single space") as honest authority-set metadata, but that rule
+    // emits the more-specific §H.7 p122 (the FGI ownership-list grammar)
+    // on every Diagnostic, so §A.6 p16 is never harvestable from FGI
+    // fixtures. The latent declared-but-not-emitted gap was previously
+    // masked by W034 (`SciCustomControlInfoRule`) emitting §A.6 p16 on
+    // its diagnostics. #738 re-anchored W034 to its substantive backing
+    // (§H.4 p61 — the registered-but-unpublished SCI registry text),
+    // which removed that incidental coverage and exposed the FGI gap.
+    // Same class as the §H.8 p150 and §B.3 Table 2 p21 entries above:
+    // legitimate authority-set metadata the per-Diagnostic harvest
+    // cannot see. Tracked for a follow-up fixture-coverage PR;
+    // whitelisted per F.1 contract clause 1.
+    (
+        capco(SectionLetter::A, 6, 16),
+        "a6-p16-fgi-separator-grammar-not-emitted",
+    ),
 ];
 
 /// Construct the `[engine-internal]` sentinel Citation. The
