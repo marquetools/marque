@@ -29,6 +29,7 @@
 // re-exported through this module.
 
 pub(crate) mod banner;
+pub(crate) mod dissem;
 pub(crate) mod helpers;
 
 pub use crate::rules_legacy::CapcoRuleSet;
