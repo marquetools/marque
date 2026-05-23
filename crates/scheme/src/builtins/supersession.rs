@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+use super::merge_sorted_union;
 use crate::lattice::JoinSemilattice;
 
 /// Intra-category supersession: join is union, then post-filter that
@@ -82,31 +83,6 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
         }
         set.into_iter().filter(|t| !drops.contains(&t)).collect()
     }
-
-    fn joined_union(left: &[T], right: &[T]) -> Vec<T> {
-        let mut out: Vec<T> = Vec::with_capacity(left.len() + right.len());
-        let (mut i, mut j) = (0, 0);
-        while i < left.len() && j < right.len() {
-            match left[i].cmp(&right[j]) {
-                std::cmp::Ordering::Less => {
-                    out.push(left[i].clone());
-                    i += 1;
-                }
-                std::cmp::Ordering::Greater => {
-                    out.push(right[j].clone());
-                    j += 1;
-                }
-                std::cmp::Ordering::Equal => {
-                    out.push(left[i].clone());
-                    i += 1;
-                    j += 1;
-                }
-            }
-        }
-        out.extend_from_slice(&left[i..]);
-        out.extend_from_slice(&right[j..]);
-        out
-    }
 }
 
 impl<T: Ord + Clone + 'static> JoinSemilattice for SupersessionSet<T> {
@@ -118,7 +94,7 @@ impl<T: Ord + Clone + 'static> JoinSemilattice for SupersessionSet<T> {
              the lattice laws (commutativity, associativity) only hold when both sides share \
              the same category table"
         );
-        let flat = Self::joined_union(&self.set, &other.set);
+        let flat = merge_sorted_union(&self.set, &other.set);
         let filtered = Self::apply_supersession(flat, self.supersession);
         Self {
             set: filtered,

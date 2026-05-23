@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+use super::merge_sorted_union;
 use crate::lattice::{JoinSemilattice, MeetSemilattice};
 
 /// Set-based lattice: the powerset of `T` with join = union, meet =
@@ -61,28 +62,7 @@ impl<T: Ord + Clone> FlatSet<T> {
 impl<T: Ord + Clone> JoinSemilattice for FlatSet<T> {
     #[inline]
     fn join(&self, other: &Self) -> Self {
-        let mut out: Vec<T> = Vec::with_capacity(self.0.len() + other.0.len());
-        let (mut i, mut j) = (0, 0);
-        while i < self.0.len() && j < other.0.len() {
-            match self.0[i].cmp(&other.0[j]) {
-                std::cmp::Ordering::Less => {
-                    out.push(self.0[i].clone());
-                    i += 1;
-                }
-                std::cmp::Ordering::Greater => {
-                    out.push(other.0[j].clone());
-                    j += 1;
-                }
-                std::cmp::Ordering::Equal => {
-                    out.push(self.0[i].clone());
-                    i += 1;
-                    j += 1;
-                }
-            }
-        }
-        out.extend_from_slice(&self.0[i..]);
-        out.extend_from_slice(&other.0[j..]);
-        Self(out)
+        Self(merge_sorted_union(&self.0, &other.0))
     }
 }
 
@@ -176,28 +156,7 @@ impl<T: Ord + Clone> MeetSemilattice for IntersectSet<T> {
     /// Meet = union (flipped).
     #[inline]
     fn meet(&self, other: &Self) -> Self {
-        let mut out: Vec<T> = Vec::with_capacity(self.0.len() + other.0.len());
-        let (mut i, mut j) = (0, 0);
-        while i < self.0.len() && j < other.0.len() {
-            match self.0[i].cmp(&other.0[j]) {
-                std::cmp::Ordering::Less => {
-                    out.push(self.0[i].clone());
-                    i += 1;
-                }
-                std::cmp::Ordering::Greater => {
-                    out.push(other.0[j].clone());
-                    j += 1;
-                }
-                std::cmp::Ordering::Equal => {
-                    out.push(self.0[i].clone());
-                    i += 1;
-                    j += 1;
-                }
-            }
-        }
-        out.extend_from_slice(&self.0[i..]);
-        out.extend_from_slice(&other.0[j..]);
-        Self(out)
+        Self(merge_sorted_union(&self.0, &other.0))
     }
 }
 
