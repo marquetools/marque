@@ -4518,25 +4518,42 @@ static S008_SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(
 /// The rule runs `S008_SCHEME.project(Scope::Page, &[marking])` over
 /// a single-portion page and compares the post-pipeline dissem axis
 /// against the input. This routes through the full pipeline (per-axis
-/// join + closure + supersession overlay + page rewrites), which is
-/// the post-#704 canonical observable state. Calling `closure()`
-/// directly would observe the pre-overlay state — closure() now adds
-/// RELIDO unconditionally on US_COLLATERAL_CLASSIFIED inputs, only
-/// to have the §H.8 p145 supersession overlay strip it if NOFORN is
-/// also present. Using `project()` keeps S008 aligned with the
-/// engine's final-state semantic by construction.
+/// join + close() + default_fill + supersession overlay + page
+/// rewrites), which is the post-#704 canonical observable state.
+/// Calling `closure()` directly would observe only the per-marking
+/// unconditional implications (Rows 1-6 of `CLOSURE_TABLE`) — the
+/// RELIDO defaults retired from close() to
+/// `default_fill::row{8,9}_should_fill` because they are
+/// "default if absent" rules per §B.3 paragraph b p19's "NOT
+/// MARKED PREVIOUSLY" gate (non-monotone by §-design and unable
+/// to live in a closure operator that honors the
+/// `MarkingScheme::closure` monotone contract). Using `project()`
+/// keeps S008 aligned with the engine's final-state semantic by
+/// construction.
 ///
-/// The closure pipeline interacts with two overlays in canonical
-/// order:
+/// The post-#704 pipeline interacts with two default-fill
+/// predicates in canonical order:
 ///
-/// - `CLOSURE_TABLE` Row 8 (`relido-if-sci-and-not-incompatible`)
-///   triggers on `SCI_PRESENT` and adds RELIDO; the supersession
-///   overlay then strips it if NOFORN is observed.
-/// - `CLOSURE_TABLE` Row 9 (`relido-if-us-collateral-class`) triggers
-///   on `US_COLLATERAL_CLASSIFIED` and adds RELIDO; same overlay
-///   strip pathway when NOFORN is present.
-/// - The `apply_closed_bits_to` writeback also strips dominated
-///   controls when NOFORN is in the closure delta (§H.8 p145).
+/// - `default_fill::row8_should_fill`
+///   (`capco:closure.dissem.relido-if-sci-and-not-incompatible`)
+///   gates on `(post_close ∩ SCI_PRESENT != 0) ∧ (post_close ∩
+///   MASK_FDR_OR_RELIDO_INCOMPAT == 0)`; when both hold,
+///   `apply_default_fill` adds RELIDO. The supersession overlay
+///   then strips it if NOFORN is observed.
+/// - `default_fill::row9_should_fill`
+///   (`capco:closure.dissem.relido-if-us-collateral-class`) gates
+///   on `(post_close ∩ US_COLLATERAL_CLASSIFIED != 0) ∧
+///   (post_close ∩ MASK_RELIDO_US_CLASS_SUPPRESSORS == 0)`; same
+///   overlay strip pathway when NOFORN is present.
+///
+/// Both gates' FD&R-absent test (`MASK_FDR_OR_RELIDO_INCOMPAT` /
+/// `MASK_RELIDO_US_CLASS_SUPPRESSORS` include the NOFORN bit per
+/// §B.3.a p19) means the predicates SKIP entirely on NOFORN-
+/// present inputs — `apply_default_fill` never adds RELIDO there,
+/// so the supersession overlay's NOFORN-dominates strip is a
+/// no-op in that case. The overlay still fires correctly when
+/// RELIDO is user-explicit on the input alongside NOFORN
+/// (input-explicit §H.8 p145 contradiction).
 ///
 /// # Early-return clauses (in order)
 ///
@@ -4545,10 +4562,12 @@ static S008_SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(
 ///    RELIDO; firing on a banner would double-report.
 /// 2. **RELIDO already present**: `attrs.dissem_us` contains
 ///    `DissemControl::Relido`. Nothing to suggest.
-/// 3. **Closure does not inject RELIDO**: the closure short-circuited
-///    on `any_closure_trigger_fires`, OR a suppressor blocked the
-///    cone, OR the with_noforn_injected overlay stripped it. No
-///    diagnostic — the lattice-layer decided RELIDO is not implied.
+/// 3. **Projection does not inject RELIDO**: the post-#704 pipeline
+///    (close + default_fill + supersession overlay + page rewrites)
+///    decided RELIDO is not implied on this portion — either no
+///    Row-8/Row-9 trigger atom is present, OR the default-fill
+///    gate's FD&R-absent test failed, OR a downstream page-rewrite
+///    cleared RELIDO. No diagnostic.
 ///
 /// # Fix shape
 ///
