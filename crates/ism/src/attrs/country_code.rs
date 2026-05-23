@@ -297,7 +297,7 @@ impl CountryCode {
     /// `crates/core/src/parser.rs::parse_fgi_marker`. All three MUST
     /// go through this function rather than inline a length-and-class
     /// check — keeping the predicate single-sited prevents drift
-    /// between admission and parser surfaces (CHK030, CHK026).
+    /// between admission and parser surfaces.
     ///
     /// Registry membership (whether a 2-letter code is `EU` vs. `US`,
     /// whether `NATO` / `FVEY` / `ABCD` is actually a registered

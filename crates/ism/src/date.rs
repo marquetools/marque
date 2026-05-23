@@ -46,7 +46,7 @@
 //!   the WASM artifact for bundle-size reasons (issue #455).
 //! - **`dates` off** (WASM artifact): a hand-rolled proleptic Gregorian
 //!   implementation lives in this module. Same `validate_date` +
-//!   `days_in_month` surface; SC-008 native↔WASM parity tests enforce
+//!   `days_in_month` surface; native↔WASM parity tests enforce
 //!   output agreement.
 
 use std::cmp::Ordering;
