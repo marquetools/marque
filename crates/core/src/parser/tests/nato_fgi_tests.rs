@@ -541,7 +541,7 @@ fn fgi_marker_direct_three_cases() {
     // Case 2 (mixed shapes per §H.7 p122): trigraph + tetragraph
     // → Some(Acknowledged) with both countries. Admission accepts
     // the spec-canonical example rather than narrowing to trigraphs
-    // only (issue #311).
+    // only (PR #311).
     match parse_fgi_marker("FGI GBR JPN NATO") {
         Some(FgiMarker::Acknowledged { countries, .. }) => {
             assert_eq!(countries.len(), 3);
