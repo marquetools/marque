@@ -8,6 +8,21 @@
 // DO NOT add new tests here. New tests go in
 // `crates/capco/tests/` integration files or `mod tests` blocks
 // inside their rule's submodule.
+//
+// Note: this file is NOT byte-identical to the pre-#561
+// `mod tests` block in `rules.rs`. 129 lines of citation
+// cross-ref pin tests (`e005_cross_refs_pin_*`,
+// `s003_cross_refs_pin_*`, `e037_cross_refs_pin_*`,
+// `e038_cross_refs_pin_*`, `e039_cross_refs_pin_*`) that
+// previously lived in this same `#[cfg(test)] mod tests`
+// block were PROMOTED to
+// `crates/capco/src/rules/citation_cross_refs_tests.rs`
+// during the split — they were live tests that did NOT depend
+// on the retired legacy `FixProposal` fields, and they are now
+// part of the active test suite under their own `#[cfg(test)]`
+// module declared in `rules/mod.rs`. This file is intentionally
+// narrower than the pre-split test surface: only the tests that
+// reference legacy `FixProposal` fields survive here.
 
 #[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.
 #[cfg(test)]
