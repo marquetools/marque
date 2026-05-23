@@ -18,34 +18,32 @@ include = [
 ]
 
 [dependencies]
-# PR 3c.2.D (T046) — content-ignorant audit-record digesting per
-# Constitution V Principle V (G13). `AppliedFix.__engine_promote` calls
-# `blake3::hash(original_bytes)` and `Canonical::bytes()` is digested
-# the same way; both digests land in the `marque-1.0` audit envelope
-# via `AppliedFixDetail.original_digest` and
-# `AppliedReplacement.bytes_digest`. `default-features = false` +
-# `features = ["pure"]` selected at the workspace dep to keep the
-# WASM-safe set (Constitution III) buildable for `wasm32-unknown-unknown`
-# without platform intrinsics.
+# Content-ignorant audit-record digesting (Constitution V Principle V):
+# `AppliedFix::__engine_promote` digests `original_bytes` and
+# `Canonical::bytes()` the same way, and only the BLAKE3 digests reach the
+# audit envelope (`AppliedFixDetail.original_digest`,
+# `AppliedReplacement.bytes_digest`) — never the bytes. The workspace dep
+# selects `default-features = false` + `features = ["pure"]` so the
+# WASM-safe set builds for `wasm32-unknown-unknown` without platform
+# intrinsics (Constitution III).
 blake3 = { workspace = true }
 marque-ism = { workspace = true }
-# PR 3c.1 (T040) — direct edge anticipated by Constitution VII §VII Appendix
-# D ("As of PR 3c (FixIntent<S>), marque-rules also depends on marque-scheme
-# directly so rule-emission values can reference scheme types without going
-# through marque-ism; the graph stays acyclic because marque-scheme is still
-# leaf-only.")
+# `marque-rules` depends on `marque-scheme` directly so rule-emission values
+# (`FixIntent<S>`) can reference scheme types without routing through
+# `marque-ism`. The graph stays acyclic because `marque-scheme` is leaf-only
+# (Constitution VII).
 marque-scheme = { workspace = true }
 # Issue #699 — `Diagnostic.recognized_canonical` carries the decoder's
 # canonical bytes in a `SecretBox<Box<[u8]>>` so the field obeys
 # Constitution Principle II (Marque-owned content wipes on drop; every
 # readout site goes through `expose_secret()` and is grep-auditable for
 # security review). The field is lint-side only — never serialized into
-# the audit envelope (Constitution V Principle V / G13). See the field's
+# the audit envelope (Constitution V Principle V). See the field's
 # doc comment for the asymmetry rationale.
 secrecy = { workspace = true }
 serde = { workspace = true, optional = true }
-# PR 3c.1 (T032/T037) — MessageArgs.feature_ids and FixIntent.feature_ids
-# both use SmallVec<[FeatureId; 4]> to keep the inline-4 case heap-free.
+# `MessageArgs.feature_ids` and `FixIntent.feature_ids` both use
+# `SmallVec<[FeatureId; 4]>` to keep the inline-4 case heap-free.
 smallvec = { workspace = true }
 smol_str = { workspace = true }
 thiserror = { workspace = true }
