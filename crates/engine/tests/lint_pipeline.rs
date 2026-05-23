@@ -1,15 +1,14 @@
 #![cfg(any())]
-// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+// Legacy FixProposal-shape test disabled pending rewrite.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 — engine lint pipeline integration test.
+//! Engine lint pipeline integration test.
 //!
-//! Covers the FR-001/FR-002/FR-003 happy path and the spec edge cases:
-//! empty document, whitespace-only, mid-sentence `(S)` body prose, and
-//! unknown tokens (FR-012).
+//! Covers the happy path and the spec edge cases: empty document,
+//! whitespace-only, mid-sentence `(S)` body prose, and unknown tokens.
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
@@ -60,10 +59,9 @@ fn happy_path_clean_portion_produces_no_diagnostics() {
 
 #[test]
 fn banner_with_e002_fires() {
-    // PR 3c.B Commit 6 retired E001 (portion-mark-in-banner) into the
-    // renderer. This smoke test now exercises E002 (REL TO missing
-    // USA) as the canonical "this rule fires on a simple banner"
-    // fixture.
+    // The portion-mark-in-banner remediation lives in the renderer, so
+    // this smoke test exercises the REL-TO-missing-USA rule as the
+    // canonical "this rule fires on a simple banner" fixture.
     let result = engine().lint(b"SECRET//REL TO GBR\n");
     assert!(
         result
@@ -181,10 +179,8 @@ fn diagnostic_carries_citation() {
         .iter()
         .find(|d| d.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
         .expect("E002 must fire");
-    // PR 10.A.1: typed Citation — assert the authoritative source is
-    // CAPCO-2016 (the structural equivalent of the previous
-    // `.contains("CAPCO")` substring check). FR-003 requires every
-    // diagnostic to carry a citation; the type now enforces presence
+    // Typed Citation — assert the authoritative source is CAPCO-2016.
+    // Every diagnostic must carry a citation; the type enforces presence
     // by construction (every `Diagnostic` has a `Citation` field).
     assert_eq!(
         e002.citation.document,
@@ -196,13 +192,11 @@ fn diagnostic_carries_citation() {
 
 #[test]
 fn diagnostic_span_is_byte_precise() {
-    // FR-002: every diagnostic must carry a span pointing into the original
-    // source. Phase 3 replaced the Phase 2 Span::new(0, 0) placeholders.
-    // E002's REL TO span anchors on the REL-TO trigraph list (the
-    // single existing `GBR` here); pre-PR-3c.B Commit 6 fixture
-    // anchored on E001's `NF` substring — both exercise the same
-    // FR-002 invariant that the span points at the bytes the
-    // diagnostic is about, not a placeholder.
+    // Every diagnostic must carry a span pointing into the original
+    // source — not a `Span::new(0, 0)` placeholder. The
+    // REL-TO-missing-USA span anchors on the REL-TO trigraph list (the
+    // single existing `GBR` here): the span points at the bytes the
+    // diagnostic is about.
     let src = b"SECRET//REL TO GBR\n";
     let result = engine().lint(src);
     let e002 = result
@@ -226,7 +220,7 @@ fn diagnostic_span_is_byte_precise() {
 // ---------------------------------------------------------------------------
 
 /// Project a Diagnostic into the contract shape from contracts/diagnostic.json.
-/// Phase 3 mirrors this structure here so the snapshot guards both the
+/// This mirrors that structure so the snapshot guards both the
 /// contract format and the engine's ability to populate it.
 fn diagnostic_to_contract_json(
     d: &marque_rules::Diagnostic<marque_capco::CapcoScheme>,
@@ -240,7 +234,7 @@ fn diagnostic_to_contract_json(
         })
     });
     serde_json::json!({
-        // T044 / OD-2: structured 2-tuple shape.
+        // Structured 2-tuple shape.
         "rule": {
             "scheme": d.rule.scheme(),
             "predicate_id": d.rule.predicate_id(),
