@@ -2,14 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T069 — Corpus accuracy harness (SC-002 / SC-003 / SC-003a).
+//! Corpus accuracy harness.
 //!
 //! Validates lint and fix behavior across the full test corpus with per-rule
 //! accuracy thresholds:
 //!
-//! - **SC-002**: >=95% lint accuracy per-rule and overall against `.expected.json`
-//! - **SC-003**: >=95% fix accuracy per-rule and overall (zero remaining violations)
-//! - **SC-003a**: Zero diagnostics on clean prose (precision gate)
+//! - **Lint accuracy**: >=95% per-rule and overall against `.expected.json`
+//! - **Fix accuracy**: >=95% per-rule and overall (zero remaining violations)
+//! - **Prose precision**: zero diagnostics on clean prose
 
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
@@ -28,16 +28,16 @@ use std::collections::HashMap;
 /// dispatcher's decoder fallback no longer auto-fixes `(s)` mid-prose
 /// to a SECRET portion — `token_prose_log_prior("S")` exceeds
 /// `token_log_prior("S")` so the null hypothesis wins and the
-/// decoder returns zero candidates (FR-015), suppressing the
-/// diagnostic.
+/// decoder returns zero candidates, suppressing the diagnostic.
 ///
-/// SC-002 / SC-003 / SC-003a / C001 now run against the user-facing
-/// default engine (no recognizer override). Adding a
+/// The lint-accuracy, fix-accuracy, prose-precision, and
+/// corrections-map checks all run against the user-facing default
+/// engine (no recognizer override). Adding a
 /// `with_recognizer(StrictRecognizer::new())` here re-pins the strict
 /// path and re-introduces the gap this test is meant to defend
 /// against; do NOT unpin to "Strict" without the same null-hypothesis
 /// gate landing first (per Constitution §VIII source-fidelity, this
-/// test's load-bearing role is the SC-003a precision gate against
+/// test's load-bearing role is the prose-precision gate against
 /// `tests/corpus/prose/article.txt`, NOT a strict-vs-decoder
 /// equivalence check).
 fn make_engine() -> Engine {
@@ -50,7 +50,7 @@ fn make_engine() -> Engine {
 }
 
 // ---------------------------------------------------------------------------
-// SC-002: Lint accuracy on invalid fixtures (>=95% per-rule and overall)
+// Lint accuracy on invalid fixtures (>=95% per-rule and overall)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -84,10 +84,8 @@ fn lint_accuracy_invalid_fixtures() {
             // the engine correctly skips it in the rule loop, so it cannot
             // fire here. The rules_us1 harness exercises W034 directly by
             // bypassing severity gating. Skip it from the engine harness.
-            // T044: `exp.rule` is the structured `ExpectedRuleId`;
-            // W034's new predicate id is
-            // `portion.sci.unpublished-custom-control` per the
-            // legacy-rule-id-map §1.
+            // `exp.rule` is the structured `ExpectedRuleId`; W034's
+            // predicate id is `portion.sci.unpublished-custom-control`.
             if exp.rule.predicate_id == "portion.sci.unpublished-custom-control" {
                 continue;
             }
@@ -149,7 +147,7 @@ fn lint_accuracy_invalid_fixtures() {
 }
 
 // ---------------------------------------------------------------------------
-// SC-003: Fix accuracy on invalid fixtures (>=95% per-rule zero-remaining)
+// Fix accuracy on invalid fixtures (>=95% per-rule zero-remaining)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -164,8 +162,8 @@ fn fix_accuracy_invalid_fixtures() {
 
     // Per-rule tracking: rule_id -> (fixed_clean, total_fixtures_with_fixable_rule)
     // Only count rules that produce at least one fix proposal with confidence >= threshold.
-    // Rules like E005 (no fix), E008 (FR-012: no fix), and E003 (confidence 0.6 < 0.95)
-    // intentionally don't auto-fix and should not count against fix accuracy.
+    // Some rules intentionally don't auto-fix (no fix proposal, or a
+    // confidence below threshold) and should not count against fix accuracy.
     //
     // NOTE: `total_fixable` / `total_fixed_clean` count at fixture level — a fixture
     // is "fixed clean" only if ALL its fixable rules were resolved. This is stricter
@@ -188,7 +186,7 @@ fn fix_accuracy_invalid_fixtures() {
         //
         // "Confidence" here is the scalar `Confidence::combined()`
         // (= recognition × rule) that the engine applies at the
-        // promotion boundary (FR-016). `Confidence` carries additional
+        // promotion boundary. `Confidence` carries additional
         // axes (`region`, `runner_up_ratio`, feature contributions)
         // for audit provenance, but this harness and every
         // threshold-gated consumer compare on `.combined()` only.
@@ -322,8 +320,8 @@ fn fix_accuracy_invalid_fixtures() {
 // `engine.rs` returns `None` when observed bytes equal canonical
 // bytes (no-op rewrite — the canonical form for `(C)` is `(C)`), so
 // the synthetic R001 is never emitted. If a future change relaxes
-// the no-op-rewrite filter (for audit-verbosity, FR-014 schema
-// evolution, etc.), `c_mid_prose.txt` will start failing — the
+// the no-op-rewrite filter (for audit-verbosity, schema evolution,
+// etc.), `c_mid_prose.txt` will start failing — the
 // failure points at the bypass path, not the null gate. An
 // engine-level integration test
 // (`sub_threshold_decoder_gate::bare_class_whitelist_relies_on_no_op_rewrite_filter`)
@@ -444,8 +442,6 @@ fn c001_corrections_map_accuracy() {
         let result = engine.lint(&source);
 
         for exp in &expected.diagnostics {
-            // T044: legacy `C001` → predicate id
-            // `marking.correction.token-typo`.
             if exp.rule.predicate_id != "marking.correction.token-typo" {
                 continue;
             }
@@ -534,8 +530,7 @@ fn valid_fixtures_zero_diagnostics() {
 /// Per-rule diagnostic count expectation for a single document fixture
 /// in `tests/corpus/documents/marked/`.
 ///
-/// The allowlist is currently empty: T119 closeout (2026-05-19)
-/// landed engine + corpus fixes that drove the documents corpus to
+/// The allowlist is currently empty: the documents corpus produces
 /// zero diagnostics across all 40 fixtures. New entries should only
 /// land with an open-issue or permanent-expected-firing reason and
 /// the corresponding pin should retire when the issue closes.
@@ -554,78 +549,28 @@ struct ExpectedRuleCount {
     reason: &'static str,
 }
 
-/// Per-doc per-rule diagnostic expectations. **Currently empty** —
-/// T119 closeout (2026-05-19) drove the documents corpus to zero
-/// diagnostics across all 40 fixtures via the following engine +
-/// corpus fixes:
-///
-/// **Engine fixes** (lift root-cause precision bugs the previous
-/// allowlist was masking):
-///   - `BannerMatchesProjectedRule` no longer fires on
-///     `MarkingType::Cab` candidates — CABs carry only authority
-///     fields and never have classification / SCI / FGI / dissem
-///     blocks (eliminated the placeholder-span `(0, 0)` firings).
-///   - Renderer emits `\f` (form feed) between pages so the
-///     scanner's page-break heuristic resets `PageContext` per
-///     page (eliminated cross-page banner-vs-portion projection
-///     mismatches).
-///   - Parser recovers from banner trailing junk: when a
-///     `/`-separated sub-token in a banner contains internal
-///     whitespace and its leading word IS a recognized CAPCO
-///     token, emit the recognized leading word and silently drop
-///     the trailing non-marking content (eliminated the
-///     embedded-cable-header `00 RUEAIIB` E008 firing).
-///   - `parse_aea_full_form` recognizes
-///     `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION` (RD-CNWDI
-///     long form), `DOE UNCLASSIFIED CONTROLLED NUCLEAR
-///     INFORMATION`, and `DOD UNCLASSIFIED CONTROLLED NUCLEAR
-///     INFORMATION` (UCNI long forms) via
-///     `marking_forms::title_to_portion` lookup.
-///   - `parse_sci_block` accepts SCI control-system and
-///     compartment long-form titles (`TALENT KEYHOLE` -> `TK`,
-///     `GAMMA` -> `G`, `BLUEFISH` -> `BLFH`, etc.) and canonicalizes
-///     compartment identifiers via `MARKING_FORMS`.
-///   - `W034` suppresses on `[A-Z]{1,3}` Custom SCI control
-///     identifiers — these are within the typical CAPCO §A.6 p15
-///     agency-allocated shape and don't warrant per-marking
-///     audit-visibility noise.
-///
-/// **Corpus fixes** (spec banners that were authored before
-/// recent rule changes or used unrecognized expansions):
-///   - `HCS-OPERATIONS` -> `HCS-O` (not a valid long form;
-///     compartment is always single-letter `O`).
-///   - Added missing `HCS-P CUPCA` SCI block + `ORCON` dissem to
-///     `CIA-RDP90B01370R000801120005-5` banner.
-///   - Added `FGI NATO` marker to `CIAPolicyOnGAOOversight` page 2
-///     banner + `CIA-RDP75-00149R000500450034-4` banner (portions
-///     carry NATO-classified content).
-///   - Expanded FGI country list on `cia-reports_prex-318se-2` to
-///     `AUS CAN FSM ITA` (JOINT portions contribute to FGI roll-up
-///     per §H.7 NATO/JOINT-transmutation rule).
-///   - Added `EXDIS` non-IC dissem block to
-///     `kiro-gligorov-macedonia-16555480` banner (portions carry
-///     `XD`).
+/// Per-doc per-rule diagnostic expectations. **Currently empty** — the
+/// documents corpus produces zero diagnostics across all 40 fixtures.
 ///
 /// New entries here should only land with an open-issue or
 /// permanent-expected-firing reason; the corresponding pin must
 /// retire when the underlying defect closes.
 const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
-    // #388 (2026-05-21): W005 fires correctly on the three JOINT
-    // portion banners `(//JOINT TS AUS CAN ITA USA//REL TO USA, AUS,
-    // CAN, ITA, EU)` — EU is in REL TO but NOT in the JOINT
-    // participant list (AUS, CAN, ITA, USA). CAPCO-2016 §H.3 p57
-    // "[LIST]" superset semantics permit this expansion (the EU is
-    // an authorized release destination beyond the JOINT co-owners),
-    // so W005 is Warn-only and the firing is by design. `issue = 0`
-    // marks this as a correct firing per the doc-comment convention.
+    // #388: the rel-to-not-in-joint-coverage rule fires correctly on
+    // the three JOINT portion banners
+    // `(//JOINT TS AUS CAN ITA USA//REL TO USA, AUS, CAN, ITA, EU)` —
+    // EU is in REL TO but NOT in the JOINT participant list (AUS, CAN,
+    // ITA, USA). CAPCO-2016 §H.3 p57 "[LIST]" superset semantics permit
+    // this expansion (the EU is an authorized release destination
+    // beyond the JOINT co-owners), so the rule is Warn-only and the
+    // firing is by design. `issue = 0` marks this as a correct firing
+    // per the doc-comment convention.
     (
         "cia-reports_prex-318se-2",
         &[ExpectedRuleCount {
-            // T044: legacy `"W005"` → predicate id
-            // `portion.classification.rel-to-not-in-joint-coverage`
-            // per legacy-rule-id-map §6. The pin reason is the same
-            // CAPCO §H.3 p57 worked-example expansion; the engine
-            // emits the diagnostic with `rule.predicate_id() ==
+            // The pin reason is the CAPCO §H.3 p57 worked-example
+            // expansion; the engine emits the diagnostic with
+            // `rule.predicate_id() ==
             // "portion.classification.rel-to-not-in-joint-coverage"`.
             rule: "portion.classification.rel-to-not-in-joint-coverage",
             count: 3,
@@ -678,13 +623,10 @@ fn assert_expected_diagnostics_stems_unique() {
 /// Strict per-doc per-rule diagnostic count check against the
 /// `EXPECTED_DOCUMENT_DIAGNOSTICS` allowlist.
 ///
-/// The previous incarnation of this test (`document_fixtures_lint_against_expected`)
-/// iterated over `.expected.json` `diagnostics` arrays — every one of
-/// which was empty — and asserted nothing. This replacement (PR2 follow-up)
-/// pins the exact count per rule per document the engine emits today, with
-/// each count cross-referenced to the GitHub issue that tracks closing the
-/// firing (or a documented reason for permanent expected-firing on
-/// legitimate source noise).
+/// This test pins the exact count per rule per document the engine
+/// emits today, with each count cross-referenced to the GitHub issue
+/// that tracks closing the firing (or a documented reason for permanent
+/// expected-firing on legitimate source noise).
 ///
 /// Failure modes the test catches:
 /// 1. **New diagnostic appearing** — engine starts firing a rule we didn't
@@ -747,14 +689,14 @@ fn document_fixtures_lint_against_expected() {
         // REL-TO-trigraph-suggest, etc.) surface low-confidence opt-up
         // hints whose firing is by design across the documents corpus
         // — `(S//SI)`-style portions on every classified document
-        // would trigger S008 without violating the T119 closeout's
-        // hard-error zero-baseline. The per-stem allowlist is for
-        // hard (Error/Warn/Fix/Info) regressions; Suggest-tier rules
-        // ship at confidences calibrated to never auto-apply under the
-        // default threshold and don't qualify as corpus regressions.
-        // #559 close-out C1 (2026-05-19) added this filter when S008
-        // surfaced 12+ document fixtures simultaneously without any
-        // corresponding hard-severity defect.
+        // would trigger S008 without violating the hard-error
+        // zero-baseline. The per-stem allowlist is for hard
+        // (Error/Warn/Fix/Info) regressions; Suggest-tier rules ship at
+        // confidences calibrated to never auto-apply under the default
+        // threshold and don't qualify as corpus regressions. This
+        // Suggest filter was added (#559) when S008 surfaced 12+
+        // document fixtures simultaneously without any corresponding
+        // hard-severity defect.
         use marque_rules::Severity;
         let mut observed: HashMap<&str, usize> = HashMap::new();
         for d in &result.diagnostics {
