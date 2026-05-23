@@ -48,6 +48,11 @@ re-verify the crate-graph constraint first; it has not loosened.
 
 ## Scoring approach (foundational-plan §5.2)
 
+The doc-comments on `UNAMBIGUOUS_LOG_MARGIN` and
+`NULL_HYPOTHESIS_LOG_MARGIN` in `decoder/mod.rs` cross-reference back
+to this section and the next one; tune the corpus-derived rationale
+here.
+
 For each candidate the decoder computes:
 
 ```text
@@ -77,7 +82,8 @@ coordinated audit-schema bump (`MARQUE_AUDIT_SCHEMA`) per
 
 The top candidate wins when its posterior exceeds the runner-up by a
 configured ratio (`UNAMBIGUOUS_LOG_MARGIN = 1.6` in `decoder/mod.rs`
-— natural-log odds, ≈ 5× probability ratio); below that threshold
+— natural-log odds, ≈ 5× odds ratio `P(top)/P(runner_up)` — not a
+probability ratio); below that threshold
 the decoder returns `Parsed::Ambiguous { candidates }` so the engine
 can surface a diagnostic rather than auto-apply a close call.
 `Candidate::prior_log_odds` carries the prior alone (sum of token
@@ -220,14 +226,40 @@ identifiers):
 3. Add the corresponding `if let Some(persona_repaired) = ...` block
    to `generate_candidate_bytes` in `decoder/candidates.rs` between
    the existing recovery dispatches.
-4. Add a co-located `#[cfg(test)] mod tests` to `recovery/persona.rs`.
+4. Add tests for the new pass.
+
+   **Default**: a co-located `#[cfg(test)] mod tests { use super::*; }`
+   block inside `recovery/persona.rs`. Six of the seven existing
+   recovery sub-files follow this shape (`sar.rs`, `stray.rs`,
+   `nato.rs`, `reorder.rs`, `sci.rs`, `delimiter.rs`).
+
+   **Escape valve** when the combined source-plus-tests file approaches
+   the 800-line gate: externalize the test body to
+   `crates/engine/src/decoder/tests/persona_recovery_tests.rs` and pull
+   it in from the source file with:
+
+   ```rust
+   #[path = "../tests/persona_recovery_tests.rs"]
+   #[cfg(test)]
+   #[cfg_attr(coverage_nightly, coverage(off))]
+   #[allow(unused_imports)]
+   mod tests;
+   ```
+
+   The `#[cfg_attr(coverage_nightly, coverage(off))]` line keeps the
+   test bodies out of coverage measurement so they don't inflate the
+   production-code denominator. Today only `recovery/rel_to.rs` uses
+   the externalized form; `recovery/rel_to_trigraph.rs` carries no
+   co-located tests at present and exercises through corpus fixtures
+   instead.
 5. Add a fixture to
    `crates/engine/tests/decoder_split_byte_identity.rs` if the new
    pass exercises a corpus pattern.
 
-Three small files touched (the new file, recovery/mod.rs,
-candidates.rs). The existing recovery files don't move; the existing
-tests don't move.
+Three small files touched for the default pattern (the new file,
+`recovery/mod.rs`, `candidates.rs`); the escape-valve path adds a
+fourth (`decoder/tests/<persona>_recovery_tests.rs`). The existing
+recovery files don't move; the existing tests don't move.
 
 ### REL TO recovery — historical archaeology
 
