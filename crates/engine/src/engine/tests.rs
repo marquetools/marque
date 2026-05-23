@@ -33,14 +33,13 @@ fn stub_message() -> Message {
 }
 
 /// Filter the marking-side audit lines from a [`FixResult`] into
-/// the legacy `Vec<&AppliedFix>` view the pre-cutover tests read.
+/// a `Vec<&AppliedFix>` view.
 ///
-/// Post PR 3c.2.D the engine's sole audit-output channel is
-/// `FixResult.audit_lines: Vec<AuditLine<S>>`. The cutover
-/// retired the parallel `applied: Vec<AppliedFix<S>>` field;
-/// this helper preserves the pre-cutover read shape for unit
-/// tests that consume only the marking side without rewriting
-/// every assertion site to pattern-match the sum type.
+/// The engine's sole audit-output channel is
+/// `FixResult.audit_lines: Vec<AuditLine<S>>`. This helper exposes a
+/// marking-side-only read shape for unit tests that consume only the
+/// marking side without pattern-matching the sum type at every
+/// assertion site.
 /// Text-correction audit lines (`AuditLine::TextCorrection`) are
 /// surfaced by [`applied_text_corrections`] below.
 #[inline]
@@ -138,10 +137,9 @@ fn with_clock_uses_default_rewrite_schedule() {
     );
 }
 
-/// A pure-test stand-in for the old `FixProposal` shape: the
-/// fields engine tests actually exercise (rule, span, replacement,
-/// confidence). The engine pipeline post Commit 10 takes
-/// `FixIntent<S>` exclusively, so `StubRule` synthesizes a
+/// A pure-test proposal carrier: the fields engine tests actually
+/// exercise (rule, span, replacement, confidence). The engine pipeline
+/// takes `FixIntent<S>` exclusively, so `StubRule` synthesizes a
 /// `Recanonicalize` intent + a separate Diagnostic per
 /// `StubProposal` and the engine's `synthesize_fixes` path runs
 /// the recanonicalization through a stub-scheme override.
@@ -210,10 +208,10 @@ struct StubRule {
 
 impl Rule<CapcoScheme> for StubRule {
     fn id(&self) -> RuleId {
-        // T044 test helper: every stub rule uses the reserved
-        // `"test"` scheme. The `self.id` field carries the
-        // predicate id (the per-test discriminant) so call sites
-        // like `proposal("E001", ...)` continue to read naturally.
+        // Every stub rule uses the reserved `"test"` scheme. The
+        // `self.id` field carries the predicate id (the per-test
+        // discriminant) so call sites like `proposal("E001", ...)`
+        // read naturally.
         RuleId::new("test", self.id)
     }
     fn name(&self) -> &'static str {
@@ -298,8 +296,8 @@ fn proposal_with_confidence(
     confidence: f32,
 ) -> StubProposal {
     StubProposal {
-        // T044 test helper: every stub proposal uses the reserved
-        // `"test"` scheme; the `rule` arg is the predicate id.
+        // Every stub proposal uses the reserved `"test"` scheme; the
+        // `rule` arg is the predicate id.
         rule: RuleId::new("test", rule),
         span: Span::new(start, end),
         replacement: replacement.into(),

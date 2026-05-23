@@ -57,7 +57,7 @@ mod types;
 #[cfg(test)]
 mod test_helpers;
 
-// Public surface — byte-identical paths preserved per FR-049.
+// Public surface — byte-identical paths preserved (frozen API).
 pub use dispatcher::StrictOrDecoderRecognizer;
 pub use recognizer::DecoderRecognizer;
 pub use shape::is_nontrivial_marking;

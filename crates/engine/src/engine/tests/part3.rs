@@ -154,23 +154,18 @@ fn canonicalize_empty_overrides_is_noop() {
     assert!(config.rules.overrides.is_empty());
 }
 
-// PR 3c.B Commit 7.3 + 7.4 — bridge-emitted rule IDs (no registered
-// `Rule` impl). The canonicalizer consults
-// `CapcoScheme::bridge_emitted_rule_ids()` so `.marque.toml` keys
-// referencing the retired walker IDs (`E058`, `E059`) or their
-// descriptive aliases (`class-floor-catalog`,
-// `sci-per-system-catalog`) are accepted rather than failing
+// Bridge-emitted rule IDs (no registered `Rule` impl). The
+// canonicalizer consults `CapcoScheme::bridge_emitted_rule_ids()` so
+// `.marque.toml` keys referencing the bridged catalog rows or their
+// descriptive aliases are accepted rather than failing
 // `UnknownRuleOverride`. These tests pin the four key forms +
 // canonical-ID resolution so the bridge path can't silently regress.
 
-// T044: post-Agent-A `bridge_emitted_rule_ids` returns
-// `(wire_string, descriptive_alias)` pairs; the legacy
-// `("E058", "class-floor-catalog")` aggregate is retired. Each
-// bridged catalog row now has its own per-row wire string. The
+// `bridge_emitted_rule_ids` returns `(wire_string, descriptive_alias)`
+// pairs; each bridged catalog row has its own per-row wire string. The
 // tests below pin the four key forms — wire string, predicate-id
 // alone, descriptive alias, and a representative class-floor /
-// sci-per-system row — using a representative bridge entry from
-// Agent A's renamed surface.
+// sci-per-system row.
 //
 // Pick one row from the SCI per-system catalog
 // (`marking.sci.hcs-o-companions`) and one from the class-floor
@@ -180,7 +175,7 @@ fn canonicalize_empty_overrides_is_noop() {
 
 #[test]
 fn canonicalize_accepts_bridge_emitted_wire_string_form() {
-    // T044 / OD-7: users type the wire-string form
+    // Users type the wire-string form
     // `"capco:marking.sci.hcs-o-companions"` in `.marque.toml`;
     // canonicalize reduces to the predicate-id intern.
     let mut config = config_with_overrides(&[("capco:marking.sci.hcs-o-companions", "warn")]);
@@ -336,7 +331,7 @@ fn suggest_closest_returns_none_when_nothing_is_close_enough() {
 }
 
 // -------------------------------------------------------------------
-// PR 7b — `build_r002_diagnostic` shape pin (security finding 2)
+// `build_r002_diagnostic` shape pin
 // -------------------------------------------------------------------
 //
 // R002 is a synthetic diagnostic emitted when the post-pass-1 buffer
@@ -377,11 +372,10 @@ fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
         diag.text_correction.is_none(),
         "R002 must carry no TextCorrection"
     );
-    // PR 3c.2.C C5: typed `Message` carries the contributing rule
-    // IDs structurally via `MessageArgs.contributing_rule_ids`
-    // (closed-set permitted type). The args check is stricter than
-    // the legacy substring check because it asserts on a closed
-    // type rather than a string substring.
+    // The typed `Message` carries the contributing rule IDs
+    // structurally via `MessageArgs.contributing_rule_ids` (closed-set
+    // permitted type). The args check asserts on a closed type rather
+    // than a string substring.
     assert_eq!(diag.message.template(), MessageTemplate::ReparseFailed);
     let contributors = &diag.message.args().contributing_rule_ids;
     assert!(
@@ -405,23 +399,21 @@ fn build_r002_diagnostic_empty_contributors_uses_generic_message() {
     assert_eq!(diag.rule, super::R002_RULE_ID);
     assert!(diag.fix.is_none());
     assert!(diag.text_correction.is_none());
-    // PR 3c.2.C C5: empty-contributors branch identified by
-    // empty `contributing_rule_ids` SmallVec, not by message
-    // substring.
+    // Empty-contributors branch identified by an empty
+    // `contributing_rule_ids` SmallVec, not by message substring.
     assert_eq!(diag.message.template(), MessageTemplate::ReparseFailed);
     assert!(diag.message.args().contributing_rule_ids.is_empty());
 }
 
 // -------------------------------------------------------------------
-// PR 7b round-1 Copilot fixes — partition + re-lint data-flow locks
+// Partition + re-lint data-flow locks
 // -------------------------------------------------------------------
 //
-// Copilot round-1 finding #2: the re-parse arm of `TwoPassFixer::run`
-// discarded the post-pass-1 re-lint's diagnostic stream and dispatched
-// pass-2 against the pre-pass-1 partition. The fix re-partitions
-// `relint.diagnostics` and feeds pass-2 the fresh post-pass-1
-// WholeMarking slice. Tests below pin the partition logic in
-// isolation and lock the data-flow contract via a stub Phase::Localized
+// The re-parse arm of `TwoPassFixer::run` must re-partition
+// `relint.diagnostics` and feed pass-2 the fresh post-pass-1
+// WholeMarking slice — NOT the stale pre-pass-1 partition. Tests below
+// pin the partition logic in isolation and lock the data-flow contract
+// via a stub Phase::Localized
 // FixIntent rule that mutates the buffer.
 
 #[test]
@@ -430,7 +422,7 @@ fn partition_diags_by_phase_routes_by_localized_id_set() {
     // pass-1; everything else goes to pass-2. text_correction
     // diagnostics with no `fix` are excluded from BOTH partitions.
     //
-    // T044: synthetic test ids in the `"test"` reserved scheme;
+    // Synthetic test ids in the `"test"` reserved scheme;
     // `localized_ids` keys on the predicate-id half.
     let localized: HashSet<&'static str> = ["e006", "e007", "c001"].into_iter().collect();
 
@@ -501,7 +493,7 @@ fn partition_diags_by_phase_routes_by_localized_id_set() {
 
 #[test]
 fn partition_diags_by_phase_returns_references_not_clones() {
-    // Copilot round-3 R3-2 regression test: the partition MUST
+    // Regression test: the partition MUST
     // return reference vectors borrowing from `diagnostics`, not
     // cloned owned vectors. The cloning shape allocated O(N)
     // Diagnostic bodies on every call, and `partition_diags_by_phase`
@@ -582,9 +574,9 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
     });
 
     // Bind the input array to a named local so the reference
-    // partition (Copilot round-3 R3-2) outlives the assertion
-    // — `partition_diags_by_phase` now returns reference
-    // vectors, so the source `[Diagnostic]` must remain live.
+    // partition outlives the assertion —
+    // `partition_diags_by_phase` returns reference vectors, so the
+    // source `[Diagnostic]` must remain live.
     let diags = [tc];
     let (p1, p2) = super::partition_diags_by_phase(&diags, &localized);
     assert_eq!(p1.len(), 1, "text_correction WITH fix → pass-1 (c001)");
@@ -593,8 +585,6 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
 
 #[test]
 fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
-    // FR-023 partial — Copilot round-1 finding #2 fix.
-    //
     // Scenario: a stub `Phase::Localized` rule that emits a
     // `FixIntent` whose application changes the buffer in a way the
     // pre-pass-1 lint could not have seen. After pass-1, the engine
@@ -617,7 +607,7 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
     struct LocalizedFixIntentStub;
     impl Rule<CapcoScheme> for LocalizedFixIntentStub {
         fn id(&self) -> RuleId {
-            // T044: test-fixture synthetic id in `"test"` scheme.
+            // Test-fixture synthetic id in `"test"` scheme.
             RuleId::new("test", "synthetic.e899-fixture")
         }
         fn name(&self) -> &'static str {

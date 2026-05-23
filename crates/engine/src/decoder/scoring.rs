@@ -65,8 +65,8 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 /// [`marque_ism::TokenKind::Unknown`] for non-alphanumeric/wrong-shape
 /// compartment tokens (which step 3a then drops), but SAR's grammar accepts any
 /// `[A-Z0-9]+` identifier and absorbs cleanly — leaving SAR as the
-/// observed failure mode on the SC-004 corpus (the `SAR-BP-J12 …` and
-/// `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` fixtures pre-PR-5).
+/// observed failure mode on the mangled corpus (the `SAR-BP-J12 …` and
+/// `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` fixtures).
 ///
 /// **Magnitude.** Empirically the absorbing-vs-delim-inserted spread
 /// on those two fixtures is ~9 nats; the [`MISSING_TOKEN_LOG_PRIOR`]
@@ -432,8 +432,8 @@ fn for_each_canonical_token(
         //   filter to reject valid NATO-folded portions like `(//NR)`. The NATO
         //   abbreviations have near-zero prose frequency and fall to
         //   `MISSING_TOKEN_LOG_PRIOR` (−12.0) on both sides, giving a neutral
-        //   (zero) marking-y delta rather than a prose-weighted penalty. T129 /
-        //   #260 fix; companion to `NATO_PORTION_FORMS` in `marque-ism::token_set`.
+        //   (zero) marking-y delta rather than a prose-weighted penalty
+        //   (#260); companion to `NATO_PORTION_FORMS` in `marque-ism::token_set`.
         //
         // For banner/CAB/PageBreak: always use the full-word form regardless of
         //   classification system (fold is portion-only; banners reach here via

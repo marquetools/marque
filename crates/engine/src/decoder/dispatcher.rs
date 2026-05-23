@@ -3,9 +3,9 @@
 //! Runs the strict path first, falls back to the decoder when the
 //! strict parse is empty or incomplete. Within this recognizer,
 //! dispatch is keyed off `ParseContext::strict_evidence` so callers
-//! that need strict-only behavior (the SC-001 interactive-latency
-//! benchmark, tests asserting strict behavior) can opt in at the
-//! context level instead of the recognizer level.
+//! that need strict-only behavior (the interactive-latency benchmark,
+//! tests asserting strict behavior) can opt in at the context level
+//! instead of the recognizer level.
 
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_scheme::ambiguity::Parsed;
@@ -24,10 +24,9 @@ use super::shape::{infer_marking_type, strict_parse_is_complete};
 /// decoder when the strict parse yields no meaningful attributes.
 ///
 /// Default recognizer installed by [`crate::Engine::new`]. Callers
-/// that need strict-only dispatch (the SC-001 interactive-latency
-/// benchmark, tests asserting strict behavior) install
-/// [`StrictRecognizer`] explicitly via
-/// [`crate::Engine::with_recognizer`].
+/// that need strict-only dispatch (the interactive-latency benchmark,
+/// tests asserting strict behavior) install [`StrictRecognizer`]
+/// explicitly via [`crate::Engine::with_recognizer`].
 ///
 /// Within this recognizer, dispatch is keyed off
 /// [`ParseContext::strict_evidence`]:

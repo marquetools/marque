@@ -80,10 +80,9 @@ use crate::decoder::scoring::is_hard_splitter;
 /// [`is_classification_token`] includes `TOP` and
 /// [`is_classification_continuation`] handles the `TOP → SECRET`
 /// special case, so the helper produces the canonical bytes for all
-/// 17 MissingDelimiter fixtures in the SC-004 corpus. The remaining
-/// 2/17 failures pre-PR-5 were a SCORING contest, not a missing
-/// rewrite — handled by [`HARD_SPLITTER_ABSORPTION_PENALTY`] in
-/// [`score_candidate`], not here.
+/// 17 MissingDelimiter fixtures in the mangled corpus. The remaining
+/// 2/17 are a SCORING contest, not a missing rewrite — handled by
+/// [`HARD_SPLITTER_ABSORPTION_PENALTY`] in [`score_candidate`], not here.
 pub(in crate::decoder) fn try_insert_delimiter(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut result = String::with_capacity(text.len() + 8);

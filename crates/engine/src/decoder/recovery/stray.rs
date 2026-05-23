@@ -53,7 +53,7 @@
 /// adding a multi-pass loop here would complicate the candidate cap
 /// in [`generate_candidate_bytes`] without proportional benefit. The
 /// pass can iterate later if multi-pattern recovery becomes
-/// load-bearing for SC-004 movement.
+/// load-bearing for accuracy.
 ///
 /// # Pattern boundary requirements
 ///
