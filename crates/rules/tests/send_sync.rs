@@ -18,7 +18,7 @@
 //!
 //! Companion file: `crates/scheme/tests/send_sync.rs` already pins the
 //! `Recognizer` trait-object form. This file closes the equivalent
-//! gap for `Rule` and `RuleSet` (Phase 4 review M2).
+//! gap for `Rule` and `RuleSet`.
 
 use std::sync::Arc;
 
@@ -33,10 +33,10 @@ use marque_scheme::template::Template;
 use marque_scheme::{MarkingScheme, Scope};
 use static_assertions::assert_impl_all;
 
-// Local stub scheme for the trait-object Send + Sync proof. PR 3c.B
-// made `Rule<S>` and `RuleSet<S>` generic over the marking scheme;
-// the trait-object form is `Arc<dyn Rule<S>>` / `Arc<dyn RuleSet<S>>`
-// for some concrete scheme. The Send + Sync bound flows through the
+// Local stub scheme for the trait-object Send + Sync proof.
+// `Rule<S>` and `RuleSet<S>` are generic over the marking scheme; the
+// trait-object form is `Arc<dyn Rule<S>>` / `Arc<dyn RuleSet<S>>` for
+// some concrete scheme. The Send + Sync bound flows through the
 // supertrait declaration regardless of `S`, so a bound proof for any
 // one scheme proves the property for every scheme.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -118,18 +118,16 @@ assert_impl_all!(Arc<dyn Rule<StubScheme>>: Send, Sync);
 assert_impl_all!(Box<dyn RuleSet<StubScheme>>: Send, Sync);
 assert_impl_all!(Arc<dyn RuleSet<StubScheme>>: Send, Sync);
 
-// T044 (rust-reviewer M3) — pin `RuleId: Send + Sync + Copy`. The
-// 2-tuple `RuleId { scheme, predicate_id }` has only `&'static str`
-// fields, so the property holds today by construction. The pin
-// makes the safety property machine-verifiable rather than assumed
-// from the derive list.
+// Pin `RuleId: Send + Sync + Copy`. The 2-tuple
+// `RuleId { scheme, predicate_id }` has only `&'static str` fields, so
+// the property holds today by construction. The pin makes the safety
+// property machine-verifiable rather than assumed from the derive
+// list.
 assert_impl_all!(RuleId: Send, Sync, Copy);
 
-// PR 6c (T069) compile-time pin on `RuleContext: Send + Sync`.
+// Compile-time pin on `RuleContext: Send + Sync`.
 //
-// PR 6c deleted the `assert_impl_all!(PageContext: Send, Sync)` pin
-// in `crates/ism/tests/send_sync.rs` when the `PageContext` newtype
-// was retired. The new field type on `RuleContext` is
+// The page-portion field type on `RuleContext` is
 // `Option<Arc<Box<[CanonicalAttrs]>>>`, which is `Send + Sync` iff
 // `CanonicalAttrs: Send + Sync` (asserted in
 // `crates/ism/tests/send_sync.rs`). This file closes the gap by

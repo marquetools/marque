@@ -15,31 +15,26 @@
 //!
 //! - The typed citation surface (`Citation`, `SectionRef`,
 //!   `SectionLetter`, `PageNumber`, `AuthoritativeSource`) lives in
-//!   [`marque_scheme::citation`] (relocated from `marque-rules` in
-//!   PR 10.A.1 so the scheme-level catalog rows can carry typed
-//!   citations without inverting the crate dependency graph). The
-//!   `Display` impl emits the citation-lint regex form
+//!   [`marque_scheme::citation`] so the scheme-level catalog rows can
+//!   carry typed citations without inverting the crate dependency
+//!   graph. The `Display` impl emits the citation-lint regex form
 //!   (`§<L>.<sub>[.<sub_sub>] [Table <N>] p<page>`). Const-fn
-//!   construction; no runtime validation per D25.2 in
-//!   `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md`. The
-//!   `&'static str` → `Citation` literal-site migration completed at
-//!   PR 3c.2.C; PR 10.A.1 finished the type flip on catalog row
-//!   declarations (`Constraint`, `PageRewrite`, `ClosureRule`).
+//!   construction; no runtime validation.
 //! - [`confidence`] — `Confidence` (recognition × rule axes), `FeatureId`,
-//!   `FeatureContribution`. Phase D audit-provenance payload attached to
+//!   `FeatureContribution`. Audit-provenance payload attached to
 //!   every `FixIntent<S>`.
 //! - [`message`] — `Message`, `MessageTemplate` (closed enum), `MessageArgs`
-//!   (closed-set struct). The G13 type-system closure of the diagnostic-message
+//!   (closed-set struct). The type-system closure of the diagnostic-message
 //!   leak channel: only `Message::new(template, args)` constructs a `Message`,
 //!   and `MessageArgs` cannot carry input bytes (no `String` / `&str` / `Vec<u8>`
 //!   fields).
 //! - [`fix_intent`] — `FixIntent<S>`. The rule-emission API for the
-//!   bag-of-tokens vocabulary from `architecture.md` §"What fixes are":
-//!   fact-set deltas (`FactAdd` / `FactRemove`) and renderer
-//!   recanonicalization (`Recanonicalize`). `ReplacementIntent<S>`,
-//!   `FactRef<S>`, and `RecanonScope` live in `marque-scheme`; rules
-//!   import them directly from there. The engine promotes a
-//!   `FixIntent<S>` to an `AppliedFix<S>` via `__engine_promote`.
+//!   bag-of-tokens vocabulary: fact-set deltas (`FactAdd` /
+//!   `FactRemove`) and renderer recanonicalization (`Recanonicalize`).
+//!   `ReplacementIntent<S>`, `FactRef<S>`, and `RecanonScope` live in
+//!   `marque-scheme`; rules import them directly from there. The engine
+//!   promotes a `FixIntent<S>` to an `AppliedFix<S>` via
+//!   `__engine_promote`.
 //!
 //! # Type split: FixIntent vs AppliedFix
 //!
@@ -48,19 +43,12 @@
 //! `AppliedFix<S>` wraps it with runtime context (timestamp,
 //! classifier id, dry-run flag) and is constructed **only** by
 //! `Engine::fix_inner`. This makes "suggested vs applied" a
-//! type-system invariant.
+//! type-system invariant. `AppliedFix<S>` carries a `Canonical<S>` +
+//! `Discriminant` + BLAKE3 digests of pre-fix and canonical bytes;
+//! non-marking text corrections are a separate `AppliedTextCorrection`
+//! type, each with its own engine-promotion seal.
 //!
-//! The Commit 2–9 transition through a legacy `FixProposal` shape
-//! retired in PR 3c.B Commit 10 (`mvp-1`/`mvp-2` → `mvp-3`); the
-//! `marque-mvp-3 → marque-1.0` atomic cutover then landed at
-//! PR 3c.2.D, reshaping `AppliedFix<S>` to carry `Canonical<S>` +
-//! `Discriminant` + BLAKE3 digests of pre-fix and canonical bytes,
-//! and splitting non-marking text corrections into a separate
-//! `AppliedTextCorrection` type (the marking-side seal stays on
-//! `AppliedFix<S>`; the text-correction-side seal lives on
-//! `AppliedTextCorrection`).
-//!
-//! # G13 (audit content ignorance)
+//! # Audit content ignorance
 //!
 //! `AppliedFix<S>` carries a sealed [`marque_scheme::Canonical<S>`]
 //! payload (rendered token canonicals) + BLAKE3 digests of the
@@ -68,7 +56,7 @@
 //! `AppliedTextCorrection` channel carries only canonical
 //! replacement strings (corpus-derived token canonicals on
 //! Constitution V's permitted-identifier list, e.g. `"SECRET"`
-//! replacing a typo). The T055 content-ignorance canary
+//! replacing a typo). The content-ignorance canary
 //! (`crates/engine/tests/audit_g13_canary.rs`) sweeps the
 //! regression corpora to verify no input substring ≥4 bytes appears
 //! in any emitted NDJSON record outside the permitted-identifier
@@ -102,12 +90,12 @@ pub use fix_intent::FixIntent;
 // detail of the audit-record payload; the re-export keeps it that
 // way at the boundary.
 pub use smallvec::{SmallVec, smallvec};
-// `FactRef`, `ReplacementIntent`, and `RecanonScope` moved to
-// `marque-scheme` as of the PR 3c.B engine-prereq (the new
-// `MarkingScheme::apply_intent` trait method needs them at the trait
-// surface; `marque-rules` already depends on `marque-scheme`, so the
-// types must live below us in the dependency graph). Import them
-// directly from `marque_scheme::{FactRef, RecanonScope, ReplacementIntent}`.
+// `FactRef`, `ReplacementIntent`, and `RecanonScope` live in
+// `marque-scheme`: the `MarkingScheme::apply_intent` trait method
+// needs them at the trait surface, and `marque-rules` already depends
+// on `marque-scheme`, so the types must live below us in the
+// dependency graph. Import them directly from
+// `marque_scheme::{FactRef, RecanonScope, ReplacementIntent}`.
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
 pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate, to_audit_string};
 pub use rule::{Rule, RuleId, RuleSet};
@@ -120,9 +108,9 @@ mod tests {
 
     #[test]
     fn rule_id_round_trip() {
-        // T044 / FR-026 / FR-044: RuleId is a (scheme, predicate_id)
-        // 2-tuple. Accessors round-trip and the Display impl renders
-        // the canonical wire string `"<scheme>:<predicate_id>"`.
+        // RuleId is a (scheme, predicate_id) 2-tuple. Accessors
+        // round-trip and the Display impl renders the canonical wire
+        // string `"<scheme>:<predicate_id>"`.
         let r = RuleId::new("capco", "banner.classification.usa-trigraph");
         assert_eq!(r.scheme(), "capco");
         assert_eq!(r.predicate_id(), "banner.classification.usa-trigraph");
@@ -143,11 +131,11 @@ mod tests {
 
     #[test]
     fn rule_id_display_wire_string_uses_colon_separator() {
-        // T044 OD-2 / OD-3: the wire-string form is reserved for text
-        // contexts (CLI human-readable output, log lines,
-        // `.marque.toml` config keys). Colon was picked over slash
-        // (slash collides with the catalog-row label convention) and
-        // over dot (dot collides with predicate-id internal segments).
+        // The wire-string form is reserved for text contexts (CLI
+        // human-readable output, log lines, `.marque.toml` config
+        // keys). Colon was picked over slash (slash collides with the
+        // catalog-row label convention) and over dot (dot collides with
+        // predicate-id internal segments).
         assert_eq!(
             RuleId::new("engine", "recognition.decoder-recognized").to_string(),
             "engine:recognition.decoder-recognized",
@@ -160,10 +148,8 @@ mod tests {
 
     #[test]
     fn rule_id_engine_sentinels_use_reserved_scheme() {
-        // T044 §1.4 + OD-4 + PM-decisions table row OD-4:
-        // engine-minted diagnostics use the reserved "engine" scheme
-        // and DROP the historical "r001."/"r002." numeric prefix. The
-        // two concrete sentinels are documented on the RuleId type.
+        // Engine-minted diagnostics use the reserved "engine" scheme.
+        // The two concrete sentinels are documented on the RuleId type.
         let r001 = RuleId::new("engine", "recognition.decoder-recognized");
         let r002 = RuleId::new("engine", "fix.reparse-failed");
         assert_eq!(r001.scheme(), "engine");
@@ -225,9 +211,9 @@ mod tests {
 
     #[test]
     fn severity_suggest_round_trips_through_config_string() {
-        // Issue #235 / #186 PR-3: the suggest-don't-fix channel must be
-        // a stable parse target. The config string "suggest" must round
-        // trip through both parse_config and as_str.
+        // The suggest-don't-fix channel must be a stable parse target.
+        // The config string "suggest" must round trip through both
+        // parse_config and as_str.
         assert_eq!(Severity::parse_config("suggest"), Some(Severity::Suggest));
         assert_eq!(Severity::Suggest.as_str(), "suggest");
         assert_eq!(Severity::Suggest.to_string(), "suggest");
@@ -243,8 +229,6 @@ mod tests {
         assert!(Severity::Off < Severity::Suggest);
     }
 
-    // FixProposal-construction validation tests retired in
-    // PR 3c.B Commit 10 (along with the FixProposal type itself).
     // Confidence's per-axis validate() is tested directly in
     // `confidence.rs`; FixIntent<S> construction is exercised in
     // `fix_intent.rs::tests`.

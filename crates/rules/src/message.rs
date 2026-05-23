@@ -3,20 +3,13 @@
 
 //! `Message` — closed-template, closed-args diagnostic message representation.
 //!
-//! Replaces the current `Diagnostic.message: Box<str>` channel (which
-//! permits `format!`-built strings interpolating input bytes — the leak
-//! channel called out by the source plan
-//! `docs/plans/2026-05-02-engine-refactor-consolidated.md` §8.3 and
-//! Constitution V Principle V's audit-content-ignorance invariant).
-//!
-//! PR 3c.1 introduced the new types **alongside** the existing
-//! `Box<str>` channel. PR 3c.2.C C5 (this PR's atomic Diagnostic
-//! field-type migration) replaced `Diagnostic.message: Box<str>` with
-//! `Diagnostic.message: Message` and deleted the `format!`
-//! interpolation in the engine's decoder synthesis site (see
-//! `build_decoder_synthesized_diagnostic` in
-//! `crates/engine/src/engine.rs`, which now constructs
-//! `Message::new(MessageTemplate::DecoderRecognized, ...)`).
+//! `Diagnostic.message` is a `(template, args)` pair rather than a
+//! free-form `Box<str>`, closing the `format!`-built-string leak
+//! channel (interpolating input bytes) that Constitution V Principle
+//! V's audit-content-ignorance invariant forbids. The engine's decoder
+//! synthesis helper (`build_decoder_diagnostic` in
+//! `crates/engine/src/engine/synthesis.rs`) constructs
+//! `Message::new(MessageTemplate::DecoderRecognized, ...)`.
 //!
 //! # Closed-template invariant
 //!
@@ -67,11 +60,10 @@ use crate::confidence::{Confidence, FeatureId};
 
 /// BLAKE3 digest — a re-export of [`blake3::Hash`].
 ///
-/// PR 3c.2.D PM-D-5 replaced the prior `Blake3Hash([u8; 32])` newtype
-/// with this alias. `blake3::Hash` already implements `Debug`, `Clone`,
-/// `Copy`, `PartialEq`, `Eq`, `Hash`, `Display`, `From<[u8; 32]>`, and
-/// `FromStr` — every property the audit-record types need without
-/// re-exporting a thin wrapper that adds no invariants.
+/// An alias rather than a newtype: `blake3::Hash` already implements
+/// `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `Hash`, `Display`,
+/// `From<[u8; 32]>`, and `FromStr` — every property the audit-record
+/// types need without a thin wrapper that adds no invariants.
 ///
 /// # Audit-emit wire form
 ///
@@ -81,14 +73,14 @@ use crate::confidence::{Confidence, FeatureId};
 /// `blake3::Hash` value; the string form materializes only at NDJSON
 /// emit (CLI + WASM renderers, the only sanctioned readout sites).
 ///
-/// # Content-ignorance invariant (Constitution V Principle V / G13)
+/// # Content-ignorance invariant (Constitution V Principle V)
 ///
 /// `Blake3Hash` is one of the closed permitted types for
 /// [`MessageArgs`] fields. The digest is computed *from* content, but
 /// the digest itself is opaque; no other accessor surfaces document
-/// bytes back out of the digest. PR 3c.2.D wires real digest
-/// computation through `AppliedReplacement::bytes_digest` and
-/// `AppliedFixDetail::original_digest` on the `marque-1.0` audit
+/// bytes back out of the digest. Real digest computation flows through
+/// `AppliedReplacement::bytes_digest` and
+/// `AppliedFixDetail::original_digest` on the `marque-2.0` audit
 /// envelope.
 pub type Blake3Hash = blake3::Hash;
 
@@ -131,31 +123,26 @@ pub fn to_audit_string(hash: &Blake3Hash) -> String {
 /// (`DecoderRecognized`, `ReparseFailed`, `CorrectionsApplied`) carry
 /// no §-citation — they are not CAPCO-derived.
 ///
-/// PR 3c.1 introduced the enum **alongside** the existing `Box<str>`
-/// channel. PR 3c.2.C C5 (atomic Diagnostic field-type migration)
-/// completed the migration: rule emission constructs these variants
-/// and the `format!`-interpolated free-form path is gone.
+/// Rule emission constructs these variants; there is no
+/// `format!`-interpolated free-form path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MessageTemplate {
     /// Decoder recognized a canonical form for an input the strict
     /// recognizer rejected. Args: `actual_token` (the canonical the
     /// decoder produced).
     ///
-    /// **Landed**: PR 3c.2.C C5 (replaces the `format!` interpolation
-    /// in the engine's decoder synthesis site —
-    /// `build_decoder_synthesized_diagnostic` in
-    /// `crates/engine/src/engine.rs`). Engine-synthetic — no
+    /// Constructed by the engine's decoder synthesis helper
+    /// (`build_decoder_diagnostic` in
+    /// `crates/engine/src/engine/synthesis.rs`). Engine-synthetic — no
     /// §-citation.
     DecoderRecognized,
 
     /// Engine-minted: the post-pass-1 buffer failed to re-parse.
     /// Args: `feature_ids` carry the contributing pass-1 fix rule
-    /// IDs encoded as opaque [`FeatureId`] tags (PR 7 fills the
-    /// variant set).
-    ///
-    /// **Lands**: PR 3c.1 reserves the slot; PR 7 wires the call
-    /// site under the sentinel `("engine", "r002.reparse-failed")`
-    /// rule ID per source plan §9.4. Engine-synthetic — no §-citation.
+    /// IDs encoded as opaque [`FeatureId`] tags. The engine wires
+    /// the call site under the sentinel
+    /// `("engine", "fix.reparse-failed")` rule ID. Engine-synthetic
+    /// — no §-citation.
     ReparseFailed,
 
     /// Banner roll-up did not match the projected expected banner
@@ -330,13 +317,12 @@ impl MessageTemplate {
 
 /// Closed-set permitted arguments to a [`MessageTemplate`].
 ///
-/// **Constitution V Principle V (G13) closure**: every field type is
+/// **Constitution V Principle V closure**: every field type is
 /// in the audit-content-ignorance permitted set: [`TokenId`],
 /// [`CategoryId`], [`Span`], [`Blake3Hash`], [`Confidence`],
 /// [`FeatureId`]. No `String`, no `&str`, no `Vec<u8>`, no `format!`-
-/// derived field. This is the type-level closure of the leak channel
-/// called out by source plan §8.3 — `MessageArgs` cannot carry input
-/// bytes by construction.
+/// derived field. `MessageArgs` cannot carry input bytes by
+/// construction.
 ///
 /// # Field-name conventions
 ///
@@ -424,14 +410,11 @@ pub struct MessageArgs {
     /// needs to point at one token within it.
     pub span: Option<Span>,
 
-    /// BLAKE3 digest of content the message references. PR 3c.1
-    /// ships the `Blake3Hash` type; PR 3c.2 wires real digest
-    /// computation at the audit-emit boundary.
+    /// BLAKE3 digest of content the message references.
     pub digest: Option<Blake3Hash>,
 
     /// Confidence record snapshotted from the producing rule's
-    /// [`crate::FixProposal`] (PR 3c.1) or
-    /// `FixIntent` (PR 3c.2 onward).
+    /// `FixIntent`.
     pub confidence: Option<Confidence>,
 
     /// What token the rule expected (the canonical / required value).
@@ -445,32 +428,26 @@ pub struct MessageArgs {
     pub feature_ids: SmallVec<[FeatureId; 4]>,
 
     /// Contributing pass-1 fix rule IDs for
-    /// [`MessageTemplate::ReparseFailed`] (PR 7b, FR-024). Empty for
-    /// every other template variant.
+    /// [`MessageTemplate::ReparseFailed`]. Empty for every other
+    /// template variant.
     ///
     /// Inline-4 matches the four-rule pass-1 partition in the CAPCO
-    /// ruleset (C001, E006, E007, S004) — no heap allocation even
-    /// when every Localized rule contributes. [`RuleId`] is on
-    /// Constitution V Principle V's permitted-identifier list
-    /// (enumerated identifier, not document bytes); adding the
-    /// `SmallVec<[RuleId; 4]>` preserves the closed-set property
-    /// of [`MessageArgs`].
+    /// ruleset — no heap allocation even when every Localized rule
+    /// contributes. [`RuleId`] is on Constitution V Principle V's
+    /// permitted-identifier list (enumerated identifier, not document
+    /// bytes); the `SmallVec<[RuleId; 4]>` preserves the closed-set
+    /// property of [`MessageArgs`].
     ///
     /// Audit emitters MUST skip this field when empty. The audit
     /// emit boundary at `crates/engine/src/audit.rs` (and the WASM
-    /// equivalent) uses `SmallVec::is_empty` as the skip predicate
-    /// when this field eventually flows through `Diagnostic.message`
-    /// (PR 3c.2 migration). PR 7b ships the type-level addition; the
-    /// wire-format gate lives at the migration boundary.
+    /// equivalent) uses `SmallVec::is_empty` as the skip predicate.
     pub contributing_rule_ids: SmallVec<[RuleId; 4]>,
 }
 
 /// Diagnostic message: closed template + closed args.
 ///
-/// Replaces [`crate::Diagnostic::message`]'s `Box<str>` field at
-/// PR 3c.2. PR 3c.1 ships the new type alongside the existing
-/// `Box<str>` field; PR 3c.2 migrates the `Diagnostic` field type and
-/// deletes the legacy channel.
+/// Backs [`crate::Diagnostic::message`] as a closed-template /
+/// closed-args pair rather than a free-form `Box<str>`.
 ///
 /// # Sole public constructor
 ///

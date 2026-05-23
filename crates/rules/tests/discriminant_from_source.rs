@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Pin for [`marque_rules::audit::discriminant_from_source`] — the
-//! `FixSource → Discriminant` collapse table from PR 3c.2.D / PM-D-7
-//! (`docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`).
+//! `FixSource → Discriminant` collapse table.
 //!
 //! This is the audit-emit-time mapping the CLI / WASM renderers
-//! consume to project the `marque-1.0` `replacement.discriminant`
+//! consume to project the `marque-2.0` `replacement.discriminant`
 //! JSON field. Any future [`marque_rules::FixSource`] variant
 //! addition must update [`marque_rules::audit::discriminant_from_source`]
 //! and add a corresponding row here.
@@ -58,9 +57,9 @@ fn maps_decoder_classification_heuristic_to_decoder() {
 #[test]
 #[should_panic(expected = "AppliedTextCorrection")]
 fn panics_on_corrections_map_source() {
-    // PM-D-4 / D-D-3: FixSource::CorrectionsMap routes to
-    // AppliedTextCorrection (separate NDJSON line type, no
-    // Discriminant). Reaching this function with that source
+    // FixSource::CorrectionsMap routes to AppliedTextCorrection
+    // (separate NDJSON line type, no Discriminant). Reaching this
+    // function with that source
     // means the engine bugged the promote-dispatch routing; we
     // panic loudly so the regression surfaces in CI rather than
     // emitting a wrong-shape audit record.
