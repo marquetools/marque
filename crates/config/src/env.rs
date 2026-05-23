@@ -55,6 +55,18 @@ pub(crate) fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     Ok(())
 }
 
+/// Convert a `MARQUE_CLOSURE_RULES_*` env var key into a closure-rule
+/// wire-string key (`<scheme>:<predicate.path>`).
+///
+/// Encoding:
+/// 1. Strip `MARQUE_CLOSURE_RULES_`
+/// 2. Split on `__` (segment boundaries)
+/// 3. Convert `_` within each segment to `-`
+/// 4. Lowercase
+/// 5. Join as `<first>:<rest.join(".")>`
+///
+/// Returns `None` for non-matching prefixes or suffixes without at least
+/// two segments (scheme + one predicate segment).
 pub(crate) fn env_var_to_closure_rule_name(env_key: &str) -> Option<String> {
     const PREFIX: &str = "MARQUE_CLOSURE_RULES_";
     let suffix = env_key.strip_prefix(PREFIX)?;
