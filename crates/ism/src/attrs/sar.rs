@@ -139,11 +139,13 @@ impl SarProgram {
     /// parser/decoder split is intentional: the parser is strict so
     /// the decoder can be lenient and informative.
     ///
-    /// Case-mismatch demangling (lowercase → uppercase) is covered by
-    /// `crates/engine/tests/decoder_dispatch_post_280.rs` via issue #699.
-    /// Missing-hyphen demangling at the program/compartment boundary
-    /// (e.g., `SAR-BP XA5` → `SAR-BP-XA5`) remains future decoder work
-    /// tracked under issue #710.
+    /// SAR demangling is handled by the `DecoderRecognizer`, not by
+    /// loosening this gate: case-mismatch (lowercase → uppercase) via
+    /// issue #699, and missing-hyphen at the program/compartment
+    /// boundary (`SAR-BP XA5` → `SAR-BP-XA5`) via issue #710. Both are
+    /// covered by `crates/engine/tests/decoder_dispatch_post_280.rs`
+    /// and the `try_sar_program_boundary_repair` unit tests in
+    /// `crates/engine/src/decoder/recovery/sar.rs`.
     ///
     /// # Examples
     ///

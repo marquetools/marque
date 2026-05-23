@@ -43,6 +43,6 @@ pub(in crate::decoder) use rel_to_trigraph::{
 pub(in crate::decoder) use reorder::{
     meets_classification_floor, try_add_non_us_prefix, try_canonical_reorder,
 };
-pub(in crate::decoder) use sar::try_sar_indicator_repair;
+pub(in crate::decoder) use sar::{try_sar_indicator_repair, try_sar_program_boundary_repair};
 pub(in crate::decoder) use sci::try_sci_delimiter_repair;
 pub(in crate::decoder) use stray::try_collapse_stray_char_slash;
