@@ -302,8 +302,8 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
     let mut reads: BTreeSet<CategoryId> = BTreeSet::new();
     let mut writes: BTreeSet<CategoryId> = BTreeSet::new();
     for &i in indexes {
-        // Bolt Optimization: Use .extend() combined with iterator chains
-        // for bulk insertion into BTreeSet to leverage iterator optimizations.
+        // Use `extend()` as a concise, idiomatic way to add all categories
+        // from this rewrite into the aggregate read/write sets.
         reads.extend(rewrites[i].reads.iter().copied());
         writes.extend(rewrites[i].writes.iter().copied());
     }
