@@ -126,8 +126,7 @@ pub(super) struct FgiExplicitWithTrigraphRule;
 /// this rule's primary `cited_authorities` declaration, so the F.1
 /// corpus-fidelity gate harvests them through the closure path
 /// instead. See [`Rule::cited_authorities`] for the gate contract.
-const FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES: &[Citation] =
-    &[capco(SectionLetter::H, 7, 124)];
+const FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 124)];
 
 impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     fn id(&self) -> RuleId {

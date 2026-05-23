@@ -202,4 +202,3 @@ fn parse_eyes_trigraphs(prefix: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .collect()
 }
-

@@ -19,8 +19,8 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
 
-use crate::lattice::JointSet;
 use super::helpers::canonicalize_trigraph_list;
+use crate::lattice::JointSet;
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------

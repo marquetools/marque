@@ -26,9 +26,7 @@ use marque_rules::{
 use marque_scheme::{Citation, SectionLetter, capco};
 
 use super::dissem::is_dissem_replacement;
-use super::helpers::{
-    FixDiagnosticParams, is_fgi_invalid_ownership_token, make_fix_diagnostic,
-};
+use super::helpers::{FixDiagnosticParams, is_fgi_invalid_ownership_token, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
