@@ -45,22 +45,24 @@
 //!     // join is hoisted out of the iter loop; this measures
 //!     // the Kleene fixpoint alone on a pre-joined marking.
 //!
-//! cost(join + closure) ≈ phase_b_prime_closure_on_unjoined
-//!     // join + closure measured together on the unjoined input
-//!     // shape that `scheme.project()` takes.
+//! cost(bridge + join + closure) ≈ phase_b_prime_closure_on_unjoined
+//!     // the `&[CapcoMarking]` → `Vec<CanonicalAttrs>` clone bridge +
+//!     // join + closure, measured together on the input shape that
+//!     // `scheme.project()` takes.
 //!
 //! cost(default_fill + supersession + page_rewrites)
 //!     ≈ phase_c_scheme_project − phase_b_prime_closure_on_unjoined
-//!     // phase_c and phase_b_prime share the same join-included
-//!     // prefix; the delta isolates the three post-close stages.
+//!     // phase_c and phase_b_prime share the same bridge+join-included
+//!     // prefix, so both cancel; the delta isolates exactly the three
+//!     // post-close stages.
 //!
-//! cost(join + default_fill + supersession + page_rewrites)
+//! cost(bridge + join + default_fill + supersession + page_rewrites)
 //!     ≈ phase_c_scheme_project − phase_b_closure
-//!     // phase_b_closure is closure-only (join hoisted out), so
-//!     // the delta picks up the join cost on top of the three
-//!     // post-close stages. Use this when triaging join-overhead
-//!     // regressions; use the phase_b_prime delta above when
-//!     // triaging the post-close stages alone.
+//!     // phase_b_closure is closure-only (both the bridge and the join
+//!     // are hoisted out of the iter loop), so the delta picks up the
+//!     // bridge + join cost on top of the three post-close stages. Use
+//!     // this when triaging bridge/join overhead; use the phase_b_prime
+//!     // delta above when triaging the post-close stages alone.
 //! ```
 //!
 //! Isolating `apply_default_fill` ALONE (i.e. excluding supersession
@@ -229,40 +231,51 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase B′ (b-prime): join_via_lattice + closure on the same
-    // un-joined `&[CapcoMarking]` input shape `scheme.project()`
-    // takes. Pairs with phase_c so the delta
+    // Phase C input, shared with Phase B′ below so both pay the same
+    // `&[CapcoMarking]` → `Vec<CanonicalAttrs>` clone bridge that
+    // `MarkingScheme::project` performs internally.
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
+
+    // Phase B′ (b-prime): mirror `scheme.project()`'s prefix — the
+    // `&[CapcoMarking]` → `Vec<CanonicalAttrs>` clone bridge, then
+    // `join_via_lattice` + `closure` — on the same `(S//NF) + (TS//SI)`
+    // synthesis pair. Pairs with phase_c so the delta
     //
     //     phase_c_scheme_project − phase_b_prime_closure_on_unjoined
     //
-    // isolates the three post-close stages
+    // isolates exactly the three post-close stages
     // (`apply_default_fill` + `apply_supersession_overlays` +
-    // `page_rewrites`) on the representative
-    // `(S//NF) + (TS//SI)` synthesis pair. The join cost cancels
-    // out because both phases include it.
+    // `page_rewrites`): both phases pay the bridge clone AND the join,
+    // so both cancel in the delta.
     //
-    // Why this is necessary: `phase_b_closure` hoists
-    // `join_via_lattice` out of the iter loop, so `phase_c − phase_b`
-    // recovers the join PLUS the three post-close stages, not just
-    // the post-close stages. The original #714 framing claimed the
-    // delta was `default_fill + page_rewrites` only; this bench
-    // closes that gap.
+    // Why this is necessary: `phase_b_closure` hoists both the bridge
+    // and `join_via_lattice` out of the iter loop, so `phase_c −
+    // phase_b` recovers the bridge + join PLUS the three post-close
+    // stages, not just the post-close stages. The original #714 framing
+    // claimed the delta was `default_fill + page_rewrites` only; this
+    // bench closes that gap. (Copilot PR #754 review caught that an
+    // earlier `phase_b_prime` joined `&portions` directly and never
+    // paid the bridge, so `phase_c − phase_b_prime` still leaked the
+    // bridge-clone cost — fixed here by paying it inside the loop.)
     //
     // Constitution VII §IV bench-only scope: `apply_default_fill`
     // is `pub(crate)` and `apply_supersession_overlays` is a private
     // associated fn; isolating either alone would require exposing
-    // a production-surface entry point. The join-included delta
+    // a production-surface entry point. The post-close-stages delta
     // above is the best honest attribution this scope allows.
     c.bench_function("phase_b_prime_closure_on_unjoined", |b| {
         b.iter(|| {
-            let attrs = CapcoMarking::join_via_lattice(black_box(&portions));
+            // Mirror MarkingScheme::project's prefix verbatim:
+            // `markings.iter().map(|m| m.0.clone()).collect()`.
+            let raw: Vec<CanonicalAttrs> =
+                black_box(&markings).iter().map(|m| m.0.clone()).collect();
+            let attrs = CapcoMarking::join_via_lattice(&raw);
             let out = scheme.closure(CapcoMarking::new(attrs));
             black_box(out);
         });
     });
 
     // Phase C: whole scheme.project(Scope::Page, ...) call.
-    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     c.bench_function("phase_c_scheme_project", |b| {
         b.iter(|| {
             let out = scheme.project(Scope::Page, black_box(&markings));

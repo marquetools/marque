@@ -19,7 +19,8 @@
 //! 2. **`close()`-driven-via-`project()` full-pipeline measurements.**
 //!    Call `scheme.project(Scope::Page, &[marking])` to measure the
 //!    user-observable cost of the post-#704 lattice pass: per-axis
-//!    join → close() → default_fill → page_rewrites. These benches
+//!    join → close() → default_fill → supersession overlay →
+//!    page_rewrites. These benches
 //!    inherit cost from every pipeline stage, not just the closure
 //!    table walk. Bench names start with `project_*` so future
 //!    triage doesn't read the cost as close()-only.
@@ -325,15 +326,22 @@ fn closure_profiles(c: &mut Criterion) {
 
     // Parallel to `closure_worst_case_all_rows` (#714). Measures the
     // full project() pipeline on the same TOP SECRET + 6 SCI sentinels
-    // + SAR + AEA/RD fixture. Both benches share the fixture so the
-    // delta (`project_worst_case_all_rows` − `closure_worst_case_all_rows`)
-    // approximates the default_fill + page_rewrites stage cost on the
-    // worst-case input.
+    // + SAR + AEA/RD fixture. Both benches share the fixture; since
+    // `closure_worst_case_all_rows` calls `scheme.closure()` directly
+    // (closure only — no bridge, no join), the delta
+    // (`project_worst_case_all_rows` − `closure_worst_case_all_rows`)
+    // approximates everything `project()` does that bare `closure()`
+    // does not: the `&[CapcoMarking]` → `Vec<CanonicalAttrs>` clone
+    // bridge + join + default_fill + supersession overlay +
+    // page_rewrites on the worst-case input. (For a post-close-stages-
+    // only attribution that cancels the bridge + join, see the
+    // `phase_b_prime` delta in `profile_project.rs`.)
     //
-    // Framing-vs-name note: this bench inherits cost from lattice
-    // + close + default_fill + page_rewrites; "all rows" applies
-    // to both the close() catalog AND the default-fill triggers
-    // (SAR / AEA / US-classification) on this input.
+    // Framing-vs-name note: this bench inherits cost from the bridge +
+    // lattice join + close + default_fill + supersession overlay +
+    // page_rewrites; "all rows" applies to both the close() catalog AND
+    // the default-fill triggers (SAR / AEA / US-classification) on this
+    // input.
     let worst_proj = worst_case_all_rows();
     let worst_slice = [worst_proj];
     c.bench_function("project_worst_case_all_rows", |b| {
