@@ -28,6 +28,7 @@
 // retains the registry + the not-yet-moved rule structs and is
 // re-exported through this module.
 
+pub(crate) mod banner;
 pub(crate) mod helpers;
 
 pub use crate::rules_legacy::CapcoRuleSet;
