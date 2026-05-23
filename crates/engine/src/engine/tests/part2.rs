@@ -242,7 +242,13 @@ fn parsed_markings_cache_persists_across_page_breaks() {
                     confidence: Confidence::strict(0.99),
                     feature_ids: SmallVec::new(),
                     message: Message::new(
-                        MessageTemplate::BannerRollupMismatch,
+                        // Test-fixture FixIntent.message must agree with
+                        // the Diagnostic-side `stub_message()` template
+                        // (`UnrecognizedToken`) so the audit-record
+                        // contract `Diagnostic.message.template ==
+                        // AppliedFix.message.template` (issue #709)
+                        // holds.
+                        MessageTemplate::UnrecognizedToken,
                         MessageArgs::default(),
                     ),
                     source: FixSource::BuiltinRule,

@@ -129,7 +129,12 @@ fn external_crate_constructs_fix_intent_with_fact_remove() {
         confidence: Confidence::strict(0.85),
         feature_ids: SmallVec::new(),
         message: Message::new(
-            MessageTemplate::BannerRollupMismatch,
+            // Smoke test exercising the cross-crate FactRemove
+            // constructor; `ConflictsWith` is the closed-set template
+            // the FactRemove replacement intent semantically pairs
+            // with (conflict-resolution removes the dominated token).
+            // Aligns with the audit-record contract (issue #709).
+            MessageTemplate::ConflictsWith,
             MessageArgs::default(),
         ),
         source: FixSource::BuiltinRule,
