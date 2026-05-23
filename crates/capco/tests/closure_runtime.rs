@@ -445,6 +445,108 @@ fn project_strips_rel_to_usa_nato_when_noforn_present() {
 }
 
 // ---------------------------------------------------------------------------
+// Issue #704 end-to-end observability — the four scenarios from the
+// PM implementation brief's "Test strategy" section #3. These pin
+// the project()-level outcome for the post-#704 architecture
+// (purely-additive closure + supersession overlay).
+// ---------------------------------------------------------------------------
+
+/// Brief scenario #3: bare SCI portion (no FD&R, no caveat) projects
+/// to a marking carrying RELIDO via closure Row 8
+/// (`relido-if-sci-and-not-incompatible`).
+///
+/// Pipeline trace: closure() Row 8 fires (`SCI_PRESENT` trigger;
+/// post-#704 no suppressor on the bitmask row). RELIDO added to
+/// `dissem_us` via `apply_closed_bits_to`. The supersession overlay
+/// observes no NOFORN → no strip. PageRewrites: none of the
+/// RELIDO-eviction rewrites trigger (no DISPLAY ONLY, no ORCON,
+/// no ORCON-USGOV in the marking).
+///
+/// Authority: §H.8 p154 (RELIDO grammar — defaulting marking for
+/// SCI content absent FD&R); CAPCO-2016 §H.4 (SCI control system
+/// grammar).
+#[test]
+fn project_sci_alone_adds_relido() {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+    use smol_str::SmolStr;
+
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    // Use a synthetic SI compartment `Z9` that doesn't match any
+    // per-marking SCI sentinel (SI-G / HCS-O / HCS-P[sub] / TK-*) so
+    // only Row 8 (SCI_PRESENT default) fires. SI itself is admitted
+    // per §H.4 p74 (SI grammar).
+    let comp = SciCompartment::new(SmolStr::new("Z9"), Box::new([]));
+    a.sci_markings = Box::new([SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Si),
+        Box::new([comp]),
+        None,
+    )]);
+    let m = CapcoMarking::new(a);
+
+    let out = scheme.project(Scope::Page, &[m]);
+    assert!(
+        dissem_us_contains(&out, DissemControl::Relido),
+        "project must add RELIDO on bare SCI (Trio 2 defaulting per \
+         §H.8 p154); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "no caveat trigger present — NOFORN must NOT be added; \
+         dissem_us = {:?}",
+        out.0.dissem_us
+    );
+}
+
+/// Brief scenario #3: bare SCI + NOFORN. RELIDO is closure-added
+/// via Row 8 (post-#704 unsuppressed) and immediately stripped by
+/// the §H.8 p145 supersession overlay (NOFORN dominates RELIDO).
+/// Net: dissem_us contains NOFORN only on the SCI axis.
+///
+/// Pipeline trace: closure() Row 8 fires → RELIDO in delta;
+/// `apply_closed_bits_to` skips the RELIDO add per `apply_closed_bits_to`'s
+/// existing NOFORN-in-input dedup logic (NOFORN was input). The
+/// supersession overlay confirms — RELIDO would also have been
+/// stripped by the post-closure §H.8 p145 strip if it had been
+/// added.
+///
+/// Authority: §H.8 p145 (NOFORN dominates RELIDO); §H.8 p154
+/// (RELIDO grammar — defaulting marking yields when an explicit
+/// dominator is present).
+#[test]
+fn project_sci_plus_noforn_resolves_to_noforn_only() {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+    use smol_str::SmolStr;
+
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    a.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+    let comp = SciCompartment::new(SmolStr::new("Z9"), Box::new([]));
+    a.sci_markings = Box::new([SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Si),
+        Box::new([comp]),
+        None,
+    )]);
+    let m = CapcoMarking::new(a);
+
+    let out = scheme.project(Scope::Page, &[m]);
+    assert!(
+        dissem_us_contains(&out, DissemControl::Nf),
+        "NOFORN must survive (it is the dominator); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        !dissem_us_contains(&out, DissemControl::Relido),
+        "post-#704 supersession overlay strips RELIDO when NOFORN is \
+         present per §H.8 p145; dissem_us = {:?}",
+        out.0.dissem_us
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Trio 1 per-row positive firing
 // ---------------------------------------------------------------------------
 
