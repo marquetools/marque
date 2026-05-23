@@ -398,9 +398,7 @@ fn apply_fact_add_noforn_is_idempotent() {
 
     let rewrite = PageRewrite {
         id: "test/noforn-already-present",
-        // PR 10.A.1: typed Citation — anchor at §H.8 p145 (NOFORN-
-        // dominates rule). The "idempotence" annotation lived in the
-        // pre-migration string and is dropped here.
+        // Typed Citation anchored at §H.8 p145 (NOFORN-dominates rule).
         citation: marque_scheme::capco(marque_scheme::SectionLetter::H, 8, 145),
         trigger: CategoryPredicate::Contains {
             category: CAT_DISSEM,

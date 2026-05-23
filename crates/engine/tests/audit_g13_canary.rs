@@ -94,8 +94,7 @@ const PERMITTED_STRING_KEYS: &[&str] = &[
     // `{"scheme": ..., "predicate_id": ...}`; both string-valued
     // leaves are permitted identifier types (the scheme name is
     // a closed enum, the predicate id is a closed-set surface +
-    // category + descriptive English path per the predicate-ID
-    // convention in the T044 plan §1.3).
+    // category + descriptive English path).
     "scheme",
     "predicate_id",
     "severity",

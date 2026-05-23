@@ -169,7 +169,7 @@ pub(super) fn generate_candidate_bytes(
         None => repaired_text,
     };
 
-    // ---- NATO longhand fold (T129, CAPCO-2016 §G.1 Table 4 pp 36-38).
+    // ---- NATO longhand fold (CAPCO-2016 §G.1 Table 4 pp 36-38).
     //      Recovers portions like `(NATO S)` / `(NATO S//NF)` by
     //      substituting the canonical abbreviation (`NS`, `CTS`, etc.)
     //      before the fuzzy-correction pass operates on it.

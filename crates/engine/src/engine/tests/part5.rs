@@ -268,8 +268,8 @@ mod sentinel_tests {
     ///
     /// Exercises the `Err` branch and verifies the format-arg
     /// interpolation lands the three `usize` operands in the
-    /// rendered string. The G13 negative assertions guard against
-    /// a future format-string edit that re-introduces operand
+    /// rendered string. The content-ignorance negative assertions guard
+    /// against a future format-string edit that re-introduces operand
     /// `Debug` representation.
     #[test]
     fn check_portions_unchanged_returns_err_on_mismatched_lengths() {
@@ -289,8 +289,8 @@ mod sentinel_tests {
             "expected rule_count phrase in error, got: {err}"
         );
 
-        // G13 (Constitution V Principle V): no type names that
-        // would imply portion content leakage.
+        // Audit content-ignorance (Constitution V Principle V): no type
+        // names that would imply portion content leakage.
         assert!(
             !err.contains("CanonicalAttrs"),
             "G13 violation: type name `CanonicalAttrs` in error: {err}"
@@ -348,7 +348,7 @@ mod sentinel_tests {
         );
     }
 
-    /// Test 4 — load-bearing G13 invariant test.
+    /// Test 4 — load-bearing content-ignorance invariant test.
     ///
     /// Constructs a `CanonicalAttrs` with distinctive free-text
     /// content (`classified_by`) — the kind of field that a

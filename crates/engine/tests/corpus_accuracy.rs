@@ -392,13 +392,13 @@ fn precision_prose_zero_diagnostics() {
 // C001: Corrections-map accuracy (requires non-default config)
 // ---------------------------------------------------------------------------
 
-/// C001 fixtures require a corrections map in config. The default harness uses
-/// Config::default() (empty corrections), so C001 is tested separately.
+/// Corrections-map fixtures require a corrections map in config. The
+/// default harness uses Config::default() (empty corrections), so the
+/// corrections-map path is tested separately here.
 ///
-/// W001 was retired in T035c-14 — CAPCO-2016 §F treats legacy markings as
-/// unauthorized (error category, owned by E006/E008), not "deprecated but
-/// still legal." No authoritative bucket existed for a warning-severity
-/// vocabulary-deprecation rule, so the stub was removed.
+/// There is no warning-severity vocabulary-deprecation rule: CAPCO-2016
+/// §F treats legacy markings as unauthorized (an error category), not
+/// "deprecated but still legal."
 #[test]
 fn c001_corrections_map_accuracy() {
     let c001_fixtures: Vec<_> = marque_test_utils::fixtures_in("invalid")
