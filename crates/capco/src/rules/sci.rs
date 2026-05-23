@@ -57,7 +57,7 @@ use crate::scheme::CapcoScheme;
 /// a constitutional-invariant violation. Users who want informational
 /// (non-warn) treatment can configure `W034 = "info"` in `.marque.toml`;
 /// users who want it silent can configure `W034 = "off"`.
-pub(crate) struct SciCustomControlInfoRule;
+pub(super) struct SciCustomControlInfoRule;
 
 /// Citations W034 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -162,7 +162,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
 // system itself is retired and the marking has no canonical migration.
 
 /// Rule E061 — bare HCS at CONFIDENTIAL: legacy guidance per §H.4 p62.
-pub(crate) struct HcsBareAtConfidentialLegacyRemarkRule;
+pub(super) struct HcsBareAtConfidentialLegacyRemarkRule;
 
 /// Citations E061 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -264,7 +264,7 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
 
 /// Rule E062 — bare HCS at S/TS: suggest HCS-O / HCS-P / HCS-O-P
 /// templates per §H.4 p62.
-pub(crate) struct HcsBareSuggestSubcompartmentRule;
+pub(super) struct HcsBareSuggestSubcompartmentRule;
 
 /// Citations E062 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -388,7 +388,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
 // org-private content beyond Marque's vocabulary.
 
 /// Rule E063 — bare RSV requires compartment per §H.4 p70.
-pub(crate) struct RsvBareRequiresCompartmentRule;
+pub(super) struct RsvBareRequiresCompartmentRule;
 
 /// Citations E063 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

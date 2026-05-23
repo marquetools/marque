@@ -117,7 +117,7 @@ fn acknowledged_form(countries: &[CountryCode], level: marque_ism::Classificatio
 /// - Countries ⊆ REL TO → acknowledged source; FGI prefix is wrong. Fix.
 /// - No REL TO overlap → unacknowledged source; trigraph(s) are wrong. Warn+Fix.
 /// - Partial overlap → ambiguous. Error with two Suggests.
-pub(crate) struct FgiExplicitWithTrigraphRule;
+pub(super) struct FgiExplicitWithTrigraphRule;
 
 impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     fn id(&self) -> RuleId {

@@ -5,8 +5,8 @@
 //! FGI ownership-axis rules.
 //!
 //! - [`FgiOwnershipTrigraphSuggestRule`] — suggest-channel FGI
-//!   ownership trigraph hint; architectural twin of
-//!   [`RelToTrigraphSuggestRule`](crate::rules::rel_to_suggest::RelToTrigraphSuggestRule).
+//!   ownership trigraph hint; architectural twin of the REL TO
+//!   trigraph-suggest rule in `super::rel_to_suggest`.
 //! - [`FgiInvalidOwnershipTokenRule`] — category-specific diagnostic
 //!   for FGI ownership-list tokens that fail
 //!   `CountryCode::admits_fgi_ownership_token`.
@@ -21,7 +21,7 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, SectionLetter, capco};
 
-use crate::rules::rel_to_suggest::{
+use super::rel_to_suggest::{
     SUGGEST_CONFIDENCE, SUGGEST_LOG_MARGIN, s004_candidate_covered_by_block, s004_edit_distance,
 };
 use crate::scheme::CapcoScheme;
@@ -87,7 +87,7 @@ use crate::scheme::CapcoScheme;
 /// codes or tetragraph codes must be separated by a single space").
 /// Both citations re-verified against `crates/capco/docs/CAPCO-2016.md`
 /// at authorship per Constitution VIII.
-pub(crate) struct FgiOwnershipTrigraphSuggestRule;
+pub(super) struct FgiOwnershipTrigraphSuggestRule;
 
 /// Citations the FGI ownership-trigraph-suggest rule may emit. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate contract.
@@ -332,7 +332,7 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
 // Rule: E073 — FGI invalid ownership token (category-specific diagnostic)
 // ---------------------------------------------------------------------------
 
-pub(crate) struct FgiInvalidOwnershipTokenRule;
+pub(super) struct FgiInvalidOwnershipTokenRule;
 
 /// Citations E073 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

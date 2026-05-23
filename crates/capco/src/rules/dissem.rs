@@ -20,7 +20,7 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, SectionLetter, capco, capco_section};
 
-use crate::rules::helpers::{FixDiagnosticParams, make_fix_diagnostic};
+use super::helpers::{FixDiagnosticParams, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ use crate::scheme::CapcoScheme;
 /// e.g., `NF`→`NOFORN`) are handled by those rules instead, so the
 /// duplicate dispatch is suppressed via the `is_dissem_replacement`
 /// filter below.
-pub(crate) struct DeprecatedDissemRule;
+pub(super) struct DeprecatedDissemRule;
 
 /// Citations E006 may emit on diagnostics. §F has no numbered
 /// subsections; the bare-section page anchor at p35 marks the
@@ -193,7 +193,7 @@ pub(crate) fn is_dissem_replacement(replacement: &str) -> bool {
 /// Importantly, SBU-NF behaves similarly to LES-NF. 'SBU'
 /// never propagates to a classified marking, but its
 /// `NF` attribute *does*.
-pub(crate) struct NonIcInClassifiedBannerRule;
+pub(super) struct NonIcInClassifiedBannerRule;
 
 /// Citations W003 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

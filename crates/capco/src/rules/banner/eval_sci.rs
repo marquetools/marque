@@ -8,8 +8,8 @@ use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Severity};
 use marque_scheme::{Citation, SectionLetter, capco};
 
-use crate::rules::helpers::{FixDiagnosticParams, make_fix_diagnostic};
-use crate::rules::sci::{render_sci_block, sci_system_text};
+use super::super::helpers::{FixDiagnosticParams, make_fix_diagnostic};
+use super::super::sci::{render_sci_block, sci_system_text};
 use crate::scheme::CapcoScheme;
 
 use super::BannerCategoryRow;

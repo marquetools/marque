@@ -20,7 +20,7 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
 
-use crate::rules::eyes::build_rel_to_replacement;
+use super::eyes::build_rel_to_replacement;
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 /// the same care: too low and the auto-apply path is unreachable; too
 /// high and a Suggest-default rule auto-applies under the default
 /// threshold the moment a user adds the severity override.
-pub(crate) struct BareNatoRequiresRelToRule;
+pub(super) struct BareNatoRequiresRelToRule;
 
 /// Build the insertion body for the no-existing-REL-TO branch.
 ///
@@ -520,7 +520,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 /// Rule E066 — legacy NATO compound text re-marking per §G.2 p40
 /// (Table 5 registration) + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 +
 /// §H.7 p127 (BALK/BOHEMIA → SCI).
-pub(crate) struct LegacyNatoCompoundRemarkRule;
+pub(super) struct LegacyNatoCompoundRemarkRule;
 
 /// Citations E066 may emit on diagnostics. Two branches:
 /// §H.7 p122 (ATOMAL → AEA position) and §H.7 p127 (BALK/BOHEMIA →

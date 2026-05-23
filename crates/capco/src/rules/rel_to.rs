@@ -71,7 +71,7 @@ use crate::scheme::CapcoScheme;
 /// - "REL TO USA" alone (p151, a non-authorized marking with no
 ///   following country codes) is out of scope. E002 does not fire when
 ///   USA is present and first; a separate rule is needed for that case.
-pub(crate) struct MissingUsaTrigraphRule;
+pub(super) struct MissingUsaTrigraphRule;
 
 /// Citations E002 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -352,7 +352,7 @@ const S009_SUGGEST_CONFIDENCE: f32 = 0.85;
 /// Authority: CAPCO-2016 §H.8 p150 (canonical REL TO form; USA-first,
 /// trigraphs alpha, tetragraphs alpha — worked examples use compact
 /// tetragraph form throughout).
-pub(crate) struct PreferTetragraphCollapseRule;
+pub(super) struct PreferTetragraphCollapseRule;
 
 impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
     fn id(&self) -> RuleId {
@@ -536,7 +536,7 @@ const S010_CITATION: Citation = capco(SectionLetter::H, 8, 150);
 ///
 /// Off by default. Enable via `[rules] S010 = "suggest"`.
 /// Authority: CAPCO-2016 §H.8 p150.
-pub(crate) struct CollapseUniformRelPortionsRule;
+pub(super) struct CollapseUniformRelPortionsRule;
 
 impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
     fn id(&self) -> RuleId {
@@ -669,7 +669,7 @@ const E072_CITATION: Citation = capco(SectionLetter::H, 8, 151);
 /// Rule **E072** — `bare-rel-portion-divergence`.
 ///
 /// Default severity: [`Severity::Warn`]. Authority: CAPCO-2016 §H.8 p150-151.
-pub(crate) struct BareRelPortionDivergenceRule;
+pub(super) struct BareRelPortionDivergenceRule;
 
 impl Rule<CapcoScheme> for BareRelPortionDivergenceRule {
     fn id(&self) -> RuleId {

@@ -16,29 +16,27 @@
 
 use marque_rules::{Rule, RuleSet};
 
-use crate::rules::banner::BannerMatchesProjectedRule;
-use crate::rules::dissem::{DeprecatedDissemRule, NonIcInClassifiedBannerRule};
-use crate::rules::dissem_closure::RelidoImpliedByClosureRule;
-use crate::rules::eyes::EyesOnlyConvertToRelToRule;
-use crate::rules::fgi::{FgiInvalidOwnershipTokenRule, FgiOwnershipTrigraphSuggestRule};
-use crate::rules::fgi_concealment::FgiExplicitWithTrigraphRule;
-use crate::rules::form_mismatch::{BannerFormInPortionRule, PortionFormInBannerRule};
-use crate::rules::joint::{JointDisunityCollapseRule, JointUsaFirstRule};
-use crate::rules::nato::{BareNatoRequiresRelToRule, LegacyNatoCompoundRemarkRule};
-use crate::rules::nodis_exdis::{
-    NodisExdisClearsBannerRelToRule, NodisSupersedesExdisInPortionRule,
-};
-use crate::rules::rel_to::{
+use super::banner::BannerMatchesProjectedRule;
+use super::dissem::{DeprecatedDissemRule, NonIcInClassifiedBannerRule};
+use super::dissem_closure::RelidoImpliedByClosureRule;
+use super::eyes::EyesOnlyConvertToRelToRule;
+use super::fgi::{FgiInvalidOwnershipTokenRule, FgiOwnershipTrigraphSuggestRule};
+use super::fgi_concealment::FgiExplicitWithTrigraphRule;
+use super::form_mismatch::{BannerFormInPortionRule, PortionFormInBannerRule};
+use super::joint::{JointDisunityCollapseRule, JointUsaFirstRule};
+use super::nato::{BareNatoRequiresRelToRule, LegacyNatoCompoundRemarkRule};
+use super::nodis_exdis::{NodisExdisClearsBannerRelToRule, NodisSupersedesExdisInPortionRule};
+use super::rel_to::{
     BareRelPortionDivergenceRule, CollapseUniformRelPortionsRule, MissingUsaTrigraphRule,
     PreferTetragraphCollapseRule,
 };
-use crate::rules::rel_to_suggest::RelToTrigraphSuggestRule;
-use crate::rules::rel_to_uncertainty::RelToOpaqueUncertainReductionSuggestRule;
-use crate::rules::sci::{
+use super::rel_to_suggest::RelToTrigraphSuggestRule;
+use super::rel_to_uncertainty::RelToOpaqueUncertainReductionSuggestRule;
+use super::sci::{
     HcsBareAtConfidentialLegacyRemarkRule, HcsBareSuggestSubcompartmentRule,
     RsvBareRequiresCompartmentRule, SciCustomControlInfoRule,
 };
-use crate::rules::text_handling::{
+use super::text_handling::{
     CorrectionsMapRule, DeclassifyMisplacedRule, UnknownTokenRule, XShorthandDateRule,
 };
 use crate::rules_declarative::{BareCanonicalCompoundRule, DeprecatedSciLongFormRule};

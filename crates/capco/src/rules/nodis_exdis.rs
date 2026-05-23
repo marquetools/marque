@@ -65,7 +65,7 @@ use crate::scheme::CapcoScheme;
 /// depends on whether the user wants to convert to NOFORN-only (the
 /// source suggests) or take some other action. Emit an `Error`
 /// diagnostic with no fix; the user decides manually.
-pub(crate) struct NodisExdisClearsBannerRelToRule;
+pub(super) struct NodisExdisClearsBannerRelToRule;
 
 /// E037 secondary CAPCO §-citations.
 ///
@@ -323,7 +323,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 /// byte-precise within-category separator info (i.e., a rule that
 /// cannot route through re-rendering); E041 itself no longer
 /// blocks on it.
-pub(crate) struct NodisSupersedesExdisInPortionRule;
+pub(super) struct NodisSupersedesExdisInPortionRule;
 
 /// Citations E041 may emit on diagnostics. Primary anchor §H.9 p174
 /// (NODIS — the dominating token); the §H.9 p172 (EXDIS) cross-

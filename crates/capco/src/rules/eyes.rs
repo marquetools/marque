@@ -60,7 +60,7 @@ use crate::scheme::CapcoScheme;
 // citation-honest implementation under today's intent vocabulary.
 
 /// Rule E064 — convert EYES / EYES ONLY portions to REL TO per §H.8 p157.
-pub(crate) struct EyesOnlyConvertToRelToRule;
+pub(super) struct EyesOnlyConvertToRelToRule;
 
 /// Citations E064 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

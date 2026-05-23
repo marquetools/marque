@@ -25,8 +25,8 @@ use marque_rules::{
 };
 use marque_scheme::{Citation, SectionLetter, capco};
 
-use crate::rules::dissem::is_dissem_replacement;
-use crate::rules::helpers::{
+use super::dissem::is_dissem_replacement;
+use super::helpers::{
     FixDiagnosticParams, is_fgi_invalid_ownership_token, make_fix_diagnostic,
 };
 use crate::scheme::CapcoScheme;
@@ -110,7 +110,7 @@ use crate::scheme::CapcoScheme;
 // migration evaluation, matching the PR #349 pattern for E016/E036.
 // Downstream audit consumers observe no behavioral difference: both
 // constructors leave `fix: None` and `fix_intent: None`.
-pub(crate) struct DeclassifyMisplacedRule;
+pub(super) struct DeclassifyMisplacedRule;
 
 /// E005 secondary CAPCO §-citations.
 ///
@@ -241,7 +241,7 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
 ///    stripped; confidence is 0.95 (slightly lower than the 0.97 used
 ///    for table-backed matches to reflect the lack of an authoritative
 ///    replacement mapping).
-pub(crate) struct XShorthandDateRule;
+pub(super) struct XShorthandDateRule;
 
 /// Citations E007 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -482,7 +482,7 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 /// Malformed SCI-shaped tokens the structural subparser rejected
 /// (e.g., `SI-`, `SI--G`) DO fire E008 — users see a real error,
 /// not a silent fallback.
-pub(crate) struct UnknownTokenRule;
+pub(super) struct UnknownTokenRule;
 
 /// Citations E008 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -630,7 +630,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 ///    not recognized). Both paths use
 ///    [`marque_rules::CORRECTIONS_MAP_CITATION`] so the audit record shape
 ///    is identical.
-pub(crate) struct CorrectionsMapRule;
+pub(super) struct CorrectionsMapRule;
 
 /// Citations C001 may emit on diagnostics. C001 is **not** a CAPCO
 /// rule — it surfaces user-defined `[corrections]` map entries, so

@@ -118,7 +118,7 @@ use crate::scheme::CapcoScheme;
 
 /// `capco:banner.metadata.uses-portion-form` — portion-form token
 /// appearing in a banner-line marking. CAPCO-2016 §D.1 p27.
-pub(crate) struct PortionFormInBannerRule;
+pub(super) struct PortionFormInBannerRule;
 
 /// Citations `PortionFormInBannerRule` may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
@@ -184,7 +184,7 @@ impl Rule<CapcoScheme> for PortionFormInBannerRule {
 /// Authority: CAPCO-2016 §C.1 p25 (portion marks are Register-closed)
 /// + §G.1 Table 4 p38 (the three columns are the authoritative
 ///   Title/Abbreviation/Portion-Mark surface).
-pub(crate) struct BannerFormInPortionRule;
+pub(super) struct BannerFormInPortionRule;
 
 /// Citations `BannerFormInPortionRule` may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

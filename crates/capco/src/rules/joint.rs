@@ -20,7 +20,7 @@ use marque_rules::{
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
 
 use crate::lattice::JointSet;
-use crate::rules::helpers::canonicalize_trigraph_list;
+use super::helpers::canonicalize_trigraph_list;
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ use crate::scheme::CapcoScheme;
 /// The pre-Commit-10 `FixProposal.original` byte channel retired
 /// with the `mvp-2 → mvp-3` schema flip; the structural payload
 /// closes G13 by construction at this rule's emission site.
-pub(crate) struct JointUsaFirstRule;
+pub(super) struct JointUsaFirstRule;
 
 /// S003 secondary CAPCO §-citations.
 ///
@@ -311,7 +311,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
 /// both: the engine dispatches W004 once per page on the page-level
 /// fixpoint snapshot, so banner-first layouts fire via the
 /// end-of-document path and Mixed-page false-positives don't recur.
-pub(crate) struct JointDisunityCollapseRule;
+pub(super) struct JointDisunityCollapseRule;
 
 /// Citations W004 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

@@ -107,7 +107,7 @@ use crate::scheme::CapcoScheme;
 // `lookup_tetragraph_provenance`. No input bytes from the document
 // being linted are interpolated. §-citation re-verified 2026-05-17
 // against `crates/capco/docs/CAPCO-2016.md`.
-pub(crate) struct RelToOpaqueUncertainReductionSuggestRule;
+pub(super) struct RelToOpaqueUncertainReductionSuggestRule;
 
 /// Format the `{state}` text for an S005 diagnostic. Pulls from the
 /// build-time-generated [`marque_ism::TetragraphProvenance`] table so

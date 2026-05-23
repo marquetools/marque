@@ -141,7 +141,7 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 /// `format!` interpolation of input bytes. The fact added
 /// (`TOK_RELIDO`) is a `TokenId`, not a byte sequence — Constitution
 /// V Principle V (G13).
-pub(crate) struct RelidoImpliedByClosureRule;
+pub(super) struct RelidoImpliedByClosureRule;
 
 /// Citations S008 may emit on diagnostics. See
 /// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate

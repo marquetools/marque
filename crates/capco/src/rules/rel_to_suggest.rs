@@ -137,7 +137,7 @@ use crate::scheme::CapcoScheme;
 /// `s004_suggest_with_no_fix_round_trips_renderer`). #206 will land
 /// as a separate rule that constructs `Diagnostic { severity:
 /// Suggest, fix: None, .. }` directly.
-pub(crate) struct RelToTrigraphSuggestRule;
+pub(super) struct RelToTrigraphSuggestRule;
 
 /// Minimum log-prior delta for S004 to suggest a neighbor over the
 /// observed entry. `4.0` nats ≈ `e^4.0` ≈ 55× odds ratio — the

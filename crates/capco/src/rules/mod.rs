@@ -21,23 +21,23 @@
 //! The T044 legacy-ID ↔ wire-string translation table lives at
 //! `docs/refactor-006/legacy-rule-id-map.md`.
 
-pub(crate) mod banner;
-pub(crate) mod dissem;
-pub(crate) mod dissem_closure;
-pub(crate) mod eyes;
-pub(crate) mod fgi;
-pub(crate) mod fgi_concealment;
-pub(crate) mod form_mismatch;
-pub(crate) mod helpers;
-pub(crate) mod joint;
-pub(crate) mod nato;
-pub(crate) mod nodis_exdis;
+mod banner;
+mod dissem;
+mod dissem_closure;
+mod eyes;
+mod fgi;
+mod fgi_concealment;
+mod form_mismatch;
+mod helpers;
+mod joint;
+mod nato;
+mod nodis_exdis;
 mod registry;
-pub(crate) mod rel_to;
-pub(crate) mod rel_to_suggest;
-pub(crate) mod rel_to_uncertainty;
-pub(crate) mod sci;
-pub(crate) mod text_handling;
+mod rel_to;
+mod rel_to_suggest;
+mod rel_to_uncertainty;
+mod sci;
+mod text_handling;
 
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
 pub use registry::CapcoRuleSet;

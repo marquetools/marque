@@ -51,7 +51,7 @@ use eval_sci::evaluate_sci_banner_rollup;
 /// Walker that asserts the banner / CAB candidate matches the page's
 /// projected marking for each per-category roll-up. See the module-level
 /// doc-comment for the design rationale.
-pub(crate) struct BannerMatchesProjectedRule;
+pub(super) struct BannerMatchesProjectedRule;
 
 /// Citations the [`BannerMatchesProjectedRule`] walker may emit on
 /// diagnostics, one per catalog row in [`BANNER_CATEGORY_CATALOG`].
