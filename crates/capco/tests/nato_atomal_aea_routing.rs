@@ -134,7 +134,7 @@ fn atomal_on_aea_axis_not_nato_classification() {
 /// The `//` prefix is mandatory for NATO portion forms per the
 /// portion grammar in CAPCO-2016 §A.6 p15-17.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (portion-form column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// COSMIC TOP SECRET ATOMAL); §G.2 p40 (Table 5: ATOMAL as standalone
 /// control marking).
 #[test]
@@ -162,7 +162,7 @@ fn legacy_ctsa_canonicalizes_to_cts_plus_atomal() {
 /// `(//NSAT)` — legacy NATO SECRET ATOMAL portion form. The `//`
 /// prefix is mandatory for NATO portion forms per §A.6 p15-17.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (portion-form column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// NATO SECRET ATOMAL); §G.2 p40.
 #[test]
 fn legacy_nsat_canonicalizes_to_ns_plus_atomal() {
@@ -187,7 +187,7 @@ fn legacy_nsat_canonicalizes_to_ns_plus_atomal() {
 /// `(//NCA)` — legacy NATO CONFIDENTIAL ATOMAL portion form. The
 /// `//` prefix is mandatory for NATO portion forms per §A.6 p15-17.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (portion-form column for
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// NATO CONFIDENTIAL ATOMAL); §G.2 p40.
 #[test]
 fn legacy_nca_canonicalizes_to_nc_plus_atomal() {

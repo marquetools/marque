@@ -1129,7 +1129,7 @@ keep as-is or expand `FVEY` for canonical output.
   → REL TO USA, NATO" derivation.
 - **§4.7.1 Trio 3** (`marque-applied.md`) — implicit-REL-USA-NATO closure
   rule that fires when any NATO portion is present.
-- **§G.1 Table 4** (p36) — Register of Authorized Markings, including
+- **§G.1 Table 4** (p37) — Register of Authorized Markings, including
   NATO entries.
 
 ### Formal join semantics

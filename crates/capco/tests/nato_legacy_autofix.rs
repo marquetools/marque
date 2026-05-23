@@ -29,7 +29,7 @@
 //!
 //! # Authority
 //!
-//! - CAPCO-2016 §G.1 Table 4 p38 (portion-form + banner-title columns
+//! - CAPCO-2016 §G.1 Table 4 p37 (portion-form + banner-title columns
 //!   for all thirteen legacy compounds).
 //! - CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking — registers
 //!   ATOMAL / BOHEMIA / BALK as standalone control markings).
@@ -152,7 +152,7 @@ fn assert_e066_fires_and_rewrites_to(
 
 /// `(//CTSA)` → `(//CTS//ATOMAL)`.
 ///
-/// Authority: CAPCO-2016 §G.1 Table 4 p38 (COSMIC TOP SECRET ATOMAL
+/// Authority: CAPCO-2016 §G.1 Table 4 p37 (COSMIC TOP SECRET ATOMAL
 /// portion); §G.2 p40 (ATOMAL ARH); §H.7 p122 (AEA placement);
 /// §A.6 p15-17 (canonical multi-block target).
 #[test]
@@ -162,7 +162,7 @@ fn e066_ctsa_portion_to_cts_atomal() {
 
 /// `(//CTS-A)` → `(//CTS//ATOMAL)`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40; §H.7 p122; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40; §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_cts_a_portion_to_cts_atomal() {
     assert_e066_fires_and_rewrites_to("(//CTS-A)", "(//CTS//ATOMAL)", RecanonScope::Portion);
@@ -170,7 +170,7 @@ fn e066_cts_a_portion_to_cts_atomal() {
 
 /// `(//NSAT)` → `(//NS//ATOMAL)`.
 ///
-/// Authority: §G.1 Table 4 p38 (NATO SECRET ATOMAL portion); §G.2 p40;
+/// Authority: §G.1 Table 4 p37 (NATO SECRET ATOMAL portion); §G.2 p40;
 /// §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_nsat_portion_to_ns_atomal() {
@@ -179,7 +179,7 @@ fn e066_nsat_portion_to_ns_atomal() {
 
 /// `(//NS-A)` → `(//NS//ATOMAL)`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40; §H.7 p122; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40; §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_ns_a_portion_to_ns_atomal() {
     assert_e066_fires_and_rewrites_to("(//NS-A)", "(//NS//ATOMAL)", RecanonScope::Portion);
@@ -187,7 +187,7 @@ fn e066_ns_a_portion_to_ns_atomal() {
 
 /// `(//NCA)` → `(//NC//ATOMAL)`.
 ///
-/// Authority: §G.1 Table 4 p38 (NATO CONFIDENTIAL ATOMAL portion);
+/// Authority: §G.1 Table 4 p37 (NATO CONFIDENTIAL ATOMAL portion);
 /// §G.2 p40; §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_nca_portion_to_nc_atomal() {
@@ -196,7 +196,7 @@ fn e066_nca_portion_to_nc_atomal() {
 
 /// `(//NC-A)` → `(//NC//ATOMAL)`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40; §H.7 p122; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40; §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_nc_a_portion_to_nc_atomal() {
     assert_e066_fires_and_rewrites_to("(//NC-A)", "(//NC//ATOMAL)", RecanonScope::Portion);
@@ -204,7 +204,7 @@ fn e066_nc_a_portion_to_nc_atomal() {
 
 /// `(//CTS-B)` → `(//CTS//BOHEMIA)`.
 ///
-/// Authority: §G.1 Table 4 p38 (COSMIC TOP SECRET BOHEMIA portion);
+/// Authority: §G.1 Table 4 p37 (COSMIC TOP SECRET BOHEMIA portion);
 /// §G.2 p40 + §H.7 p127 (BOHEMIA in SCI block); §A.6 p15-17.
 #[test]
 fn e066_cts_b_portion_to_cts_bohemia() {
@@ -213,7 +213,7 @@ fn e066_cts_b_portion_to_cts_bohemia() {
 
 /// `(//CTS-BALK)` → `(//CTS//BALK)`.
 ///
-/// Authority: §G.1 Table 4 p38 (COSMIC TOP SECRET BALK portion);
+/// Authority: §G.1 Table 4 p37 (COSMIC TOP SECRET BALK portion);
 /// §G.2 p40; §A.6 p15-17.
 #[test]
 fn e066_cts_balk_portion_to_cts_balk() {
@@ -226,7 +226,7 @@ fn e066_cts_balk_portion_to_cts_balk() {
 
 /// `//COSMIC TOP SECRET ATOMAL` → `//COSMIC TOP SECRET//ATOMAL`.
 ///
-/// Authority: §G.1 Table 4 p38 (banner-title column); §G.2 p40;
+/// Authority: §G.1 Table 4 p37 (banner-title column); §G.2 p40;
 /// §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_banner_cosmic_top_secret_atomal() {
@@ -239,7 +239,7 @@ fn e066_banner_cosmic_top_secret_atomal() {
 
 /// `//COSMIC TOP SECRET-BOHEMIA` → `//COSMIC TOP SECRET//BOHEMIA`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40 + §H.7 p127; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40 + §H.7 p127; §A.6 p15-17.
 #[test]
 fn e066_banner_cosmic_top_secret_bohemia() {
     assert_e066_fires_and_rewrites_to(
@@ -251,7 +251,7 @@ fn e066_banner_cosmic_top_secret_bohemia() {
 
 /// `//COSMIC TOP SECRET-BALK` → `//COSMIC TOP SECRET//BALK`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40; §A.6 p15-17.
 #[test]
 fn e066_banner_cosmic_top_secret_balk() {
     assert_e066_fires_and_rewrites_to(
@@ -263,7 +263,7 @@ fn e066_banner_cosmic_top_secret_balk() {
 
 /// `//NATO SECRET ATOMAL` → `//NATO SECRET//ATOMAL`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40; §H.7 p122; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40; §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_banner_nato_secret_atomal() {
     assert_e066_fires_and_rewrites_to(
@@ -275,7 +275,7 @@ fn e066_banner_nato_secret_atomal() {
 
 /// `//NATO CONFIDENTIAL ATOMAL` → `//NATO CONFIDENTIAL//ATOMAL`.
 ///
-/// Authority: §G.1 Table 4 p38; §G.2 p40; §H.7 p122; §A.6 p15-17.
+/// Authority: §G.1 Table 4 p37; §G.2 p40; §H.7 p122; §A.6 p15-17.
 #[test]
 fn e066_banner_nato_confidential_atomal() {
     assert_e066_fires_and_rewrites_to(
@@ -372,7 +372,7 @@ fn e066_does_not_fire_on_bare_us_portion() {
 // during R1 — the tests would fail without `dedup_companions`.
 //
 // Authority:
-// - CAPCO-2016 §G.1 Table 4 p38 (legacy compound text — the source
+// - CAPCO-2016 §G.1 Table 4 p37 (legacy compound text — the source
 //   side of the duplicate write).
 // - CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking —
 //   ATOMAL / BOHEMIA / BALK are standalone control markings; one
@@ -390,7 +390,7 @@ fn e066_does_not_fire_on_bare_us_portion() {
 /// — duplicate token, broken `Recanonicalize` contract. With the
 /// pass the output is `(//NS//ATOMAL)` and `aea_markings.len() == 1`.
 ///
-/// Authority: §G.1 Table 4 p38 + §G.2 p40 + §H.7 p122.
+/// Authority: §G.1 Table 4 p37 + §G.2 p40 + §H.7 p122.
 #[test]
 fn dedup_nsat_atomal_collapses_duplicate_aea() {
     assert_e066_fires_and_rewrites_to("(//NSAT//ATOMAL)", "(//NS//ATOMAL)", RecanonScope::Portion);
@@ -405,7 +405,7 @@ fn dedup_nsat_atomal_collapses_duplicate_aea() {
 /// `(//CTS//BOHEMIA/BOHEMIA)`. With the pass the output is
 /// `(//CTS//BOHEMIA)`.
 ///
-/// Authority: §G.1 Table 4 p38 + §G.2 p40 + §H.7 p127.
+/// Authority: §G.1 Table 4 p37 + §G.2 p40 + §H.7 p127.
 #[test]
 fn dedup_ctsb_bohemia_collapses_duplicate_sci() {
     assert_e066_fires_and_rewrites_to(
@@ -423,7 +423,7 @@ fn dedup_ctsb_bohemia_collapses_duplicate_sci() {
 /// `(//CTS//BALK/BALK)`. With the pass the output is
 /// `(//CTS//BALK)`.
 ///
-/// Authority: §G.1 Table 4 p38 + §G.2 p40.
+/// Authority: §G.1 Table 4 p37 + §G.2 p40.
 #[test]
 fn dedup_ctsbalk_balk_collapses_duplicate_sci() {
     assert_e066_fires_and_rewrites_to("(//CTS-BALK//BALK)", "(//CTS//BALK)", RecanonScope::Portion);
@@ -438,7 +438,7 @@ fn dedup_ctsbalk_balk_collapses_duplicate_sci() {
 /// `//NATO SECRET//ATOMAL/ATOMAL`. With the pass the output is
 /// `//NATO SECRET//ATOMAL`.
 ///
-/// Authority: §G.1 Table 4 p38 (banner-title column) + §G.2 p40 +
+/// Authority: §G.1 Table 4 p37 (banner-title column) + §G.2 p40 +
 /// §H.7 p122.
 #[test]
 fn dedup_banner_nato_secret_atomal_collapses_duplicate_aea() {
