@@ -302,6 +302,19 @@ All six sub-PRs have landed. This section records the final AC status and measur
 
 All values well within SC-001 (16 ms p95) and SC-005 linear-scaling envelopes.
 
+> **Post-#704 note (added 2026-05-23, #714):** The row names in this
+> table reflect the bench surface at PR-F merge (2026-05-20). After
+> #704 retired Rows 0/7/8/9 from `CLOSURE_TABLE` to `default_fill`,
+> three of these benches (`closure_row9_us_classified`,
+> `closure_rows_1_0_hcs_o`, `closure_row7_nato_class`) were renamed
+> to `project_us_classified` / `project_hcs_o_chain` /
+> `project_nato_default_fill` and rewritten to call
+> `scheme.project(Scope::Page, ...)` so the measurement reflects the
+> user-observable pipeline. `closure_worst_case_all_rows` is retained
+> alongside a new `project_worst_case_all_rows` for stage-decomposition
+> visibility. This historical table is preserved as the PR-F record;
+> the live bench surface lives in `crates/engine/benches/closure_pass.rs`.
+
 ### WASM size (PR-F, pre-wasm-opt)
 
 - `marque_wasm_bg.wasm` (wasm-bindgen output, before wasm-opt): **1,292,682 bytes (~1.26 MB)**
