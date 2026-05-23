@@ -189,10 +189,13 @@ pub(in crate::decoder) fn try_sci_delimiter_repair(text: &str) -> Option<String>
                 // Inject only the SECOND `/` here. The original single
                 // `/` is NOT copied at this point — `last_copied` was
                 // just set to `token_end` (the index of that original
-                // `/`), so the final `r.push_str(&text[last_copied..])`
-                // tail copy emits it ahead of the rest of the source.
-                // The injected `/` plus the tail's original `/` together
-                // render the canonical `//`.
+                // `/`), so it is emitted by the next copied source
+                // segment: either the leading `r.push_str(&text[last_copied
+                // ..token_start])` slice of a later rewrite iteration, or
+                // — if no further rewrite fires — the final
+                // `r.push_str(&text[last_copied..])` tail copy. Either
+                // way the injected `/` lands immediately before that
+                // original `/`, rendering the canonical `//`.
                 r.push('/');
             }
         }
