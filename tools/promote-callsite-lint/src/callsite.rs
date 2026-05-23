@@ -546,31 +546,70 @@ impl CallSiteVisitor<'_> {
             if pos == 2 && comps[0].as_os_str() == "crates" {
                 return true;
             }
-            // Any deeper position implies `tests` is nested inside
+            // `tests` directory at position 4 = `crates/<crate>/src/<module>/tests/<...>`.
+            // This covers externalized test sub-modules produced by splitting large
+            // source files: the engine refactor (issue #482) moved `engine.rs`'s
+            // embedded `#[cfg(test)] mod tests { ... }` block into a child module
+            // declared via `#[cfg(test)] mod tests;` in `engine.rs`, with the content
+            // living in `crates/engine/src/engine/tests/partN.rs`. Those files are
+            // purely test code (only reachable under `#[cfg(test)]` via the parent's
+            // `mod tests;` declaration) and must be able to call `__engine_promote`
+            // under the Constitution V Principle V test-fixture carve-out.
+            // Guard: `comps[2] == "src"` ensures we are in a crate's source tree
+            // (not e.g. `crates/<crate>/target/…/tests/…`) and `comps[0] == "crates"`
+            // confirms the workspace-member layout.
+            if pos == 4
+                && comps.len() > 4
+                && comps[0].as_os_str() == "crates"
+                && comps[2].as_os_str() == "src"
+            {
+                return true;
+            }
+            // Any other deeper position implies `tests` is nested inside
             // `src/` (or some other intermediate dir) and is a
             // production module, NOT a test path.
+        }
+        // Additional shape: `crates/<crate>/src/<module>/tests.rs` — the
+        // externalized test module FILE itself (as opposed to a sub-directory).
+        // This is the top-level `engine/tests.rs` that re-exports sub-parts.
+        // The filename component at position 4 will be `tests.rs`, not `tests`,
+        // so it is not caught by the loop above. Guard identical to the directory
+        // case above: position 2 must be `src` and position 0 must be `crates`.
+        if comps.len() == 5
+            && comps[0].as_os_str() == "crates"
+            && comps[2].as_os_str() == "src"
+            && comps[4].as_os_str() == "tests.rs"
+        {
+            return true;
         }
         false
     }
 
-    /// Match the exact canonical file `crates/engine/src/engine.rs`,
-    /// where the production token-mint helper `engine_promotion_token`
-    /// lives. Used in conjunction with [`ENGINE_FREE_FN_ALLOW_LIST`]
-    /// so a free fn with the helper's name in any other file under
-    /// `crates/engine/src/**` is rejected by PRC002 — the FR-040
-    /// contract is "one helper, one place," and the lint enforces the
-    /// "one place" half here.
+    /// Match the canonical engine helper files `crates/engine/src/engine.rs`
+    /// and `crates/engine/src/engine/fix.rs`. The transition keeps
+    /// `engine.rs` accepted for backward compatibility while the split is
+    /// landing; `engine/fix.rs` is the post-split canonical production home
+    /// for the promotion gates. Used in conjunction with
+    /// [`ENGINE_FREE_FN_ALLOW_LIST`], so a free fn with the helper's name in
+    /// any other file under `crates/engine/src/**` is rejected by PRC002.
     fn is_engine_canonical_helper_file(&self) -> bool {
         let rel = self
             .file_path
             .strip_prefix(self.workspace_dir)
             .unwrap_or(self.file_path);
         let comps: Vec<_> = rel.components().collect();
-        comps.len() == 4
+        let is_engine_rs = comps.len() == 4
             && comps[0].as_os_str() == "crates"
             && comps[1].as_os_str() == "engine"
             && comps[2].as_os_str() == "src"
-            && comps[3].as_os_str() == "engine.rs"
+            && comps[3].as_os_str() == "engine.rs";
+        let is_engine_fix_rs = comps.len() == 5
+            && comps[0].as_os_str() == "crates"
+            && comps[1].as_os_str() == "engine"
+            && comps[2].as_os_str() == "src"
+            && comps[3].as_os_str() == "engine"
+            && comps[4].as_os_str() == "fix.rs";
+        is_engine_rs || is_engine_fix_rs
     }
 
     /// Match `crates/test-utils/src/**`. The carve-out's first
