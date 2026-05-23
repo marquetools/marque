@@ -669,13 +669,12 @@ impl MarkingScheme for CapcoScheme {
     }
 
     /// CAPCO closure operator — bitwise Kleene fixpoint over
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) +
-    /// post-Kleene Row 7 NATO open-vocab tail.
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
     ///
     /// Implements the section 4.7 implicit-fact propagation per
     /// `docs/plans/2026-05-01-lattice-design.md` section 3 (e).
     ///
-    /// # Algorithm (post-PR-D, issue #371)
+    /// # Algorithm (post-#704)
     ///
     /// 1. **Project** the input `CanonicalAttrs` to a `u128`
     ///    `FactBitmask` via [`derive_bits`]. Closed-vocab atoms (SAR
@@ -687,27 +686,38 @@ impl MarkingScheme for CapcoScheme {
     /// 2. **HOT-1 short-circuit**: if no trigger atom is set, return
     ///    the input verbatim. `close` is extensive (bits are only
     ///    added) — no row can fire across any iteration if no trigger
-    ///    is set at iteration 0.
+    ///    is set at iteration 0. Post-#704 the trigger mask covers
+    ///    the six SCI per-marking sentinel bits only; non-SCI inputs
+    ///    hit this short-circuit.
     /// 3. **Kleene fixpoint**: [`close`] runs a bitwise loop over
-    ///    [`CLOSURE_TABLE`] — for each row, if
+    ///    the 6-row [`CLOSURE_TABLE`] — for each row, if
     ///    `(next & trigger_mask) != 0`, OR `cone_mask` into `next`.
-    ///    Post-#704: the operator is purely additive — no per-row
+    ///    Post-#704 the operator is purely additive — no per-row
     ///    suppressor gate — so each row's firing predicate is the
     ///    upward-closed presence check on its trigger atom. Iterate
     ///    until stable or panic at [`MAX_CLOSURE_ITERATIONS`] (= 16).
-    ///    The CAPCO catalog's longest causal chain is depth 2;
-    ///    typical inputs converge in 1–3 iterations.
+    ///    Post-#704 the catalog's longest causal chain is depth 1
+    ///    (each Row 1-6 fires at most once on its trigger atom; the
+    ///    pre-#704 SI-G → ORCON → Trio-1-NOFORN depth-2 chain
+    ///    crosses the close()/default_fill boundary in the full
+    ///    pipeline). Typical inputs converge in 1 iteration.
     /// 4. **Write-back**: [`apply_closed_bits_to`] materializes every
     ///    new bit in `closed_bits & !input_bits` to the corresponding
-    ///    `CanonicalAttrs` axis (`dissem_us` push, `rel_to` insert,
-    ///    etc.).
-    /// 5. **Row 7 open-vocab tail**: `CountryCode::NATO` has no
-    ///    closed-vocab `TokenId`, so it cannot ride the bitmask. If
-    ///    the bitmask Row 7 fired (observable as
-    ///    `(closed_bits & !input_bits) & CONE_REL_TO_USA != 0`), call
-    ///    [`super::closure::CLOSURE_REL_TO_USA_NATO`]'s `cone_derived`
-    ///    once and route the resulting `FactRef::OpenVocab(NATO)`
-    ///    through `apply_closure_fact`.
+    ///    `CanonicalAttrs` axis (`dissem_us` push, etc.). Post-#704
+    ///    only the dissem-axis writeback fires — the surviving rows
+    ///    emit `NOFORN` and `ORCON` cone bits, both of which route
+    ///    through the dissem-axis arm.
+    ///
+    /// (Post-#704: there is no step 5. The pre-#704 Row 7 open-vocab
+    /// NATO tetragraph tail — which invoked the retired fn-pointer
+    /// rule `CLOSURE_REL_TO_USA_NATO`'s `cone_derived` via
+    /// `apply_closure_fact` — relocated to
+    /// [`crate::scheme::default_fill::apply_default_fill`] alongside
+    /// Row 7's trigger. `closure()` no longer touches `rel_to`;
+    /// `apply_default_fill` writes `CountryCode::USA` and
+    /// `CountryCode::NATO` directly when its Row-7 predicate fires.
+    /// `apply_default_fill` is called separately by
+    /// `project_attrs_pipeline`, NOT by `closure()`.)
     ///
     /// # Invariants preserved
     ///
@@ -716,22 +726,25 @@ impl MarkingScheme for CapcoScheme {
     /// 2. **Idempotent**: `closure(closure(m)) == closure(m)` — the
     ///    bitmask Kleene loop runs to fixpoint, and `apply_closed_bits_to`
     ///    is a no-op for bits already present in the input.
-    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` — every
-    ///    catalog row's suppressors are disjoint from every cone (the
-    ///    section 4.7.3 table-design property). Bitmask regressions
-    ///    are pinned by `proptest_closure_table.rs` (P1–P4 algebraic
-    ///    properties) and the
+    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` —
+    ///    post-#704 every row fires by a pure presence check
+    ///    `(working & trigger_mask) != 0` and writes only via `|=`
+    ///    on `cone_mask`. No row has a suppressor; the firing
+    ///    predicate is upward-closed in `working` and the body is
+    ///    purely additive. Bitmask regressions are pinned by
+    ///    `proptest_closure_table.rs` (P1–P4 algebraic properties)
+    ///    and the
     ///    [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE)
     ///    positional pin in `post_4b_lattice_inventory_pin.rs`.
     ///
     /// # Non-convergence
     ///
     /// Per the [`MarkingScheme::closure`] trait contract, exceeding
-    /// `MAX_CLOSURE_ITERATIONS` panics. A monotone catalog cannot
-    /// reach this branch (the fact universe is bounded by the union
-    /// of every category's value set); non-convergence here indicates
-    /// a catalog regression — a non-monotone row whose suppressor
-    /// depends on a bit in another row's cone. [`close`] panics
+    /// `MAX_CLOSURE_ITERATIONS` panics. Post-#704 the 6-row catalog
+    /// has max causal depth 1 (no row's cone is in any other row's
+    /// trigger mask); non-convergence is unreachable on the current
+    /// catalog. Reaching the panic branch means a future row added
+    /// a cycle — a catalog regression. [`close`] panics
     /// unconditionally on non-convergence (release builds included)
     /// per the documented contract.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
@@ -937,13 +950,12 @@ impl CapcoScheme {
     /// (a second pass finds nothing to strip); Step 2 is
     /// idempotent because cleared axes stay cleared.
     ///
-    /// Authority:
-    /// - §H.8 p140 + §H.8 p136 (OC > OC-USGOV — Overlay 1)
-    /// - §H.8 pp155-156 (RELIDO observed-unanimity — Overlay 2)
-    /// - §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO,
-    ///   EYES ONLY, or DISPLAY ONLY"); §B.3.a p19 (FD&R dominator
-    ///   enumeration); §D.2 Table 3 rows 1-2 (NOFORN dominates
-    ///   dominated FD&R at banner roll-up) — Overlay 3 + Step 2.
+    /// Authority: §H.8 p140 + §H.8 p136 (OC > OC-USGOV — Overlay 1);
+    /// §H.8 pp155-156 (RELIDO observed-unanimity — Overlay 2);
+    /// §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO, EYES
+    /// ONLY, or DISPLAY ONLY") + §B.3.a p19 (FD&R dominator
+    /// enumeration) + §D.2 Table 3 rows 1-2 (NOFORN dominates
+    /// dominated FD&R at banner roll-up) — Overlay 3 + Step 2.
     fn apply_supersession_overlays(attrs: &mut CanonicalAttrs) {
         use crate::lattice::DissemSet;
         use marque_ism::DissemControl;
