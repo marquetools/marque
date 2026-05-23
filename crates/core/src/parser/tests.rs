@@ -1454,6 +1454,15 @@ fn slash_separated_sci_in_single_block_parses() {
         "no Unknown spans expected: {:?}",
         parsed.attrs.token_spans
     );
+    let src = b"(TS//SI/TK//NF)";
+    assert!(
+        parsed
+            .attrs
+            .token_spans
+            .iter()
+            .any(|t| t.kind == TokenKind::Separator && t.span.as_str(src) == Ok("/")),
+        "SCI within-category slash must emit a TokenKind::Separator span"
+    );
 }
 
 #[test]
@@ -2010,7 +2019,7 @@ fn kdk_bluefish_maps_to_tk_blfh() {
     // `parse_sci_block` as `SciControlSystem::Custom("KDK")` with
     // compartment `BLUEFISH` because `KDK` is a 3-letter custom-
     // control shape match. The new recognizer must fire FIRST to
-    // route it to SciControlBare::Tk + compartment "BLUEFISH".
+    // route it to SciControlBare::Tk + canonical compartment "BLFH".
     let parsed = parse_banner("TOP SECRET//KDK-BLUEFISH//NOFORN");
     let marking = parsed
         .attrs
@@ -2023,7 +2032,7 @@ fn kdk_bluefish_maps_to_tk_blfh() {
         SciControlSystem::Published(SciControlBare::Tk),
         "KDK-BLUEFISH must map to TK, not Custom(\"KDK\")"
     );
-    assert_eq!(&*marking.compartments[0].identifier, "BLUEFISH");
+    assert_eq!(&*marking.compartments[0].identifier, "BLFH");
 }
 
 #[test]
@@ -2039,7 +2048,7 @@ fn klondike_iditarod_maps_to_tk() {
         marking.system,
         SciControlSystem::Published(SciControlBare::Tk)
     );
-    assert_eq!(&*marking.compartments[0].identifier, "IDITAROD");
+    assert_eq!(&*marking.compartments[0].identifier, "IDIT");
 }
 
 #[test]

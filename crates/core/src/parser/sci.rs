@@ -61,8 +61,31 @@ pub(super) fn parse_sci_block(
         v.push((chunk_start, &text[chunk_start..]));
         v
     };
+    let mut separators: SmallVec<[(usize, usize); 4]> = SmallVec::new();
+    for (i, ch) in text.char_indices() {
+        if ch == '/' {
+            let bytes = text.as_bytes();
+            let mut sep_start = i;
+            while sep_start > 0 && bytes[sep_start - 1].is_ascii_whitespace() {
+                sep_start -= 1;
+            }
+            let mut sep_end = i + 1;
+            while sep_end < bytes.len() && bytes[sep_end].is_ascii_whitespace() {
+                sep_end += 1;
+            }
+            separators.push((sep_start, sep_end));
+        }
+    }
 
-    for (chunk_off, chunk) in chunks {
+    for (chunk_idx, (chunk_off, chunk)) in chunks.into_iter().enumerate() {
+        if chunk_idx > 0 {
+            let (sep_start, sep_end) = separators[chunk_idx - 1];
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::Separator,
+                span: Span::new(base + sep_start, base + sep_end),
+                text: "/".into(),
+            });
+        }
         // No trim — grammar is strict; whitespace inside a chunk is
         // meaningful only between sub-compartments (see below).
         if chunk.is_empty() {
@@ -111,7 +134,11 @@ pub(super) fn parse_sci_block(
             // every PrefixSpace/PrefixHyphen variant (see the
             // `recognize_deprecated_sci_long_form` body), so this is safe.
             let compartments: Box<[SciCompartment]> = match &long_form.compartment {
-                Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                Some(comp) => {
+                    let canonical =
+                        marque_ism::marking_forms::title_to_portion(comp.as_str()).unwrap_or(comp);
+                    Box::new([SciCompartment::new(canonical, Box::new([]))])
+                }
                 None => Box::new([]),
             };
             // Canonical-enum lookup mirrors the whole-block long-form path

@@ -161,7 +161,11 @@ impl<'t> Parser<'t> {
                 non_ic.extend(parsed.trailing_non_ic);
             } else if let Some(long_form) = recognize_deprecated_sci_long_form(trimmed) {
                 let compartments: Box<[SciCompartment]> = match &long_form.compartment {
-                    Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                    Some(comp) => {
+                        let canonical = marque_ism::marking_forms::title_to_portion(comp.as_str())
+                            .unwrap_or(comp);
+                        Box::new([SciCompartment::new(canonical, Box::new([]))])
+                    }
                     None => Box::new([]),
                 };
                 let canonical_enum = if compartments.is_empty() {

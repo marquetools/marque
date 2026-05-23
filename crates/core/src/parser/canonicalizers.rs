@@ -25,24 +25,14 @@ pub(super) struct DeprecatedSciLongForm {
     /// Compartment identifier (e.g., `BLUEFISH` for `KDK-BLUEFISH`,
     /// `ABC` for `ECI ABC`, `ECRU` for `EL ECRU`). `None` for bare
     /// long-forms (`HUMINT`, `COMINT`, `ECI` alone, `KDK` alone).
-    /// Byte offset of compartment within `trimmed` recorded separately
-    /// in the second tuple element of `recognize_deprecated_sci_long_form`'s
-    /// return.
     pub(super) compartment: Option<SmolStr>,
 }
 
 /// Recognize a deprecated SCI long-form block.
 ///
-/// Returns `Some((form, full_byte_len))` when `trimmed` is a recognized
-/// deprecated form. `full_byte_len` is the byte length of the longest
-/// matched prefix within `trimmed` — used by the caller to set up the
-/// `TokenSpan.span` and the `SciMarking` source span. For bare-form
-/// matches, `full_byte_len == trimmed.len()`; for compound forms with a
-/// compartment tail, the recognizer accepts the full block.
-///
-/// The recognition is intentionally **lenient on case** for the form
-/// keyword (the SCI long-forms are universally uppercase in practice
-/// per §H.4) and **strict on shape** for the compartment slot — the
+/// Returns `Some(form)` when `trimmed` is a recognized deprecated form.
+/// The recognizer performs exact uppercase literal matches for the legacy
+/// control keywords and is strict on shape for the compartment slot — the
 /// compartment must be `[A-Z0-9]+` per §H.4 p61 + p76.
 ///
 /// # Authority (per row)

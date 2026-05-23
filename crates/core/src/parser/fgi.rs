@@ -24,8 +24,8 @@ pub(super) fn starts_with_fgi_prefix(s: &str) -> bool {
 /// Parse an FGI marker block in a US-classified marking.
 ///
 /// **This is the production entry point** — called directly from the
-/// block walker in [`Parser::parse_marking_string`] (around
-/// `parser.rs:704` inside `Parser::parse_marking_string`). The
+/// block walker in `parser/marking.rs` (`Parser::parse_marking_string`).
+/// The
 /// `#[cfg(test)]` [`parse_fgi_marker`] wrapper below delegates here
 /// and discards the span buffer; production paths thread real
 /// `block_offset` + `token_spans` arguments through this function so
@@ -295,9 +295,8 @@ pub(super) fn parse_fgi_marker_with_spans(
 /// `SmallVec<[TokenSpan; 16]>` and zero base offset. The
 /// `SmallVec` capacity matches the production call site, keeping the
 /// wrapper heap-free for the typical FGI block (≤ 16 countries). The
-/// production call site is
-/// [`Parser::parse_marking_string`] (around `parser.rs:704`, inside
-/// the block-walker's FGI-marker arm) and uses
+/// production call site is `Parser::parse_marking_string` in
+/// `parser/marking.rs` (inside the block-walker's FGI-marker arm) and uses
 /// [`parse_fgi_marker_with_spans`] directly so per-country
 /// [`TokenKind::FgiOwnershipTrigraph`] spans land in the AST.
 ///
