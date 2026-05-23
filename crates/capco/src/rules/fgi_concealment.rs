@@ -15,7 +15,7 @@ use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
     Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::{FactRef, ReplacementIntent, Scope, SectionLetter, capco};
+use marque_scheme::{Citation, FactRef, ReplacementIntent, Scope, SectionLetter, capco};
 
 use crate::scheme::CapcoScheme;
 
@@ -119,6 +119,18 @@ fn acknowledged_form(countries: &[CountryCode], level: marque_ism::Classificatio
 /// - Partial overlap → ambiguous. Error with two Suggests.
 pub(super) struct FgiExplicitWithTrigraphRule;
 
+/// Citations the FGI-explicit-with-trigraph rule may emit on
+/// diagnostics. Primary authority is §H.7 p124 (the concealment-vs-
+/// acknowledgment grammar); §B.3 Table 2 p21 covers the
+/// caveated-content → NOFORN closure companion emitted in Case C and
+/// the partial-overlap branch of Case D. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::H, 7, 124),
+    capco(SectionLetter::B, 3, 21),
+];
+
 impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     fn id(&self) -> RuleId {
         RuleId::new("capco", "portion.fgi.fgi-explicit-with-trigraph")
@@ -136,6 +148,9 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::TOK_NOFORN;
