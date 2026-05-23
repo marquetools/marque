@@ -2,54 +2,46 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! CAPCO closure-rule catalog (residual) — `FDR_DOMINATORS` +
-//! `CLOSURE_REL_TO_USA_NATO` + the aggregating `CAPCO_CLOSURE_RULES`
-//! static.
+//! CAPCO closure-rule catalog (residual) — `FDR_DOMINATORS` slice +
+//! empty `CAPCO_CLOSURE_RULES` fn-pointer surface.
 //!
-//! # Post-PR-D shape (issue #371)
+//! # Post-#704 shape
 //!
-//! PR-D of the FactBitmask refactor wired `CapcoScheme::closure` to the
-//! bitmask Kleene fast path (`CLOSURE_TABLE` + `close()` in
-//! `closure_table.rs`). Nine of the ten original `ClosureRule` fn-pointer
-//! statics — `CLOSURE_NOFORN_CAVEATED`, the six per-marking SCI
-//! implications (HCS-O / HCS-P[sub] / SI-G / TK-BLFH / TK-IDIT / TK-KAND),
-//! and the two Trio 2 RELIDO rows — were retired in PR-D because their
-//! triggers / suppressors / cones all live in the closed-vocab atom
-//! inventory and compile cleanly to bitmask form.
+//! Issue #704 retired the residual `CLOSURE_REL_TO_USA_NATO` fn-pointer
+//! rule that the post-PR-D state carried. The rule was a "default if
+//! absent" semantic per §H.7 p127 + §G.2 Table 5 p40 — non-monotone
+//! by §-spec design (§B.3 paragraph b p19's "NOT MARKED PREVIOUSLY"
+//! gate). Non-monotone rules cannot live in a closure operator that
+//! honors the `MarkingScheme::closure` trait's monotonicity contract;
+//! the rule relocated to `crate::scheme::default_fill::row7_should_fill`
+//! along with the other three "default if absent" rules (Rows 0/8/9
+//! from the pre-#704 catalog).
 //!
-//! Only `CLOSURE_REL_TO_USA_NATO` survives in fn-pointer form. The row's
-//! `cone_derived` injects `CountryCode::NATO` into `rel_to` via an
-//! open-vocab `FactRef::OpenVocab(_)` — there is no closed-vocab `TokenId`
-//! for NATO as a tetragraph, so it cannot be projected onto a bit and
-//! cannot ride the bitmask cone path. The closure body in
-//! `marking_scheme_impl.rs::CapcoScheme::closure` applies the static USA
-//! leg of Row 7 through the bitmask `REL_TO_USA` atom and runs the
-//! surviving `cone_derived` once after the Kleene fixpoint converges.
+//! Post-#704 the fn-pointer trait surface (`CAPCO_CLOSURE_RULES`) is
+//! an empty `&[]`. Six per-marking unconditional implications
+//! (HCS-O / HCS-P[sub] / SI-G / TK-{BLFH,IDIT,KAND} per §H.4
+//! marking templates) live in the bitmask `CLOSURE_TABLE` at
+//! `closure_table.rs`; they fire unconditionally with no suppressor
+//! so `close()` is purely additive at the bitmask layer and P3
+//! monotonicity holds by construction.
 //!
-//! The `FDR_DOMINATORS` slice stays in this file as the source-of-truth
-//! enumeration of the FD&R-membership set: it's still consumed by the
-//! `MASK_FDR_DOMINATORS` projection in `fact_bitmask.rs` (as the
-//! corpus-side definition the bitmask suppressor is derived from), by
-//! the `Vocabulary::is_fdr_dissem` override in `vocabulary.rs`, and by
-//! `CLOSURE_REL_TO_USA_NATO` itself as Row 7's suppressor.
-//!
-//! `FDR_OR_RELIDO_INCOMPAT` and `RELIDO_US_CLASS_SUPPRESSORS` remain in
-//! this file because the in-file `#[cfg(test)]` modules (the
-//! `phase2_closure_pin` SCI-suppression iterator, the `phase3_closure_pin`
-//! US-classification suppression iterator) iterate them as fixture
-//! enumerations. The production closure path no longer reads them. A
-//! follow-on PR (when the test fixtures move to a bitmask-driven
-//! iteration over `MASK_*` constants) will retire them.
+//! The `FDR_DOMINATORS` `TokenRef` slice below stays — it is the
+//! source-of-truth FD&R-membership enumeration consumed by
+//! `Vocabulary::is_fdr_dissem` in `vocabulary.rs` (independent of
+//! the suppressor / default-fill architecture). The bitmask
+//! `MASK_FDR_DOMINATORS` projection in `fact_bitmask.rs` mirrors
+//! this slice for the `default_fill` predicates' FD&R-absent gates.
 //!
 //! # Historical note
 //!
-//! Trio 1 was originally split into seven token-grouped rows for
-//! §-citation locality and consolidated by PR #522 (D18 rationale 2)
-//! into the single `CLOSURE_NOFORN_CAVEATED` row that PR-D then
-//! retired into the `CLOSURE_TABLE` Row 0.
+//! Pre-PR-D the catalog was a 10-row fn-pointer slice; PR-D moved 9
+//! rows into the bitmask `CLOSURE_TABLE`. Pre-#704 the bitmask
+//! catalog kept the same 10-row shape with `suppressor_mask` field
+//! gating the four "default if absent" rows. Issue #704's refinement
+//! moved the four default-if-absent rules out of `close()` entirely
+//; the bitmask `CLOSURE_TABLE` now ships 6 rows.
 
-use marque_scheme::{ClosureRule, FactRef, SectionLetter, Severity, TokenRef, capco};
-use smallvec::{SmallVec, smallvec};
+use marque_scheme::{ClosureRule, TokenRef};
 
 use super::*;
 
@@ -167,97 +159,19 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 // `label` field and on the `ROW0_NOFORN_IF_CAVEATED_TRIGGERS`
 // doc-comment in `closure_table.rs`.
 
-/// `cone_derived` helper for `CLOSURE_REL_TO_USA_NATO` — emits the
-/// open-vocab `CountryCode::NATO` tetragraph fact.
-///
-/// `CountryCode::USA` is carried via the static `cone` field through
-/// `TOK_USA`, which `apply_fact_add`'s `CAT_REL_TO` arm special-cases to
-/// `CountryCode::USA`. NATO has no equivalent closed-vocab sentinel — it
-/// routes through the open-vocab
-/// `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))` path
-/// established for JOINT co-owner coverage (E014).
-///
-/// Constant-output (parameter unused): the cone facts are static — USA
-/// and NATO regardless of marking shape. Closure-rule monotonicity is
-/// vacuous on a constant-output function; the rule-level monotonicity
-/// attestation (FDR_DOMINATORS suppressors are stable dominators that
-/// no rule's cone adds) is the same one the seven `CLOSURE_NOFORN_*`
-/// rows rely on.
-fn rel_to_usa_nato_derived_cone(_m: &CapcoMarking) -> SmallVec<[FactRef<CapcoScheme>; 2]> {
-    smallvec![FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(
-        marque_ism::CountryCode::NATO
-    ))]
-}
-
-/// Bare NATO classification ⇒ implicit `REL TO USA, NATO`
-/// unless an FD&R dominator strips it post-closure.
-///
-/// **Authority is example-derived.** The CAPCO-2016 manual moves the
-/// authoritative NATO grammar to Appendix B (§H.2 p55 explicitly
-/// redirects: "Manual Appendix B   –   NATO Protective Markings"),
-/// which is not vendored in `crates/capco/docs/CAPCO-2016.md`. The
-/// in-manual surfaces we can cite are:
-///
-/// - **§G.1 Table 4 p38** — registers the NATO classification markings
-///   (`COSMIC TOP SECRET`/`CTS`, `NATO SECRET`/`NS`, `NATO CONFIDENTIAL`/`NC`,
-///   `NATO RESTRICTED`/`NR`, `NATO UNCLASSIFIED`/`NU`) with the explicit
-///   pointer "NATO Protective Markings, refer to Appendix B".
-/// - **§G.2 Table 5 p40** — alliance-reciprocity ARH grounding: every
-///   NATO classification level row reads "Requires NATO read-in" (the
-///   treaty default for NATO-marked information in USG hands).
-/// - **§H.7 p127 Notional Example Page 2** — the worked example
-///   `(//CTS//BOHEMIA//REL TO USA, NATO)` demonstrating the *form*
-///   that a NATO portion in a US document carries REL TO USA, NATO.
-///
-/// §H.7 p127 is a notional example, not MUST-prose: it shows the
-/// structural pattern for a `CTS + BOHEMIA SAP` portion with an
-/// explicit `REL TO USA, NATO`, and the prose attached to the example
-/// describes that specific portion ("releasable back to NATO"). The
-/// implication "bare NATO ⇒ REL TO USA, NATO" is *derived* from the
-/// example + §G.2 Table 5 alliance-reciprocity reading, not stated
-/// prescriptively in the manual's vendored text. The closure row's
-/// `Severity::Info` calibration is deliberate precisely because the
-/// authority is example-derived (D20): the byte-level surface remains
-/// the responsibility of the `Severity::Suggest` text-layer rule
-/// (S007) which a human reviewer can override.
-///
-/// **D20 layer separation (decisions.md 916-973)**: this row fires at
-/// `Severity::Info` (silent fact propagation at the lattice layer); the
-/// text-layer surface (`Severity::Suggest` byte diff
-/// `(//NS)` → `(//NS//REL TO USA, NATO)`) is the S007 rule. The two
-/// layers are complementary — no double-audit on the same inference.
-///
-/// **No suppressors (issue #704)**: pre-#704 this row carried
-/// `FDR_DOMINATORS` as its suppressor set. The trait-level
-/// `suppressors` mechanism is anti-monotone in the closure operator
-/// (adding bits can activate a suppressor and strictly lose cone
-/// bits from `Cl(b)` vs `Cl(a)`), which violated the operator's
-/// algebraic monotonicity contract and produced the failing
-/// `proptest_closure_table::p3_monotonicity_realistic` seed. The
-/// §H.8 p145 NOFORN-dominates / §B.3.a p19 FD&R supersession
-/// semantics moved to [`CapcoScheme::apply_supersession_overlays`],
-/// which runs post-closure and observes the post-Kleene state. The
-/// `CLOSURE_TABLE` bitmask Row 7 mirrors this row and is also
-/// suppressor-free; the bitmask path makes Row 7's firing decision
-/// (`row7_fired` in `CapcoScheme::closure`) from `closed_bits`
-/// without re-evaluating the trait `suppressors` slice, so the
-/// `&[]` here is honest with runtime behavior.
-///
-/// **Cone shape**: USA via the static `cone` (`TOK_USA`, which
-/// `apply_fact_add` routes to `CountryCode::USA` on CAT_REL_TO); NATO
-/// via `cone_derived` returning `FactRef::OpenVocab(CountryCode::NATO)`
-/// because `CountryCode::NATO` has no closed-vocab `TokenId`. Both facts
-/// route to CAT_REL_TO via `CapcoScheme::category_of`.
-pub(super) const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
-    display_label: "Bare NATO classification implies REL TO USA, NATO",
-    label: capco(SectionLetter::H, 7, 127),
-    triggers: &[TokenRef::Token(TOK_NATO_CLASS)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_USA)],
-    cone_derived: Some(rel_to_usa_nato_derived_cone),
-    default_severity: Severity::Info,
-};
+// `CLOSURE_REL_TO_USA_NATO` and its `rel_to_usa_nato_derived_cone`
+// helper were retired in issue #704's architectural refinement. The
+// rule is a "default if absent" semantic per §H.7 p127 +
+// §G.2 Table 5 p40 — non-monotone by §-spec design (the §B.3
+// paragraph b p19 "NOT MARKED PREVIOUSLY" gate applies to NATO
+// classifications too: when input already carries REL TO USA or
+// NOFORN, the implicit REL TO USA, NATO default does NOT fire).
+// Non-monotone rules cannot live in a closure operator that honors
+// the `MarkingScheme::closure` trait's monotonicity contract; the
+// rule relocated to `crate::scheme::default_fill::row7_should_fill`
+// + the open-vocab NATO tetragraph tail. The §H.7 p127 worked
+// example authority is preserved on `default_fill::ROW7_NATO_CLASS_TRIGGER`
+// and on the module's per-row authority table.
 
 // The six per-marking unconditional SCI implication rules
 // (CLOSURE_HCS_O_IMPLIES_NF_OC, CLOSURE_HCS_P_SUB_IMPLIES_NF_OC,
@@ -291,32 +205,26 @@ pub(super) const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule
 // the post-#704 architecture note in `closure_table.rs`'s module
 // doc-comment for the full rationale.
 
-/// The residual CAPCO closure-rule catalog.
+/// The residual CAPCO closure-rule fn-pointer catalog.
 ///
-/// Post-PR-D this slice carries only `CLOSURE_REL_TO_USA_NATO`, the
-/// hybrid bitmask + open-vocab row whose `cone_derived` NATO tetragraph
-/// injection cannot be projected onto a closed-vocab bit. The other 9
-/// rows live in `CLOSURE_TABLE` (`scheme/closure_table.rs`) and run
-/// through the bitmask Kleene fast path in
-/// `CapcoScheme::closure`. Three trait-level concerns still consume this
-/// slice:
+/// Post-#704 this slice is empty. The four pre-#704 "default if absent"
+/// rules (caveated → NOFORN, NATO → REL TO USA NATO, SCI → RELIDO,
+/// US-class → RELIDO) relocated to `crate::scheme::default_fill`
+/// (they are non-monotone by §-design and cannot honor the
+/// `MarkingScheme::closure` trait's monotonicity contract). The six
+/// per-marking unconditional rows (HCS-O / HCS-P[sub] / SI-G /
+/// TK-{BLFH,IDIT,KAND}) live in the bitmask `CLOSURE_TABLE` —
+/// `closure_inventory()` projects them onto `ClosureRuleMetadata`
+/// for unified discovery without going through this slice.
 ///
-/// - The `MarkingScheme::closure_rules` trait override exposes the
-///   public catalog surface per `decisions.md` D18 — it advertises
-///   the rules the scheme owns at the trait boundary regardless of
-///   internal dispatch strategy.
-/// - The `post_4b_lattice_inventory_pin.rs` positional-list test
-///   asserts a closed set of rule names against this slice (now
-///   1 row); the 10-row bitmask catalog has its own parallel pin
-///   against `CLOSURE_TABLE`.
-/// - A future `[closure_rules]` severity-override config path
-///   (analogous to the existing `[rules]` section in
-///   `crates/config/`) will need a runtime override map keyed by
-///   rule name. No such resolver exists in the repo today; the path
-///   that lands it MUST also handle the post-PR-D discovery-surface
-///   gap tracked in issue #644 (the 9 bitmask rules' names live on
-///   `CLOSURE_TABLE` row `label` fields, not on this slice).
-pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[CLOSURE_REL_TO_USA_NATO];
+/// The slice stays as an empty `&[]` to preserve the
+/// `MarkingScheme::closure_rules` trait surface (per `decisions.md`
+/// D18 — every scheme owns a `closure_rules()` method even when it
+/// has none) and to keep a stable expansion seam: if a future CAPCO
+/// rule ships an open-vocab cone that does not project onto a
+/// closed-vocab bit (the original purpose of the fn-pointer surface),
+/// it lands here.
+pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[];
 
 
 // ---------------------------------------------------------------------------
@@ -369,125 +277,126 @@ mod issue_525_caveated_dissem_pin {
 
     /// PROPIN is an IC dissem control per §H.8 p148. Caveated per
     /// §B.3 p20 Note → §B.3 Table 2 p21 default → NOFORN absent
-    /// FD&R. `TOK_PROPIN` is a `CLOSURE_NOFORN_CAVEATED` trigger.
-    /// The `!Relido` postcondition pins the behavioral change
-    /// versus the pre-issue-525 state where CAVEATED was silent on
-    /// PROPIN and `CLOSURE_RELIDO_US_CLASS` injected `Relido`
-    /// instead.
+    /// FD&R. `TOK_PROPIN` is in the `default_fill::ROW0_CAVEATED_TRIGGERS`
+    /// mask post-#704 (the rule relocated from `CLOSURE_NOFORN_CAVEATED`
+    /// to `default_fill::row0_should_fill`).
+    ///
+    /// Test uses `scheme.project(Scope::Page, ...)` to exercise the
+    /// full post-#704 pipeline (close + default_fill + supersession
+    /// overlay). Pre-#704 the rule fired inside `close()` directly;
+    /// post-#704 it fires in `apply_default_fill` after `close()`
+    /// converges. End-to-end behavior is preserved.
     #[test]
     fn caveated_fires_on_propin() {
+        use marque_scheme::Scope;
         let scheme = CapcoScheme::new();
-        let closed = scheme.closure(secret_with_dissem(DissemControl::Pr));
+        let m = secret_with_dissem(DissemControl::Pr);
+        let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
         assert!(
-            closed.0.dissem_us.contains(&DissemControl::Nf),
-            "PROPIN must trigger CLOSURE_NOFORN_CAVEATED → NOFORN injection. \
+            out.0.dissem_us.contains(&DissemControl::Nf),
+            "PROPIN must trigger default-fill Row 0 → NOFORN injection. \
              Authority: §H.8 p148 (PROPIN as IC dissem control) + §B.3 p20 \
              Note + §B.3 Table 2 p21. dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us
         );
         assert!(
-            closed.0.dissem_us.contains(&DissemControl::Pr),
-            "PROPIN itself must be retained — CAVEATED's cone is `{{NOFORN}}` \
+            out.0.dissem_us.contains(&DissemControl::Pr),
+            "PROPIN itself must be retained — Row 0's cone is `{{NOFORN}}` \
              only. dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us
         );
         assert!(
-            !closed.0.dissem_us.contains(&DissemControl::Relido),
-            "RELIDO must NOT appear: NOFORN supersedes RELIDO via §H.8 p145 \
-             overlay. Pre-issue-525 behavior (CAVEATED silent on PROPIN, \
-             CLOSURE_RELIDO_US_CLASS injects Relido) is now retired. \
+            !out.0.dissem_us.contains(&DissemControl::Relido),
+            "RELIDO must NOT appear: default-fill Row 0 fires NOFORN; \
+             default-fill Row 9 (US-class → RELIDO) is suppressed by the \
+             post-Row-0 NOFORN being in MASK_RELIDO_US_CLASS_SUPPRESSORS. \
              dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us
         );
     }
 
     /// FISA is an IC dissem control per §H.8 p161. Caveated → NOFORN
-    /// absent FD&R. `TOK_FISA` is a `CLOSURE_NOFORN_CAVEATED` trigger.
+    /// absent FD&R via post-#704 `default_fill::row0_should_fill`.
     #[test]
     fn caveated_fires_on_fisa() {
+        use marque_scheme::Scope;
         let scheme = CapcoScheme::new();
-        let closed = scheme.closure(secret_with_dissem(DissemControl::Fisa));
+        let m = secret_with_dissem(DissemControl::Fisa);
+        let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
         assert!(
-            closed.0.dissem_us.contains(&DissemControl::Nf),
-            "FISA must trigger CLOSURE_NOFORN_CAVEATED → NOFORN injection. \
+            out.0.dissem_us.contains(&DissemControl::Nf),
+            "FISA must trigger default-fill Row 0 → NOFORN injection. \
              Authority: §H.8 p161 (FISA as IC dissem control) + §B.3 p20 \
              Note + §B.3 Table 2 p21. dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us
         );
         assert!(
-            closed.0.dissem_us.contains(&DissemControl::Fisa),
-            "FISA itself must be retained — CAVEATED's cone is `{{NOFORN}}` \
-             only. dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us.contains(&DissemControl::Fisa),
+            "FISA itself must be retained. dissem_us = {:?}",
+            out.0.dissem_us
         );
         assert!(
-            !closed.0.dissem_us.contains(&DissemControl::Relido),
-            "RELIDO must NOT appear: NOFORN supersedes RELIDO via §H.8 p145 \
-             overlay. dissem_us = {:?}",
-            closed.0.dissem_us
+            !out.0.dissem_us.contains(&DissemControl::Relido),
+            "RELIDO must NOT appear. dissem_us = {:?}",
+            out.0.dissem_us
         );
     }
 
     /// RAWFISA is the post-CAPCO-2016 unminimized variant of FISA,
     /// registered in ODNI `CVEnumISMDissem.xml`. Same caveated →
-    /// NOFORN semantic by §B.3 p20 Note algebraic basis (IC dissem
-    /// control). `TOK_RAWFISA` is a `CLOSURE_NOFORN_CAVEATED`
-    /// trigger.
+    /// NOFORN semantic via post-#704 `default_fill::row0_should_fill`.
     #[test]
     fn caveated_fires_on_rawfisa() {
+        use marque_scheme::Scope;
         let scheme = CapcoScheme::new();
-        let closed = scheme.closure(secret_with_dissem(DissemControl::Rawfisa));
+        let m = secret_with_dissem(DissemControl::Rawfisa);
+        let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
         assert!(
-            closed.0.dissem_us.contains(&DissemControl::Nf),
-            "RAWFISA must trigger CLOSURE_NOFORN_CAVEATED → NOFORN injection. \
+            out.0.dissem_us.contains(&DissemControl::Nf),
+            "RAWFISA must trigger default-fill Row 0 → NOFORN injection. \
              Authority: ODNI `CVEnumISMDissem.xml` (post-CAPCO-2016) + §B.3 \
              p20 Note + §B.3 Table 2 p21. dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us
         );
         assert!(
-            closed.0.dissem_us.contains(&DissemControl::Rawfisa),
-            "RAWFISA itself must be retained — CAVEATED's cone is `{{NOFORN}}` \
-             only. dissem_us = {:?}",
-            closed.0.dissem_us
+            out.0.dissem_us.contains(&DissemControl::Rawfisa),
+            "RAWFISA itself must be retained. dissem_us = {:?}",
+            out.0.dissem_us
         );
         assert!(
-            !closed.0.dissem_us.contains(&DissemControl::Relido),
-            "RELIDO must NOT appear: NOFORN supersedes RELIDO via §H.8 p145 \
-             overlay. dissem_us = {:?}",
-            closed.0.dissem_us
+            !out.0.dissem_us.contains(&DissemControl::Relido),
+            "RELIDO must NOT appear. dissem_us = {:?}",
+            out.0.dissem_us
         );
     }
 
-    /// Source-of-truth pin: each of the three new triggers fires the
-    /// CAVEATED bitmask row. Post-PR-D this asserts the
-    /// `CLOSURE_TABLE` Row 0 trigger mask (the bitmask form of the
-    /// retired `CLOSURE_NOFORN_CAVEATED.triggers` slice) contains the
-    /// `fact_bit::PROPIN` / `fact_bit::FISA` / `fact_bit::RAWFISA`
-    /// atom bits per issue #525. The behavioral pins in the
-    /// `caveated_fires_on_*` tests above already prove the end-to-end
-    /// closure path; this one closes the source-of-truth drift channel
-    /// at the catalog level so a row edit dropping a bit is caught
-    /// even if the behavioral pin happens to be observationally
-    /// satisfied by another row.
+    /// Source-of-truth pin: PROPIN / FISA / RAWFISA all trigger
+    /// default-fill Row 0 end-to-end via `project()`. Post-#704 the
+    /// caveated trigger list lives on `default_fill::ROW0_CAVEATED_TRIGGERS`
+    /// (the pre-#704 `CLOSURE_TABLE[0].trigger_mask` retired with
+    /// Row 0). The end-to-end behavioral evidence above already proves
+    /// each token reaches default-fill's predicate; this test is the
+    /// catalog-level drift pin — if a future edit drops PROPIN / FISA
+    /// / RAWFISA from the default-fill trigger mask, this test fires.
     #[test]
-    fn each_new_trigger_appears_in_caveated_bitmask_row() {
-        use crate::fact_bitmask::fact_bit;
-        use crate::scheme::closure_table::CLOSURE_TABLE;
-        let row0_trigger_mask = CLOSURE_TABLE[0].trigger_mask;
-        let new_trigger_bits = [
-            ("PROPIN", fact_bit::PROPIN),
-            ("FISA", fact_bit::FISA),
-            ("RAWFISA", fact_bit::RAWFISA),
-        ];
-        for (name, bit) in new_trigger_bits {
+    fn each_new_trigger_fires_default_fill_caveated_row_end_to_end() {
+        use marque_scheme::Scope;
+        let scheme = CapcoScheme::new();
+        for (name, dissem) in [
+            ("PROPIN", DissemControl::Pr),
+            ("FISA", DissemControl::Fisa),
+            ("RAWFISA", DissemControl::Rawfisa),
+        ] {
+            let m = secret_with_dissem(dissem);
+            let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
             assert!(
-                (row0_trigger_mask & (1u128 << bit)) != 0,
-                "fact_bit::{name} (bit {bit}) missing from \
-                 CLOSURE_TABLE[0].trigger_mask. Issue #525 requires \
-                 PROPIN/FISA/RAWFISA in the caveated trigger list per \
-                 §B.3 p20 Note (IC dissem controls are caveated). \
-                 Authority: §H.8 p148 (PROPIN), §H.8 p161 (FISA + RAWFISA), \
-                 §B.3 Table 2 p21 (caveated-default obligation)."
+                out.0.dissem_us.contains(&DissemControl::Nf),
+                "trigger {name} did NOT reach default-fill Row 0 — \
+                 NOFORN missing from end-to-end project output. \
+                 Authority: §B.3 p20 Note (IC dissem controls are \
+                 caveated) + §B.3 Table 2 p21 (caveated-default \
+                 obligation). dissem_us = {:?}",
+                out.0.dissem_us,
             );
         }
     }

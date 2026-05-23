@@ -91,53 +91,35 @@ fn display_only_clears_relido_cross_portion() {
     // release permission via REL TO and survives the §D.2 row-19
     // all-or-nothing gate), portion B has DISPLAY ONLY GBR.
     //
-    // Post-#704 behavior trace: join_via_lattice composes per-axis:
-    // (a) `DissemSet`'s RELIDO observed-unanimity overlay drops the
-    //     input RELIDO from dissem_us (B has no RELIDO so unanimity
-    //     fails). dissem_us = [].
-    // (b) `DisplayOnlyBlock::from_attrs_iter` intersects expand(REL TO)
-    //     ∪ expand(DISPLAY ONLY) across portions and subtracts banner
-    //     REL TO countries per §D.2 Table 3 row 27. A's expand = {USA,
-    //     GBR}; B's expand = {GBR}; intersection = {GBR}; subtract
-    //     {USA, GBR} = ∅. So display_only_to ends empty post-join.
-    // (c) `closure()` Row 9 (`relido-if-us-collateral-class`) fires
-    //     on the US-classified input post-#704 (no suppressor) and
-    //     adds RELIDO back into dissem_us.
-    // (d) The `capco/display-only-clears-relido` PageRewrite triggers
-    //     on `Contains(CAT_DISSEM, TOK_DISPLAY_ONLY)` — but
-    //     display_only_to is empty post-join, so the trigger doesn't
-    //     fire and RELIDO stays in dissem_us.
+    // Post-#704 (refined per redirect brief): pre-#704 the
+    // `MASK_RELIDO_US_CLASS_SUPPRESSORS` mask (which includes
+    // REL_TO_PRESENT) suppressed Row 9 inside `close()`, so closure
+    // didn't add the RELIDO that the join overlay had stripped.
+    // Post-#704 the SAME mask gates
+    // `default_fill::row9_should_fill`: input portion A carries
+    // REL TO USA, GBR → REL_TO_PRESENT is set on the post-close
+    // bitmask → default-fill Row 9's gate fails → no implicit
+    // RELIDO added. End-to-end identical to pre-#704.
     //
-    // Net: banner carries RELIDO post-#704. Pre-#704 the
-    // `MASK_RELIDO_US_CLASS_SUPPRESSORS` mask (which included
-    // REL_TO_PRESENT) suppressed Row 9, so closure didn't add the
-    // RELIDO that the join overlay had stripped.
+    // The §H.8 p154 RELIDO conservatism the pre-#704 suppressor
+    // encoded ("don't add implicit RELIDO when explicit REL TO
+    // present") is preserved post-#704 because the same mask
+    // (now on the default-fill gate) implements the same gate.
     //
-    // **Open question for PM**: this is a corpus-observable
-    // semantic change. §H.8 p154 says "RELIDO MAY be used alone or
-    // with REL TO" — both forms are valid CAPCO, so the post-#704
-    // banner carrying RELIDO is not strictly invalid. The pre-#704
-    // suppressor encoded a stronger "don't add implicit RELIDO when
-    // explicit REL TO present" stance that is conservative but not
-    // §-mandated. A follow-up overlay enhancement could re-implement
-    // the pre-#704 conservatism without breaking the closure
-    // operator's monotonicity property (the overlay reads post-state
-    // and can check if RELIDO came from closure vs input).
-    //
-    // This test is updated to document the post-#704 behavior. The
-    // within-portion case (`display_only_clears_relido_within_one_portion`)
-    // still works because there's no cross-portion intersection
-    // step to clear display_only_to.
+    // Authority: §H.8 p154 (RELIDO grammar — defaulting marking
+    // applies absent explicit FD&R); §B.3.a p19 (REL TO is
+    // canonical FD&R, in MASK_FDR_DOMINATORS and therefore in
+    // MASK_RELIDO_US_CLASS_SUPPRESSORS).
     let scheme = CapcoScheme::new();
     assert!(
-        banner_carries_relido(
+        !banner_carries_relido(
             &scheme,
             &["(S//REL TO USA, GBR/RELIDO)", "(S//DISPLAY ONLY GBR)"]
         ),
-        "Post-#704: cross-portion case carries RELIDO in banner — see \
-         doc-comment for the join-overlay + closure + display_only_to-\
-         subsumption interaction. Pre-#704 suppression no longer applies; \
-         §H.8 p154 conservatism flagged to PM.",
+        "DISPLAY ONLY on one portion must evict RELIDO from another \
+         portion at page projection (§H.8 p154 + §B.3.a p19 FD&R \
+         dominator gate on default-fill Row 9); end-to-end behavior \
+         identical to pre-#704.",
     );
 }
 

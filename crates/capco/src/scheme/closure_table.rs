@@ -21,35 +21,43 @@
 //! `crates/capco/tests/proptest_closure_table.rs::p3_monotonicity_realistic`
 //! shrinks to a one-line counterexample on the pre-#704 architecture.
 //!
-//! The §H.8 p145 NOFORN-dominates / §B.3.a p19 FD&R supersession
-//! semantics that the suppressors previously encoded move to
-//! [`CapcoScheme::apply_supersession_overlays`] — a per-axis overlay
-//! that runs AFTER [`close`] converges. Per
-//! `docs/plans/2026-05-01-lattice-design.md` §3 (e) supersession is a
-//! separate layer that runs after closure converges, not a suppressor
-//! inside the closure loop. See the
-//! [`crate::lattice::dissem::DissemSet::with_fdr_dominance_stripped`] and
-//! [`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`]
-//! doc-comments for the per-axis overlays.
+//! Issue #704's refinement: the four "default if absent" rules
+//! (pre-#704 Rows 0/7/8/9) — caveated→NOFORN, NATO→REL TO USA NATO,
+//! SCI→RELIDO, US-class→RELIDO — are inherently non-monotone by
+//! §-spec design (§B.3 paragraph b p19's "NOT MARKED PREVIOUSLY"
+//! gate). They cannot live inside a closure operator that honors the
+//! monotone contract. They moved to
+//! [`crate::scheme::default_fill`], a separate post-close stage that
+//! runs after `close()` converges. `CLOSURE_TABLE` now carries only
+//! the six "unconditional implication" rules (HCS-O/HCS-P[sub] →
+//! NOFORN+ORCON, SI-G → ORCON, TK-BLFH/IDIT/KAND → NOFORN per §H.4
+//! marking templates), all of which fire unconditionally with no
+//! suppressor, so `close()` is purely additive at the bitmask layer
+//! and P3 monotonicity holds by construction.
 //!
-//! # Row inventory
+//! The narrower §H.8 p145 NOFORN-dominates semantics that handle
+//! **input-explicit** FD&R contradictions (e.g., user marks
+//! `{S, NOFORN, REL TO USA}` explicitly — §H.8 p145 says strip REL TO)
+//! live in [`crate::lattice::dissem::DissemSet::with_fdr_dominance_stripped`]
+//! and [`crate::lattice::rel_to::RelToBlock::with_nato_implicit_stripped`].
+//! Pipeline: `parse → join → close() (Rows 1-6) → apply_default_fill
+//! (Rows 0/7/8/9) → apply_supersession_overlays (§H.8 p145
+//! input-explicit) → PageRewrites → render`.
 //!
-//! The catalog mirrors `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`
-//! row-for-row in **catalog order** (section 4 of the PR-B plan; load-bearing
-//! per the `post_4b_lattice_inventory_pin.rs` positional pin). The 10 rows
-//! split into:
+//! # Row inventory (post-#704)
 //!
-//! 1. **Row 0** — Trio 1 `capco/noforn-if-caveated`.
-//! 2. **Rows 1-6** — per-marking unconditional implications (HCS-O,
-//!    HCS-P[sub], SI-G, TK-{BLFH,IDIT,KAND}).
-//! 3. **Row 7** — Trio 3 `capco/rel-to-usa-nato-if-nato-classification`.
-//!    *Hybrid*: bitmask trigger + bitmask suppressor + closed-vocab
-//!    static cone (`REL_TO_USA`). The open-vocab NATO tetragraph (the
-//!    `cone_derived` fn-pointer pass) lives outside the bitmask table
-//!    and is applied by PR-D's `closure()` body after the Kleene loop
-//!    converges.
-//! 4. **Rows 8-9** — Trio 2 `capco/relido-if-sci-and-not-incompatible`
-//!    + `capco/relido-if-us-collateral-class`.
+//! The catalog carries **6 rows** post-#704 (Rows 1-6 of the pre-#704
+//! 10-row catalog). The four retired rows (pre-#704 Rows 0/7/8/9 —
+//! caveated/NATO/SCI/US-class "default if absent") relocated to
+//! [`crate::scheme::default_fill`] because they are inherently
+//! non-monotone (§B.3 paragraph b p19 "NOT MARKED PREVIOUSLY" gate)
+//! and cannot live in a closure operator honoring the monotone
+//! contract. See the module doc-comment for the full rationale.
+//!
+//! The surviving rows are per-marking unconditional implications
+//! (HCS-O, HCS-P[sub], SI-G, TK-{BLFH,IDIT,KAND}) per §H.4 marking
+//! templates. All fire unconditionally (no suppressor, no gate) so
+//! `close()` is purely additive at the bitmask layer.
 //!
 //! # Dispatch semantics
 //!
@@ -77,64 +85,20 @@
 //! row-name severity overrides); they are not re-derived from any other
 //! authority here.
 
-use marque_scheme::{Citation, FactBitmask, SectionLetter, Severity, capco, capco_table};
+use marque_scheme::{Citation, FactBitmask, SectionLetter, Severity, capco};
 
 use crate::fact_bitmask::fact_bit;
 
 // ---------------------------------------------------------------------------
-// Trigger masks
-// ---------------------------------------------------------------------------
-
-/// Trigger mask for `capco/noforn-if-caveated` (Row 0).
-///
-/// Bitmask form of `CLOSURE_NOFORN_CAVEATED.triggers` from
-/// `closure.rs`:
-///
-/// - 1 SAR — `AnyInCategory(CAT_SAR)`
-/// - 5 AEA — `TOK_RD`, `TOK_FRD`, `TOK_TFNI`, `TOK_UCNI`, `TOK_DCNI`
-/// - 2 FGI — `TOK_FGI_MARKER` + `AnyInCategory(CAT_FGI_MARKER)` (per
-///   `closure.rs::CLOSURE_NOFORN_CAVEATED.triggers`; `TOK_FGI_CLASS`
-///   is NOT in the rule's trigger list — `TOK_FGI_MARKER`'s
-///   `satisfies_attrs` resolution already covers both the dissem-
-///   axis `fgi_marker` and the classification-axis
-///   `MarkingClassification::Fgi(_)` paths)
-/// - 8 IC dissem — `TOK_ORCON`, `TOK_ORCON_USGOV`, `TOK_RSEN`,
-///   `TOK_IMCON`, `TOK_PROPIN`, `TOK_DSEN`, `TOK_FISA`, `TOK_RAWFISA`
-/// - 5 non-IC dissem — `TOK_LIMDIS`, `TOK_LES`, `TOK_NNPI`,
-///   `TOK_SBU`, `TOK_SSI`
-///
-/// Total: 21 `TokenRef` entries on the fn-pointer rule. The two FGI
-/// predicate forms collapse to the single [`fact_bit::FGI_PRESENT`]
-/// sentinel in the bitmask projection (the bit lights for *any* FGI
-/// presence — marker axis OR classification axis — via
-/// `derive_bits`). Net bitmask form: **20 distinct atom bits**.
-///
-/// Authority: see [`CLOSURE_NOFORN_CAVEATED`](super::closure) doc-comment
-/// per-trigger authority table.
-const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
-    | (1u128 << fact_bit::AEA_RD)
-    | (1u128 << fact_bit::AEA_FRD)
-    | (1u128 << fact_bit::AEA_TFNI)
-    | (1u128 << fact_bit::AEA_DOE_UCNI)
-    | (1u128 << fact_bit::AEA_DOD_UCNI)
-    | (1u128 << fact_bit::FGI_PRESENT)
-    | (1u128 << fact_bit::ORCON)
-    | (1u128 << fact_bit::ORCON_USGOV)
-    | (1u128 << fact_bit::RSEN)
-    | (1u128 << fact_bit::IMCON)
-    | (1u128 << fact_bit::PROPIN)
-    | (1u128 << fact_bit::DSEN)
-    | (1u128 << fact_bit::FISA)
-    | (1u128 << fact_bit::RAWFISA)
-    | (1u128 << fact_bit::LIMDIS)
-    | (1u128 << fact_bit::LES)
-    | (1u128 << fact_bit::NNPI)
-    | (1u128 << fact_bit::SBU)
-    | (1u128 << fact_bit::SSI);
-
-// ---------------------------------------------------------------------------
 // ClosureRow + CLOSURE_TABLE
 // ---------------------------------------------------------------------------
+//
+// Post-#704: the `ROW0_NOFORN_IF_CAVEATED_TRIGGERS` 20-atom caveated
+// trigger mask relocated to `crate::scheme::default_fill::ROW0_CAVEATED_TRIGGERS`
+// when Row 0 (`capco/noforn-if-caveated`) moved out of the closure
+// catalog. Per-trigger §-authorities (§B.3 Table 2 p21 + per-trigger
+// §H.5 / §H.6 / §H.7 / §H.8 / §H.9 marking templates) are preserved
+// on the relocated mask's doc-comment.
 
 /// A single bitmask-form closure rule.
 ///
@@ -203,37 +167,32 @@ pub struct ClosureRow {
 }
 
 /// Per-row cone-mask constants for [`fact_bit::NOFORN`] / [`fact_bit::ORCON`]
-/// / [`fact_bit::RELIDO`] / [`fact_bit::REL_TO_USA`] singletons. Pulled out
-/// so each row's `cone_mask` is one named atom rather than a magic
-/// `1u128 << X` literal.
+/// Per-row cone-mask constants for the surviving Rows 1-6.
+/// Pulled out so each row's `cone_mask` is one named atom rather
+/// than a magic `1u128 << X` literal. The pre-#704 CONE_RELIDO and
+/// CONE_REL_TO_USA constants retired with Rows 7/8/9.
 const CONE_NOFORN: u128 = 1u128 << fact_bit::NOFORN;
 const CONE_ORCON: u128 = 1u128 << fact_bit::ORCON;
-const CONE_RELIDO: u128 = 1u128 << fact_bit::RELIDO;
-pub(crate) const CONE_REL_TO_USA: u128 = 1u128 << fact_bit::REL_TO_USA;
 
-/// The 10-row CAPCO closure-rule catalog in bitmask form.
+/// The CAPCO closure-rule catalog in bitmask form (Rows 1-6 of the
+/// pre-#704 10-row catalog).
 ///
-/// **Row ordering is load-bearing.** The order matches
-/// [`CAPCO_CLOSURE_RULES`](super::closure) verbatim: Trio 1 first
-/// (Row 0) so subsequent rows see updated NOFORN/REL_TO_PRESENT;
-/// per-marking unconditional rows next (Rows 1-6) so Trio 3 / Trio 2
-/// see updated NOFORN/ORCON; Trio 3 (Row 7); Trio 2 last (Rows 8-9).
-/// The catalog walks in order within each Kleene iteration; mutations
-/// from earlier rows are visible to later rows' suppressor checks.
+/// **Post-#704 inventory**: six per-marking unconditional implication
+/// rules from §H.4 marking templates (HCS-O / HCS-P[sub] / SI-G /
+/// TK-BLFH / TK-IDIT / TK-KAND). Each row fires unconditionally on
+/// its trigger atom with no suppressor, so `close()` is purely
+/// additive at the bitmask layer and P3 monotonicity holds by
+/// construction.
 ///
-/// The `post_4b_lattice_inventory_pin.rs` positional pin gates a
-/// parallel pin for this table once PR-D wires the production path
-/// through it (PR-C ships the table unused on production).
+/// The pre-#704 Rows 0/7/8/9 (caveated→NOFORN, NATO→REL TO USA,
+/// SCI→RELIDO, US-class→RELIDO) are inherently non-monotone
+/// "default if absent" rules per §B.3 paragraph b p19's "NOT MARKED
+/// PREVIOUSLY" gate. They relocated to
+/// [`crate::scheme::default_fill`] where they live outside the
+/// closure operator's monotone contract. See the module doc-comment
+/// for the full rationale and the `default_fill` module for per-row
+/// authority preservation.
 pub static CLOSURE_TABLE: &[ClosureRow] = &[
-    // Row 0 — Trio 1: caveated → NOFORN.
-    ClosureRow {
-        name: "capco:closure.dissem.noforn-if-caveated",
-        display_label: "NOFORN if classified-and-caveated",
-        label: capco_table(SectionLetter::B, 3, 2, 21),
-        default_severity: Severity::Info,
-        trigger_mask: ROW0_NOFORN_IF_CAVEATED_TRIGGERS,
-        cone_mask: CONE_NOFORN,
-    },
     // Row 1 — Per-marking: HCS-O → NOFORN + ORCON.
     ClosureRow {
         name: "capco:closure.dissem.hcs-o-implies-noforn-orcon",
@@ -252,9 +211,16 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         trigger_mask: 1u128 << fact_bit::SCI_HCS_P_SUB,
         cone_mask: CONE_NOFORN | CONE_ORCON,
     },
-    // Row 3 — Per-marking: SI-G → ORCON (NOFORN intentionally NOT in
-    // cone per §H.4 p80 Example Banner Line; Trio 1 adds NOFORN
-    // transitively via ORCON in caveated triggers).
+    // Row 3 — Per-marking: SI-G → ORCON.
+    //
+    // §H.4 p80 Example Banner Line is `TOP SECRET//SI-G//ORCON`
+    // (ORCON only). NOFORN is intentionally NOT in SI-G's cone;
+    // pre-#704 it was added transitively when Row 0 (CAVEATED) saw
+    // the Row-3-added ORCON in the next Kleene iteration. Post-#704
+    // the SI-G→ORCON→NOFORN chain still works: Row 3 fires in
+    // `close()`, then `apply_default_fill` reads the post-close
+    // bitmask (which has ORCON) and fires Row 0's default-fill,
+    // adding NOFORN. The chain is preserved end-to-end.
     ClosureRow {
         name: "capco:closure.dissem.si-g-implies-orcon",
         display_label: "SI-G implies ORCON",
@@ -289,36 +255,6 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_KAND,
         cone_mask: CONE_NOFORN,
-    },
-    // Row 7 — Trio 3: bare NATO classification → REL TO USA (+ NATO
-    // open-vocab cone applied by PR-D outside the bitmask loop).
-    ClosureRow {
-        name: "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
-        display_label: "Bare NATO classification implies REL TO USA, NATO",
-        label: capco(SectionLetter::H, 7, 127),
-        default_severity: Severity::Info,
-        trigger_mask: 1u128 << fact_bit::NATO_CLASS,
-        cone_mask: CONE_REL_TO_USA,
-    },
-    // Row 8 — Trio 2: SCI presence → RELIDO unless FD&R-marked or
-    // RELIDO-incompatible.
-    ClosureRow {
-        name: "capco:closure.dissem.relido-if-sci-and-not-incompatible",
-        display_label: "SCI presence implies RELIDO (unless FD&R or incompatible)",
-        label: capco(SectionLetter::H, 8, 154),
-        default_severity: Severity::Info,
-        trigger_mask: 1u128 << fact_bit::SCI_PRESENT,
-        cone_mask: CONE_RELIDO,
-    },
-    // Row 9 — Trio 2: US collateral classification → RELIDO unless
-    // FD&R-marked or per-compartment SCI sentinel present.
-    ClosureRow {
-        name: "capco:closure.dissem.relido-if-us-collateral-class",
-        display_label: "US collateral classification implies RELIDO (unless FD&R)",
-        label: capco_table(SectionLetter::B, 3, 2, 21),
-        default_severity: Severity::Info,
-        trigger_mask: 1u128 << fact_bit::US_COLLATERAL_CLASSIFIED,
-        cone_mask: CONE_RELIDO,
     },
 ];
 
@@ -406,21 +342,20 @@ pub fn close(input: FactBitmask) -> FactBitmask {
     // Trait contract enforcement (§576 in
     // `marque_scheme::scheme::MarkingScheme::closure` — "The override
     // MUST panic if it exceeds [...] iterations without reaching a
-    // fixed point"). The 10-row CAPCO catalog has max causal depth 2
-    // (per-marking cones add NOFORN/ORCON; CAVEATED promotes ORCON →
-    // NOFORN) with the upstream `N=16` cap providing 5× safety
-    // padding, so reaching this branch means a future catalog edit
-    // introduced a cycle or extended the chain past the ceiling —
-    // both are programming bugs. Panicking unconditionally (not just
-    // in debug builds) honors the trait contract and prevents
-    // release-build silent fallthrough that would mask a non-monotone
-    // catalog regression with a wrong cone output.
+    // fixed point"). The post-#704 6-row CAPCO catalog has max causal
+    // depth 1 (each Row 1-6 fires at most once on its trigger atom;
+    // the SI-G → ORCON → NOFORN chain that produced depth 2 in the
+    // pre-#704 catalog now crosses the close()/default_fill boundary).
+    // The upstream `N=16` cap provides 16× safety padding, so reaching
+    // this branch means a future catalog edit introduced a cycle —
+    // a programming bug. Panicking unconditionally (not just in debug
+    // builds) honors the trait contract and prevents release-build
+    // silent fallthrough.
     panic!(
         "close() did not converge in {MAX_CLOSURE_ITERATIONS} iterations; \
-         bits = {bits:#034x}. The CAPCO catalog's max causal depth (2) \
-         + 5× safety padding makes this unreachable for the current \
-         10-row catalog; if this fires, a closure-row edit introduced \
-         a cycle or extended the chain past the upstream cap.",
+         bits = {bits:#034x}. The post-#704 CAPCO catalog's max causal \
+         depth (1) makes this unreachable for the current 6-row catalog; \
+         if this fires, a closure-row edit introduced a cycle.",
     );
 }
 
@@ -449,55 +384,45 @@ pub const ALL_TRIGGER_MASK: u128 = {
 mod tests {
     use super::*;
 
-    /// The catalog ships 10 rows. A drift here is the strongest signal
-    /// that the table was edited without intent — gates PR-D's
-    /// equivalence-test row count.
+    /// Post-#704 the catalog ships 6 rows (Rows 1-6 from the pre-#704
+    /// 10-row catalog). Rows 0/7/8/9 relocated to
+    /// `crate::scheme::default_fill`. A drift here is the strongest
+    /// signal that the table was edited without intent.
     #[test]
-    fn catalog_has_ten_rows() {
-        assert_eq!(CLOSURE_TABLE.len(), 10);
+    fn catalog_has_six_rows() {
+        assert_eq!(CLOSURE_TABLE.len(), 6);
     }
 
-    /// Row 0 trigger mask must include all 20 caveated-trigger atoms
-    /// per `closure.rs::CLOSURE_NOFORN_CAVEATED.triggers`.
+    /// Row names match the per-marking unconditional implications
+    /// from §H.4 marking templates. Drift here breaks severity-
+    /// override config keys + future audit row-name emission.
     #[test]
-    fn row0_trigger_count() {
-        assert_eq!(ROW0_NOFORN_IF_CAVEATED_TRIGGERS.count_ones(), 20);
-    }
-
-    /// Row names match the corresponding fn-pointer
-    /// [`CAPCO_CLOSURE_RULES`] entries verbatim. Drift here breaks
-    /// severity-override config keys + future audit row-name emission.
-    #[test]
-    fn row_names_match_fn_pointer_catalog() {
+    fn row_names_match_per_marking_inventory() {
         let expected_names = [
-            "capco:closure.dissem.noforn-if-caveated",
             "capco:closure.dissem.hcs-o-implies-noforn-orcon",
             "capco:closure.dissem.hcs-p-sub-implies-noforn-orcon",
             "capco:closure.dissem.si-g-implies-orcon",
             "capco:closure.dissem.tk-blfh-implies-noforn",
             "capco:closure.dissem.tk-idit-implies-noforn",
             "capco:closure.dissem.tk-kand-implies-noforn",
-            "capco:closure.nato.rel-to-usa-nato-if-nato-classification",
-            "capco:closure.dissem.relido-if-sci-and-not-incompatible",
-            "capco:closure.dissem.relido-if-us-collateral-class",
         ];
         for (row, expected) in CLOSURE_TABLE.iter().zip(expected_names.iter()) {
             assert_eq!(row.name, *expected);
         }
     }
 
-    /// Every cone bit must be one of the four `APPLY_ELIGIBLE_MASK`
-    /// atoms (NOFORN / ORCON / RELIDO / REL_TO_USA). The inverse
-    /// projection silently drops any other cone bit, so a row with
-    /// an out-of-set cone would no-op silently.
+    /// Every cone bit must be one of the two `APPLY_ELIGIBLE_MASK`
+    /// atoms the post-#704 catalog uses (NOFORN / ORCON). RELIDO
+    /// and REL_TO_USA cones retired with Rows 7/8/9 (relocated to
+    /// `crate::scheme::default_fill`).
     #[test]
     fn cones_within_apply_eligible_set() {
-        let eligible = CONE_NOFORN | CONE_ORCON | CONE_RELIDO | CONE_REL_TO_USA;
+        let eligible = CONE_NOFORN | CONE_ORCON;
         for row in CLOSURE_TABLE {
             assert_eq!(
                 row.cone_mask & !eligible,
                 0,
-                "row {} has cone bits outside APPLY_ELIGIBLE_MASK",
+                "row {} has cone bits outside the per-marking cone set",
                 row.name,
             );
         }
@@ -518,46 +443,48 @@ mod tests {
         assert!(closed.is_set(fact_bit::ORCON));
     }
 
-    /// SI-G alone → adds ORCON via Row 3, then transitively NOFORN
-    /// via Row 0 (ORCON is in Row 0's trigger list).
+    /// SI-G alone → adds ORCON via Row 3 only.
     ///
-    /// Post-#704: Row 8 (`relido-if-sci-and-not-incompatible`) also
-    /// fires unconditionally on `SCI_PRESENT` because the
-    /// `suppressor_mask` gate was retired. The closure layer's job
-    /// is purely additive Kleene fixpoint; the §H.8 p145
-    /// NOFORN-dominates-RELIDO supersession that strips the
-    /// closure-added RELIDO lives in
-    /// `CapcoScheme::apply_supersession_overlays`, which runs in
-    /// `project()` after `closure()` returns. End-to-end
-    /// (project-level) tests in `closure_runtime.rs` continue to
-    /// assert RELIDO is absent on SI_G inputs; this test pins the
-    /// closure-layer purely-additive contract.
+    /// Post-#704: the SI-G → ORCON → NOFORN chain crosses the
+    /// close()/default_fill boundary. close() runs Row 3 which adds
+    /// ORCON; the NOFORN injection happens in `apply_default_fill`
+    /// when its Row-0 predicate observes ORCON in the post-close
+    /// bitmask. This test pins the closure-layer half of the chain
+    /// (RELIDO is NOT in the closure output because Row 8 retired
+    /// to default-fill, and SI_G is in MASK_FDR_OR_RELIDO_INCOMPAT
+    /// so default-fill Row 8 wouldn't fire even if it ran here).
     #[test]
-    fn close_si_g_chains_orcon_then_noforn() {
+    fn close_si_g_adds_orcon_only() {
         let input = FactBitmask::EMPTY
             .with_bit(fact_bit::SCI_SI_G)
             .with_bit(fact_bit::SCI_PRESENT);
         let closed = close(input);
         assert!(closed.is_set(fact_bit::ORCON));
-        assert!(closed.is_set(fact_bit::NOFORN));
-        // Post-#704: RELIDO IS in closure output (Row 8 fires on
-        // SCI_PRESENT; the §H.8 p145 strip happens in the
-        // supersession overlay, not in the closure layer).
-        assert!(closed.is_set(fact_bit::RELIDO));
+        // Post-#704: NOFORN is NOT added by close() — it comes from
+        // `apply_default_fill`'s Row 0 default-fill running on the
+        // post-close bitmask (where Row 3 added ORCON, the Row 0
+        // caveat trigger).
+        assert!(!closed.is_set(fact_bit::NOFORN));
+        // Post-#704: RELIDO is NOT in the close() output (Row 8 moved
+        // to default-fill).
+        assert!(!closed.is_set(fact_bit::RELIDO));
     }
 
-    /// US Secret alone (no caveats, no SCI) → Row 9 fires +RELIDO.
+    /// US Secret alone — Row 9 retired to default-fill. close()
+    /// produces no addition on bare US classification.
     #[test]
-    fn close_us_secret_alone_adds_relido() {
+    fn close_us_secret_alone_is_noop() {
         let input = FactBitmask::EMPTY.with_bit(fact_bit::US_COLLATERAL_CLASSIFIED);
         let closed = close(input);
-        assert!(closed.is_set(fact_bit::RELIDO));
-        // Row 0 must NOT fire — no caveated trigger present.
-        assert!(!closed.is_set(fact_bit::NOFORN));
+        // Post-#704: Row 9 (US-class → RELIDO) retired to
+        // default-fill; close() leaves bare US classification
+        // unchanged. The default-fill stage in project()'s pipeline
+        // adds RELIDO when run on the post-close marking.
+        assert_eq!(closed.bits(), input.bits());
     }
 
     /// Idempotence — close(close(b)) == close(b). Spot-check with the
-    /// SI-G chain (the longest causal chain in the catalog).
+    /// SI-G chain (the longest causal chain in the post-#704 catalog).
     #[test]
     fn idempotence_spot_check_si_g_chain() {
         let input = FactBitmask::EMPTY
@@ -587,28 +514,29 @@ mod tests {
     }
 
     /// HOT-1 invariant: if no trigger bit is set in the input, the
-    /// fixpoint MUST equal the input.
+    /// fixpoint MUST equal the input. Post-#704 the catalog's triggers
+    /// are limited to the six SCI sentinel bits (SCI_HCS_O /
+    /// SCI_HCS_P_SUB / SCI_SI_G / SCI_TK_BLFH / SCI_TK_IDIT /
+    /// SCI_TK_KAND), so a bitmask with any non-SCI atoms (e.g., ORCON,
+    /// NODIS, US_COLLATERAL_CLASSIFIED) hits the early-exit.
     #[test]
     fn hot1_no_trigger_means_no_change() {
-        // NODIS / EXDIS / SBU_NF / LES_NF are non-IC dissem tokens NOT
-        // in any closure-row trigger mask (Trio 1 fires on LIMDIS / LES
-        // / NNPI / SBU / SSI but not on these four). A bitmask whose
-        // only set bits are non-trigger atoms must converge to itself
-        // — gates the HOT-1 early-exit PR-D will install at the
-        // production call site.
         let input = FactBitmask::EMPTY
             .with_bit(fact_bit::NODIS)
-            .with_bit(fact_bit::EXDIS);
+            .with_bit(fact_bit::EXDIS)
+            .with_bit(fact_bit::ORCON)
+            .with_bit(fact_bit::US_COLLATERAL_CLASSIFIED);
         assert_eq!(input.bits() & ALL_TRIGGER_MASK, 0);
         assert_eq!(close(input), input);
     }
 
-    /// NATO classification → Row 7 adds REL_TO_USA (the closed-vocab
-    /// cone). NATO open-vocab cone lives outside this table.
+    /// Post-#704: bare NATO classification is NOT a close() trigger
+    /// (Row 7 retired to default-fill). close() leaves NATO inputs
+    /// unchanged; `apply_default_fill` adds REL TO USA + NATO downstream.
     #[test]
-    fn close_nato_classification_adds_rel_to_usa() {
+    fn close_nato_classification_is_noop() {
         let input = FactBitmask::EMPTY.with_bit(fact_bit::NATO_CLASS);
         let closed = close(input);
-        assert!(closed.is_set(fact_bit::REL_TO_USA));
+        assert_eq!(closed.bits(), input.bits());
     }
 }

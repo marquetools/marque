@@ -115,8 +115,29 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
     let portion = CapcoMarking::new(attrs);
     let projected = scheme.project(Scope::Page, &[portion]);
 
-    // ORCON in `dissem_nato` survives the projection (page rollup
-    // composes namespaces independently).
+    // Page rollup composes namespaces independently. A pure-NATO
+    // portion contributes only to `dissem_nato`; `dissem_us`
+    // remains empty.
+    //
+    // Post-#704 (refined per redirect brief): the §B.3 paragraph b
+    // p19 "NOT MARKED PREVIOUSLY" gate preserves the pure-NATO
+    // input. REL TO USA, NATO is in MASK_FDR_DOMINATORS via
+    // REL_TO_PRESENT, so `default_fill::row0_should_fill`'s
+    // FD&R-absent gate fails on the ORCON caveat trigger. The
+    // implicit NOFORN default does NOT fire — `dissem_us` stays
+    // empty, ORCON survives in `dissem_nato`. Same behavior as
+    // pre-#704; the pre-#704 `MASK_FDR_DOMINATORS` suppressor's
+    // job moved to the default-fill gate.
+    //
+    // Authority: §B.3 paragraph b p19 ("not marked previously");
+    // §B.3.a p19 (REL TO is canonical FD&R); §H.7 p123 (FGI/NATO
+    // markings may include US FD&R).
+    assert!(
+        projected.0.dissem_us.is_empty(),
+        "pure-NATO page rollup must leave dissem_us empty (CAPCO-2016 \
+         §B.3 paragraph b p19 + §B.3.a p19); got dissem_us = {:?}",
+        projected.0.dissem_us,
+    );
     assert!(
         projected
             .0
@@ -125,32 +146,6 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
             .any(|d| d == &DissemControl::Oc),
         "ORCON must survive page rollup in dissem_nato; got {:?}",
         projected.0.dissem_nato,
-    );
-
-    // Post-#704: the closure() Row 0 (caveated-default NOFORN) fires
-    // on ORCON regardless of which namespace it lives in
-    // (`derive_bits` reads `dissem_iter()` across both `dissem_us`
-    // and `dissem_nato`). The pre-#704 suppressor that blocked the
-    // injection when REL_TO_PRESENT was in the input was retired
-    // along with the rest of the `MASK_FDR_DOMINATORS` gate; the
-    // §H.8 p145 NOFORN-dominates supersession overlay then clears
-    // `rel_to` and strips dominated dissem at the project()
-    // boundary. Net effect on this pure-NATO portion: `dissem_us`
-    // ends up `[Nf]` (closure-injected, written to `dissem_us` per
-    // `apply_closed_bits_to`'s ALL-IC-dissem-axis-is-US convention),
-    // `dissem_nato` retains the input ORCON, `rel_to` is cleared.
-    //
-    // This is a deliberate behavioral change introduced by issue
-    // #704: pre-#704 the explicit `REL TO USA, NATO` in the input
-    // suppressed the implicit NOFORN default; post-#704 the §H.8
-    // p145 strict reading ("NOFORN cannot be used with REL TO")
-    // governs. Authority: §H.8 p145 (NOFORN dominates REL TO).
-    assert!(
-        projected.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
-        "post-#704 §H.8 p145 strict reading: closure injects NOFORN \
-         on the ORCON caveat trigger and the overlay does not strip \
-         NOFORN itself; got dissem_us = {:?}",
-        projected.0.dissem_us,
     );
 }
 

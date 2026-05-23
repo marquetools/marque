@@ -4609,23 +4609,18 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             return vec![];
         }
 
-        // Clause 2b (issue #704): if the portion already carries an
-        // explicit non-RELIDO FD&R decision (REL TO via populated
-        // `rel_to`, DISPLAY ONLY via populated `display_only_to`,
-        // EYES via `DissemControl::Eyes`), don't suggest adding
-        // RELIDO. Per §H.8 p154 RELIDO is the implicit defaulting
-        // marking that fills FD&R absence — suggesting it on top of
-        // an explicit author release decision is redundant noise.
-        // This is the rule-level analogue of the pre-#704
-        // `MASK_RELIDO_US_CLASS_SUPPRESSORS` suppressor that
-        // retired into `CapcoScheme::apply_supersession_overlays`
-        // for the lattice-layer strip; S008 emits user-visible
-        // suggestions and should mirror the same conservatism so
-        // CI corpus fixtures (`clean_portion_with_rel_to.txt`) stay
-        // clean.
+        // Clause 2b (issue #704 fast-path): mirror
+        // `default_fill::row9_should_fill`'s FD&R-absent gate at the
+        // rule layer. If the input carries any FD&R dominator
+        // (REL TO / DISPLAY ONLY / EYES — RELIDO already handled by
+        // Clause 2), `default_fill::row9_should_fill` skips and no
+        // RELIDO will be added by the projection. Short-circuit here
+        // to avoid the project() call on the common case. This is a
+        // pure optimization; algebraically Clause 3's project-based
+        // check would reach the same conclusion.
         //
-        // Authority: §H.8 p154 (RELIDO grammar — defaulting marking
-        // that applies absent an explicit FD&R decision).
+        // Authority: §B.3 paragraph b p19 ("not marked previously");
+        // §B.3.a p19 (FD&R dominator enumeration).
         let input_has_explicit_fdr = !attrs.rel_to.is_empty()
             || !attrs.display_only_to.is_empty()
             || attrs
@@ -4635,17 +4630,15 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             return vec![];
         }
 
-        // Clause 2c (issue #704): RELIDO is an IC SFDRA-deferred
-        // marking — the Information Disclosure Official can only
-        // defer release for US-originated information per §H.8
-        // p154. Non-US classification (NATO / JOINT / FGI) is
-        // foreign equity and is not RELIDO-eligible by definition;
-        // suggesting RELIDO on a NATO/JOINT/FGI portion is
-        // semantically wrong. The pre-#704
-        // `MASK_FDR_OR_RELIDO_INCOMPAT` suppressor on Row 8
-        // included NATO_CLASS / JOINT_PRESENT / FGI_PRESENT for
-        // exactly this reason. The rule-level mirror short-circuits
-        // S008 in the same cases.
+        // Clause 2c (issue #704 fast-path): RELIDO is an IC
+        // SFDRA-deferred marking per §H.8 p154 — IDO release authority
+        // is US-content-only. Non-US classification (NATO / JOINT /
+        // FGI) carries foreign equity and is in
+        // MASK_FDR_OR_RELIDO_INCOMPAT (the gate for
+        // `default_fill::row8_should_fill`). Short-circuit here so
+        // the project() call is skipped on non-US-classified inputs;
+        // algebraically Clause 3 would reach the same conclusion via
+        // default-fill Row 8's gate failing.
         //
         // Authority: §H.8 p154 (RELIDO grammar — US-originated
         // content scope); §H.7 p123 (FGI foreign-equity bar);
