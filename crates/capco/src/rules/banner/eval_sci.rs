@@ -124,9 +124,11 @@ pub(super) fn evaluate_sci_banner_rollup(
         //
         // Anchor at the banner's classification token (the marking's
         // leading token), falling back to the first available token
-        // span, rather than a meaningless `(0, 0)` — the diagnostic
+        // span. The `(0, 0)` last-resort fires only in the degenerate
+        // case where the marking carries no token spans at all (which a
+        // banner that reached this rule should never be); the diagnostic
         // carries no fix, so the anchor only needs to point at a real
-        // location inside the marking.
+        // location inside the marking when one exists.
         let anchor = attrs
             .token_spans
             .iter()

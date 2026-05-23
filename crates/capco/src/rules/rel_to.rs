@@ -165,7 +165,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 // in-source location) rather than a meaningless `(0, 0)`;
                 // fall back to the first token span if the candidate
                 // span is somehow degenerate.
-                let anchor = if ctx.candidate_span.end > ctx.candidate_span.start {
+                let anchor = if !ctx.candidate_span.is_empty() {
                     ctx.candidate_span
                 } else {
                     attrs
