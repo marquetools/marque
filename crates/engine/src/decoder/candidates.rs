@@ -42,7 +42,10 @@ use std::borrow::Cow;
 /// Bounded by [`K_MAX_CANDIDATES`] × 2 to keep the strict-parse pass
 /// bounded; duplicates (different feature traces producing the same
 /// canonical bytes) are deduplicated at emit time.
-pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
+pub(super) fn generate_candidate_bytes(
+    bytes: &[u8],
+    kind: MarkingType,
+) -> SmallVec<[CanonicalAttempt; 4]> {
     let Ok(text) = std::str::from_utf8(bytes) else {
         return SmallVec::new();
     };
@@ -182,16 +185,12 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
     //      wire-site comment below for the null-hypothesis interaction
     //      that motivated dropping the penalty to 0.0.
     //
-    //      Kind is re-derived from the trimmed text because
-    //      `generate_candidate_bytes` does not carry the `MarkingType`
-    //      inferred by the caller. The same heuristic used by
-    //      `infer_marking_type`: leading `(` ⇒ Portion.
-    let local_kind = if trimmed.starts_with('(') {
-        MarkingType::Portion
-    } else {
-        MarkingType::Banner
-    };
-    let repaired_text: Cow<'_, str> = match try_nato_fold(&repaired_text, local_kind) {
+    //      `kind` is threaded in from the caller so CAB inputs reach
+    //      `try_nato_fold`'s `MarkingType::Cab` early-return; the earlier
+    //      `trimmed.starts_with('(')` heuristic conflated CAB and
+    //      Banner and would have folded NATO compound text inside a
+    //      `Classified By:` line.
+    let repaired_text: Cow<'_, str> = match try_nato_fold(&repaired_text, kind) {
         Some(folded) => {
             // Delta 0.0: the fold restores a canonical abbreviated form from a
             // valid longhand variant (`(NATO S)` → `(//NS)`). This is an
@@ -464,7 +463,12 @@ pub(super) fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttem
 /// diagnostic would carry.
 #[cfg(feature = "decoder-harness")]
 pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
-    generate_candidate_bytes(bytes)
+    // Derive `kind` the same way the production recognizer does so the
+    // diagnostic exercises the same CAB / Portion / Banner dispatch as
+    // `DecoderRecognizer::recognize`. The public signature stays
+    // `bytes: &[u8]` (FR-049 frozen surface).
+    let kind = super::shape::infer_marking_type(bytes).unwrap_or(MarkingType::Banner);
+    generate_candidate_bytes(bytes, kind)
         .into_iter()
         .map(|a| a.bytes.into_vec())
         .collect()

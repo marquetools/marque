@@ -137,7 +137,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 
         // 1. Canonicalize the observed bytes into zero-or-more
         //    candidate byte-strings + per-candidate feature trace.
-        let canonical_attempts = generate_candidate_bytes(bytes);
+        let canonical_attempts = generate_candidate_bytes(bytes, kind);
         if canonical_attempts.is_empty() {
             return Parsed::Ambiguous {
                 candidates: Vec::new(),
