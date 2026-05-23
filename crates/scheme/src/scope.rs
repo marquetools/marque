@@ -58,12 +58,12 @@ pub enum Scope {
 /// lattice operations on the inner `M` (the scheme's marking type,
 /// `MarkingScheme::Marking`) if they need to.
 ///
-/// PR 4b-D.2 (2026-05-18) dropped the prior `M: JoinSemilattice` bound
-/// in lock-step with the `MarkingScheme::Marking` bound relaxation
-/// (D24). The bound was purely declarative — `DiffInput` itself never
-/// called `.join` on `M` — and keeping it would force every consumer
-/// to satisfy a trait the cross-axis fold cannot keep idempotently.
-/// See `MarkingScheme::Marking` doc comment for the full rationale.
+/// `DiffInput` carries no `M: JoinSemilattice` bound, matching the
+/// `MarkingScheme::Marking` associated type. The bound would be purely
+/// declarative — `DiffInput` itself never calls `.join` on `M` — and
+/// would force every consumer to satisfy a trait the cross-axis fold
+/// cannot keep idempotently. See the `MarkingScheme::Marking` doc
+/// comment for the full rationale.
 #[derive(Debug, Clone)]
 pub struct DiffInput<M> {
     pub from: Parsed<M>,

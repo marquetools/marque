@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T036 — cross-crate positive controls for the [`Canonical`] seal.
+//! Cross-crate positive controls for the [`Canonical`] seal.
 //!
 //! The compile-fail proofs that no inadmissible construction path
 //! exists live as `compile_fail` doctests on the
@@ -139,7 +139,7 @@ fn engine_only_open_vocab_path_works_under_test_fixture_carve_out() {
     // exception case used to verify the engine-only door is wired
     // correctly across the crate boundary.
     //
-    // PR 3c.2 wires this same call shape into Engine::fix_inner.
+    // The engine wires this same call shape into Engine::fix_inner.
     // Test-fixture carve-out per Constitution V Principle V.
     let ctor: EngineConstructor<StubScheme> = EngineConstructor::__engine_construct();
     // Test-fixture carve-out per Constitution V — see comment above.

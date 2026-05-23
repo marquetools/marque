@@ -2,12 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Closure rules and the §4.7 closure operator.
+//! Closure rules and the closure operator.
 //!
 //! A [`ClosureRule`] is a PUBLIC catalog primitive declaring an implication:
 //! when `triggers` are present and `suppressors` are absent, add `cone`
-//! facts to the marking. This is the algebraic closure operator from
-//! `docs/plans/2026-05-01-lattice-design.md` §3 (e).
+//! facts to the marking.
 //!
 //! The operator has three key properties that make it sound to apply
 //! before constraint validation:
@@ -19,25 +18,17 @@
 //! 3. **Idempotent**: applying closure twice yields the same result as
 //!    applying it once — the fixed point is stable.
 //!
-//! ## Default `closure()` behavior — PR 3.7 ships catalog only
+//! ## Default `closure()` behavior
 //!
-//! The default [`MarkingScheme::closure()`] implementation is a **no-op**
-//! in PR 3.7: it returns the input marking unchanged. The trait default
-//! cannot generically apply a closure rule's `cone` to `Self::Marking`
-//! without a scheme-specific singleton-construction hook, so a scheme
-//! that wants closure semantics MUST override `closure()` itself.
+//! The default [`MarkingScheme::closure()`] implementation is a **no-op**:
+//! it returns the input marking unchanged. The trait default cannot
+//! generically apply a closure rule's `cone` to `Self::Marking` without a
+//! scheme-specific singleton-construction hook, so a scheme that wants
+//! closure semantics MUST override `closure()` itself.
 //!
 //! [`MAX_CLOSURE_ITERATIONS`] is the iteration cap a scheme's
 //! `closure()` override SHOULD respect for Kleene-fixpoint walks — see
-//! the constant's doc comment. PR 3.7 ships [`ClosureRule`] data and
-//! the trait scaffold; `CapcoScheme::closure()` override + engine
-//! call-site wiring at `Engine::project` lands in PR 4 (T112).
-//!
-//! Until then, calling [`MarkingScheme::closure()`] on a scheme with
-//! declared closure rules will silently return the input unchanged.
-//! Production code paths in PR 3.7 do NOT call `closure()`; the
-//! catalog is exposed as public data via [`MarkingScheme::closure_rules()`]
-//! for tooling and proptest exercise only.
+//! the constant's doc comment.
 //!
 //! ## Architecture note
 //!
@@ -45,17 +36,14 @@
 //! in `marque-rules` or `marque-engine`. This preserves Constitution VII's
 //! crate discipline: the closure operator runs at the scheme layer, before
 //! the engine's rule-evaluation loop. The engine wires the call site at
-//! `Engine::project` (PR 4); this PR ships the trait surface and catalog
-//! shape only.
+//! `Engine::project`.
 //!
 //! ## Public catalog vs. private `ImplTable<S>`
 //!
-//! Per `specs/006-engine-rule-refactor/decisions.md` D18, `ClosureRule` is
-//! a PUBLIC catalog primitive — visible to tooling, scheme-exploration UIs,
-//! and docs generators — not a private engine-implementation detail. This
-//! is the "Option C" choice from the D18 design pass: closure rules are
-//! first-class catalog data, parallel to [`crate::constraint::Constraint`]
-//! declarations.
+//! `ClosureRule` is a PUBLIC catalog primitive — visible to tooling,
+//! scheme-exploration UIs, and docs generators — not a private
+//! engine-implementation detail. Closure rules are first-class catalog
+//! data, parallel to [`crate::constraint::Constraint`] declarations.
 
 use crate::category::TokenId;
 use crate::citation::Citation;
@@ -93,8 +81,7 @@ pub struct ClosureRuleMetadata {
     /// Human-readable row label.
     pub label: &'static str,
     /// Optional authoritative citation payload. `None` for rows without
-    /// a structured §-citation. Migrated from `Option<&'static str>` to
-    /// `Option<Citation>` in PR 10.A.1.
+    /// a structured §-citation.
     pub citation: Option<Citation>,
     /// Catalog default severity intent.
     pub default_severity: Severity,
@@ -103,17 +90,15 @@ pub struct ClosureRuleMetadata {
 /// A declarative closure rule: when `triggers` are present and `suppressors`
 /// are absent, add `cone` facts to the marking.
 ///
-/// Closure rules implement the §4.7 implicit-fact propagation operator from
-/// `docs/plans/2026-05-01-lattice-design.md` §3 (e). They propagate facts
+/// Closure rules implement implicit-fact propagation. They propagate facts
 /// that CAPCO doesn't require to be written explicitly — for example, that
 /// a marking with no explicit FD&R control implies NOFORN as the effective
 /// release restriction.
 ///
 /// The operator is monotone, extensive, and idempotent over the joint fact
-/// lattice. Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
-/// PUBLIC catalog primitive — not a private `ImplTable<S>` — so tooling can
-/// inspect declared closure rules alongside [`crate::constraint::Constraint`]
-/// declarations.
+/// lattice. This is a PUBLIC catalog primitive — not a private
+/// `ImplTable<S>` — so tooling can inspect declared closure rules alongside
+/// [`crate::constraint::Constraint`] declarations.
 ///
 /// ## Trigger and suppressor semantics
 ///
@@ -141,16 +126,15 @@ pub struct ClosureRuleMetadata {
 ///
 /// ## Severity
 ///
-/// `default_severity` expresses the catalog author's intent. Per
-/// `decisions.md` D19 B, the typical default is [`Severity::Info`].
-/// [`Severity::Fix`] is rejected at config load — closure firings propagate
-/// facts, they are not byte-level fixes; see Stage F
-/// (`ConfigError::InvalidClosureRuleSeverity`).
+/// `default_severity` expresses the catalog author's intent. The typical
+/// default is [`Severity::Info`]. [`Severity::Fix`] is rejected at config
+/// load (`ConfigError::InvalidClosureRuleSeverity`) — closure firings
+/// propagate facts, they are not byte-level fixes.
 ///
 /// [`MarkingScheme::satisfies`]: crate::scheme::MarkingScheme::satisfies
 /// [`MarkingScheme::token_category()`]: crate::scheme::MarkingScheme::token_category
 pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
-    /// Stable scheme-unique identifier in the T044 wire-string form
+    /// Stable scheme-unique identifier in the wire-string form
     /// (e.g., `"capco:closure.dissem.noforn-if-caveated"`).
     ///
     /// Used as the catalog row key for `[closure_rules]` config overrides
@@ -170,8 +154,7 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// Per Constitution VIII, citations MUST refer to a real passage in the
     /// authoritative source, accurately reflect what that passage says, and
     /// be re-verifiable by any reviewer with the source in hand. Carried
-    /// through to `AuditNote.citation` when the rule fires. Migrated from
-    /// `&'static str` to [`Citation`] in PR 10.A.1.
+    /// through to `AuditNote.citation` when the rule fires.
     pub label: Citation,
 
     /// N-ary OR over triggers.
@@ -216,7 +199,7 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// [`TokenRef`] carries only closed `TokenId` values and an axis-level
     /// `AnyInCategory` predicate; it cannot express open-vocabulary facts
     /// like REL TO country codes, FGI tetragraphs, or SAR program identifiers.
-    /// The motivating PR 4b-D JOINT use case — `REL TO USA, GBR, JPN`
+    /// The motivating JOINT use case — `REL TO USA, GBR, JPN`
     /// partner-list cone — needs `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))`,
     /// which is the established open-vocab carrier in CAPCO
     /// (`CapcoOpenVocabRef::CountryCode`). [`FactRef<S>`]'s
@@ -234,8 +217,8 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// transmutes variants — notably `JointSet` — need the property stated
     /// on the join, not on the emitted set: equal emitted sets can join to
     /// distinct markings, so `⊆` on the raw output is necessary but not
-    /// sufficient. Without monotonicity on the join, the §4.7 closure
-    /// operator loses monotonicity globally and the fixpoint iteration's
+    /// sufficient. Without monotonicity on the join, the closure operator
+    /// loses monotonicity globally and the fixpoint iteration's
     /// correctness guarantee fails. For static rows the cone-producing
     /// function is constant — vacuously monotone in `m` — but the
     /// rule-as-a-whole still requires the suppressor/redundancy
@@ -258,14 +241,14 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// *different variant* that strips USA. A future JOINT `cone_derived` that
     /// reads partner countries directly from `JointSet` and emits one fact per
     /// country can produce a *smaller* country set on `m2 ⊒ m1` than on `m1`
-    /// (because the variant change drops USA from the underlying set). The
-    /// JOINT-row author in PR 4b-D should design around this — likely by reading
+    /// (because the variant change drops USA from the underlying set). A
+    /// JOINT-row author should design around this — likely by reading
     /// the post-join normalized form, not the raw producer list.
     ///
     /// # SmallVec inline cap
     ///
     /// The inline-2 cap matches the `ReplacementIntent::FactRemove::facts`
-    /// precedent from issue #348. JOINT partner lists of 1-2 countries fit
+    /// precedent (issue #348). JOINT partner lists of 1-2 countries fit
     /// inline; lists of 3+ (which §H.3 worked examples do include) spill to
     /// the heap. The cap is intentionally aligned with the existing FactRemove
     /// precedent rather than widened speculatively — bump to inline-4 or
@@ -277,9 +260,9 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
 
     /// Catalog-author severity intent.
     ///
-    /// Per `decisions.md` D19 B, the typical value is [`Severity::Info`].
-    /// [`Severity::Fix`] is rejected at config load — closure firings
-    /// propagate facts, they are not byte-level fixes.
+    /// The typical value is [`Severity::Info`]. [`Severity::Fix`] is
+    /// rejected at config load — closure firings propagate facts, they are
+    /// not byte-level fixes.
     pub default_severity: Severity,
 }
 
@@ -362,28 +345,20 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> ClosureRule<S> {
     /// Returns `true` if this rule's structural firing condition is met:
     /// the trigger fires AND no suppressor matches.
     ///
-    /// **Does NOT consult severity.** Per `decisions.md` D19 B, severity
-    /// is **runtime-resolved**: a closure-operator implementation reads
-    /// the `[closure_rules]` config table first (per-row overrides from
-    /// `.marque.toml` / `MARQUE_CLOSURE_RULES_*` env vars) and falls
-    /// back to `ClosureRule.default_severity` only when no override
-    /// exists. A row declared `default_severity: Severity::Off` in the
-    /// catalog can still be re-enabled by user configuration; baking
-    /// the catalog default into `should_fire` would make user override
-    /// impossible.
+    /// **Does NOT consult severity.** Severity is **runtime-resolved**: a
+    /// closure-operator implementation reads the `[closure_rules]` config
+    /// table first (per-row overrides from `.marque.toml` /
+    /// `MARQUE_CLOSURE_RULES_*` env vars) and falls back to
+    /// `ClosureRule.default_severity` only when no override exists. A row
+    /// declared `default_severity: Severity::Off` in the catalog can still
+    /// be re-enabled by user configuration; baking the catalog default into
+    /// `should_fire` would make user override impossible.
     ///
     /// Callers integrating with the engine should evaluate the runtime-
     /// resolved severity separately before applying the cone. The
     /// trait-level `MarkingScheme::closure()` impl is where the
-    /// severity-gating policy lives (PR 4 wires `Engine::project`
-    /// through a config-aware closure pass).
-    ///
-    /// (An earlier PR 3.7 rev briefly added a `default_severity == Off`
-    /// short-circuit here to make "dormant placeholder rows" inert.
-    /// Copilot PR 3.7 review pass 4 flagged that this contradicted
-    /// D19 B's runtime-resolved-severity contract; the short-circuit
-    /// was reverted and the placeholder rows were removed from
-    /// `CapcoScheme::closure_rules()` entirely.)
+    /// severity-gating policy lives (`Engine::project` runs a config-aware
+    /// closure pass).
     #[inline]
     pub fn should_fire(&self, scheme: &S, marking: &S::Marking) -> bool {
         self.trigger_fires(scheme, marking) && !self.is_suppressed(scheme, marking)
@@ -402,10 +377,7 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> ClosureRule<S> {
 
 /// Maximum Kleene-fixpoint iterations for the closure operator.
 ///
-/// Per `docs/plans/2026-05-01-lattice-design.md` §4.7.3 table-design
-/// property and the chain-depth walk in
-/// `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §9 OQ #4:
-/// the maximum observed chain depth in the CAPCO catalog is 3 (per-marking
+/// The maximum observed chain depth in the CAPCO catalog is 3 (per-marking
 /// implication → trio suppressor → trio re-evaluation → fixed point).
 /// `N=16` is 5× safety padding over that observed maximum.
 ///
@@ -427,12 +399,11 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> ClosureRule<S> {
 /// # Derived-cone catalogs require per-scheme chain-depth re-verification
 ///
 /// The `N=16` bound is calibrated against the CAPCO catalog's static
-/// cones (chain depth 3, 5× safety padding). The PR 4b-D.0 addition of
-/// [`ClosureRule::cone_derived`] permits marking-derived facts whose
-/// per-firing fact-count and inter-rule chaining behavior are scheme-
-/// specific. A scheme that wires a `cone_derived` row whose firing
-/// produces facts that re-trigger other rows MUST re-do the chain-depth
-/// analysis from `docs/plans/2026-05-01-lattice-design.md` §4.7.3
-/// against its own catalog before relying on the `N=16` bound; the
-/// existing cap was calibrated against static catalogs only.
+/// cones (chain depth 3, 5× safety padding). [`ClosureRule::cone_derived`]
+/// permits marking-derived facts whose per-firing fact-count and inter-rule
+/// chaining behavior are scheme-specific. A scheme that wires a
+/// `cone_derived` row whose firing produces facts that re-trigger other
+/// rows MUST re-do the chain-depth analysis against its own catalog before
+/// relying on the `N=16` bound; the existing cap was calibrated against
+/// static catalogs only.
 pub const MAX_CLOSURE_ITERATIONS: usize = 16;

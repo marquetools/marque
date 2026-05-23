@@ -4,13 +4,10 @@
 
 //! Typed citation surface for diagnostics.
 //!
-//! Landed in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-//! PM-5 / PM-7 as a definition-only scaffolding step. PR 3c.2.C
-//! (this PR) migrates `Diagnostic.citation: &'static str` to
-//! `Diagnostic.citation: Citation` and adds the [`capco`] /
-//! [`capco_table`] const-fn ergonomic constructors plus
+//! `Diagnostic.citation` is a [`Citation`]. The [`capco`] / [`capco_table`]
+//! const-fn ergonomic constructors build CAPCO citations;
 //! [`AuthoritativeSource::Config`] / [`AuthoritativeSource::EngineInternal`]
-//! sentinel variants for non-CAPCO citations (corrections-map and
+//! sentinel variants cover non-CAPCO citations (corrections-map and
 //! engine-synthetic R002).
 //!
 //! # Why a typed citation surface
@@ -27,21 +24,16 @@
 //!   source in hand." A typed citation makes (c) mechanical.
 //! - The `Display` impl emits the citation-lint regex form
 //!   (`§<Letter>[.<subsection>] [Table <table>] p<page>` — see
-//!   `tools/citation-lint/src/scanner.rs`). PR 3c.2.C's
-//!   `&'static str → Citation` migration is structurally compatible;
-//!   the lint's `Table <N>` structural-parse extension (today the
-//!   lint tolerates the substring as an occurrence anchor without
-//!   parsing it into its own field) lands alongside C per Copilot
-//!   inline review on PR #627.
+//!   `tools/citation-lint/src/scanner.rs`). The lint tolerates the
+//!   `Table <N>` substring as an occurrence anchor without parsing it
+//!   into its own field (see PR #627).
 //!
 //! # Const-fn construction
 //!
-//! Every constructor is `const fn`. No runtime validation in the
-//! constructors per D25.2 in
-//! `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` — citation-lint
-//! at CI time catches drift, the threat model for runtime validation
-//! is purely citation drift (stale §, wrong page after a source
-//! revision), and runtime code would ship to WASM unnecessarily.
+//! Every constructor is `const fn`, with no runtime validation —
+//! citation-lint at CI time catches drift, the threat model for runtime
+//! validation is purely citation drift (stale §, wrong page after a
+//! source revision), and runtime code would ship to WASM unnecessarily.
 
 use core::fmt;
 use core::num::{NonZeroU8, NonZeroU16};
@@ -56,11 +48,9 @@ use core::num::{NonZeroU8, NonZeroU16};
 /// # No `From<&str> for Citation` impl
 ///
 /// `Citation` has no string-coercion constructor by design — the
-/// closed-template / typed-citation discipline of PR 3c.2.C (per
-/// `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-10) requires
-/// every citation to flow through [`Citation::new`] or one of the
-/// ergonomic const-fn helpers ([`capco`], [`capco_table`]) so the
-/// content is statically structured.
+/// closed-template / typed-citation discipline requires every citation to
+/// flow through [`Citation::new`] or one of the ergonomic const-fn helpers
+/// ([`capco`], [`capco_table`]) so the content is statically structured.
 ///
 /// **No `From<&str> for Citation` impl.**
 ///
@@ -139,7 +129,7 @@ impl fmt::Display for Citation {
         // dropping the §/page suffix entirely. That keeps
         // citation-lint a no-op for sentinel citations (no `§` to
         // scan) and avoids tripping the resolver with meaningless
-        // section/page values per PR 3c.2.C PM-C-4.
+        // section/page values.
         match self.document {
             AuthoritativeSource::Capco2016 => {
                 write!(f, "§{}", self.section.letter.as_letter())?;
@@ -164,14 +154,12 @@ impl fmt::Display for Citation {
 
 /// Structured §-reference within an authoritative source.
 ///
-/// Accommodates the two CAPCO citation shapes verified against
-/// `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.A authorship:
+/// Accommodates the two CAPCO citation shapes from
+/// `crates/capco/docs/CAPCO-2016.md`:
 ///
-/// - `§<L>.<sub>` (e.g., `§H.4 p61` — SCI grammar; CAPCO-2016 §H.4 p61
-///   verified at PR 3c.2.A authorship)
+/// - `§<L>.<sub>` (e.g., `§H.4 p61` — SCI grammar)
 /// - `§<L>.<sub> Table <N>` (e.g., `§B.3 Table 2 p21` — caveated FD&R
-///   rule; CAPCO-2016 §B.3 Table 2 p21 verified at PR 3c.2.A authorship
-///   per project memory `project_capco_p20_caveated_definition`)
+///   rule)
 ///
 /// The `Option<NonZeroU8>` choice for `subsection` and `table` niche-
 /// saves the `Option<u8>` tail and statically rejects sentinel-zero.
@@ -323,7 +311,7 @@ pub enum AuthoritativeSource {
 }
 
 // ---------------------------------------------------------------------------
-// Ergonomic const-fn constructors (PR 3c.2.C PM-C-2)
+// Ergonomic const-fn constructors
 // ---------------------------------------------------------------------------
 
 /// Const-fn ergonomic constructor for CAPCO-2016 citations.
@@ -439,12 +427,11 @@ mod tests {
     // Send + Sync forward-defense per Constitution VI. Every field is
     // `Copy` so the properties hold by construction today; any future
     // field addition that breaks them trips this compile-time guard.
-    // Same posture as `Rule: Send + Sync` (PR 0 T002).
+    // Same posture as `Rule: Send + Sync`.
     //
-    // `Ord` was added in PR 10.A.2 review-fix Commit 8 so the F.1
-    // citation_coverage_probe (and any future tooling that needs to
-    // sort declared citations into a stable display order) can use
-    // native ordering instead of a `sort_by_key(|c| format!("{c}"))`
+    // `Ord` lets the citation_coverage_probe (and any future tooling
+    // that needs to sort declared citations into a stable display order)
+    // use native ordering instead of a `sort_by_key(|c| format!("{c}"))`
     // string-form workaround. Every field — `AuthoritativeSource`,
     // `SectionRef` (which has `SectionLetter` + `Option<NonZeroU8>`
     // pair fields), and `PageNumber` (= `NonZeroU16`) — supports

@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase-F readiness compile test (Phase 5 PR-3, task T089b).
+//! Scheme-adoption readiness compile test.
 //!
-//! Defines a minimal `StubScheme` that exercises every Phase-E trait
-//! the scheme-adapter contract publishes:
+//! Defines a minimal `StubScheme` that exercises every trait the
+//! scheme-adapter contract publishes:
 //!
 //! - [`MarkingScheme`] — the central scheme trait.
 //! - [`Vocabulary<S>`] — per-token metadata accessors.
@@ -17,19 +17,19 @@
 //!
 //! ## What this test asserts
 //!
-//! 1. The trait surface is **closed** — every Phase-E trait can be
-//!    implemented against a fresh scheme without any engine-side
-//!    dependency, no compile-error escapes, no missing default impls.
+//! 1. The trait surface is **closed** — every trait can be implemented
+//!    against a fresh scheme without any engine-side dependency, no
+//!    compile-error escapes, no missing default impls.
 //! 2. The scheme crate is **self-contained** — this file imports only
 //!    from `marque_scheme` (and `std`). Constitution VII forbids
 //!    `marque-engine` / `marque-core` / `marque-rules` /
 //!    `marque-ism` / `marque-capco` from this side of the dependency
 //!    graph; an accidental import of any of those would compile-fail.
-//! 3. SC-010 pre-verification — Phase F (a second scheme like CUI,
-//!    NATO, or a partner-national framework) lands without engine
-//!    edits. If a future trait change inadvertently requires adapter
-//!    crates to reach into engine internals, this file stops compiling
-//!    and the regression is caught before Phase F starts.
+//! 3. Adoption-readiness pre-verification — a future second scheme (CUI,
+//!    NATO, or a partner-national framework) can land without engine
+//!    edits. If a trait change inadvertently requires adapter crates to
+//!    reach into engine internals, this file stops compiling and the
+//!    regression is caught early.
 //!
 //! ## What this test does NOT assert
 //!
@@ -147,13 +147,11 @@ impl StubScheme {
                 left: TokenRef::Token(STUB_TOKEN),
                 right: TokenRef::Token(OTHER_TOKEN),
                 // `name` is the stable identifier (rule-style id);
-                // `label` is the typed authoritative-source citation
-                // (PR 10.A.1 — flipped from `&'static str` to
-                // [`Citation`]). Keeping them semantically distinct in
-                // the readiness fixture mirrors what every real scheme
-                // does — Phase F adapters that copy this stub get the
-                // right shape by default rather than collapsing the
-                // two fields.
+                // `label` is the typed authoritative-source citation.
+                // Keeping them semantically distinct in the readiness
+                // fixture mirrors what every real scheme does — a future
+                // scheme adapter that copies this stub gets the right
+                // shape by default rather than collapsing the two fields.
                 name: "stub/conflicts",
                 label: STUB_CITATION,
                 severity: None,
@@ -261,8 +259,8 @@ impl MarkingScheme for StubScheme {
     // declarative set (`Forbids`, `Requires`, `Conflicts`, `Implies`,
     // `Supersedes`, `OneOf`). `StubScheme` declares one
     // `Constraint::Conflicts` (above) and nothing custom, so the
-    // default holds. Phase F adopters whose schemes need bespoke
-    // constraint shapes (e.g., a NATO scheme that needs to express
+    // default holds. A scheme that needs bespoke constraint shapes
+    // (e.g., a NATO scheme that needs to express
     // "this marking forbids a non-token property of the document
     // body") override `evaluate_custom` — see
     // `crates/scheme/tests/codec_surface.rs::MockScheme` for the
@@ -309,11 +307,9 @@ static STUB_METADATA: TokenMetadataFull<TokenId> = TokenMetadataFull {
     banner_abbreviation: None,
 };
 
-// PR 3d (FR-053): the StubScheme's single sentinel token returns a
-// `FormSet` whose three canonical fields are all `"STUB"` —
-// equivalent to the pre-3d explicit accessors. The default
-// projections in the `Vocabulary` trait (introduced in PR 3d
-// Commit 1) handle `portion_form` / `banner_form` /
+// The StubScheme's single sentinel token returns a `FormSet` whose
+// three canonical fields are all `"STUB"`. The default projections in
+// the `Vocabulary` trait handle `portion_form` / `banner_form` /
 // `banner_abbreviation` automatically.
 static STUB_FORM_SET: FormSet = FormSet {
     portion: "STUB",
@@ -345,8 +341,7 @@ impl Vocabulary<StubScheme> for StubScheme {
         // Stub scheme has no admissible bytes — returning `false`
         // unconditionally satisfies the totality contract and
         // demonstrates the trait surface compiles for a second
-        // scheme without dragging in CAPCO-specific machinery
-        // (SC-010 deferred-verifiable check).
+        // scheme without dragging in CAPCO-specific machinery.
         false
     }
 }
@@ -395,8 +390,9 @@ impl Codec<StubScheme> for StubCodec {
             // exercising it here keeps the readiness compile test
             // honest about the full surface.
             //
-            // **G13 (per `CodecError` type-level docs):** `observed`
-            // MUST NOT contain any substring of the input. A real
+            // **Audit content-ignorance (per `CodecError` type-level
+            // docs):** `observed` MUST NOT contain any substring of the
+            // input. A real
             // codec reads the schema-version identifier from a
             // known-safe location in the decoded structure (a
             // `version=` attribute, a `<schema>` element, etc.) and
@@ -404,7 +400,7 @@ impl Codec<StubScheme> for StubCodec {
             // bytes via `String::from_utf8_lossy(bytes)`. The stub
             // has no such structure to read from, so the placeholder
             // `"<unknown>"` stands in for "couldn't determine which
-            // schema the input claimed". Phase F adopters who copy
+            // schema the input claimed". A scheme adapter that copies
             // this stub MUST replace this branch with a real
             // schema-version extractor before shipping.
             Err(CodecError::SchemaMismatch {

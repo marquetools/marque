@@ -5,11 +5,10 @@
 //! Grammar serialization — pinned trait surface.
 //!
 //! A [`Codec`] round-trips a scheme's `Marking` to bytes for transport
-//! (XML, JSON, CBOR, ...). Phase E publishes the trait; Phase G lands
-//! concrete XML and JSON impls without further trait evolution (FR-019,
-//! SC-010).
+//! (XML, JSON, CBOR, ...). This is a pinned trait surface; concrete XML
+//! and JSON impls land later without further trait evolution.
 //!
-//! No concrete impls ship in Phase E. The shape exists so downstream
+//! No concrete impls ship in-tree yet. The shape exists so downstream
 //! work can target a stable surface.
 //!
 //! # Ambiguity preservation
@@ -19,8 +18,7 @@
 //! same ambiguity that the parser surfaces: a serialized marking that
 //! contains a genuinely ambiguous production (the `(C)` case is the
 //! canonical example) decodes as `Parsed::Ambiguous` so the engine's
-//! resolver can run even on pre-serialized input. See
-//! foundational-plan §9.
+//! resolver can run even on pre-serialized input.
 
 use crate::ambiguity::Parsed;
 use crate::scheme::MarkingScheme;
@@ -34,7 +32,7 @@ use crate::scheme::MarkingScheme;
 /// `Arc<dyn Codec<S>>` or moved/shared into blocking workers, so the
 /// engine would fail to compile rather than degrading to serialized
 /// single-worker batch processing. Pinning the bound on the trait
-/// surface here means Phase G implementers see the constraint at the
+/// surface here means implementers see the constraint at the
 /// definition site instead of discovering it through a downstream
 /// `Send`/`Sync` compile error. Mirrors the bound on
 /// [`crate::recognizer::Recognizer`].
@@ -56,7 +54,7 @@ pub trait Codec<S: MarkingScheme + ?Sized>: Send + Sync {
 
 /// Errors surfaced by [`Codec::encode`] and [`Codec::decode`].
 ///
-/// # Content-ignorance contract (Constitution V G13)
+/// # Content-ignorance contract (Constitution V Principle V)
 ///
 /// Implementations MUST NOT embed document content (parsed bytes,
 /// classified text, marking values, free-form prose from the input)
@@ -75,7 +73,7 @@ pub trait Codec<S: MarkingScheme + ?Sized>: Send + Sync {
 /// vocabulary, not content). Forbidden: any substring of the input
 /// that originated outside the codec's own const tables.
 ///
-/// The G13 invariant is corpus-tested at the engine layer
+/// The content-ignorance invariant is corpus-tested at the engine layer
 /// (`crates/engine/tests/audit.rs::audit_stream_no_content_leak`)
 /// for `AppliedFix` and `Diagnostic`; codec error messages are
 /// implementation territory and rely on this contract being
@@ -86,8 +84,8 @@ pub enum CodecError {
     /// formed, JSON parse failure, etc.). Carries an implementation-
     /// defined message.
     ///
-    /// **G13 (see type-level docs):** `String` MUST NOT contain any
-    /// substring of the input bytes — position and class only.
+    /// **Content-ignorance (see type-level docs):** `String` MUST NOT
+    /// contain any substring of the input bytes — position and class only.
     Malformed(String),
     /// The codec does not implement this serialization format.
     /// Returned when a caller passes bytes in a format the codec was
@@ -96,8 +94,8 @@ pub enum CodecError {
     /// The input decoded structurally but referenced a schema version
     /// the codec does not support. Carries `(expected, observed)`.
     ///
-    /// **G13 (see type-level docs):** `observed` MUST be the schema-
-    /// version identifier read from a known-safe location in the
+    /// **Content-ignorance (see type-level docs):** `observed` MUST be
+    /// the schema-version identifier read from a known-safe location in the
     /// decoded structure (e.g., a `version=` attribute), not raw
     /// input bytes. A schema version is vocabulary; arbitrary input
     /// is not.
