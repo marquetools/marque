@@ -81,7 +81,7 @@ use crate::scheme::CapcoScheme;
 /// high enough to clear a relaxed threshold; the next author who adds a
 /// suggest-with-apply rule should pick a confidence consciously rather
 /// than copy-paste from S004's hard-advisory channel.
-const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
+const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 
 /// Rule **S007** — `bare-nato-requires-rel-to-usa-nato`.
 ///
@@ -207,7 +207,7 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 ///   S004 = "fix"` the diagnostic cannot clear the default
 ///   `confidence_threshold = 0.95`, so S004 stays hard-advisory under
 ///   any reasonable threshold.
-/// - S007 emits at [`S007_SUGGEST_CONFIDENCE`] = `0.85`. With both
+/// - S007 emits at [`BARE_NATO_REQUIRES_REL_TO_CONFIDENCE`] = `0.85`. With both
 ///   `[rules] S007 = "fix"` AND `confidence_threshold ≤ 0.80` set, the
 ///   engine's `lint` suggest-channel demotion pass keeps the override
 ///   intact and `Engine::fix_inner` applies the splice.
@@ -458,7 +458,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
             capco(SectionLetter::H, 7, 127),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(S007_SUGGEST_CONFIDENCE),
+            Confidence::strict(BARE_NATO_REQUIRES_REL_TO_CONFIDENCE),
             None,
         )]
     }

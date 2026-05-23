@@ -186,8 +186,9 @@ impl CapcoRuleSet {
                 // §D.2 Table 3 rule 17. The rule runs the closure to
                 // detect whether RELIDO would be injected and emits a
                 // `Severity::Suggest` `FactAdd(RELIDO, Scope::Portion)`
-                // intent at confidence `S008_SUGGEST_CONFIDENCE = 0.85`
-                // — matching S007's calibration precedent.
+                // intent at confidence `SUGGEST_CONFIDENCE = 0.85`
+                // (file-private in `rules/dissem_closure.rs`) — matching
+                // the bare-NATO suggest-channel calibration precedent.
                 Box::new(RelidoImpliedByClosureRule),
                 // Issue #261: FGI classification with an explicit trigraph
                 // when the source must be concealed, or with a trigraph that

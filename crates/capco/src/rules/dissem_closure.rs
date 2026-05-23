@@ -49,7 +49,7 @@ use crate::scheme::CapcoScheme;
 /// Confidence scalar emitted by S008 (`relido-implied-by-closure`)
 /// alongside its `FactAdd` fix intent.
 ///
-/// **Calibration.** Mirrors `S007_SUGGEST_CONFIDENCE = 0.85` —
+/// **Calibration.** Mirrors `BARE_NATO_REQUIRES_REL_TO_CONFIDENCE = 0.85` —
 /// example/closure-derived guidance that ships at `Severity::Suggest`
 /// with confidence high enough to clear a relaxed
 /// `confidence_threshold` when paired with `[rules] S008 = "fix"`.

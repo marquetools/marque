@@ -632,13 +632,13 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 ///    is identical.
 pub(super) struct CorrectionsMapRule;
 
-/// Citations C001 may emit on diagnostics. C001 is **not** a CAPCO
-/// rule — it surfaces user-defined `[corrections]` map entries, so
-/// its citation is the [`AuthoritativeSource::Config`] sentinel
-/// (`[config]`) rather than a §/page reference. See
-/// [`marque_rules::CORRECTIONS_MAP_CITATION`] and
-/// [`Rule::cited_authorities`] for the F.1 gate contract.
-const C001_AUTHORITIES: &[Citation] = &[marque_rules::CORRECTIONS_MAP_CITATION];
+/// Citations `CorrectionsMapRule` may emit on diagnostics. The
+/// rule is **not** a CAPCO rule — it surfaces user-defined
+/// `[corrections]` map entries, so its citation is the
+/// [`AuthoritativeSource::Config`] sentinel (`[config]`) rather than
+/// a §/page reference. See [`marque_rules::CORRECTIONS_MAP_CITATION`]
+/// and [`Rule::cited_authorities`] for the F.1 gate contract.
+const CORRECTIONS_MAP_AUTHORITIES: &[Citation] = &[marque_rules::CORRECTIONS_MAP_CITATION];
 
 impl Rule<CapcoScheme> for CorrectionsMapRule {
     fn id(&self) -> RuleId {
@@ -667,7 +667,7 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
         true
     }
     fn cited_authorities(&self) -> &'static [Citation] {
-        C001_AUTHORITIES
+        CORRECTIONS_MAP_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Engine guarantees corrections is Some only when the map is non-empty

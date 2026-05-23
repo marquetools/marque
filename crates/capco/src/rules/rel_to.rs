@@ -318,12 +318,12 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
 
 /// Confidence scalar for S009 (`prefer-tetragraph-collapse`).
 ///
-/// Mirrors `S007_SUGGEST_CONFIDENCE = 0.85` — sufficient for the
+/// Mirrors `BARE_NATO_REQUIRES_REL_TO_CONFIDENCE = 0.85` — sufficient for the
 /// suggestion channel. The collapse is purely additive (no
 /// information loss: tetragraphs are decomposable), so 0.85 is
 /// conservative; users who set `[rules] S009 = "fix"` will need
 /// `confidence_threshold ≤ 0.84` to auto-apply.
-const S009_SUGGEST_CONFIDENCE: f32 = 0.85;
+const PREFER_TETRAGRAPH_COLLAPSE_CONFIDENCE: f32 = 0.85;
 
 /// Rule **S009** — `prefer-tetragraph-collapse`.
 ///
@@ -509,7 +509,7 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
             capco(SectionLetter::H, 8, 150),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(S009_SUGGEST_CONFIDENCE),
+            Confidence::strict(PREFER_TETRAGRAPH_COLLAPSE_CONFIDENCE),
             None,
         )]
     }
@@ -529,8 +529,8 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
 // transformation replaces all of them uniformly.
 
 /// Confidence scalar for S010.
-const S010_SUGGEST_CONFIDENCE: f32 = 0.85;
-const S010_CITATION: Citation = capco(SectionLetter::H, 8, 150);
+const COLLAPSE_UNIFORM_REL_PORTIONS_CONFIDENCE: f32 = 0.85;
+const COLLAPSE_UNIFORM_REL_PORTIONS_CITATION: Citation = capco(SectionLetter::H, 8, 150);
 
 /// Rule **S010** — `collapse-uniform-rel-portions`.
 ///
@@ -642,10 +642,10 @@ fn check_collapse_uniform_rel_portions(
                     ..Default::default()
                 },
             ),
-            S010_CITATION,
+            COLLAPSE_UNIFORM_REL_PORTIONS_CITATION,
             "REL",
             FixSource::BuiltinRule,
-            Confidence::strict(S010_SUGGEST_CONFIDENCE),
+            Confidence::strict(COLLAPSE_UNIFORM_REL_PORTIONS_CONFIDENCE),
             None,
         ));
     }
@@ -664,7 +664,7 @@ fn check_collapse_uniform_rel_portions(
 // divergent explicit portions carry a different list. E072 warns on each
 // divergent explicit portion.
 
-const E072_CITATION: Citation = capco(SectionLetter::H, 8, 151);
+const BARE_REL_PORTION_DIVERGENCE_CITATION: Citation = capco(SectionLetter::H, 8, 151);
 
 /// Rule **E072** — `bare-rel-portion-divergence`.
 ///
@@ -775,7 +775,7 @@ fn check_bare_rel_portion_divergence(
                     ..Default::default()
                 },
             ),
-            E072_CITATION,
+            BARE_REL_PORTION_DIVERGENCE_CITATION,
             None,
         ));
     }
