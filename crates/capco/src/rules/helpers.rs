@@ -157,6 +157,17 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
 /// `AUSTRALIA_GROUP` go in the non-trigraph bucket), or ideally
 /// derive the buckets from the CVE schema groups in
 /// `CVEnumISMCATRelTo.xsd`.
+//
+// Dead-code allow: S003 (`JointUsaFirstRule`) was the last live caller
+// and dropped its pre-fix canonicalization when the JOINT fix became a
+// `Recanonicalize` intent the renderer resolves (PR 3c.B Commit 6). The
+// renderer's REL TO / JOINT axes (`render_rel_to.rs`) are now the live
+// source of truth for the §H.8 p151 / §H.3 p56 ordering. This helper is
+// retained — under the same rationale as `dedup_country_codes` below —
+// as the single-source-of-truth a future REL TO rule emission can reuse
+// without re-deriving the invariant; a dedicated dead-code sweep may
+// retire both together with the stale E002 references in the doc above.
+#[allow(dead_code)]
 pub(crate) fn canonicalize_trigraph_list(codes: &[CountryCode], usa_first: bool) -> Vec<&str> {
     if usa_first {
         let has_usa = codes.contains(&CountryCode::USA);
