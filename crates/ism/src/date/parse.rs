@@ -116,13 +116,13 @@ fn parse_ism_date(s: &str) -> Result<IsmDate, ParseIsmDateError> {
             && bytes[10] == b'T'
             && bytes[13] == b':' =>
         {
-            parse_datetime_or_hourmind(s)
+            parse_datetime_or_hourmin(s)
         }
         _ => Err(ParseIsmDateError::new("unrecognized date format")),
     }
 }
 
-fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
+fn parse_datetime_or_hourmin(s: &str) -> Result<IsmDate, ParseIsmDateError> {
     if !s.is_ascii() {
         return Err(ParseIsmDateError::new(
             "date string contains non-ASCII characters",
@@ -197,27 +197,10 @@ fn parse_datetime_or_hourmind(s: &str) -> Result<IsmDate, ParseIsmDateError> {
 }
 
 fn parse_offset(s: &str) -> Result<Option<UtcOffset>, ParseIsmDateError> {
-    match s {
-        "" => Ok(None),
-        "Z" => Ok(Some(UtcOffset::UTC)),
-        _ if (s.starts_with('+') || s.starts_with('-')) && s.len() == 6 => {
-            let b = s.as_bytes();
-            if b[3] != b':' {
-                return Err(ParseIsmDateError::new(
-                    "UTC offset missing ':' separator (expected ±HH:MM)",
-                ));
-            }
-            let sign: i8 = if s.starts_with('+') { 1 } else { -1 };
-            let oh =
-                parse_2digits(&b[1..3]).ok_or(ParseIsmDateError::new("invalid offset hour"))?;
-            let om =
-                parse_2digits(&b[4..6]).ok_or(ParseIsmDateError::new("invalid offset minute"))?;
-            UtcOffset::from_hhmm(sign, oh, om)
-                .ok_or(ParseIsmDateError::new("UTC offset out of range"))
-                .map(Some)
-        }
-        _ => Err(ParseIsmDateError::new("unrecognized timezone suffix")),
+    if s.is_empty() {
+        return Ok(None);
     }
+    s.parse::<UtcOffset>().map(Some)
 }
 
 fn parse_frac_as_nanoseconds(frac: &str) -> Result<u32, ParseIsmDateError> {
