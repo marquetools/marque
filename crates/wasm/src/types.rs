@@ -261,9 +261,9 @@ fn format_timestamp_v1_0(ts: std::time::SystemTime) -> String {
     humantime::format_rfc3339(ts).to_string()
 }
 
-/// Resolve a `CategoryId` to its lowercase scheme-name label. Mirrors
-/// the CLI's `category_label`. `CategoryId::MARKING` → `"Marking"`;
-/// scheme-registered categories project through their `Category.name`.
+/// Resolve a `CategoryId` to its display label. Mirrors the CLI's
+/// `category_label`. `CategoryId::MARKING` → `"Marking"`; scheme-registered
+/// categories project through their `Category.name`.
 fn category_label_v1_0(
     scheme: &CapcoScheme,
     category_id: marque_scheme::CategoryId,
@@ -497,9 +497,10 @@ fn text_correction_to_audit_json_v1_0<'a>(
 /// Dispatch an [`AuditLine<CapcoScheme>`] to its v1.0 JSON projection.
 /// Mirrors the CLI's `audit_line_to_json_v1_0`.
 ///
-/// `pub(crate)` so the SC-008 parity test at `tests/audit_v1_0_parity.rs`
-/// can compare byte-identity against the CLI's projection without
-/// reimplementing the helper in the test harness.
+/// Intentionally `pub` (but doc-hidden) so the SC-008 parity integration test
+/// at `tests/audit_v2_0_parity.rs` can compare byte-identity against the CLI's
+/// projection without reimplementing the helper in the test harness.
+#[doc(hidden)]
 pub fn audit_line_to_json_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
@@ -586,10 +587,13 @@ pub(crate) struct BatchResultEntry<'a> {
 /// `marque-server::DeadlineExceededBody` 504 response). Embedded as a
 /// JSON string in the `Err` arm of `fix_native` so JS callers can
 /// `JSON.parse(error.message)` to recover the partial-lint
-/// diagnostics + candidate counts.
+/// diagnostics + counts.
 #[derive(Serialize)]
 pub(crate) struct DeadlineExceededBodyJson<'a> {
     pub(crate) truncated_by: &'static str,
+    pub(crate) error_count: usize,
+    pub(crate) warn_count: usize,
+    pub(crate) fix_count: usize,
     pub(crate) candidates_processed: usize,
     pub(crate) candidates_total: usize,
     pub(crate) diagnostics: Vec<DiagnosticJson<'a>>,
@@ -616,6 +620,9 @@ pub(crate) fn deadline_exceeded_payload(partial_lint: &marque_engine::LintResult
     };
     let body = DeadlineExceededBodyJson {
         truncated_by,
+        error_count: partial_lint.error_count(),
+        warn_count: partial_lint.warn_count(),
+        fix_count: partial_lint.fix_count(),
         candidates_processed: partial_lint.candidates_processed,
         candidates_total: partial_lint.candidates_total,
         diagnostics: partial_lint
@@ -643,9 +650,15 @@ pub(crate) fn deadline_exceeded_payload(partial_lint: &marque_engine::LintResult
             // hand-built constant — no interpolation, no escaping
             // hazards. We accept losing the original error message in
             // this terminal-case-of-a-terminal-case path.
-            serde_json::to_string(&fallback).unwrap_or_else(|_| {
-                r#"{"truncated_by":"fix","error":"deadline-exceeded payload serialization failed"}"#
-                    .to_owned()
+            serde_json::to_string(&fallback).unwrap_or_else(|_| match truncated_by {
+                "lint" => {
+                    r#"{"truncated_by":"lint","error":"deadline-exceeded payload serialization failed"}"#
+                        .to_owned()
+                }
+                _ => {
+                    r#"{"truncated_by":"fix","error":"deadline-exceeded payload serialization failed"}"#
+                        .to_owned()
+                }
             })
         }
     }

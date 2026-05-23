@@ -72,6 +72,7 @@ mod fix;
 mod lint;
 mod types;
 
+#[doc(hidden)]
 pub use types::audit_line_to_json_v1_0;
 
 #[cfg(all(

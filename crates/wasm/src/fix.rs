@@ -19,7 +19,8 @@ use secrecy::ExposeSecret as _;
 /// deadline expires during the lint or fix-application pass, this
 /// function returns `Err(...)` carrying a JSON-serialized
 /// `DeadlineExceededBody` (identical shape to the server's 504
-/// response — `truncated_by`, `diagnostics`, `candidates_processed`,
+/// response — `truncated_by`, `diagnostics`, `error_count`,
+/// `warn_count`, `fix_count`, `candidates_processed`,
 /// `candidates_total`). JS callers `try`/`catch` and parse the
 /// message body to render the partial-lint diagnostics. No partial
 /// `FixResult` is ever returned (Constitution V Principle V).
