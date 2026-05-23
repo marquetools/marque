@@ -8,27 +8,23 @@
 //! turns a byte slice and a small [`ParseContext`] into a
 //! [`Parsed<S::Marking>`](Parsed). The engine dispatches through
 //! `Box<dyn Recognizer<S>>` so a strict-path recognizer (zero-FP,
-//! header-only) and a deep-scan probabilistic recognizer (the Phase D
-//! decoder) can coexist behind the same call site — see
-//! `docs/plans/2026-04-16-probabilistic-recognition.md` for the full
-//! design.
+//! header-only) and a deep-scan probabilistic recognizer (the decoder)
+//! can coexist behind the same call site.
 //!
 //! The trait is deliberately **domain-neutral**: it depends only on
 //! the scheme's `Marking` type plus the `Parsed` / `Candidate` /
 //! `EvidenceFeature` primitives already in [`crate::ambiguity`]. No
 //! ISM-specific structures (`CanonicalAttrs`, `Span`, etc.) leak
 //! through. Scheme adapters wrap their concrete parsers as
-//! `impl Recognizer<S>` (Phase 4 / task T058 for `StrictRecognizer`
-//! and T061 for `DecoderRecognizer`).
+//! `impl Recognizer<S>` (`StrictRecognizer`, `DecoderRecognizer`).
 //!
 //! # Zero-candidate is not silent fallthrough
 //!
 //! When a recognizer finds no plausible interpretation, the answer is
 //! `Parsed::Ambiguous { candidates: vec![] }` — never `Unambiguous`
 //! with a sentinel. This keeps the engine from acting on a silently
-//! fabricated marking (foundational-plan line 609-612). The decoder
-//! inspects the candidate set to decide whether to surface a
-//! recognition diagnostic, not to invent one.
+//! fabricated marking. The decoder inspects the candidate set to decide
+//! whether to surface a recognition diagnostic, not to invent one.
 
 use std::sync::Arc;
 
@@ -72,15 +68,14 @@ pub enum DocumentPosition {
 /// The fields are all `Option` because the engine cannot always prove
 /// a zone or a document position up front — a naked `&[u8]` the WASM
 /// callers pass in has neither. Recognizers MUST handle `None` without
-/// hardcoding a default; that is the FR-023 contract (Constitution VI,
-/// Phase-3 Phase-typing invariants — see `CLAUDE.md`).
+/// hardcoding a default (Constitution VI; the engine populates these
+/// fields as `None` until a structural pass can prove them).
 ///
 /// `strict_evidence` is the signal the engine sets to `true` when it
-/// wants the recognizer to take the zero-false-positive strict path
-/// (SC-001). The Phase-D `DecoderRecognizer` returns an empty
-/// candidate set when `strict_evidence` is set and the input does not
-/// match the strict grammar — that's how strict-path latency stays
-/// linear.
+/// wants the recognizer to take the zero-false-positive strict path.
+/// The `DecoderRecognizer` returns an empty candidate set when
+/// `strict_evidence` is set and the input does not match the strict
+/// grammar — that's how strict-path latency stays linear.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseContext {
     /// When `true`, the recognizer must not emit probabilistic
@@ -92,8 +87,8 @@ pub struct ParseContext {
     pub position: Option<DocumentPosition>,
     /// Minimum classification rank established by strict-path evidence
     /// elsewhere in the document. Recognizers that need to honor a
-    /// classification-level floor (e.g., FR-011: if any portion on the
-    /// page is CONFIDENTIAL-or-higher, `(C)` must not resolve to a
+    /// classification-level floor (e.g., if any portion on the page is
+    /// CONFIDENTIAL-or-higher, `(C)` must not resolve to a
     /// below-CONFIDENTIAL candidate) read this field; strict
     /// recognizers ignore it.
     ///
@@ -333,14 +328,14 @@ impl Default for ParseContext {
 ///
 /// Implementations MUST be `Send + Sync` so the engine can hold them
 /// behind `Arc` inside `BatchEngine` without re-instantiation per
-/// document (Constitution VI, FR-023).
+/// document (Constitution VI).
 ///
 /// # Contract
 ///
 /// - Return `Parsed::Unambiguous(m)` when the input has exactly one
 ///   plausible interpretation with posterior ≥ the strict-path floor
-///   (FR-011) or, in deep-scan mode, above the decoder's
-///   configured threshold.
+///   or, in deep-scan mode, above the decoder's configured
+///   threshold.
 /// - Return `Parsed::Ambiguous { candidates }` with **≥ 2** candidates
 ///   when the input is genuinely ambiguous (the canonical `(C)`
 ///   copyright-vs-CONFIDENTIAL case is the primary producer here).
@@ -348,7 +343,7 @@ impl Default for ParseContext {
 ///   candidate clears the recognition floor. **Never** return
 ///   `Unambiguous` with a sentinel marking to signal "not found" —
 ///   that is the silent-fallthrough anti-pattern the recognition plan
-///   forbids (foundational-plan line 609-612).
+///   forbids.
 pub trait Recognizer<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Recognize a marking from raw bytes.
     ///
