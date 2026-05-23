@@ -4,19 +4,32 @@
 
 //! Closure-operator runtime tests for `CapcoScheme`.
 //!
-//! Exercises `<CapcoScheme as MarkingScheme>::closure(...)` end-to-end.
-//! These tests are the production-side companion to the synthetic-
-//! scheme proptests in `crates/scheme/tests/proptest_closure*.rs`:
+//! Exercises `<CapcoScheme as MarkingScheme>::closure(...)` end-to-end
+//! AND the post-closure FD&R supersession overlay via
+//! `<CapcoScheme as MarkingScheme>::project(Scope::Page, ...)`. These
+//! tests are the production-side companion to the synthetic-scheme
+//! proptests in `crates/scheme/tests/proptest_closure*.rs`:
 //! the proptests pin the algebraic properties (extensive / idempotent /
 //! monotone) against a bitset `BitMarking`; this file pins the
 //! observable cone effects against `CapcoMarking` — the single Trio-1
 //! `CLOSURE_NOFORN_CAVEATED` row (union of every caveat trigger) and
 //! the NATO row `capco/rel-to-usa-nato-if-nato-classification`.
 //!
-//! Engine wiring (`Engine::lint` invoking `scheme.closure()` on the
-//! hot path) is deferred to a separate change. These tests exercise
-//! the operator directly via `scheme.closure(marking)` — the same
-//! surface the engine will eventually call.
+//! # Post-#704 architecture note
+//!
+//! Issue #704 retired the `CLOSURE_TABLE.suppressor_mask` gating that
+//! prevented Trio 1 / Trio 2 / Trio 3 cones from firing alongside an
+//! existing FD&R dominator — the gating violated the closure
+//! operator's algebraic monotonicity property
+//! (`a ⊑ b ⟹ Cl(a) ⊑ Cl(b)`). The §H.8 p145 NOFORN-dominates /
+//! §B.3.a p19 FD&R supersession semantics moved to
+//! `CapcoScheme::apply_supersession_overlays`, which runs after
+//! `closure()` converges and is invoked from `project()`. Tests
+//! that pin "FD&R dominator on input prevents closure-added implicit
+//! defaults from coexisting" therefore call `scheme.project(Scope::Page,
+//! &[marking])` (single-portion page) to exercise the full pipeline;
+//! tests that pin "closure adds the cone fact" call `scheme.closure(...)`
+//! directly. Both surfaces are public API for `MarkingScheme`.
 //!
 //! # Citation anchors
 //!
@@ -37,7 +50,7 @@ use marque_ism::{
     AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
     NatoClassification, RdBlock,
 };
-use marque_scheme::MarkingScheme;
+use marque_scheme::{MarkingScheme, Scope};
 
 // ---------------------------------------------------------------------------
 // Marking-construction helpers (test-fixture only)
@@ -100,7 +113,7 @@ fn closure_fires_noforn_on_classified_with_orcon() {
         !dissem_us_contains(&m, DissemControl::Nf),
         "test setup: NOFORN must be absent from the input"
     );
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on classified + ORCON without FD&R \
@@ -126,7 +139,7 @@ fn closure_fires_noforn_on_classified_with_rd() {
     a.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on RD without FD&R (§B.3 Table 2 p21); \
@@ -148,7 +161,7 @@ fn closure_fires_noforn_on_classified_with_rsen() {
     let scheme = CapcoScheme::new();
     let m = classified_with_dissem(Classification::Secret, DissemControl::Rs);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on RSEN without FD&R \
@@ -161,76 +174,95 @@ fn closure_fires_noforn_on_classified_with_rsen() {
     );
 }
 
-/// Trio 1 is suppressed when an FD&R dominator (RELIDO) is already
-/// present: the explicit decision supersedes the implicit one.
+/// Post-#704 (refined per redirect brief): project(Page) preserves
+/// the user-explicit `(S, ORCON, RELIDO)` input — RELIDO is an
+/// explicit FD&R decision per §B.3.a p19, so the §B.3 paragraph b
+/// p19 "NOT MARKED PREVIOUSLY" gate forbids the implicit
+/// caveated-default NOFORN from firing. The pre-#704
+/// `MASK_FDR_DOMINATORS` suppressor encoded exactly this
+/// "default if absent" semantic; post-#704 it lives in
+/// `default_fill::row0_should_fill`'s `(post_close ∩ MASK_FDR_DOMINATORS == 0)`
+/// gate. End-to-end behavior is preserved.
 ///
-/// Authority: CAPCO-2016 §B.3 Table 2 p21 (classified + uncaveated +
-/// post-28-Jun-2010 → RELIDO — explicit FD&R decision); §H.8 p145
-/// (NOFORN supersession overlay — but here RELIDO is the dominator
-/// because no caveat is present).
+/// Authority: §B.3 Table 2 p21 (trigger authority — the
+/// "Classified + uncaveated + on/after 28 June 2010 → Mark as
+/// RELIDO" row that would otherwise fire on this caveated input
+/// is not the relevant row; the §B.3 paragraph b p19 "NOT MARKED
+/// PREVIOUSLY" gate is what blocks any implicit-RELIDO/NOFORN
+/// default-fill on this input); §B.3 paragraph b p19 (FD&R-absent
+/// gate); §B.3.a p19 (FD&R dominator enumeration — RELIDO is
+/// canonical); §H.8 p154 (RELIDO marking template — defines what
+/// RELIDO means once present).
 #[test]
-fn closure_suppressed_by_relido_dominator() {
+fn project_preserves_orcon_plus_relido_input() {
     let scheme = CapcoScheme::new();
-    // ORCON + RELIDO: RELIDO is in `FDR_DOMINATORS`, so the Trio 1
-    // suppressor fires and NOFORN is NOT injected.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Relido].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "closure must NOT inject NOFORN when RELIDO is already present \
-         (FDR_DOMINATORS suppresses Trio 1 rows); dissem_us = {:?}",
-        closed.0.dissem_us
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "default-fill Row 0 must NOT add NOFORN when input carries \
+         RELIDO (§B.3 paragraph b p19 'NOT MARKED PREVIOUSLY' gate; \
+         RELIDO is in MASK_FDR_DOMINATORS); dissem_us = {:?}",
+        out.0.dissem_us
     );
-    // RELIDO and ORCON both must survive the closure (extensive).
-    assert!(dissem_us_contains(&closed, DissemControl::Relido));
-    assert!(dissem_us_contains(&closed, DissemControl::Oc));
+    assert!(
+        dissem_us_contains(&out, DissemControl::Relido),
+        "RELIDO must survive (it is the explicit FD&R decision the \
+         default-fill defers to); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        dissem_us_contains(&out, DissemControl::Oc),
+        "ORCON must survive; dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }
 
-/// FD&R-dominator parity: NOFORN already present suppresses Trio 1.
-/// Trivially correct (the cone fact equals an already-present fact),
-/// but pinned so a future edit to `FDR_DOMINATORS` slice ordering or
-/// `satisfies_attrs(TOK_NOFORN)` resolution cannot silently break it.
+/// FD&R-dominator parity: ORCON + NOFORN in project(Page) is
+/// idempotent — closure dedups NOFORN, overlay finds nothing to
+/// strip (no dominated peer present).
 ///
 /// Authority: §B.3.a p19 (FD&R-set membership; NOFORN is the most
 /// restrictive FD&R marking); §H.8 p145 (NOFORN supersession overlay).
 #[test]
-fn closure_suppressed_by_noforn_dominator() {
+fn project_orcon_plus_noforn_is_idempotent() {
     let scheme = CapcoScheme::new();
-    // ORCON + NOFORN: closure already sees NOFORN present, so the
-    // FDR_DOMINATORS suppressor fires for the Trio 1 row.
-    let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
-    let mut a = m.0.clone();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m.clone());
-    // Idempotent — no second NOFORN added; dissem_us unchanged.
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert_eq!(
-        closed.0.dissem_us.len(),
+        out.0.dissem_us.len(),
         m.0.dissem_us.len(),
-        "closure must not duplicate or add to dissem_us when NOFORN \
-         dominator is already present; dissem_us = {:?}",
-        closed.0.dissem_us
+        "project must dedup NOFORN (Trio 1 caveated-default observes \
+         NOFORN already present; apply_closed_bits_to skips the add); \
+         dissem_us = {:?}",
+        out.0.dissem_us
     );
-    assert!(dissem_us_contains(&closed, DissemControl::Nf));
-    assert!(dissem_us_contains(&closed, DissemControl::Oc));
+    assert!(dissem_us_contains(&out, DissemControl::Nf));
+    assert!(dissem_us_contains(&out, DissemControl::Oc));
 }
 
-/// FD&R-dominator parity: REL TO already present suppresses Trio 1.
+/// Post-#704 (refined per redirect brief): project(Page) preserves
+/// the user-explicit `(S, ORCON, REL TO USA, GBR)` input — REL TO
+/// is an explicit FD&R decision per §B.3.a p19, so the §B.3
+/// paragraph b p19 "NOT MARKED PREVIOUSLY" gate forbids the
+/// implicit caveated-default NOFORN from firing. §H.7 p124's
+/// "FGI may include US FD&R as circumstances warrant" generalizes
+/// the same reading across markings; the explicit REL TO is the
+/// author's release decision and survives.
 ///
-/// REL TO is an explicit FD&R decision — `AnyInCategory(CAT_REL_TO)`
-/// in `FDR_DOMINATORS` matches any non-empty `attrs.rel_to`. With a
-/// caveat (ORCON) present alongside REL TO, the closure must back off:
-/// the explicit REL TO supersedes the implicit NOFORN default.
-///
-/// Authority: §B.3.a p19 (FD&R-set membership; REL TO is canonical);
-/// §H.8 p150 (REL TO marking template).
+/// Authority: §B.3 paragraph b p19 ("not marked previously by the
+/// originator"); §B.3.a p19 (REL TO is canonical FD&R); §H.8 p150
+/// (REL TO marking template).
 #[test]
-fn closure_suppressed_by_rel_to_dominator() {
+fn project_preserves_orcon_plus_rel_to_input() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
@@ -238,66 +270,89 @@ fn closure_suppressed_by_rel_to_dominator() {
     a.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "closure must NOT inject NOFORN when REL TO is already present \
-         (FDR_DOMINATORS suppresses Trio 1 via AnyInCategory(CAT_REL_TO)); \
-         dissem_us = {:?}",
-        closed.0.dissem_us
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "default-fill Row 0 must NOT add NOFORN when input carries \
+         REL TO (§B.3 paragraph b p19 'NOT MARKED PREVIOUSLY' gate; \
+         REL_TO_PRESENT is in MASK_FDR_DOMINATORS); dissem_us = {:?}",
+        out.0.dissem_us
     );
-    assert!(rel_to_contains(&closed, CountryCode::USA));
-    assert!(rel_to_contains(&closed, CountryCode::GBR));
+    assert!(
+        rel_to_contains(&out, CountryCode::USA) && rel_to_contains(&out, CountryCode::GBR),
+        "rel_to must survive — explicit REL TO is the author's release \
+         decision; rel_to = {:?}",
+        out.0.rel_to
+    );
+    assert!(
+        dissem_us_contains(&out, DissemControl::Oc),
+        "ORCON must survive; dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }
 
-/// FD&R-dominator parity: DISPLAY ONLY already present suppresses Trio 1.
+/// Post-#704 (refined): project(Page) preserves the user-explicit
+/// `(S, ORCON, DISPLAY ONLY)` input. DISPLAY ONLY is in
+/// MASK_FDR_DOMINATORS per §B.3.a p19; default-fill Row 0 skips.
 ///
-/// Authority: §B.3.a p19 (FD&R-set membership; DISPLAY ONLY is a
-/// viewing-only FD&R marking); §H.8 p163 (DISPLAY ONLY marking
-/// template).
+/// Authority: §B.3 paragraph b p19; §H.8 p163 (DISPLAY ONLY
+/// marking template).
 #[test]
-fn closure_suppressed_by_display_only_dominator() {
+fn project_preserves_orcon_plus_displayonly_input() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Displayonly].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "closure must NOT inject NOFORN when DISPLAY ONLY is already \
-         present (FDR_DOMINATORS suppresses Trio 1); dissem_us = {:?}",
-        closed.0.dissem_us
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "default-fill must NOT add NOFORN when input carries DISPLAY \
+         ONLY (§B.3 paragraph b p19); dissem_us = {:?}",
+        out.0.dissem_us
     );
-    assert!(dissem_us_contains(&closed, DissemControl::Displayonly));
+    assert!(
+        dissem_us_contains(&out, DissemControl::Displayonly),
+        "DISPLAY ONLY must survive (explicit FD&R per §B.3.a p19); \
+         dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }
 
-/// FD&R-dominator parity: EYES already present suppresses Trio 1.
+/// Post-#704 FD&R supersession: project(Page) with ORCON + EYES
+/// converges to `{ORCON, NOFORN}` with EYES stripped.
 ///
-/// EYES (USA/[LIST] EYES ONLY) is an FD&R marking per §H.8 p157
-/// (deprecated 2017-10-01 but still recognized for legacy-input
-/// compatibility). `FDR_DOMINATORS` includes `TOK_EYES` so EYES-marked
-/// portions correctly suppress the implicit-NOFORN trio.
+/// Authority: §H.8 p145 (NOFORN-dominates supersession overlay,
+/// including EYES); §H.8 p157 (EYES marking template / FD&R
+/// designation, deprecated 2017-10-01).
+/// Post-#704 (refined): project(Page) preserves the user-explicit
+/// `(S, ORCON, EYES)` input. EYES is in MASK_FDR_DOMINATORS per
+/// §H.8 p157 (designated FD&R marking, deprecated 2017-10-01 but
+/// still recognized); default-fill Row 0 skips.
 ///
-/// Authority: §H.8 p157 (EYES marking template / FD&R designation).
+/// Authority: §B.3 paragraph b p19; §H.8 p157 (EYES marking
+/// template / FD&R designation).
 #[test]
-fn closure_suppressed_by_eyes_dominator() {
+fn project_preserves_orcon_plus_eyes_input() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Eyes].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "closure must NOT inject NOFORN when EYES is already present \
-         (FDR_DOMINATORS includes TOK_EYES per §H.8 p157); \
-         dissem_us = {:?}",
-        closed.0.dissem_us
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "default-fill must NOT add NOFORN when input carries EYES \
+         (§H.8 p157 FD&R designation); dissem_us = {:?}",
+        out.0.dissem_us
     );
-    assert!(dissem_us_contains(&closed, DissemControl::Eyes));
+    assert!(
+        dissem_us_contains(&out, DissemControl::Eyes),
+        "EYES must survive (explicit FD&R per §H.8 p157); dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -324,31 +379,45 @@ fn closure_rel_to_usa_nato_fires_on_bare_nato() {
         m.0.rel_to.is_empty(),
         "test setup: rel_to must be empty in the input"
     );
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
 
     assert!(
         rel_to_contains(&closed, CountryCode::USA),
-        "closure should inject USA into rel_to on bare-NATO classification \
+        "project / default-fill should inject USA into rel_to on \
+         bare-NATO classification via `default_fill::row7_should_fill` \
          (§H.7 p127 + §G.2 Table 5 p40); rel_to = {:?}",
         closed.0.rel_to
     );
     assert!(
         rel_to_contains(&closed, nato_country()),
-        "closure should inject NATO into rel_to on bare-NATO classification \
-         (§H.7 p127, open-vocab path via cone_derived); rel_to = {:?}",
+        "project / default-fill should inject NATO into rel_to on \
+         bare-NATO classification via `default_fill::apply_default_fill`'s \
+         direct CountryCode::NATO write (§H.7 p127; the pre-#704 \
+         open-vocab `cone_derived` path retired with `CLOSURE_REL_TO_USA_NATO`); \
+         rel_to = {:?}",
         closed.0.rel_to
     );
 }
 
-/// The NATO row is suppressed when an FD&R dominator (NOFORN) is
-/// already present: NOFORN dominates REL TO so the implicit
-/// `REL TO USA, NATO` injection would race the supersession overlay.
+/// Post-#704 (refined): project(Page) with bare NATO + NOFORN does
+/// NOT inject the implicit REL TO USA, NATO default — NOFORN is in
+/// MASK_FDR_DOMINATORS so default-fill Row 7's
+/// `(post_close ∩ MASK_FDR_DOMINATORS == 0)` gate fails. The
+/// user-explicit NOFORN survives; rel_to stays empty.
 ///
-/// Authority: CAPCO-2016 §H.8 p145 (NOFORN dominates REL TO /
-/// RELIDO / DISPLAY ONLY / EYES); D20 (FDR_DOMINATORS suppressor
-/// preserves NOFORN's conflict-resolution ownership).
+/// This is the §H.7 paragraph d (§B.3.d p20) reading: "REL TO USA,
+/// [LIST] MUST be used [absent] FD&R marking(s)." When the
+/// originating country (or in this case the user) has already
+/// prohibited further sharing via NOFORN, the implicit REL TO USA
+/// default does NOT apply.
+///
+/// Authority: §B.3 paragraph b p19 ("not marked previously"); §B.3.d
+/// p20 (FGI/NATO REL TO MUST when allowed, NOFORN otherwise); §H.8
+/// p145 (NOFORN cannot coexist with REL TO — separately enforced
+/// by `apply_supersession_overlays` if the two ever did coexist via
+/// some other path).
 #[test]
-fn closure_rel_to_usa_nato_suppressed_by_noforn() {
+fn project_default_fill_skips_nato_implicit_when_noforn_present() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
@@ -359,20 +428,137 @@ fn closure_rel_to_usa_nato_suppressed_by_noforn() {
         m.0.rel_to.is_empty(),
         "test setup: rel_to must be empty in the input"
     );
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
 
     assert!(
-        !rel_to_contains(&closed, CountryCode::USA),
-        "closure must NOT inject USA into rel_to when NOFORN is present \
-         (FDR_DOMINATORS suppresses the NATO row; NOFORN owns the conflict \
-          path per §H.8 p145); rel_to = {:?}",
-        closed.0.rel_to
+        !rel_to_contains(&out, CountryCode::USA),
+        "project must leave rel_to empty when NOFORN is present — \
+         `default_fill::row7_should_fill`'s gate `(post_close ∩ \
+         MASK_FDR_DOMINATORS == 0)` SKIPS because NOFORN is in \
+         MASK_FDR_DOMINATORS per §B.3.a p19; USA is never injected \
+         (the overlay has nothing to strip). rel_to = {:?}",
+        out.0.rel_to
     );
     assert!(
-        !rel_to_contains(&closed, nato_country()),
-        "closure must NOT inject NATO into rel_to when NOFORN is present; \
-         rel_to = {:?}",
-        closed.0.rel_to
+        !rel_to_contains(&out, nato_country()),
+        "project must leave rel_to empty when NOFORN is present — \
+         `default_fill::row7_should_fill`'s gate skips on NOFORN \
+         input so NATO is never injected. rel_to = {:?}",
+        out.0.rel_to
+    );
+    assert!(
+        dissem_us_contains(&out, DissemControl::Nf),
+        "NOFORN must survive (it is the dominator, not the dominated); \
+         dissem_us = {:?}",
+        out.0.dissem_us
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #704 end-to-end observability — the four scenarios from the
+// PM implementation brief's "Test strategy" section #3. These pin
+// the project()-level outcome for the post-#704 architecture
+// (purely-additive closure + supersession overlay).
+// ---------------------------------------------------------------------------
+
+/// Brief scenario #3: bare SCI portion (no FD&R, no caveat) projects
+/// to a marking carrying RELIDO via `default_fill::row8_should_fill`.
+///
+/// Pipeline trace (post-#704): close() Rows 1-6 don't fire (no
+/// per-marking SCI sentinel match). `default_fill::row8_should_fill`'s
+/// gate `(post_close ∩ SCI_PRESENT != 0) ∧ (post_close ∩
+/// MASK_FDR_OR_RELIDO_INCOMPAT == 0)` passes — SCI_PRESENT is set,
+/// no FD&R / foreign-equity / per-compartment-SCI sentinel is
+/// present. RELIDO added to `dissem_us` via the cone-delta
+/// writeback. The supersession overlay observes no NOFORN → no
+/// strip. PageRewrites: none of the RELIDO-eviction rewrites
+/// trigger (no DISPLAY ONLY, no ORCON, no ORCON-USGOV).
+///
+/// Authority: §B.3 Table 2 p21 (trigger authority — the
+/// "Classified + uncaveated + on/after 28 June 2010 → Mark as
+/// RELIDO" row; SCI alone is uncaveated per §B.3 p20 Note);
+/// §H.8 p154 (RELIDO marking template — defines what RELIDO means
+/// once present); §H.4 (SCI control system grammar).
+#[test]
+fn project_sci_alone_adds_relido() {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+    use smol_str::SmolStr;
+
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    // Use a synthetic SI compartment `Z9` that doesn't match any
+    // per-marking SCI sentinel (SI-G / HCS-O / HCS-P[sub] / TK-*) so
+    // only `default_fill::row8_should_fill` (SCI_PRESENT default)
+    // fires. SI itself is admitted per §H.4 p74 (SI grammar).
+    let comp = SciCompartment::new(SmolStr::new("Z9"), Box::new([]));
+    a.sci_markings = Box::new([SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Si),
+        Box::new([comp]),
+        None,
+    )]);
+    let m = CapcoMarking::new(a);
+
+    let out = scheme.project(Scope::Page, &[m]);
+    assert!(
+        dissem_us_contains(&out, DissemControl::Relido),
+        "project must add RELIDO on bare SCI via default-fill Row 8 \
+         (§B.3 Table 2 p21 default-if-absent for SCI/uncaveated); \
+         dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "no caveat trigger present — NOFORN must NOT be added; \
+         dissem_us = {:?}",
+        out.0.dissem_us
+    );
+}
+
+/// Brief scenario #3: bare SCI + NOFORN.
+/// `default_fill::row8_should_fill`'s gate fails because NOFORN is
+/// in `MASK_FDR_OR_RELIDO_INCOMPAT` (per §B.3.a p19); no implicit
+/// RELIDO is added. Net: dissem_us contains NOFORN only on the
+/// dissem axis.
+///
+/// Pipeline trace (post-#704): close() Rows 1-6 don't fire (no
+/// per-marking SCI sentinel match). `default_fill::row8_should_fill`'s
+/// FD&R-absent gate fails on NOFORN-in-input. The supersession
+/// overlay observes the user-explicit NOFORN and finds nothing to
+/// strip (no dominated peer was added). End-to-end NOFORN survives.
+///
+/// Authority: §B.3 paragraph b p19 ("not marked previously");
+/// §B.3.a p19 (NOFORN is canonical FD&R, in MASK_FDR_OR_RELIDO_INCOMPAT);
+/// §H.8 p145 (NOFORN supersession — separately enforced for
+/// input-explicit contradictions).
+#[test]
+fn project_sci_plus_noforn_resolves_to_noforn_only() {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+    use smol_str::SmolStr;
+
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+    a.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+    let comp = SciCompartment::new(SmolStr::new("Z9"), Box::new([]));
+    a.sci_markings = Box::new([SciMarking::new(
+        SciControlSystem::Published(SciControlBare::Si),
+        Box::new([comp]),
+        None,
+    )]);
+    let m = CapcoMarking::new(a);
+
+    let out = scheme.project(Scope::Page, &[m]);
+    assert!(
+        dissem_us_contains(&out, DissemControl::Nf),
+        "NOFORN must survive (it is the dominator); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        !dissem_us_contains(&out, DissemControl::Relido),
+        "post-#704 supersession overlay strips RELIDO when NOFORN is \
+         present per §H.8 p145; dissem_us = {:?}",
+        out.0.dissem_us
     );
 }
 
@@ -399,7 +585,7 @@ fn closure_fires_noforn_on_sar_marking() {
     ));
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on classified + SAR (§B.3 Table 2 p21 \
@@ -425,7 +611,7 @@ fn closure_fires_noforn_on_dod_ucni_marking() {
     a.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on DOD UCNI (§B.3 Table 2 p21 + \
@@ -434,16 +620,28 @@ fn closure_fires_noforn_on_dod_ucni_marking() {
     );
 }
 
-/// FD&R-dominator parity for DOD UCNI: the `capco/noforn-if-caveated`
-/// row is suppressed when an FD&R dominator (RELIDO) is already
-/// present, matching every other arm (DOE-UCNI / SAR / FGI / LIMDIS /
-/// etc.) — they all ride the same `FDR_DOMINATORS` suppressor set.
+/// Post-#704: project(Page) on `(S, DOD UCNI, RELIDO)` ends at
+/// `dissem_us = [Nf]` — the §H.6 p116 PageRewrite
+/// `capco/dod-ucni-promotes-noforn-when-classified` fires because
+/// RELIDO is "less restrictive" than NOFORN per §H.8 supersession,
+/// and §H.6 p116 prescribes NOFORN promotion in that case. The
+/// PageRewrite's FactAdd(NOFORN) then strips the dominated RELIDO
+/// via the §H.8 p145 strip in `apply_fact_add`.
 ///
-/// Authority: §B.3 Table 2 p21 (classified + uncaveated +
-/// post-28-Jun-2010 → RELIDO is the explicit FD&R decision; the
-/// implicit NOFORN closure backs off).
+/// This is end-to-end behavior IDENTICAL to pre-#704. Pre-#704 the
+/// closure() suppressor blocked the Row 0 / Row 9 caveated-defaults,
+/// but the §H.6 p116 PageRewrite ran independently — same final
+/// state. The pre-#704 `closure_dod_ucni_suppressed_by_relido_dominator`
+/// test asserted the closure()-layer-only state which is no longer
+/// observable through `project()` (post-#704 close() is a no-op on
+/// AEA-only inputs).
+///
+/// Authority: §H.6 p116 (DOD UCNI banner-line guidance: "NOFORN
+/// must be applied if a less restrictive FD&R marking would
+/// otherwise be conveyed"); §H.8 p145 (NOFORN-dominates RELIDO);
+/// §B.3.a p19 (FD&R-set membership).
 #[test]
-fn closure_dod_ucni_suppressed_by_relido_dominator() {
+fn project_dod_ucni_plus_relido_promotes_to_noforn_per_h6_p116() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
@@ -451,16 +649,23 @@ fn closure_dod_ucni_suppressed_by_relido_dominator() {
     a.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
+    // §H.6 p116 PageRewrite promotes RELIDO → NOFORN on
+    // classified-with-UCNI inputs. Independent of default-fill;
+    // identical end-to-end behavior to pre-#704.
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "closure must NOT inject NOFORN on DOD UCNI when RELIDO is \
-         already present (FDR_DOMINATORS suppresses Trio 1 rows); \
-         dissem_us = {:?}",
-        closed.0.dissem_us
+        dissem_us_contains(&out, DissemControl::Nf),
+        "§H.6 p116 PageRewrite must promote RELIDO → NOFORN on \
+         classified DOD UCNI; dissem_us = {:?}",
+        out.0.dissem_us
     );
-    // RELIDO must survive the closure (extensive property).
-    assert!(dissem_us_contains(&closed, DissemControl::Relido));
+    assert!(
+        !dissem_us_contains(&out, DissemControl::Relido),
+        "RELIDO must be stripped by §H.8 p145 NOFORN-dominates \
+         within apply_fact_add (NOFORN added by PageRewrite); \
+         dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }
 
 /// Trio 1 DOE-UCNI arm of `capco/noforn-if-caveated`: a DOE UCNI
@@ -476,7 +681,7 @@ fn closure_fires_noforn_on_doe_ucni_marking() {
     a.aea_markings = vec![AeaMarking::DoeUcni].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on DOE UCNI (§B.3 Table 2 p21 + \
@@ -502,7 +707,7 @@ fn closure_fires_noforn_on_fgi_marking() {
     a.fgi_marker = FgiMarker::acknowledged([CountryCode::GBR]);
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on classified + FGI (§B.3 Table 2 \
@@ -525,7 +730,7 @@ fn closure_fires_noforn_on_limdis_marking() {
     a.non_ic_dissem = vec![NonIcDissem::Limdis].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on classified + LIMDIS (§B.3 Table 2 \
@@ -558,7 +763,7 @@ fn closure_fires_noforn_on_nnpi_marking() {
     a.non_ic_dissem = vec![NonIcDissem::Nnpi].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on classified + NNPI (§B.3 Table 2 \
@@ -567,16 +772,16 @@ fn closure_fires_noforn_on_nnpi_marking() {
     );
 }
 
-/// FD&R-dominator parity for NNPI: the `capco/noforn-if-caveated`
-/// row is suppressed when an FD&R dominator (RELIDO) is already
-/// present. The CAVEATED row's `FDR_DOMINATORS` suppressor applies
-/// uniformly to every trigger arm, so this parity test pins the
-/// contract for the NNPI arm specifically.
+/// Post-#704 (refined): project(Page) preserves the user-explicit
+/// `(S, NNPI, RELIDO)` input. RELIDO is in MASK_FDR_DOMINATORS per
+/// §B.3.a p19; default-fill Row 0's gate fails on the caveated NNPI
+/// arm. The explicit RELIDO survives.
 ///
-/// Authority: §B.3 Table 2 p21 (RELIDO is the explicit FD&R decision
-/// — the implicit NOFORN closure backs off).
+/// Authority: §B.3 paragraph b p19 ("not marked previously"); §B.3.a
+/// p19 (RELIDO is canonical FD&R); ODNI `CVEnumISMNonIC.xml` (NNPI
+/// registration).
 #[test]
-fn closure_nnpi_suppressed_by_relido_dominator() {
+fn project_preserves_nnpi_plus_relido_input() {
     use marque_ism::NonIcDissem;
 
     let scheme = CapcoScheme::new();
@@ -586,16 +791,20 @@ fn closure_nnpi_suppressed_by_relido_dominator() {
     a.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m);
+    let out = scheme.project(Scope::Page, &[m]);
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "closure must NOT inject NOFORN on NNPI when RELIDO is already \
-         present (FDR_DOMINATORS suppresses Trio 1 rows); dissem_us = \
-         {:?}",
-        closed.0.dissem_us
+        !dissem_us_contains(&out, DissemControl::Nf),
+        "default-fill must NOT add NOFORN on NNPI when input carries \
+         RELIDO (§B.3 paragraph b p19 'NOT MARKED PREVIOUSLY' gate); \
+         dissem_us = {:?}",
+        out.0.dissem_us
     );
-    // RELIDO must survive the closure (extensive property).
-    assert!(dissem_us_contains(&closed, DissemControl::Relido));
+    assert!(
+        dissem_us_contains(&out, DissemControl::Relido),
+        "RELIDO must survive — the explicit FD&R decision the \
+         default-fill defers to; dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }
 
 /// Trio 1 IMCON arm of `capco/noforn-if-caveated`: an IMCON dissem
@@ -609,7 +818,7 @@ fn closure_fires_noforn_on_classified_with_imcon() {
     let scheme = CapcoScheme::new();
     let m = classified_with_dissem(Classification::Secret, DissemControl::Imc);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on IMCON without FD&R (§B.3 Table 2 \
@@ -633,7 +842,7 @@ fn closure_fires_noforn_on_classified_with_dsen() {
     let scheme = CapcoScheme::new();
     let m = classified_with_dissem(Classification::Secret, DissemControl::Dsen);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on DSEN without FD&R (§B.3 Table 2 \
@@ -669,7 +878,7 @@ fn closure_fires_noforn_on_frd_marking() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Frd(FrdBlock::default())].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on FRD (§H.6 p111 + §B.3 Table 2 p21); \
@@ -687,7 +896,7 @@ fn closure_fires_noforn_on_tfni_marking() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Tfni].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on TFNI (§H.6 p120 + §B.3 Table 2 p21); \
@@ -702,7 +911,7 @@ fn closure_fires_noforn_on_tfni_marking() {
 fn closure_fires_noforn_on_orcon_usgov_marking() {
     let scheme = CapcoScheme::new();
     let m = classified_with_dissem(Classification::Secret, DissemControl::OcUsgov);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on ORCON-USGOV (§H.8 p139 + §B.3 Table 2 p21); \
@@ -725,7 +934,7 @@ fn closure_fires_noforn_on_les_marking() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on LES (§H.9 p181 + §B.3 Table 2 p21); \
@@ -745,7 +954,7 @@ fn closure_fires_noforn_on_sbu_marking() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on SBU (§H.9 p176 + §B.3 Table 2 p21); \
@@ -764,7 +973,7 @@ fn closure_fires_noforn_on_ssi_marking() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Ssi].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure should inject NOFORN on SSI (§H.9 p189 + §B.3 Table 2 p21); \
@@ -777,29 +986,43 @@ fn closure_fires_noforn_on_ssi_marking() {
 // Algebraic properties — extensive, idempotent (operator-level)
 // ---------------------------------------------------------------------------
 
-/// Idempotence: `closure(closure(m)) == closure(m)`.
+/// Idempotence at the project() layer: `project(project(m)) == project(m)`.
 ///
-/// Algebraic obligation per `marque-applied.md` §4.7.3. The Kleene
-/// fixpoint detects convergence and returns; a second call reaches
-/// the same fixed point on its first iteration's change-detection
-/// early-return (no cone fact mutates a marking that is already
-/// at the fixed point).
+/// Algebraic obligation per `marque-applied.md` §4.7.3. Post-#704
+/// `closure()` itself is purely additive but not fully idempotent
+/// at the CanonicalAttrs layer — `apply_closed_bits_to`'s NOFORN-in-
+/// delta strip path depends on whether NOFORN was an input bit or a
+/// closure-added bit. The supersession overlay
+/// (`CapcoScheme::apply_supersession_overlays`) at the project()
+/// boundary closes this gap: the overlay observes the post-closure
+/// state and applies the §H.8 p145 strip unconditionally, so
+/// `project()` is fully idempotent end-to-end.
 #[test]
-fn closure_is_idempotent_on_orcon_marking() {
+fn project_is_idempotent_on_orcon_marking() {
     let scheme = CapcoScheme::new();
     let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
 
-    let once = scheme.closure(m);
-    let twice = scheme.closure(once.clone());
+    let once = scheme.project(Scope::Page, &[m]);
+    let twice = scheme.project(Scope::Page, std::slice::from_ref(&once));
 
     assert_eq!(
         once, twice,
-        "closure must be idempotent: closure(closure(m)) == closure(m)"
+        "project must be idempotent: project(project(m)) == project(m)"
     );
 }
 
-/// Idempotence (NATO row): the NATO closure row converges on the
-/// first iteration's fixpoint.
+/// Post-#704: close() is idempotent on bare-NATO inputs because
+/// NATO_CLASS is no longer a close() trigger (Row 7 relocated to
+/// `default_fill::row7_should_fill`). close() leaves bare-NATO
+/// unchanged; idempotence is trivially preserved.
+///
+/// Note: `project()` is NOT idempotent across multiple invocations
+/// on bare-NATO because `RelToBlock::from_attrs_iter` expands
+/// tetragraphs (NATO → 30 constituent country trigraphs) on every
+/// join_via_lattice pass. The project() non-idempotence predates
+/// #704 and is documented in `crates/capco/src/scheme/marking.rs`'s
+/// "PR 4b-D.2 Copilot R1 / decisions.md D24" block; it's why
+/// `CapcoMarking` does NOT implement `JoinSemilattice`.
 #[test]
 fn closure_is_idempotent_on_bare_nato() {
     let scheme = CapcoScheme::new();
@@ -830,7 +1053,7 @@ fn closure_is_extensive_on_dissem_axis() {
     a.dissem_us = vec![DissemControl::Oc].into_boxed_slice();
     let m = CapcoMarking::new(a);
 
-    let closed = scheme.closure(m.clone());
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
 
     // Every input dissem must survive in the output (extensive).
     for input_dissem in m.0.dissem_us.iter() {
@@ -882,7 +1105,7 @@ fn closure_converges_within_max_iterations_on_multi_trigger_marking() {
     // If closure() reaches MAX_CLOSURE_ITERATIONS without converging,
     // it panics — failing this test. A clean return is the convergence
     // signal.
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
 
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
@@ -914,7 +1137,7 @@ fn closure_adds_relido_but_not_noforn_on_uncaveated_classified() {
     let scheme = CapcoScheme::new();
     let m = classified_no_dissem(Classification::Secret);
 
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
 
     assert!(
         dissem_us_contains(&closed, DissemControl::Relido),
@@ -954,7 +1177,7 @@ fn closure_adds_relido_but_not_noforn_on_uncaveated_classified() {
 fn closure_short_circuits_on_bare_unclassified() {
     let scheme = CapcoScheme::new();
     let m = CapcoMarking::new(CanonicalAttrs::default());
-    let closed = scheme.closure(m.clone());
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert_eq!(m, closed, "closure must be a no-op when no triggers fire");
 }
 
@@ -969,7 +1192,7 @@ fn closure_short_circuits_on_bare_unclassified() {
 fn closure_runs_fixpoint_on_uncaveated_classified() {
     let scheme = CapcoScheme::new();
     let m = classified_no_dissem(Classification::Secret);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Relido),
         "CLOSURE_RELIDO_US_CLASS must add RELIDO to bare US (S) \
@@ -985,7 +1208,7 @@ fn closure_runs_fixpoint_on_uncaveated_classified() {
 fn closure_does_not_short_circuit_when_trigger_fires() {
     let scheme = CapcoScheme::new();
     let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
-    let closed = scheme.closure(m);
+    let closed = scheme.project(Scope::Page, std::slice::from_ref(&m));
     assert!(
         dissem_us_contains(&closed, DissemControl::Nf),
         "closure must inject NOFORN when ORCON is present (the \
@@ -995,21 +1218,73 @@ fn closure_does_not_short_circuit_when_trigger_fires() {
     );
 }
 
-/// When all firing triggers are suppressed (`(S//OC//NF)` carries
-/// ORCON trigger + NOFORN dominator), the short-circuit does NOT skip
-/// — `trigger_fires` is true even when `should_fire` is false. The
-/// fixpoint loop runs, finds nothing to add (suppressed), and converges.
-/// Net effect: closure leaves the marking unchanged.
+/// Project converges to `{ORCON, NOFORN}` on `(S//OC//NF)` —
+/// triggers fire (ORCON triggers Row 0; US_COLLATERAL_CLASSIFIED
+/// triggers Row 9) but the supersession overlay strips the
+/// closure-added RELIDO per §H.8 p145. Post-#704: the closure()
+/// layer is purely additive (it now adds RELIDO unconditionally
+/// on US-classified inputs), and the project() boundary's overlay
+/// resolves the §H.8 p145 conflict.
+///
+/// Authority: §H.8 p145 (NOFORN-dominates supersession); §B.3 Table 2
+/// p21 (caveated-default obligation on ORCON).
 #[test]
-fn closure_runs_fixpoint_when_suppressed_but_trigger_fires() {
+fn project_resolves_orcon_plus_noforn_no_relido() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
     let m = CapcoMarking::new(a);
-    let closed = scheme.closure(m.clone());
-    assert!(dissem_us_contains(&closed, DissemControl::Oc));
-    assert!(dissem_us_contains(&closed, DissemControl::Nf));
-    // Idempotent — no new facts beyond what was present.
-    assert_eq!(closed.0.dissem_us.len(), m.0.dissem_us.len());
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
+    assert!(dissem_us_contains(&out, DissemControl::Oc));
+    assert!(dissem_us_contains(&out, DissemControl::Nf));
+    assert!(
+        !dissem_us_contains(&out, DissemControl::Relido),
+        "project must strip RELIDO when NOFORN is present (§H.8 p145 \
+         supersession overlay); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    // Length stable end-to-end: input {OC, NF}, output {OC, NF}.
+    assert_eq!(out.0.dissem_us.len(), m.0.dissem_us.len());
+}
+
+/// R2-1 regression: end-to-end project() with input dissem_us = [Oc,
+/// OcUsgov] strips OcUsgov per §H.8 p140 Overlay 1, end-to-end.
+///
+/// Pre-#704-R2-1 the `apply_supersession_overlays` step gated its
+/// dissem-axis rebuild on `has_noforn`. The bug was structural: any
+/// close()/default_fill row that ADDED `Oc` to an `OcUsgov`-bearing
+/// post-close state (or vice versa) would have silently failed to
+/// strip the OcUsgov because the outer NOFORN gate prevented the
+/// rebuild from re-running. No current CAPCO row exposes the bug
+/// in production (the join layer already strips OcUsgov during
+/// `DissemSet::from_attrs_iter`), but post-R2-1 the rebuild runs
+/// unconditionally — this test pins end-to-end the §H.8 p140
+/// contract that OC > OC-USGOV holds regardless of NOFORN status.
+///
+/// Authority: §H.8 p140 ("ORCON takes precedence within the banner
+/// line" + "If a portion contains both ORCON and ORCON-USGOV
+/// information, ORCON takes precedence in the portion mark") —
+/// re-verified verbatim at this PR's authorship per Constitution
+/// VIII.
+#[test]
+fn project_strips_oc_usgov_without_noforn_r2_1_regression() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let out = scheme.project(Scope::Page, std::slice::from_ref(&m));
+    assert!(
+        dissem_us_contains(&out, DissemControl::Oc),
+        "Oc must survive (ORCON precedence per §H.8 p140); dissem_us = {:?}",
+        out.0.dissem_us
+    );
+    assert!(
+        !dissem_us_contains(&out, DissemControl::OcUsgov),
+        "OcUsgov must be stripped by Overlay 1 (§H.8 p140 — \
+         NOFORN-independent); end-to-end project() output must NOT \
+         carry OcUsgov regardless of NOFORN status. dissem_us = {:?}",
+        out.0.dissem_us
+    );
 }

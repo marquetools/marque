@@ -74,6 +74,7 @@ use marque_engine::Engine;
 use marque_rules::RuleSet;
 use marque_scheme::{
     AuthoritativeSource, Citation, MarkingScheme as _, SectionLetter, capco, capco_section,
+    capco_table,
 };
 
 // ===========================================================================
@@ -156,6 +157,21 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
     // / uncertain-reduction fixtures. Tracked for a follow-up
     // fixture-coverage PR; whitelisted per F.1 contract clause 1.
     (capco(SectionLetter::H, 8, 150), "h8-p150-suggest-rules-gap"),
+    // #704 (post-review-cycle Fix 2): S008's authority slice gained
+    // §B.3 Table 2 p21 as the primary trigger authority (the
+    // default-if-absent obligation that drives the implicit-RELIDO
+    // injection S008 surfaces). Per-Diagnostic emission is
+    // single-Citation by API shape and stays at §H.8 p154 (RELIDO
+    // marking template — what RELIDO means once present), where
+    // every existing S008 fixture's expected.json already harvests
+    // it. The §B.3 Table 2 p21 declaration is honest authority-set
+    // metadata that the harvest gate cannot see in fixture output;
+    // the citation IS exercised by S008-firing fixtures end-to-end,
+    // just not in the per-Diagnostic Citation field.
+    (
+        capco_table(SectionLetter::B, 3, 2, 21),
+        "b3-table2-p21-s008-trigger-authority-not-emitted",
+    ),
 ];
 
 /// Construct the `[engine-internal]` sentinel Citation. The

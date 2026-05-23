@@ -19,7 +19,14 @@
 //!   51..96 and foreign-grammar future use at 96..128).
 //! - [`MASK_FDR_DOMINATORS`] / [`MASK_FDR_OR_RELIDO_INCOMPAT`] /
 //!   [`MASK_RELIDO_US_CLASS_SUPPRESSORS`] — precomputed aggregate
-//!   masks consumed by PR-C's `CLOSURE_TABLE` rows.
+//!   "FD&R already present" gates consumed by the
+//!   [`crate::scheme::default_fill`] module's per-row predicates.
+//!   Issue #704 retired these from the `CLOSURE_TABLE` suppressor
+//!   field (the suppressor architecture violated the closure
+//!   operator's algebraic monotonicity) and relocated them to the
+//!   post-close default-fill stage, which encodes the §B.3
+//!   paragraph b p19 / §B.3.d p20 / §H.7 p123 / §H.8 p154
+//!   "default if absent" rules that the suppressors implemented.
 //! - [`derive_bits`] — forward projection
 //!   `&CanonicalAttrs → FactBitmask` over the closed-vocab fields.
 //! - [`apply_closed_bits_to`] — inverse projection that writes the
@@ -196,32 +203,49 @@ const _: () = {
     );
 };
 
-/// FD&R dominators (NOFORN, RELIDO, DISPLAY ONLY, REL_TO_PRESENT,
-/// EYES) per §B.3.a p19 + §H.8 p157 (EYES) + §D.2 Table 3. Used as
-/// the Trio 1 suppressor in `CLOSURE_NOFORN_CAVEATED` (PR-C / Row 0).
+/// "FD&R already present on the marking" gate for the
+/// [`crate::scheme::default_fill`] Row-0 (`capco/noforn-if-caveated`)
+/// and Row-7 (`capco/rel-to-usa-nato-if-nato-classification`)
+/// default-fill predicates. Bitmask form of the §B.3.a p19 FD&R
+/// dominator enumeration (NOFORN / REL TO / RELIDO / DISPLAY ONLY)
+/// + §H.8 p157 (EYES legacy).
 ///
-/// Authority: §B.3 Table 2 p21 (caveated-default), §H.8 p155-157
-/// (FD&R chain), §D.2 Table 3 rows 1-2.
+/// The default-fill predicate is `(input ∩ TRIGGER != ∅) ∧
+/// (input ∩ MASK_FDR_DOMINATORS == ∅)` — "fire only when the
+/// input has the trigger AND no FD&R is present." The §-evidence
+/// for the "no FD&R present" gate is §B.3 paragraph b p19's
+/// "NOT MARKED PREVIOUSLY" condition combined with the §B.3
+/// introductory "carry forward the FD&R markings from the source
+/// document(s)" rule.
+///
+/// Authority: §B.3.a p19 (FD&R-set enumeration); §B.3 paragraph b
+/// p19 ("NOT MARKED PREVIOUSLY" gate); §B.3 Table 2 p21
+/// (caveated-default consequents); §H.8 p145 (NOFORN supersession);
+/// §H.8 p155-157 (FD&R chain); §H.8 p157 (EYES legacy designation).
 pub(crate) const MASK_FDR_DOMINATORS: u128 = (1u128 << fact_bit::NOFORN)
     | (1u128 << fact_bit::RELIDO)
     | (1u128 << fact_bit::DISPLAY_ONLY)
     | (1u128 << fact_bit::REL_TO_PRESENT)
     | (1u128 << fact_bit::EYES);
 
-/// `FDR_DOMINATORS` ∪ RELIDO-incompatible (FGI / JOINT / NATO
+/// `MASK_FDR_DOMINATORS` ∪ RELIDO-incompatible (FGI / JOINT / NATO
 /// classification + per-compartment SCI sentinels with NOFORN/ORCON
 /// per-marking implications).
 ///
-/// Used as the Trio 2 / Trio 3 suppressor in `CLOSURE_RELIDO_SCI`
-/// and `CLOSURE_REL_TO_USA_NATO` (PR-C / Rows 7 + 8). The SCI
-/// sentinels appear because their per-marking unconditional
-/// implications (§H.4 marking templates) make RELIDO inapplicable by
-/// definition — including them prevents Kleene-fixpoint ordering
-/// dependence on Trio 1 firing first.
+/// Used as the `MASK_FDR_DOMINATORS`-equivalent gate for the
+/// [`crate::scheme::default_fill`] Row-8
+/// (`capco/relido-if-sci-and-not-incompatible`) default-fill
+/// predicate. The SCI sentinels appear because their per-marking
+/// unconditional implications (§H.4 marking templates) make RELIDO
+/// inapplicable by definition; FGI / JOINT / NATO classification
+/// markings carry foreign equity which forecloses the
+/// IDO-deferred-release semantic that RELIDO encodes.
 ///
-/// Authority: §H.7 p123 (FGI), §H.3 p56 (JOINT), §G.1 Table 4 p38 +
-/// §H.7 p127 (NATO), §H.4 marking templates for the six SCI
-/// sentinels (pp64 / 68 / 80 / 87 / 91 / 95).
+/// Authority: §H.7 p123 (FGI foreign-equity bar); §H.3 p56 (JOINT
+/// co-ownership grammar); §G.1 Table 4 p38 + §H.7 p127 (NATO
+/// classification); §H.4 marking templates for the six SCI
+/// sentinels (pp64 / 68 / 80 / 87 / 91 / 95); §H.8 p154 (RELIDO
+/// grammar — IC-content-only scope).
 pub(crate) const MASK_FDR_OR_RELIDO_INCOMPAT: u128 = MASK_FDR_DOMINATORS
     | (1u128 << fact_bit::FGI_PRESENT)
     | (1u128 << fact_bit::JOINT_PRESENT)
@@ -233,18 +257,19 @@ pub(crate) const MASK_FDR_OR_RELIDO_INCOMPAT: u128 = MASK_FDR_DOMINATORS
     | (1u128 << fact_bit::SCI_TK_IDIT)
     | (1u128 << fact_bit::SCI_TK_KAND);
 
-/// `FDR_DOMINATORS` ∪ six per-compartment SCI sentinels. Used as
-/// the suppressor for `CLOSURE_RELIDO_US_CLASS` (PR-C / Row 9 —
-/// "US collateral classification → RELIDO unless dominated /
-/// incompatible").
+/// `MASK_FDR_DOMINATORS` ∪ six per-compartment SCI sentinels.
+/// Used as the gate for the [`crate::scheme::default_fill`] Row-9
+/// (`capco/relido-if-us-collateral-class`) default-fill predicate.
 ///
 /// Drops the FGI / JOINT / NATO inclusion vs
-/// [`MASK_FDR_OR_RELIDO_INCOMPAT`] because the row already gates on
-/// US-collateral classification; an FGI / JOINT / NATO portion is
-/// not US-collateral by definition so the suppressor would be
-/// redundant.
+/// [`MASK_FDR_OR_RELIDO_INCOMPAT`] because Row 9 already gates on
+/// US-collateral classification (`US_COLLATERAL_CLASSIFIED` is set
+/// only on `MarkingClassification::Us(...)`); an FGI / JOINT / NATO
+/// portion is not US-collateral by definition so the foreign-equity
+/// suppressor would be redundant.
 ///
-/// Authority: §B.3 Table 2 p21 + §H.8 p154.
+/// Authority: §B.3 Table 2 p21 (uncaveated US-classified →
+/// RELIDO); §H.8 p154 (RELIDO grammar).
 pub(crate) const MASK_RELIDO_US_CLASS_SUPPRESSORS: u128 = MASK_FDR_DOMINATORS
     | (1u128 << fact_bit::SCI_SI_G)
     | (1u128 << fact_bit::SCI_HCS_O)
@@ -429,8 +454,11 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
     // is present OR `display_only_to` is non-empty. The dissem-axis
     // branch is already covered in the `dissem_iter()` loop above
     // (line 290); this branch closes the country-list axis case so
-    // `MASK_FDR_DOMINATORS` correctly suppresses closure rows on
-    // any §H.8 DISPLAY ONLY portion.
+    // the supersession overlays (post-#704
+    // `CapcoScheme::apply_supersession_overlays`) and
+    // `apply_closed_bits_to`'s NOFORN-strip path observe DISPLAY
+    // ONLY presence on any §H.8 portion regardless of which axis
+    // the parser routed it through.
     //
     // Authority: §H.8 p163 (DISPLAY ONLY marking template) + the
     // existing satisfies_attrs(TOK_DISPLAY_ONLY) wiring.
@@ -1046,7 +1074,8 @@ mod tests {
     /// `display_only_to` — must light `fact_bit::DISPLAY_ONLY`.
     /// Mirrors `satisfies_attrs(TOK_DISPLAY_ONLY)` in
     /// `crates/capco/src/scheme/predicates/satisfies.rs`. Closes the
-    /// Copilot-flagged hole where `MASK_FDR_DOMINATORS` would have
+    /// Copilot-flagged hole where the pre-#704 `MASK_FDR_DOMINATORS`
+    /// would have
     /// missed a `DISPLAY ONLY USA GBR` portion (populated
     /// `display_only_to`, no `Displayonly` dissem variant) and
     /// allowed PR-C's closure to spuriously imply NOFORN/RELIDO.
