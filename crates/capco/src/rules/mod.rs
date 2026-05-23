@@ -21,13 +21,6 @@
 //! The T044 legacy-ID ↔ wire-string translation table lives at
 //! `docs/refactor-006/legacy-rule-id-map.md`.
 
-// Issue #561 staged split: this module is the post-split home for
-// the rule implementations. During the migration, individual rules
-// move incrementally out of `rules_legacy.rs` into the per-domain
-// submodules below; until every rule has moved, `rules_legacy.rs`
-// retains the registry + the not-yet-moved rule structs and is
-// re-exported through this module.
-
 pub(crate) mod banner;
 pub(crate) mod dissem;
 pub(crate) mod dissem_closure;
@@ -39,13 +32,14 @@ pub(crate) mod helpers;
 pub(crate) mod joint;
 pub(crate) mod nato;
 pub(crate) mod nodis_exdis;
+mod registry;
 pub(crate) mod rel_to;
 pub(crate) mod rel_to_suggest;
 pub(crate) mod rel_to_uncertainty;
 pub(crate) mod sci;
 pub(crate) mod text_handling;
 
-pub use crate::rules_legacy::CapcoRuleSet;
+pub use registry::CapcoRuleSet;
 pub(crate) use helpers::{FixDiagnosticParams, make_fix_diagnostic};
 
 #[cfg(test)]

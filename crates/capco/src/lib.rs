@@ -60,7 +60,6 @@ pub mod priors;
 pub mod provenance;
 pub(crate) mod render;
 pub mod rules;
-mod rules_legacy;
 pub(crate) mod rules_declarative;
 // Issue #561 quarantine: `#[cfg(any())]`-gated dead test block
 // extracted from `rules.rs` pre-split. Disposition tracked in #722.
