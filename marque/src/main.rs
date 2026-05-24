@@ -74,8 +74,8 @@ fn merge_exit_code(current: i32, new_code: i32) -> i32 {
 /// The active audit schema name must be discoverable by external
 /// consumers without parsing audit records. Two surfaces provide this:
 ///
-/// 1. **Per-record discoverability** — every audit NDJSON line's
-///    first field is `"schema": "<AUDIT_SCHEMA_VERSION>"`. Streaming
+/// 1. **Per-record discoverability** — every audit record includes
+///    a `"schema"` field with the active version. Streaming
 ///    consumers detect schema by reading the first record.
 /// 2. **Per-binary discoverability** — `marque --version` exposes
 ///    `audit_schema: <AUDIT_SCHEMA_VERSION>` on its own line so
