@@ -137,10 +137,10 @@ fn missing_usa_in_rel_to_fires_e002() {
 // The migration was removed.
 //
 // The "FOUO in a classified banner is a policy violation" case is real
-// and is handled today at the rollup layer (PageContext drops FOUO from
-// classified banners). A dedicated validation rule for direct author
-// input like `SECRET//FOUO` is handled as a declarative
-// `Constraint::Conflicts(FOUO, Classified)` entry.
+// and is handled today at the rollup layer via page rewrites that evict
+// FOUO from classified markings (`capco/classification-evicts-fouo` /
+// `capco/fouo-evicted-by-classified`). There is currently no declarative
+// CAPCO constraint entry for direct author input like `SECRET//FOUO`.
 //
 // The following test replaces that test with the proper behavior.
 
