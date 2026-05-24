@@ -8,7 +8,7 @@
 //! against the closed CAPCO §H.8 grammar — `RELT O` / `REL OT` /
 //! `A US` / `AU,S`. Conservative by construction: every transform is
 //! gated either by a literal pattern that cannot appear in valid CAPCO
-//! text (header patterns 1, 2) or by an `is_trigraph` guard on the
+//! text (header patterns 1, 2) or by an `is_country_code` guard on the
 //! corrected output (entry patterns 3, 4).
 //!
 //! Does **not** handle vocabulary-based fuzzy correction — that lives
@@ -46,7 +46,7 @@ use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
 /// 3. **Entry token-boundary** — `,A US,` → `,AUS,` (within a
 ///    REL TO block). A 1-letter + space + 2-letter sequence between
 ///    commas only fires when the joined 3-letter string is a known
-///    trigraph (`is_trigraph` check) AND the 1-letter alone is not a
+///    trigraph (`is_country_code` check) AND the 1-letter alone is not a
 ///    trigraph. The trigraph guard is what makes this safe — without
 ///    it, `,A B,` → `,AB,` would fire for any combination, but with
 ///    it the only joins that survive are those that round-trip
@@ -69,7 +69,7 @@ use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
 ///
 /// All four transforms are conservative: their false-positive risk
 /// is bounded by the literal patterns not appearing in any valid
-/// CAPCO text (patterns 1, 2) or by the `is_trigraph` guard
+/// CAPCO text (patterns 1, 2) or by the `is_country_code` guard
 /// rejecting joins that aren't real country codes (patterns 3, 4).
 /// The trigraph dictionary itself is the source of authority — no
 /// new vocabulary is invented.
@@ -192,7 +192,7 @@ pub(super) fn try_rel_to_header_normalize(text: &str) -> Option<String> {
 ///   shorter-than-3 entry typo and is enforced by `fix_rel_to_block`.
 ///
 /// Both patterns require the corrected output to be a known trigraph
-/// (`CapcoTokenSet::is_trigraph`). The trigraph dictionary is the
+/// (`CapcoTokenSet::is_country_code`). The trigraph dictionary is the
 /// arbiter of "valid country code" — no fuzzy guessing.
 pub(super) fn try_rel_to_entry_normalize(text: &str) -> Option<String> {
     // Cheap pre-check: entry-level patterns 3 and 4 only fire inside a
@@ -302,14 +302,14 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
             "{}{}{}",
             bytes[0] as char, bytes[2] as char, bytes[3] as char
         );
-        if !token_set.is_trigraph(&joined) {
+        if !token_set.is_country_code(&joined) {
             continue;
         }
         // Defensive: don't fire if the 1-letter prefix is itself a
         // trigraph (no real CAPCO trigraph is 1-letter, but guard
         // anyway against future schema changes).
         let one_letter = std::str::from_utf8(&bytes[..1]).expect("ASCII upper");
-        if token_set.is_trigraph(one_letter) {
+        if token_set.is_country_code(one_letter) {
             continue;
         }
 
@@ -349,10 +349,10 @@ fn fix_rel_to_block(block: &str, token_set: &CapcoTokenSet) -> Option<(usize, St
             continue;
         }
         let joined = format!("{}{}", left_trim, right_bytes[0] as char);
-        if !token_set.is_trigraph(&joined) {
+        if !token_set.is_country_code(&joined) {
             continue;
         }
-        if token_set.is_trigraph(left_trim) {
+        if token_set.is_country_code(left_trim) {
             // 2-letter alone is already a trigraph (e.g., EU); the
             // comma might be intentional. Skip.
             continue;

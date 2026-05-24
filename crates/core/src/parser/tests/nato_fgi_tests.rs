@@ -477,7 +477,7 @@ fn fgi_marker_tetragraph_admits_per_capco_h7() {
 fn fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it() {
     // `XYZ` is shape-admissible (3 ASCII upper) — `admits_fgi_trigraph`
     // is a *shape* gate, not a registry-membership gate. The CVE
-    // table check (`is_trigraph` against the GENC trigraph
+    // table check (`is_country_code` against the GENC trigraph
     // registry) lives in the rule layer (S### / E###), not the
     // parser. So `XYZ` parses as an Acknowledged country code
     // and a downstream rule flags the unknown trigraph.

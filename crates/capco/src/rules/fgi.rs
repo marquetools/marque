@@ -42,8 +42,8 @@ use crate::scheme::CapcoScheme;
 /// This is the FGI-ownership twin of [`RelToTrigraphSuggestRule`]
 /// (S004). The architectural shape is intentionally identical:
 ///
-/// 1. Walk the country list for tokens that fail [`CapcoTokenSet::is_trigraph`]
-///    (unregistered tokens; "admits=true ∧ is_trigraph=false" — but
+/// 1. Walk the country list for tokens that fail [`CapcoTokenSet::is_country_code`]
+///    (unregistered tokens; "admits=true ∧ is_country_code=false" — but
 ///    admits=true is already proven by the parser having accepted
 ///    the token, so the rule only needs the trigraph predicate).
 /// 2. For each unregistered token, find the highest-prior neighbor
@@ -178,14 +178,14 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
             let trigraph = code.as_str();
             // Skip the registered codes — they are the lawful CAPCO
             // ownership tokens per §H.7 p122. For this rule's surface
-            // (FGI ownership), `is_trigraph` covers sovereign 3-letter
+            // (FGI ownership), `is_country_code` covers sovereign 3-letter
             // trigraphs, the EU 2-byte exception, and the literal
             // `NATO` tetragraph. The underlying `TRIGRAPHS` table also
             // carries `AUSTRALIA_GROUP`, but its 14-byte length is
             // rejected by `admits_fgi_ownership_token` upstream at the
             // parser shape gate, so AUSTRALIA_GROUP cannot reach this
             // rule via the FGI ownership context.
-            if token_set.is_trigraph(trigraph) {
+            if token_set.is_country_code(trigraph) {
                 continue;
             }
 

@@ -628,7 +628,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
 
     // Merge: extension recognition codes go into TRIGRAPHS
     // alongside CVE entries. The BTreeSet keeps the slice sorted
-    // for `is_trigraph` binary_search.
+    // for `is_country_code` binary_search.
     let mut sorted_trigraphs = cve_codes.clone();
     for ext in &extensions {
         sorted_trigraphs.insert(ext.code.clone());
@@ -674,11 +674,11 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // 3-byte trigraphs, 4-byte tetragraphs (`FVEY`, `NATO`, …),
     // and 15-byte `AUSTRALIA_GROUP`. The name is kept for
     // backwards compatibility with consumers; a future PR may
-    // rename to `COUNTRY_CODES` alongside the `is_trigraph`
+    // rename to `COUNTRY_CODES` alongside the `is_country_code`
     // rename.
     //
     // Sort and deduplicate into a BTreeSet before emission so
-    // `is_trigraph` in token_set.rs can use `binary_search` over a
+    // `is_country_code` in token_set.rs can use `binary_search` over a
     // guaranteed-sorted slice. The XSD emits entries in document order
     // (USA first, then alphabetical), so an unsorted emission would
     // silently break binary_search if the ODNI bundle ever reorders.
@@ -687,7 +687,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
         "/// All valid country / country-group codes — CVE entries \
          from CVEnumISMCATRelTo.xsd plus any org-specific\n\
          /// extensions from `country_extensions.toml`. Sorted \
-         ascending and deduplicated. `is_trigraph` uses \
+         ascending and deduplicated. `is_country_code` uses \
          binary_search."
     )
     .unwrap();
@@ -784,12 +784,12 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // Issue #183 PR-B note: country-code extensions are NOT inserted
     // into `ALL_CVE_TOKENS`. CVE country codes themselves (`USA`,
     // `GBR`, `FVEY`, …) are not in this slice either — they live
-    // exclusively in `TRIGRAPHS`, reached via `is_trigraph` from the
+    // exclusively in `TRIGRAPHS`, reached via `is_country_code` from the
     // REL TO parser. Adding extensions here would give them
     // canonicalize / fuzzy-correction privileges that real CVE
     // trigraphs don't have, which would be an asymmetric and
     // surprising behavior change. Recognition flows through
-    // `is_trigraph` for both CVE codes and extensions, uniformly.
+    // `is_country_code` for both CVE codes and extensions, uniformly.
 
     writeln!(
         content,

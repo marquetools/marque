@@ -81,7 +81,7 @@ fn rel_to_entry_normalize_joins_a_us_to_aus() {
     assert_eq!(
         result.as_deref(),
         Some("SECRET//REL TO USA,AUS, GBR"),
-        "A US should join to AUS when is_trigraph(AUS) holds",
+        "A US should join to AUS when is_country_code(AUS) holds",
     );
 }
 
@@ -94,14 +94,14 @@ fn rel_to_entry_normalize_swaps_au_comma_s_to_aus_comma() {
     assert_eq!(
         result.as_deref(),
         Some("SECRET//REL TO USA, AUS, GBR"),
-        "AU,S should swap to AUS, when is_trigraph(AUS) holds and AU is not a trigraph",
+        "AU,S should swap to AUS, when is_country_code(AUS) holds and AU is not a trigraph",
     );
 }
 
 #[test]
 fn rel_to_entry_normalize_does_not_corrupt_eu_comma_pattern() {
     // EU is itself a valid 2-char trigraph entry. Pattern 4 must
-    // not fire on `EU,X ` because `is_trigraph(EU)` is true —
+    // not fire on `EU,X ` because `is_country_code(EU)` is true —
     // this guards the rule "only fix when the prefix alone is
     // invalid". (Even though `EUX` may not be a trigraph and
     // wouldn't pass the join-is-trigraph guard either, the

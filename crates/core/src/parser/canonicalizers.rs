@@ -239,7 +239,7 @@ pub(super) struct EyesOnlyBlock<'a> {
 /// Constitution Principle VIII (Authoritative Source Fidelity),
 /// canonical output MUST reference real CAPCO registry entries.
 /// Validation mirrors `parse_rel_to_with_spans` (parser.rs ~1870-
-/// 1871): `tokens.is_trigraph` filters by the registered trigraph
+/// 1871): `tokens.is_country_code` filters by the registered trigraph
 /// surface; `CountryCode::try_new` re-confirms the byte-set
 /// invariant. An unregistered trigraph rejects the whole block —
 /// the EYES recognizer is all-or-nothing; partial registry
@@ -282,7 +282,7 @@ pub(super) fn recognize_eyes_only_block<'a>(
         // Principle VIII: fabricated trigraphs in canonical autofix
         // output are a correctness defect. Mirrors the validation
         // pattern in `parse_rel_to_with_spans` (~lines 1870-1871).
-        if !tokens.is_trigraph(seg) || CountryCode::try_new(seg.as_bytes()).is_none() {
+        if !tokens.is_country_code(seg) || CountryCode::try_new(seg.as_bytes()).is_none() {
             return None;
         }
         trigraphs.push(seg);

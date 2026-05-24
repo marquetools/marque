@@ -207,10 +207,9 @@ pub(super) fn parse_fgi_marker_with_spans(
     // chained `or_else` so the prefix length stays in scope.
     let (prefix_len, rest) = if let Some(rest) = block.strip_prefix("FGI ") {
         (4_usize, rest)
-    } else if let Some(rest) = block.strip_prefix("FOREIGN GOVERNMENT INFORMATION ") {
-        (31_usize, rest)
     } else {
-        return None;
+        let rest = block.strip_prefix("FOREIGN GOVERNMENT INFORMATION ")?;
+        (31_usize, rest)
     };
 
     // Build the country list directly into the inline-4
@@ -284,7 +283,7 @@ pub(super) fn parse_fgi_marker_with_spans(
     //
     // Only commit the staged per-country spans on a successful
     // acknowledged parse — keeps the failure path span-clean.
-    let marker = FgiMarker::acknowledged(countries)?;
+    let marker = FgiMarker::acknowledged(countries)?; 
     token_spans.extend(pending);
     Some(marker)
 }

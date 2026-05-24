@@ -53,10 +53,10 @@ pub(super) fn cmp_country_code_trigraph_first(
     a: &CountryCode,
     b: &CountryCode,
 ) -> std::cmp::Ordering {
-    let a_is_trigraph = a.as_str().len() == 3;
-    let b_is_trigraph = b.as_str().len() == 3;
-    a_is_trigraph
-        .cmp(&b_is_trigraph)
+    let a_is_country_code = a.as_str().len() == 3;
+    let b_is_country_code = b.as_str().len() == 3;
+    a_is_country_code
+        .cmp(&b_is_country_code)
         .reverse()
         .then_with(|| a.as_str().cmp(b.as_str()))
 }

@@ -146,7 +146,7 @@ impl CountryCode {
     ///   (ASCII uppercase letter, ASCII digit, underscore)
     ///
     /// Membership in the CVE recognition set is a separate check —
-    /// see [`crate::CapcoTokenSet::is_trigraph`] (the trait method
+    /// see [`crate::CapcoTokenSet::is_country_code`] (the trait method
     /// covers any known country code, not only 3-char trigraphs).
     #[inline]
     pub const fn try_new(bytes: &[u8]) -> Option<Self> {

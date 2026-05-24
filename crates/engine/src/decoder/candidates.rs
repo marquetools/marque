@@ -365,7 +365,7 @@ pub(super) fn generate_candidate_bytes(
     //      country trigraphs (see the comment on `ALL_CVE_TOKENS` in
     //      `crates/ism/build.rs` and the design rationale in
     //      `EXTENDED_CORRECTION_VOCAB`). Trigraphs live in a separate
-    //      `TRIGRAPHS` slice reached via `is_trigraph`. So an unknown
+    //      `TRIGRAPHS` slice reached via `is_country_code`. So an unknown
     //      3-char REL TO entry like `USB` doesn't get any fuzzy
     //      correction — the standard fuzzy walk has nothing to match
     //      against. The strict REL TO parser previously dropped

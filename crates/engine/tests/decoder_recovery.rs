@@ -1088,7 +1088,7 @@ fn typo_tops_ecret_resolves_via_top_vocab_token_boundary() {
 //
 // Patterns 1 and 2 are literal-shape transforms — `REL OT ` and
 // `RELT O ` are not valid CAPCO anywhere. Patterns 3 and 4 are
-// trigraph-guarded: the fix only fires when `is_trigraph(joined)`
+// trigraph-guarded: the fix only fires when `is_country_code(joined)`
 // returns true AND the shorter prefix alone is not a trigraph.
 //
 // The riskier per-trigraph fuzzy cluster (`USB → USA`, `AUT → AUS`,
@@ -1155,7 +1155,7 @@ fn typo_a_us_resolves_via_entry_token_boundary() {
     // Pinned fixture: `tests/fixtures/mangled/typo/1b4875ece8a0a396.json`
     // (`SECRET//REL TO USA,A US, GBR`). Entry token-boundary: AUS
     // appears as `A US` with a stray space. Preprocessing rewrites
-    // the 4-character entry `A US` → `AUS` only when `is_trigraph`
+    // the 4-character entry `A US` → `AUS` only when `is_country_code`
     // confirms the joined 3-letter string is a valid country code.
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(
@@ -1181,8 +1181,8 @@ fn typo_au_comma_s_resolves_via_entry_comma_misplacement() {
     // (`SECRET//REL TO USA, AU,S GBR`). Entry comma misplacement:
     // the comma in `AUS, GBR` slipped left one position to produce
     // `AU,S GBR`. Preprocessing rewrites `AU,S ` → `AUS, ` only
-    // when `is_trigraph(AU + S)` (i.e., AUS) is true AND
-    // `is_trigraph(AU)` is false — the trigraph guard excludes
+    // when `is_country_code(AU + S)` (i.e., AUS) is true AND
+    // `is_country_code(AU)` is false — the trigraph guard excludes
     // false-positive shapes like `EU,S USA` where the comma is
     // between the valid 2-char EU and a separate entry.
     let rx = DecoderRecognizer::new();

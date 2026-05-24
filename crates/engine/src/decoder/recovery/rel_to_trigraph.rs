@@ -40,7 +40,7 @@ use super::super::types::FeatureEntry;
 /// excludes country trigraphs (the design comment on `ALL_CVE_TOKENS`
 /// in `crates/ism/build.rs` calls this out — country codes live
 /// exclusively in [`marque_ism::TRIGRAPHS`] and are reached through
-/// [`CapcoTokenSet::is_trigraph`]). So a typo'd 3-char REL TO entry
+/// [`CapcoTokenSet::is_country_code`]). So a typo'd 3-char REL TO entry
 /// like `USB` gets no correction from the standard pass — there's
 /// nothing in the vocab to match it against. The strict parser then
 /// emits a `TokenKind::Unknown` for the entry (issue #233 change in
@@ -78,7 +78,7 @@ use super::super::types::FeatureEntry;
 /// **CAPCO authority**: REL TO syntax is defined in CAPCO-2016 §H.8.
 /// The trigraph/tetragraph dictionary itself comes from the ODNI CVE
 /// schema in `CVEnumISMCATRelTo.xsd`, baked into
-/// [`CapcoTokenSet::is_trigraph`] and into the
+/// [`CapcoTokenSet::is_country_code`] and into the
 /// [`marque_ism::TRIGRAPHS`] slice this function fuzzy-matches against.
 // The fuzzy / prior-weighted trigraph correction cluster lives in this file.
 // Decision-archaeology for #186 / #233 / #246 relocated to
@@ -128,7 +128,7 @@ pub(in crate::decoder) fn try_rel_to_fuzzy_trigraph_candidates(
             // binary search would also short-circuit on a vocab hit, but
             // keeping the explicit check means a token like `FVEY`
             // appearing legitimately never gets multi-cast).
-            if token_set.is_trigraph(trimmed) {
+            if token_set.is_country_code(trimmed) {
                 continue;
             }
 
@@ -158,7 +158,7 @@ pub(in crate::decoder) fn try_rel_to_fuzzy_trigraph_candidates(
                     (elen == 3 || elen == 4)
                         && e.bytes().all(|b| b.is_ascii_uppercase())
                         && *e != trimmed
-                        && token_set.is_trigraph(e)
+                        && token_set.is_country_code(e)
                 })
                 .collect();
             candidates.retain(|c| !other_trigraphs.contains(&c.token));

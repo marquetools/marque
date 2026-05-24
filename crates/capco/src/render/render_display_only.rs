@@ -36,7 +36,7 @@
 //!   release.
 //! - Trigraphs (3 chars) sort before tetragraphs (4 chars), each
 //!   ascending alpha. The 2-char `EU` and 15-char `AUSTRALIA_GROUP`
-//!   registered codes — admitted by `is_trigraph` per ODNI ISMCAT
+//!   registered codes — admitted by `is_country_code` per ODNI ISMCAT
 //!   `CVEnumISMCATRelTo.xsd` (340 entries) — bucket alongside
 //!   tetragraphs (>=4-char non-3-byte sort group). The §H.8 p163
 //!   text says only "country codes ... then tetragraph codes" so the

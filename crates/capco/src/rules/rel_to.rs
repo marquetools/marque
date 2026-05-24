@@ -230,7 +230,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         // trailing `,` in `REL TO GBR, AUS,` so the splice leaves a
         // clean list. We gate on delimiter-only to preserve any
         // content we can't recognize (tokens outside the CVE
-        // TRIGRAPHS list — `is_trigraph` returns false, so the parser
+        // TRIGRAPHS list — `is_country_code` returns false, so the parser
         // never emits a `RelToTrigraph` span for them; deleting them
         // would be wrong).
         let start = first.span.start;

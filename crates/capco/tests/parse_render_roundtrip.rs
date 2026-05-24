@@ -33,6 +33,7 @@
 //! - CAPCO-2016 §A.6 p15 — banner + portion grammar.
 //! - CAPCO-2016 §H.7 p122 — FGI banner/portion forms (lawful concealed +
 //!   acknowledged variants).
+//!
 //! The full round-trip is gated on the full
 //! `MarkingScheme::render_canonical` impl landing.
 

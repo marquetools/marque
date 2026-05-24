@@ -149,7 +149,7 @@ fn fix_round_trip_idempotent() {
 // trigraphs in audit output. Per Constitution Principle VIII
 // (Authoritative Source Fidelity), canonical output MUST reference
 // real CAPCO registry entries. The recognizer now validates each
-// trigraph via `TokenSet::is_trigraph` + `CountryCode::try_new`,
+// trigraph via `TokenSet::is_country_code` + `CountryCode::try_new`,
 // mirroring the registry check in `parse_rel_to_with_spans`
 // (~parser.rs:1870-1871). An unregistered trigraph rejects the whole
 // block — the recognizer is all-or-nothing; the block falls through

@@ -266,7 +266,7 @@ pub(super) fn fuzzy_correct_tokens<'a>(
         // Case 2: already canonical (known CVE token or trigraph).
         // Check this first so we don't run a vocab scan + edit-
         // distance pass on tokens we already recognize.
-        if CapcoTokenSet.canonicalize(token).is_some() || CapcoTokenSet.is_trigraph(token) {
+        if CapcoTokenSet.canonicalize(token).is_some() || CapcoTokenSet.is_country_code(token) {
             if let Some(buf) = out.as_mut() {
                 buf.push_str(token);
             }

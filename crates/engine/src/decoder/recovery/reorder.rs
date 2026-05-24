@@ -224,7 +224,7 @@ fn classify_segment(seg: &str) -> SegmentClass {
                 || seg.starts_with("NATO RESTRICTED")))
     {
         SegmentClass::Classification
-    } else if CapcoTokenSet.is_trigraph(first_token) {
+    } else if CapcoTokenSet.is_country_code(first_token) {
         // FGI pattern: {registered country trigraph} {classification level}.
         // Validated against the authoritative CVEnumISMCATRelTo vocabulary so
         // typos like "OTP" (→ TOP) don't get mistaken for FGI country codes.
@@ -289,7 +289,7 @@ fn is_non_us_classification_segment(seg: &str) -> bool {
     // FGI: {registered country trigraph} {classification level}.
     // Validated against the authoritative CVEnumISMCATRelTo vocabulary so
     // typos like "OTP" (→ TOP) are not mistaken for FGI country codes.
-    if CapcoTokenSet.is_trigraph(first) {
+    if CapcoTokenSet.is_country_code(first) {
         let second = tokens.next().unwrap_or("");
         let second = second.trim_end_matches(',');
         if matches!(

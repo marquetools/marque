@@ -325,7 +325,7 @@ fn display_only_accepts_full_country_code_width_surface() {
     //   - 15-char (`AUSTRALIA_GROUP`)
     //
     // CAPCO-2016 §H.8 p164 admits all of these in the
-    // DISPLAY ONLY list. The same `TokenSet::is_trigraph` predicate
+    // DISPLAY ONLY list. The same `TokenSet::is_country_code` predicate
     // used by REL TO drives DISPLAY ONLY recognition (issue #444
     // tracks the misnomer rename), so the surface should be
     // identical. This test pins each width on its own line.

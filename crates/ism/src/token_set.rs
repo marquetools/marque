@@ -20,7 +20,7 @@ pub trait TokenSet: Send + Sync {
     fn canonicalize(&self, token: &str) -> Option<&'static str>;
 
     /// Returns true if `token` is a known country trigraph.
-    fn is_trigraph(&self, token: &str) -> bool;
+    fn is_country_code(&self, token: &str) -> bool;
 
     /// Returns the vocabulary slice used for fuzzy correction lookups.
     ///
@@ -274,7 +274,7 @@ impl TokenSet for CapcoTokenSet {
             .map(|i| values::ALL_CVE_TOKENS[i])
     }
 
-    fn is_trigraph(&self, token: &str) -> bool {
+    fn is_country_code(&self, token: &str) -> bool {
         // TRIGRAPHS is emitted sorted and deduplicated by build.rs, so
         // binary_search is O(log n) over ~340 entries instead of the old
         // O(n) `.contains()` linear scan. Hot path for every REL TO parse.
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn trigraphs_are_sorted_and_unique() {
-        // `is_trigraph` relies on binary_search, so the slice must be
+        // `is_country_code` relies on binary_search, so the slice must be
         // strictly-sorted. If a future ODNI XSD update shuffles the order,
         // build.rs collects into a BTreeSet and this test catches any
         // regression of that contract.
@@ -346,13 +346,13 @@ mod tests {
     #[test]
     fn usa_is_a_known_trigraph() {
         let set = CapcoTokenSet;
-        assert!(set.is_trigraph("USA"));
+        assert!(set.is_country_code("USA"));
     }
 
     #[test]
     fn unknown_string_is_not_a_trigraph() {
         let set = CapcoTokenSet;
-        assert!(!set.is_trigraph("XYZ_NOT_A_COUNTRY"));
+        assert!(!set.is_country_code("XYZ_NOT_A_COUNTRY"));
     }
 
     #[test]

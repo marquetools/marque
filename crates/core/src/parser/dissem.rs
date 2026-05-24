@@ -270,7 +270,7 @@ pub(super) fn parse_rel_to_with_spans<'src>(
 
             // Parse the country part (may be empty if the slash is leading).
             if !country_part.is_empty() {
-                if tokens.is_trigraph(country_part) {
+                if tokens.is_country_code(country_part) {
                     if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
                         let span = Span::new(abs_start, abs_start + country_part.len());
                         countries.push(ParsedRelToEntry::new(t, country_part, span));
@@ -348,7 +348,7 @@ pub(super) fn parse_rel_to_with_spans<'src>(
             continue;
         }
 
-        if !tokens.is_trigraph(trimmed) {
+        if !tokens.is_country_code(trimmed) {
             // Issue #233: emit an Unknown span for unrecognized
             // entries inside a REL TO block instead of silently
             // dropping them. The decoder's
@@ -377,12 +377,12 @@ pub(super) fn parse_rel_to_with_spans<'src>(
         // Issue #183: drop the historical `b.len() != 3` gate that
         // silently dropped tetragraphs (`FVEY`, `NATO`, `ACGU`, …)
         // and the longer registered codes (`EU`, `AUSTRALIA_GROUP`)
-        // from `rel_to`. `is_trigraph` already covers the full
+        // from `rel_to`. `is_country_code` already covers the full
         // registered CVE recognition surface, including trigraphs,
         // tetragraphs, and longer special forms such as `EU` and
         // `AUSTRALIA_GROUP`; `CountryCode::try_new` accepts
         // 2..=16-byte codes in the CAPCO byte set, so any code that
-        // passed `is_trigraph` will also pass `try_new` here.
+        // passed `is_country_code` will also pass `try_new` here.
         let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
             continue;
         };
@@ -569,7 +569,7 @@ pub(super) fn parse_display_only_with_spans<'src>(
             let tail = raw_tail.trim();
 
             if !country_part.is_empty() {
-                if tokens.is_trigraph(country_part) {
+                if tokens.is_country_code(country_part) {
                     if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
                         let span = Span::new(abs_start, abs_start + country_part.len());
                         countries.push(ParsedDisplayOnlyEntry::new(t, country_part, span));
@@ -632,7 +632,7 @@ pub(super) fn parse_display_only_with_spans<'src>(
             continue;
         }
 
-        if !tokens.is_trigraph(trimmed) {
+        if !tokens.is_country_code(trimmed) {
             // Emit Unknown for unrecognized country entries — parallel
             // to the REL TO behavior; lets E008 / the decoder
             // dispatcher surface a fuzzy-correction candidate instead

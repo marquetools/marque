@@ -268,7 +268,7 @@ fn rel_to_token_span_widens_to_actual_code_length() {
 #[test]
 fn rel_to_drops_unrecognized_token_from_rel_to_but_keeps_unknown_span() {
     // Defensive: tokens outside the CVE recognition set
-    // (`is_trigraph` is false) are skipped from `attrs.rel_to` —
+    // (`is_country_code` is false) are skipped from `attrs.rel_to` —
     // we widened recognition, not the gate. `XYZQ` is a 4-char
     // string not in the CVE TRIGRAPHS list.
     let parsed = parse_banner("SECRET//REL TO USA, XYZQ, GBR");
