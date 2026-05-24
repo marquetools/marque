@@ -26,7 +26,7 @@
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // ---------------------------------------------------------------------------
 // Parse argv
@@ -206,9 +206,9 @@ server.listen(port, '127.0.0.1', () => {
     const target = url;
     try {
       const platform = process.platform;
-      if (platform === 'darwin') execSync(`open "${target}"`);
-      else if (platform === 'win32') execSync(`start "" "${target}"`);
-      else execSync(`xdg-open "${target}"`);
+      if (platform === 'darwin') execFileSync('open', [target]);
+      else if (platform === 'win32') execFileSync('cmd', ['/c', 'start', '""', target]);
+      else execFileSync('xdg-open', [target]);
     } catch {
       // Best-effort; ignore errors (e.g. headless CI environments)
     }
