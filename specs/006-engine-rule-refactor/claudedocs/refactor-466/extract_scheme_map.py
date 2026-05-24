@@ -381,6 +381,7 @@ def parse_file(path: Path) -> dict:
             else:
                 vis_raw = (mo.group("vis") or "").strip()
                 vis = vis_raw if vis_raw else "private"
+                visibility = vis
                 kw = mo.group("kw").strip()
 
                 if kw == "use":
