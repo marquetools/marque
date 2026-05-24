@@ -4,9 +4,7 @@
 
 //! `CategoryPredicate::Contains` / `CategoryPredicate::Empty` and
 //! `CategoryAction::Clear` / `CategoryAction::Replace` dispatch
-//! against `CapcoMarking`. Lifted from the monolithic `actions.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! against `CapcoMarking`.
 
 use marque_ism::MarkingClassification;
 use marque_scheme::{CategoryId, TokenId};
@@ -29,25 +27,21 @@ use super::super::*;
 
 /// `CategoryPredicate::Contains { category, token }` evaluator.
 ///
-/// Phase B supports the sample constraint set. Unhandled `(category,
-/// token)` pairs return `false` — a safe conservative answer that
-/// effectively disables the rewrite rather than silently misfiring.
-/// Phase C expands coverage as more rewrites move to the declarative
+/// Unhandled `(category, token)` pairs return `false` — a safe
+/// conservative answer that disables the rewrite rather than silently
+/// misfiring. Coverage expands as more rewrites move to the declarative
 /// form.
 ///
-/// PR 3c.B Sub-PR 8.F adds `CAT_NON_IC_DISSEM` arms for `TOK_NODIS` and
-/// `TOK_EXDIS` so the `capco/nodis-implies-noforn` and
-/// `capco/exdis-implies-noforn` PageRewrites' `Contains` triggers can
-/// resolve against the `non_ic_dissem` axis. Without this extension the
-/// new rewrites would silently never fire (the conservative-`false`
-/// fallthrough effectively disables them), making 8.F a no-op
-/// masquerading as a fix (design spec §3 "Predicate-evaluator support",
-/// Q2 "capco_category_contains silent-disabling root-cause").
+/// The `CAT_NON_IC_DISSEM` arms for `TOK_NODIS` / `TOK_EXDIS` let the
+/// `capco/nodis-implies-noforn` and `capco/exdis-implies-noforn`
+/// PageRewrites' `Contains` triggers resolve against the
+/// `non_ic_dissem` axis. Without them, the rewrites would silently
+/// never fire (the conservative-`false` fallthrough disables them).
 ///
-/// PR 3c.B Sub-PR 8.F.2 extends the same `CAT_NON_IC_DISSEM` block with
-/// arms for `TOK_SBU_NF` and `TOK_LES_NF`, scanning the
-/// `NonIcDissem::SbuNf` / `NonIcDissem::LesNf` variants. Same shape,
-/// same silent-disabling concern — the `capco/sbu-nf-implies-noforn`
+/// The `CAT_NON_IC_DISSEM` block also has arms for `TOK_SBU_NF` and
+/// `TOK_LES_NF`, scanning the `NonIcDissem::SbuNf` / `NonIcDissem::LesNf`
+/// variants. Same shape, same silent-disabling concern — the
+/// `capco/sbu-nf-implies-noforn`
 /// (§H.9 p178) and `capco/les-nf-implies-noforn` (§H.9 p185) PageRewrite
 /// triggers require these arms to resolve.
 ///
@@ -63,7 +57,7 @@ pub(crate) fn capco_category_contains(
 ) -> bool {
     let attrs = &m.0;
     if category == CAT_DISSEM && token == TOK_NOFORN {
-        // PR 9b (T132): "Contains NOFORN" is namespace-agnostic — the
+        // "Contains NOFORN" is namespace-agnostic — the
         // dissem token is what matters, not its attribution. Scan
         // across both fields via `dissem_iter`.
         return attrs
@@ -85,11 +79,9 @@ pub(crate) fn capco_category_contains(
             .any(|d| matches!(d, marque_ism::DissemControl::Displayonly))
             || !attrs.display_only_to.is_empty();
     }
-    // PR 3c.B Sub-PR 8.F — CAT_NON_IC_DISSEM arms for NODIS and EXDIS.
-    // These enable the `capco/nodis-implies-noforn` and
-    // `capco/exdis-implies-noforn` PageRewrite triggers to resolve.
-    //
-    // PR 3c.B Sub-PR 8.F.2 — CAT_NON_IC_DISSEM arms for SBU-NF and
+    // CAT_NON_IC_DISSEM arms for NODIS and EXDIS enable the
+    // `capco/nodis-implies-noforn` and `capco/exdis-implies-noforn`
+    // PageRewrite triggers to resolve. CAT_NON_IC_DISSEM arms for SBU-NF and
     // LES-NF. Same purpose: enable the `capco/sbu-nf-implies-noforn`
     // and `capco/les-nf-implies-noforn` PageRewrite triggers to
     // resolve against `attrs.non_ic_dissem`. Without these arms,
@@ -130,9 +122,8 @@ pub(crate) fn capco_category_contains(
 /// so an `Empty` predicate on an unknown category **does not fire**
 /// and a rewrite conditioned on it stays inert. This matches
 /// [`capco_category_contains`]'s conservative-false stance and avoids
-/// misfiring rewrites on categories Phase B doesn't yet inspect.
-/// Phase C expands the match arms as more rewrites move into the
-/// declarative form.
+/// misfiring rewrites on categories not yet inspected. Coverage
+/// expands as more rewrites move into the declarative form.
 pub(crate) fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
     let attrs = &m.0;
     match category {
@@ -151,13 +142,13 @@ pub(crate) fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
     if category == CAT_REL_TO {
         attrs.rel_to = Box::new([]);
     } else if category == CAT_DISPLAY_ONLY_TO {
-        // PR 4b-D.2 Copilot R1 #2: DISPLAY ONLY country-list axis.
-        // Parallel to `attrs.rel_to` for symmetric clearing under
+        // DISPLAY ONLY country-list axis. Parallel to `attrs.rel_to`
+        // for symmetric clearing under
         // `capco/noforn-clears-display-only-to` (§H.8 p145 + §D.2
         // Table 3 rows 1-2).
         attrs.display_only_to = Box::new([]);
     } else if category == CAT_DISSEM {
-        // PR 9b (T132): clearing the dissem category zeroes both
+        // clearing the dissem category zeroes both
         // namespaces. The CAT_DISSEM axis is namespace-agnostic from
         // the category-id perspective.
         attrs.dissem_us = Box::new([]);
@@ -165,11 +156,11 @@ pub(crate) fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
     } else if category == CAT_NON_IC_DISSEM {
         attrs.non_ic_dissem = Box::new([]);
     }
-    // Other categories: no-op. Phase C expands coverage.
+    // Other categories: no-op.
 }
 
 /// `CategoryAction::Replace { category, with }` evaluator. The `with`
-/// argument supplies a full marking; Phase B copies only the named
+/// argument supplies a full marking; this copies only the named
 /// category's storage out.
 pub(crate) fn capco_category_replace(
     m: &mut CapcoMarking,
@@ -180,7 +171,7 @@ pub(crate) fn capco_category_replace(
     if category == CAT_REL_TO {
         attrs.rel_to = with.0.rel_to.clone();
     } else if category == CAT_DISSEM {
-        // PR 9b (T132): replacing the dissem category copies both
+        // replacing the dissem category copies both
         // namespaces from `with`. The two fields are independent
         // post-attribution per CAPCO-2016 p41 — replacing only one
         // would silently drop the other.

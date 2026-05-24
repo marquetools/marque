@@ -90,7 +90,7 @@ use crate::scheme::CapcoScheme;
 pub(super) struct FgiOwnershipTrigraphSuggestRule;
 
 /// Citations the FGI ownership-trigraph-suggest rule may emit. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate contract.
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate contract.
 const FGI_OWNERSHIP_SUGGEST_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 7, 122),
     capco(SectionLetter::A, 6, 16),
@@ -274,7 +274,7 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
                         continue;
                     }
 
-                    // Audit-content-ignorance (G13 / Constitution V Principle V)
+                    // Audit content-ignorance (Constitution V)
                     // is structurally guaranteed by the closed
                     // `MessageTemplate::CorrectionsApplied` template + the
                     // closed `MessageArgs` struct — neither carries free-form
@@ -335,7 +335,7 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
 pub(super) struct FgiInvalidOwnershipTokenRule;
 
 /// Citations E073 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const FGI_INVALID_OWNERSHIP_TOKEN_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 123)];
 
@@ -385,7 +385,7 @@ impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
     /// single `TokenKind::Unknown` `TokenSpan`; this rule splits the
     /// tail on whitespace and computes per-token offsets so the
     /// diagnostic points at the rejected token, not the whole marker.
-    /// Audit-content-ignorance (Constitution V G13) is preserved: the
+    /// Audit content-ignorance (Constitution V) is preserved: the
     /// span is a byte-offset locator into the source buffer, not a
     /// content payload.
     ///

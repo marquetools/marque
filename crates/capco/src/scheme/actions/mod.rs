@@ -2,24 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `CapcoScheme` action helpers. Lifted from the monolithic `scheme.rs`
-//! per the issue #466 split plan
-//! (`claudedocs/refactor-466/split_proposal.md`).
+//! `CapcoScheme` action helpers.
 //!
 //! Covers `ReplacementIntent` application, category-level adders/removers,
 //! page-context-to-attrs projection, foreign-source extraction, and the
 //! Pattern-C strip helpers + companion emitters.
 //!
-//! Stage 2 PR A (issue #466) sub-split this leaf into focused files
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`). Public-API names
-//! continue to resolve at `super::actions::NAME` via the re-exports
-//! below; sub-module boundaries are an internal organization detail.
+//! Public-API names resolve at `super::actions::NAME` via the
+//! re-exports below; sub-module boundaries are an internal
+//! organization detail.
 
 mod category_ops;
 mod companions;
 mod fgi;
 mod intent;
-// PR 4b-E: `mod page_context` retired alongside the
+// `mod page_context` was retired alongside the
 // `page_context_to_attrs` helper. The lattice-path residue migration
 // in `crates/capco/src/scheme/marking.rs` (the `join_via_lattice` body)
 // retired the helper's last `#[allow(dead_code)]` consumer.
@@ -49,6 +46,6 @@ pub(crate) use self::intent::apply_intent_to_marking;
 // `intent.rs::360`'s tombstone comment for the retirement marker).
 // If a future open-vocab closure cone needs the wrapper, revive the
 // body from VCS rather than relying on a dead in-tree copy.
-// PR 4b-E: `page_context_to_attrs` retired with the
+// `page_context_to_attrs` was retired with the
 // `scheme/actions/page_context.rs` file deletion.
 pub(crate) use self::strip::{noop_action, strip_dod_ucni_action, strip_doe_ucni_action};

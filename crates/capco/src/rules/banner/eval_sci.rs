@@ -17,12 +17,11 @@ use super::BannerCategoryRow;
 /// Typed Citation anchors at §H.4 p61 (the cross-system SCI banner-rollup
 /// authority). The per-system "Precedence Rules for Banner Line Guidance"
 /// passages (HCS p62, SI p74, TK p85, …) reiterate the same invariant
-/// per system; §H.4 p61 is the operative cross-system citation per
-/// T026a D13 single-citation discipline.
+/// per system; §H.4 p61 is the operative cross-system citation under
+/// the single-citation discipline.
 const CITATION: Citation = capco(SectionLetter::H, 4, 61);
 
-/// SCI banner roll-up evaluator. Verbatim move of the body of
-/// `SciBannerRollupRule::check`, parameterized over the page projection
+/// SCI banner roll-up evaluator, parameterized over the page projection
 /// and the catalog row.
 ///
 /// **Operative authority**: CAPCO-2016 §H.4 per-system "Precedence
@@ -32,26 +31,24 @@ const CITATION: Citation = capco(SectionLetter::H, 4, 61);
 /// has no hierarchy-optional carve-out: compartments and
 /// sub-compartments roll up too.
 ///
-/// **Background**: §D.2 p28 (CAPCO-2016 lines 577–579) restates the
-/// same banner/portion consistency invariant in general-algorithm
-/// prose. Per T026a D13 single-citation discipline (and
-/// `specs/006-engine-rule-refactor/tasks.md` T026a wording — *"§D.2
-/// is general-algorithm prose (per-category citations are tighter and
-/// verifiable per Constitution VIII)"*), §D.2 is a background pointer
-/// only and is deliberately NOT included in [`CITATION`]. The
-/// per-category §H.4 reference is the row's primary citation.
+/// **Background**: §D.2 p28 restates the same banner/portion
+/// consistency invariant in general-algorithm prose. Under the
+/// single-citation discipline, §D.2 is general-algorithm prose
+/// (per-category citations are tighter and verifiable per Constitution
+/// VIII), so it is a background pointer only and is deliberately NOT
+/// included in [`CITATION`]. The per-category §H.4 reference is the
+/// row's primary citation.
 pub(super) fn evaluate_sci_banner_rollup(
     attrs: &CanonicalAttrs,
     page: &marque_ism::ProjectedMarking,
     row: &BannerCategoryRow,
 ) -> Vec<Diagnostic<CapcoScheme>> {
-    // PR 9b (T133): SCI rollup reads `page.sci_markings` directly.
-    // `ProjectedMarking` carries the union with §A.6 ordering already
-    // applied by `PageContext::expected_sci_markings`.
+    // SCI rollup reads `page.sci_markings` directly. `ProjectedMarking`
+    // carries the union with §A.6 ordering already applied by
+    // `PageContext::expected_sci_markings`.
     let expected: Vec<marque_ism::SciMarking> = page.sci_markings.to_vec();
     if expected.is_empty() {
-        // Either P4 has not landed yet (helper returns empty) or no
-        // portions have been accumulated. Either way, nothing to check.
+        // No portions have been accumulated; nothing to check.
         return vec![];
     }
 
@@ -119,7 +116,7 @@ pub(super) fn evaluate_sci_banner_rollup(
         // separator offsets and the downstream block boundaries).
         // Escalate severity and emit a diagnostic without a fix
         // so the author inserts the block by hand.
-        // G13: per-system detail dropped from the typed `Message`;
+        // Audit content-ignorance: per-system detail dropped from the typed `Message`;
         // category=CAT_SCI identifies the axis.
         //
         // Anchor at the banner's classification token (the marking's
@@ -161,13 +158,14 @@ pub(super) fn evaluate_sci_banner_rollup(
     let fix_span = Span::new(fix_start, fix_end);
     let replacement = render_sci_block(&expected);
 
-    // G13 (PM-C-6): drop the per-system `missing` list from the typed
-    // `Message`. `MessageArgs.category = Some(CAT_SCI)` identifies the
-    // axis that disagreed; per-system detail does NOT belong on the
-    // audit record (would require a `MessageArgs.feature_ids`
-    // population that needs a coordinated `MARQUE_AUDIT_SCHEMA` bump per
-    // PM-C-6). The canonical replacement still rides on
-    // `Diagnostic.text_correction.replacement` for the engine's apply path.
+    // Audit content-ignorance: the per-system `missing` list is not in
+    // the typed `Message`. `MessageArgs.category = Some(CAT_SCI)`
+    // identifies the axis that disagreed; per-system detail does NOT
+    // belong on the audit record (would require a
+    // `MessageArgs.feature_ids` population that needs a coordinated
+    // `MARQUE_AUDIT_SCHEMA` bump). The canonical replacement still rides
+    // on `Diagnostic.text_correction.replacement` for the engine's apply
+    // path.
     vec![make_fix_diagnostic(FixDiagnosticParams {
         rule: row.rule_id,
         severity: row.severity,

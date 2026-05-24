@@ -5,30 +5,24 @@
 //! Banner-roll-up walker (`BannerMatchesProjectedRule`).
 //!
 //! Asserts the observed banner / CAB candidate matches the page's
-//! projected marking for each per-category roll-up. Subsumes the
-//! retired literal rules `E031` (SAR) / `E035` (SCI) / `E040`
-//! (Non-IC dissem), plus the PR 5 banner-mismatch rows `E068`
-//! (classification) and `E069` (FGI marker).
+//! projected marking for each per-category roll-up: SAR, SCI, Non-IC
+//! dissem, classification, and FGI marker.
 //!
 //! Each catalog row carries its own rule ID, citation, severity, and
-//! `evaluate` fn — so emitted diagnostics keep the historical per-row
-//! rule IDs for audit-stream continuity and the C-1 overlap-guard
-//! interaction with E028 / E029 is preserved byte-for-byte. The
-//! walker's own `id()` is a bookkeeping ID (the SAR roll-up tuple);
+//! `evaluate` fn — so emitted diagnostics keep distinct per-row rule
+//! IDs for audit-stream continuity and the overlap-guard interaction.
+//! The walker's own `id()` is a bookkeeping ID (the SAR roll-up tuple);
 //! the rule loop tracks via the per-row IDs on each emitted
 //! `Diagnostic`.
 //!
-//! Per `specs/006-engine-rule-refactor/tasks.md` T026a (D13
-//! single-citation discipline): each catalog row carries ONE
-//! operative banner-roll-up CAPCO-§ citation. Background §-references
-//! are permitted in row documentation but are not counted as the row's
+//! Single-citation discipline: each catalog row carries ONE operative
+//! banner-roll-up CAPCO-§ citation. Background §-references are
+//! permitted in row documentation but are not counted as the row's
 //! primary citation.
 //!
-//! The `evaluate_*` fns are verbatim moves of the bodies of the
-//! retiring rules' `check` methods; the only structural change is
-//! that they take an explicit `&ProjectedMarking` parameter (the
-//! marking-type guard and the `ctx.page_marking.as_ref()` guard
-//! moved up to the walker's `check`).
+//! Each `evaluate_*` fn takes an explicit `&ProjectedMarking`
+//! parameter; the marking-type guard and the `ctx.page_marking.as_ref()`
+//! guard live on the walker's `check`.
 
 mod eval_classification;
 mod eval_fgi_marker;
@@ -57,8 +51,8 @@ pub(super) struct BannerMatchesProjectedRule;
 /// diagnostics, one per catalog row in [`BANNER_CATEGORY_CATALOG`].
 /// The walker registers under the SAR roll-up tuple (bookkeeping ID);
 /// emitted diagnostics carry per-row IDs and per-row citations from
-/// this list. See [`Rule::cited_authorities`] for the F.1
-/// corpus-fidelity gate contract.
+/// this list. See [`Rule::cited_authorities`] for the corpus-fidelity
+/// gate contract.
 const AUTHORITIES: &[Citation] = &[
     // SAR roll-up — §H.5 p101 "All unique SAPs contained in
     // portion marks must always appear in the banner line."
@@ -71,10 +65,10 @@ const AUTHORITIES: &[Citation] = &[
     // p174 (NODIS) cross-reference; the typed Citation anchors at
     // p172. Both are operative per the walker's evaluator doc.
     capco(SectionLetter::H, 9, 172),
-    // E068 banner classification mismatch — §H.7 p123 (Precedence
+    // Banner classification mismatch — §H.7 p123 (Precedence
     // Rules for Banner Line Guidance + reciprocal classification).
     capco(SectionLetter::H, 7, 123),
-    // E069 banner FGI marker mismatch — §H.7 p124 (FGI banner-line
+    // Banner FGI marker mismatch — §H.7 p124 (FGI banner-line
     // roll-up + source-concealed-dominates rule).
     capco(SectionLetter::H, 7, 124),
 ];
@@ -83,7 +77,7 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn id(&self) -> RuleId {
         // Bookkeeping ID. Per-row IDs travel on emitted diagnostics for
         // audit traceability. The walker's registered tuple IS the SAR
-        // roll-up tuple per the T044 legacy-rule-id-map §5.
+        // roll-up tuple.
         RuleId::new("capco", "banner.banner-rollup.sar-portions-roll-up")
     }
 
@@ -115,20 +109,17 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
-        // Marking-type guard (≤3 branches per D13). CABs carry only
-        // authority fields (Classified By / Derived From / Declassify
+        // Marking-type guard. CABs carry only authority fields
+        // (Classified By / Derived From / Declassify
         // On) — they have no classification, SCI, dissem, or FGI
         // blocks — so every row evaluator would spuriously fire
         // "banner missing X block" with a placeholder (0,0) span.
         if !matches!(ctx.marking_type, MarkingType::Banner) {
             return vec![];
         }
-        // PR 9b (T133 / FR-006): banner-validation rules read the
-        // rolled-up shape via `ctx.page_marking` (the
-        // `ProjectedMarking` projection) instead of going through
-        // the retired `PageContext::expected_*` accessors. The
-        // per-portion view is available via `ctx.page_portions`
-        // (e.g. S005 post-PR-#488 — formerly the S005/S006 pair).
+        // Banner-validation rules read the rolled-up shape via
+        // `ctx.page_marking` (the `ProjectedMarking` projection). The
+        // per-portion view is available via `ctx.page_portions`.
         let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
         };
@@ -143,19 +134,14 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     /// Catalog (id, name) pairs the walker emits on diagnostics beyond
     /// its registered `id()` / `name()`. Required by the engine's
     /// `canonicalize_rule_overrides` path so a `.marque.toml`
-    /// configuring `E035 = "warn"` (or `sci-banner-rollup = "warn"`,
-    /// the historical name from the retired `SciBannerRollupRule`) is
-    /// accepted at engine construction.
+    /// configuring a per-row ID (or its `sci-banner-rollup`-style name
+    /// alias) is accepted at engine construction.
     ///
     /// Each pair is self-canonical: the catalog ID maps to itself, the
     /// catalog name maps to the catalog ID. This keeps per-row override
-    /// scope independent of the walker's bookkeeping ID. The historical
-    /// names (`sar-banner-rollup`, `sci-banner-rollup`,
-    /// `nodis-exdis-banner-rollup`) match the retired rules' `name()`
-    /// values so existing configs that used the name form keep working
-    /// across the T026a refactor.
+    /// scope independent of the walker's bookkeeping ID.
     fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
-        // Post-T044: the first column is the canonical wire-string form
+        // The first column is the canonical wire-string form
         // (`<scheme>:<predicate_id>`); the second column is the
         // descriptive `name()` alias users may also type in
         // `.marque.toml`.
@@ -172,10 +158,10 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
                 "capco:banner.banner-rollup.non-ic-dissem-roll-up",
                 "nodis-exdis-banner-rollup",
             ),
-            // PR 5 (006 T059a, closes #276): foreign-banner mismatch
-            // rows on the same walker. Per-row IDs travel on emitted
-            // diagnostics for audit traceability; the additional-
-            // emitted-ids list lets `.marque.toml` configure
+            // Foreign-banner mismatch rows on the same walker. Per-row
+            // IDs travel on emitted diagnostics for audit traceability;
+            // the additional-emitted-ids list lets `.marque.toml`
+            // configure
             // `capco:banner.classification.mismatch-vs-projected = "warn"`
             // / `capco:banner.fgi.marker-mismatch-vs-projected = "warn"`
             // even though the walker's `id()` is the SAR roll-up tuple.
@@ -197,8 +183,8 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
 pub(super) struct BannerCategoryRow {
     /// Rule ID emitted on diagnostics from this row. Distinct from the
     /// walker's own `RuleId`, which is bookkeeping only — the audit
-    /// stream and the FR-016 overlap-guard tiebreaker both key on the
-    /// per-row ID.
+    /// stream and the overlap-guard tiebreaker both key on the per-row
+    /// ID.
     pub(super) rule_id: RuleId,
     /// Per-row default severity. The walker copies this onto each emitted
     /// `Diagnostic`; the engine's severity-override layer can downgrade
@@ -208,10 +194,9 @@ pub(super) struct BannerCategoryRow {
     /// the given banner attributes and page projection. Implemented as a
     /// fn pointer so the catalog can be a `const`.
     ///
-    /// PR 9b (T133 / FR-006): receives `&ProjectedMarking` (the
-    /// engine-facing rolled-up shape) instead of `&PageContext`.
-    /// Banner-validation rules don't need per-portion membership —
-    /// the union/intersection/max math is already performed by the
+    /// Receives `&ProjectedMarking` (the engine-facing rolled-up shape).
+    /// Banner-validation rules don't need per-portion membership — the
+    /// union/intersection/max math is already performed by the
     /// projection at the engine boundary.
     pub(super) evaluate: fn(
         &CanonicalAttrs,
@@ -254,7 +239,7 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
         severity: Severity::Error,
         evaluate: evaluate_non_ic_dissem_banner_rollup,
     },
-    // E068 — Banner classification mismatch (PR 5, closes #276).
+    // Banner classification mismatch.
     //
     // Fires when the observed banner's classification disagrees with
     // the projected page-level classification (Us/Fgi/Nato/Joint/
@@ -275,12 +260,12 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
         severity: Severity::Error,
         evaluate: evaluate_classification_banner_rollup,
     },
-    // E069 — Banner FGI marker mismatch (PR 5, closes #276).
+    // Banner FGI marker mismatch.
     //
     // Fires when the observed banner's FGI marker disagrees with the
     // projected page-level FGI marker (presence/absence; concealed vs
     // acknowledged variant). Severity `Error`, no fix — same
-    // safety rationale as E068.
+    // safety rationale as the classification mismatch row.
     //
     // Authority: CAPCO-2016 §H.7 p124 — *"Use FGI + Register, Annex
     // B trigraph country code(s) and/or Register Annex A tetragraph

@@ -3,16 +3,12 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Custom-constraint predicate bodies (E012, E014) plus the catalog-row
-//! emit helpers (`class_floor_emit`, `sci_per_system_emit`). Lifted
-//! from the monolithic `constraints.rs` per the issue #466 Stage 2 PR
-//! A leaf split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
-//! W002 retired in the PR closing #470 — its predicate body and
-//! catalog row are gone. PR-E (#371) retired the tier-1 helpers
-//! (`e021_rd_frd_requires_noforn`, `e024_rd_precedence`,
-//! `e038_dos_dissem_requires_noforn`, `e070_frd_tfni_precedence`) in
-//! favor of `crates/capco/src/scheme/predicates/tier1_mask.rs`,
-//! which compiles each predicate to a [`FactBitmask`] trigger /
-//! suppressor mask test.
+//! emit helpers (`class_floor_emit`, `sci_per_system_emit`).
+//!
+//! The tier-1 RD/FRD/TFNI predicate bodies live in
+//! `crates/capco/src/scheme/predicates/tier1_mask.rs` (#371), which
+//! compiles each predicate to a [`FactBitmask`] trigger / suppressor
+//! mask test.
 //!
 //! [`FactBitmask`]: marque_scheme::FactBitmask
 
@@ -26,7 +22,7 @@ use marque_scheme::{SectionLetter, capco};
 use marque_scheme::{Severity, Span, TokenRef};
 
 // ---------------------------------------------------------------------------
-// T035 Custom-constraint helpers
+// Custom-constraint helpers
 // ---------------------------------------------------------------------------
 //
 // Each helper is the predicate body for a `Constraint::Custom` entry in
@@ -189,11 +185,9 @@ pub(crate) fn w005_rel_to_not_in_joint_coverage(
 
 /// Single source of truth for the class-floor catalog's
 /// presence-check + floor-satisfaction-check + diagnostic message
-/// shape. PR D R3.1 (R3 C2) consolidated the walker hot-path and the
-/// trait/validate path here so a citation, message-text, or
-/// floor-comparison change to one row cannot silently diverge between
-/// emitters. Post PR 3c.B Commit 7.3 the walker is retired and the
-/// engine's constraint-catalog bridge is the sole emitter — but the
+/// shape, so a citation, message-text, or floor-comparison change to
+/// one row cannot silently diverge between emitters. The engine's
+/// constraint-catalog bridge is the sole emitter today, but the
 /// convergence shape stays for any future second emitter path.
 ///
 /// Returns `None` when the row's predicate does not fire (presence
@@ -208,23 +202,19 @@ pub(crate) fn w005_rel_to_not_in_joint_coverage(
 /// [`marque_ism::MarkingClassification::effective_level`]) so a
 /// portion classified `//NATO SECRET//ATOMAL` reports `SECRET` —
 /// not `unknown` — even though `attrs.us_classification()` returns
-/// `None` for non-US classification kinds. This is the C1 fix from
-/// PR #324 R1; see [`class_floor_satisfied`] doc for the AtLeast vs
-/// EqualsU split.
+/// `None` for non-US classification kinds. See [`class_floor_satisfied`]
+/// doc for the AtLeast vs EqualsU split.
 ///
-/// # Span and severity (PR 3c.B Commit 7.3)
+/// # Span and severity
 ///
 /// `span` and `severity` are populated here so the engine's
 /// constraint-catalog bridge can surface the violation as a
-/// user-facing `Diagnostic` without going through the retired
-/// `DeclarativeClassFloorRule` walker:
-///   - `span` resolves via [`class_floor_anchor_span`] (lifted from
-///     the walker in this commit) so the diagnostic squiggle anchors
-///     at the marking token, not the classification token (PM
-///     directive #2).
+/// user-facing `Diagnostic`:
+///   - `span` resolves via [`class_floor_anchor_span`] so the
+///     diagnostic squiggle anchors at the marking token, not the
+///     classification token.
 ///   - `severity` is the row's authoring intent (`Error` for
-///     enumerated rows; `Warn` for passthrough rows per
-///     `marque-applied.md` §3.4.6 Q-3.4.6b).
+///     enumerated rows; `Warn` for passthrough rows).
 pub(crate) fn class_floor_emit(
     attrs: &marque_ism::CanonicalAttrs,
     row: &ClassFloorRow,
@@ -244,7 +234,7 @@ pub(crate) fn class_floor_emit(
         format!(
             "{} is known from ISM but not enumerated in CAPCO-2016; provisional classification \
              floor is C (classified). Verify against the current ODNI manual; current \
-             classification is {level_str}. (See marque-applied.md §3.7 passthrough policy.)",
+             classification is {level_str}.",
             row.marking_label
         )
     } else {

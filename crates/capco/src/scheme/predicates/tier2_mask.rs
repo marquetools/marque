@@ -17,7 +17,7 @@
 //! in the bitmask today; callers gate on [`classification_is_fgi_or_joint`]
 //! before calling [`effective_level_from_bits`].
 //!
-//! The `EqualsU` policy (UCNI ceiling rows, §2.4) reads only the US chain
+//! The `EqualsU` policy (UCNI ceiling rows) reads only the US chain
 //! field — `extract_us_class_level(bits) == Some(Unclassified)` — matching
 //! `class_floor_satisfied`'s `EqualsU` arm which uses `attrs.us_classification()`
 //! (US-only, not reciprocal-raised). NATO/FGI/JOINT classifications zero

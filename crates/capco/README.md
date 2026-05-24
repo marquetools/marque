@@ -12,6 +12,8 @@ This crate provides hand-written rule implementations that consume the generated
 
 This is one of two crates where CAPCO/ISM is the headline; everything else in the workspace is general-purpose. For the engine that runs these rules, see `marque-engine`. For the vocabulary types they consume, see `marque-ism`.
 
+> **Note on rule IDs**: rule IDs are 2-tuples `(scheme, predicate_id)` of the form `RuleId::new("capco", "<surface>.<category>.<predicate>")`. The canonical wire string `<scheme>:<predicate_id>` (e.g., `"capco:portion.dissem.noforn-conflicts-rel-to"`) is what users see in `.marque.toml` keys, audit-log text output, and grep targets. Some sections below reference the historical `E### / W### / S### / C###` flat-string IDs; those are **archaeological**. See [`docs/refactor-006/legacy-rule-id-map.md`](../../docs/refactor-006/legacy-rule-id-map.md) for the rename table mapping each retired flat-string ID to its 2-tuple successor.
+
 ## Role in Marque
 
 Marque uses a two-layer rule architecture:

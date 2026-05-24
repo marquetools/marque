@@ -33,8 +33,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
-# PR 10.A.2 T103: BLAKE3 defense-in-depth pin verification at test
-# time. `build_input_pin_test.rs` re-hashes `docs/CAPCO-2016.md` and
+# BLAKE3 defense-in-depth pin verification at test time.
+# `build_input_pin_test.rs` re-hashes `docs/CAPCO-2016.md` and
 # compares to `build_inputs::CAPCO_2016_MD_BLAKE3`. Protects against
 # `--offline` runs or cached `OUT_DIR` skipping the build.rs digest
 # recheck.
@@ -50,24 +50,24 @@ proptest = { workspace = true }
 # Constitution Principle II — capco integration tests assert against
 # `FixResult.source` (a `SecretBox<[u8]>`) via `expose_secret()`.
 secrecy = { workspace = true }
-# PR-4 test closeout (T118): parallel `LatticeExpectedFixture` sidecar
-# type local to `crates/capco/tests/lattice_corpus_runner.rs`. We
-# deserialize sidecars directly here instead of extending the
-# canonical `marque_test_utils::ExpectedFixture` shape (PM doc D-3).
+# Parallel `LatticeExpectedFixture` sidecar type local to
+# `crates/capco/tests/lattice_corpus_runner.rs`. Sidecars are
+# deserialized directly here instead of extending the canonical
+# `marque_test_utils::ExpectedFixture` shape.
 serde = { workspace = true }
 serde_json = { workspace = true }
-# PR 4b umbrella closeout (T143): compile-time lattice impl pin at
+# Compile-time lattice impl pin at
 # `crates/capco/tests/lattice_static_assertions.rs`. Mirrors the
 # `crates/ism/tests/send_sync.rs` precedent.
 static_assertions = { workspace = true }
 
 [build-dependencies]
-# Phase-D decoder priors are baked in at compile time from
+# Decoder priors are baked in at compile time from
 # `corpus/priors.json`. `serde_json` is a build-dep only — no runtime
-# JSON parsing on the decoder hot path (Constitution II, SC-008).
+# JSON parsing on the decoder hot path (Constitution II).
 serde_json = { workspace = true }
 # BLAKE3 verification of `docs/CAPCO-2016.md` at compile time per
-# Constitution VIII / Authoritative Source Fidelity (PR 10.A.2).
+# Constitution VIII / Authoritative Source Fidelity.
 # Build-only on the build.rs side; the runtime hash check at
 # `tests/build_input_pin_test.rs` declares its own `dev-dependencies`
 # entry below so both surfaces resolve their dependency
@@ -75,20 +75,19 @@ serde_json = { workspace = true }
 blake3 = { workspace = true }
 
 [features]
-# Phase-C–E feature gates.
+# Feature gates.
 #
 # - `corpus-override`: gate the CLI-only corpus override codepath. Must stay
 #   opt-in so the WASM artifact (which never enables this feature) compiles
-#   out the override surface entirely (Constitution III + FR-013 + T3).
-# - `corpus-harness`: enables the CAPCO corpus equivalence harness (SC-003
-#   byte-identical pre/post migration); consumed by integration tests under
-#   `crates/capco/tests/corpus_parity.rs` and the US1 quickstart walkthrough.
-# - `decoder-harness`: enables the Phase-D decoder accuracy harness
-#   (SC-004 ≥85% resolution); consumed by `crates/capco/tests/decoder_*.rs`
-#   and the US2 quickstart walkthrough.
+#   out the override surface entirely (Constitution III).
+# - `corpus-harness`: enables the CAPCO corpus equivalence harness
+#   (byte-identical pre/post migration); consumed by integration tests
+#   under `crates/capco/tests/corpus_parity.rs`.
+# - `decoder-harness`: enables the decoder accuracy harness
+#   (≥85% resolution); consumed by `crates/capco/tests/decoder_*.rs`.
 #
-# All three default to off. A build that enables none of them is identical in
-# behavior to pre-Phase-C.
+# All three default to off; a build that enables none of them has the
+# baseline behavior.
 default = []
 corpus-harness = []
 corpus-override = []

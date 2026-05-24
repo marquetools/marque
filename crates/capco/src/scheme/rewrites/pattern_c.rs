@@ -2,10 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-C Commit 3 — Pattern-C strip rows + UCNI NOFORN-promotion
-//! siblings. Lifted from the monolithic `rewrites.rs` per the issue
-//! #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! Pattern-C strip rows + UCNI NOFORN-promotion siblings.
 //!
 //! Declaration order is load-bearing: promote-before-strip for each
 //! UCNI pair so the promote predicate sees UCNI before the strip
@@ -28,7 +25,7 @@ use super::super::*;
 /// declaration order: LIMDIS, SBU, DOD UCNI (promote then strip),
 /// DOE UCNI (promote then strip), FOUO.
 pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
-    // PR 4b-C Commit 3 — Pattern-C strip rows.
+    // Pattern-C strip rows.
     //
     // FOUO classified-strip: reads classification (gate) only;
     // writes DISSEM (FactRemove FOUO). The FOUO-presence scan
@@ -37,8 +34,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // same-axis self-reference cycle in Kahn's algorithm (the row
     // is a DISSEM-writer). §H.8 p134.
     //
-    // Plan §3.4 risk #4 resolution: predicate-scan-vs-dataflow
-    // convention (same approach taken by PR 3b.B entries 5 / 6a / 6b).
+    // Predicate-scan-vs-dataflow convention.
     const PATTERN_C_FOUO_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const PATTERN_C_FOUO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
@@ -80,20 +76,20 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
 
     vec![
         // ===============================================================
-        // PR 4b-C Commit 3 — Pattern-C strip rows (5 rows + 2 promotes)
+        // Pattern-C strip rows (5 rows + 2 promotes)
         // ===============================================================
         //
         // Pattern C: classification-driven strip of UNCLASSIFIED-only
         // controls. The CAPCO authority lives across §H.6 (DOD/DOE
         // UCNI), §H.8 (FOUO), and §H.9 (LIMDIS, SBU). Each row carries
-        // its own §-citation thread per D13 single-§-citation
+        // its own §-citation thread per single-§-citation
         // discipline. The five strip rows fire when a classified
         // portion appears on the page alongside the U-only control;
         // the two UCNI rows additionally promote NOFORN per §H.6's
         // explicit "less restrictive FD&R marking would otherwise be
         // conveyed" clause (the load-bearing pre-fix bug that the
-        // imperative pre-PR-4b-C UCNI classified-strip silently
-        // dropped — see Commit 2's regression test
+        // earlier imperative UCNI classified-strip silently
+        // dropped — see the regression test
         // `pattern_c_dod_ucni_classified_strip_promotes_noforn`).
         //
         // Trigger shape: all seven rows use `CategoryPredicate::Custom`
@@ -111,17 +107,16 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // CAT_DISSEM, so the FD&R-suppressor scan lives in the
         // predicate body (`dod_ucni_promotes_noforn_trigger`) instead
         // — declaring DISSEM only in `writes` avoids the
-        // manufactured-cycle case the plan §3.4 risk #4 names.
+        // manufactured-cycle case.
         //
         // Runtime execution gap: the seven rows are scheduler-
         // validated (Engine::new validates the intent payloads +
         // topological ordering) but execution-deferred. `Engine::lint`
-        // continues to drive banner validation through `PageContext`
-        // until PR 4b-D wires the lattice path. The post-Commit-5
-        // single source of truth is `scheme.project(Scope::Page, ...)`,
-        // which fires these rows.
+        // continues to drive banner validation directly until the
+        // lattice path is wired. `scheme.project(Scope::Page, ...)` is
+        // the single source of truth that fires these rows.
         //
-        // §3.5 compound-NF guard: `TOK_SBU` triggers match ONLY
+        // Compound-NF guard: `TOK_SBU` triggers match ONLY
         // `NonIcDissem::Sbu` (the bare variant). `NonIcDissem::SbuNf`
         // is a distinct variant carrying NOFORN identity via the
         // existing `capco/sbu-nf-implies-noforn` rewrite; Pattern C
@@ -129,7 +124,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // `sbu_classified_trigger` predicate explicitly matches
         // `NonIcDissem::Sbu` (not `SbuNf`).
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // Verified against `crates/capco/docs/CAPCO-2016.md`
         // (each §-citation re-verified at authorship per
         // Constitution VIII).
 
@@ -140,7 +135,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // and classified portions, LIMDIS is not used in the
         // banner line."
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/limdis-evicted-by-classified",
             capco(SectionLetter::H, 9, 170),
@@ -159,7 +154,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // and classified portions, SBU is not used in the banner
         // line."
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/sbu-evicted-by-classified",
             capco(SectionLetter::H, 9, 176),
@@ -180,17 +175,15 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // portion mark; however a NOFORN marking must be added to
         // the portion mark, e.g., (C//NF)."
         //
-        // The §3.5 compound-NF guard previously excluded SBU-NF
-        // from Pattern-C strip handling on the (correct) reasoning
-        // that the parallel `capco/sbu-nf-implies-noforn` Pattern-A
-        // row carries NF identity separately. The carve-out for
-        // SBU-NF on classified pages comes from §H.9 p178's
-        // explicit "SBU is not reflected" prescription — the SBU-NF
-        // compound token MUST be stripped to converge to (C//NF)
-        // rather than (C//SBU-NF) or (C//NF//SBU). See
-        // `sbu_nf_classified_trigger` and `apply_fact_remove`'s
-        // CAT_NON_IC_DISSEM arm for the §3.5 invariant's revised
-        // shape.
+        // The compound-NF guard excludes SBU-NF from generic
+        // Pattern-C strip handling because the parallel
+        // `capco/sbu-nf-implies-noforn` Pattern-A row carries NF
+        // identity separately. The carve-out for SBU-NF on classified
+        // pages comes from §H.9 p178's explicit "SBU is not reflected"
+        // prescription — the SBU-NF compound token MUST be stripped to
+        // converge to (C//NF) rather than (C//SBU-NF) or (C//NF//SBU).
+        // See `sbu_nf_classified_trigger` and `apply_fact_remove`'s
+        // CAT_NON_IC_DISSEM arm.
         //
         // The asymmetric LES-NF case (§H.9 p185 explicitly retains
         // LES on classified pages) does NOT get a
@@ -261,14 +254,14 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // FD&R marking would otherwise be conveyed" condition).
         // The check lives in the predicate body so we DO NOT
         // declare CAT_DISSEM as a read, preventing a same-axis
-        // self-reference (Plan §3.4 risk #4 resolution).
+        // self-reference.
         //
         // Action: FactAdd TOK_NOFORN, Scope::Page. Idempotent via
         // `apply_fact_add`'s CAT_DISSEM arm — if NOFORN is somehow
         // already present (e.g., via a parallel FactAdd intent),
         // the add is a per-intent no-op.
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/dod-ucni-promotes-noforn-when-classified",
             capco(SectionLetter::H, 6, 116),
@@ -291,12 +284,12 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // DodUcni variant; `apply_fact_remove`'s CAT_AEA arm does
         // not yet handle UCNI variant discrimination (TOK_UCNI is
         // a single sentinel covering both DodUcni and DoeUcni;
-        // separating them would require a sentinel-payload extension
-        // out of scope for PR 4b-C). The Custom-action route works
+        // separating them would require a sentinel-payload extension).
+        // The Custom-action route works
         // around this cleanly and the same path lands the DOE row
         // (row 6).
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/dod-ucni-evicted-by-classified",
             capco(SectionLetter::H, 6, 116),
@@ -318,7 +311,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Same promote-before-strip declaration order as the DOD
         // UCNI pair (rows 3 + 4).
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/doe-ucni-promotes-noforn-when-classified",
             capco(SectionLetter::H, 6, 118),
@@ -337,7 +330,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // promote row so the promote sees DoeUcni before this row
         // strips it.
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/doe-ucni-evicted-by-classified",
             capco(SectionLetter::H, 6, 118),
@@ -354,15 +347,15 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //    information, the FOUO marking is not used in the
         //    banner line."
         //
-        // Pattern-B's `capco/non-fdr-control-evicts-fouo` row (PR 4b-C
-        // Commit 4) covers the complementary "U + other non-FD&R
+        // Pattern-B's `capco/non-fdr-control-evicts-fouo` row covers
+        // the complementary "U + other non-FD&R
         // control" case from the same §H.8 p134 passage; the two
         // rows are scheduler-siblings (both write CAT_DISSEM
         // FactRemove FOUO) and their FactRemove intents are
         // idempotent — running both on a `(S//FOUO + other-non-FDR)`
         // page is a per-intent no-op on the second invocation.
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/fouo-evicted-by-classified",
             capco(SectionLetter::H, 8, 134),

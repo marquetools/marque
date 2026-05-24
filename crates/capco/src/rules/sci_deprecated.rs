@@ -27,14 +27,14 @@ use marque_scheme::{Citation, SectionLetter, capco};
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Deprecated SCI long-form canonicalization walker (T135a)
+// Deprecated SCI long-form canonicalization walker
 // ---------------------------------------------------------------------------
 //
 // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
 //
 // The walker matches deprecated SCI long-form tokens in
 // `attrs.token_spans` against a static catalog and emits canonicalization
-// fixes. The matching tokens are emitted by Commit 2's
+// fixes. The matching tokens are emitted by
 // `recognize_deprecated_sci_long_form` in `marque-core::parser`, which
 // preserves source bytes verbatim in `TokenSpan.text` so the walker can
 // detect the deprecated form and propose its canonical replacement.
@@ -63,17 +63,15 @@ struct DeprecatedSciRow {
     /// Canonical replacement strategy.
     replacement: ReplacementKind,
     /// Diagnostic message string — mirror manual wording verbatim where
-    /// the manual carries a direct passage. PR 3c.2.C C5 retired the
-    /// emission path through this field; the field stays alive as
-    /// documentation citation-lint can read at compile time. Audit
-    /// records carry only [`MessageTemplate::SupersededToken`] +
-    /// `MessageArgs::default()` per Constitution V Principle V.
+    /// the manual carries a direct passage. The emission path does not
+    /// go through this field; it stays alive as documentation
+    /// citation-lint can read at compile time. Audit records carry only
+    /// [`MessageTemplate::SupersededToken`] + `MessageArgs::default()`
+    /// (Constitution V).
     #[allow(dead_code)] // Retained for documentation + citation-lint scanning.
     message: &'static str,
     /// Typed authoritative-source citation. Verified against
     /// `crates/capco/docs/CAPCO-2016.md` (Constitution Principle VIII).
-    /// PR 10.A.1 consolidated the dual-track `citation: &'static str` +
-    /// `citation_typed: Citation` design into this single typed field.
     citation: Citation,
 }
 
@@ -400,7 +398,7 @@ pub(crate) struct DeprecatedSciLongFormRule;
 /// [`DEPRECATED_SCI_LONG_FORM_CATALOG`]. The walker registers under
 /// `capco:portion.sci.deprecated-long-form` and per-row IDs travel on
 /// emitted diagnostics via the row metadata. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate contract.
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate contract.
 const E065_AUTHORITIES: &[Citation] = &[
     // HUMINT / HUMINT CONTROL SYSTEM → HCS (§H.4 p62).
     capco(SectionLetter::H, 4, 62),
@@ -452,10 +450,10 @@ impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
         for token_span in attrs.token_spans.iter() {
             // Only consider tokens that the parser tagged as SCI controls
             // — `recognize_deprecated_sci_long_form` always emits the
-            // deprecated long form under `TokenKind::SciControl` (see
-            // Commit 2). Filtering here prevents the walker from
-            // accidentally firing on, e.g., a free-text comment block
-            // that happens to contain the bytes `HUMINT`.
+            // deprecated long form under `TokenKind::SciControl`.
+            // Filtering here prevents the walker from accidentally firing
+            // on, e.g., a free-text comment block that happens to contain
+            // the bytes `HUMINT`.
             if token_span.kind != TokenKind::SciControl {
                 continue;
             }
@@ -511,9 +509,9 @@ fn emit_diagnostic(
     rule_id: RuleId,
     compartment: Option<&str>,
 ) -> Diagnostic<CapcoScheme> {
-    // PR 3c.2.C C5: all branches emit the typed
-    // `MessageTemplate::SupersededToken` per the deprecation-class.
-    // The narrative `row.message` lives as documentation only.
+    // All branches emit the typed `MessageTemplate::SupersededToken`
+    // per the deprecation-class. The narrative `row.message` lives as
+    // documentation only.
     let message = Message::new(MessageTemplate::SupersededToken, MessageArgs::default());
     match row.replacement {
         ReplacementKind::Static(canonical) => Diagnostic::text_correction(
@@ -586,11 +584,11 @@ fn emit_diagnostic(
                     )
                 }
                 None => {
-                    // G13: drop the runtime `comp` interpolation; the
-                    // unrecognized-compartment class is captured by
-                    // MessageTemplate::SupersededToken (the upstream
-                    // form is deprecated regardless of compartment
-                    // recognition).
+                    // Audit content-ignorance: the runtime `comp` is not
+                    // interpolated; the unrecognized-compartment class is
+                    // captured by MessageTemplate::SupersededToken (the
+                    // upstream form is deprecated regardless of
+                    // compartment recognition).
                     let _ = comp;
                     Diagnostic::info(rule_id, Severity::Warn, span, message, row.citation)
                 }

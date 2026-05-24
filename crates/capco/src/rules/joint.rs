@@ -23,22 +23,19 @@ use crate::lattice::JointSet;
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Rule: S003 — joint-usa-first (style)
+// Rule: joint-usa-first (style)
 // ---------------------------------------------------------------------------
 
-/// S003: Prefer USA first in JOINT country lists.
+/// Prefer USA first in JOINT country lists.
 ///
 /// # Authority: convention, not §H.3
 ///
 /// CAPCO-2016 §H.3 p56 prescribes **pure alphabetical** order
 /// for JOINT country lists ("Country trigraph codes are listed
 /// alphabetically followed by tetragraph codes in alphabetical order").
-/// The section has NO USA-first carve-out. Prior to PR #97 / T035c-18,
-/// the pre-decomposition JOINT fix path (then E020, later folded into
-/// E060 — both retired) incorrectly elevated USA to the front — that
-/// was an authority-drift violation of Constitution VIII. #97 narrowed
-/// the JOINT canonicalization path to pure alpha; PR 3c.B Commit 6
-/// retired the rule-side path entirely into `render_classification.rs`.
+/// The section has NO USA-first carve-out. JOINT country-list
+/// canonicalization (pure-alpha per §H.3 p56) lives in the renderer
+/// (`render_classification.rs`), not in a rule.
 ///
 /// However, every other US-authored country list **does** lead with
 /// USA — REL TO §H.8 pp 150–151 is explicit ("After 'USA',
@@ -47,91 +44,71 @@ use crate::scheme::CapcoScheme;
 /// convention that extends this REL-TO pattern across all
 /// country-list contexts, even where CAPCO is silent.
 ///
-/// S003 encodes that convention as a **style rule** (`Severity::Info`
+/// This rule encodes that convention as a **style rule** (`Severity::Info`
 /// by default). It does not claim §H.3 authority; the rule doc and
 /// diagnostic citation make the "convention, not mandate" framing
-/// explicit. Orgs that want strict §H.3 conformance can disable S003
-/// via `S003 = "off"` in `.marque.toml`. Orgs that want USA-first
-/// auto-applied can configure `S003 = "fix"`.
+/// explicit. Orgs that want strict §H.3 conformance can disable the rule
+/// in `.marque.toml`; orgs that want USA-first auto-applied can set it to
+/// `"fix"`.
 ///
 /// # Predicate
 ///
 /// Fires on a banner-context `MarkingClassification::Joint` when the
 /// country list contains USA AND USA is NOT the first country. The
-/// rule only fires on banners (matching S001/S002's banner-only
-/// scope) — portion-form JOINT is rarely used, and applying
-/// convention-based style to portions is a judgment call best
+/// rule only fires on banners — portion-form JOINT is rarely used, and
+/// applying convention-based style to portions is a judgment call best
 /// deferred.
 ///
 /// # Interaction with the renderer's canonical JOINT ordering
 ///
-/// JOINT country-list canonicalization is no longer a rule-side
-/// concern: the renderer (`MarkingScheme::render_canonical`) owns it,
-/// emitting **pure-alphabetical** order per §H.3 p56. S003 is the only
-/// surviving rule that touches JOINT ordering, and it layers the IC
-/// USA-first *convention* above that renderer default. The two compose
-/// cleanly because S003 runs at the rule layer and the renderer runs at
-/// fix-application time:
+/// JOINT country-list canonicalization is a renderer concern, not a
+/// rule one: `MarkingScheme::render_canonical` emits
+/// **pure-alphabetical** order per §H.3 p56. This rule is the only one
+/// that touches JOINT ordering, layering the IC USA-first *convention*
+/// above the renderer default. The two compose cleanly because the rule
+/// runs at the rule layer and the renderer runs at fix-application time:
 ///
-/// - S003 fires first (Info by default) on a banner JOINT list that
+/// - The rule fires first (Info by default) on a banner JOINT list that
 ///   contains USA out of first position, emitting a
 ///   `Recanonicalize { RecanonScope::Page }` fix intent.
-/// - If S003's fix is applied (org configures `S003 = "fix"`), the
-///   engine invokes `MarkingScheme::render_canonical`, which re-renders
-///   the JOINT block; the convention-bearing intent reaches the
-///   renderer as the canonical target, so the downstream canonical
-///   form respects USA-first.
-/// - If S003 is configured `off`, no JOINT-ordering rule fires and the
+/// - If the fix is applied (org configures `"fix"`), the engine invokes
+///   `MarkingScheme::render_canonical`, which re-renders the JOINT
+///   block; the convention-bearing intent reaches the renderer as the
+///   canonical target, so the downstream canonical form respects
+///   USA-first.
+/// - If the rule is configured off, no JOINT-ordering rule fires and the
 ///   renderer produces pure-alphabetical order per §H.3 p56 — the
 ///   strict-conformance default.
 ///
-/// There is no longer a competing JOINT-ordering rule, so no rule-id
-/// overlap guard or FR-016 tiebreaker applies to this list type; S003
-/// is the sole owner of the USA-first convention layer.
+/// No competing JOINT-ordering rule exists, so no rule-id overlap guard
+/// or fix-ordering tiebreaker applies to this list type; this is the
+/// sole owner of the USA-first convention layer.
 ///
-/// (Pre-PR-3b.F this was E020; PR 3b.F retired E020 into the E060
-/// walker, which preserved the same fix shape and citation but
-/// changed the rule-ID. PR 3c.B Commit 6 retired E060 entirely into
-/// the renderer, where JOINT pure-alpha canonicalization now lives.)
+/// # Audit content-ignorance
 ///
-/// # Constitution V audit-content-ignorance
-///
-/// The message at lines below interpolates `joined_actual_str` and
-/// `joined_canonical_str`, both derived from
-/// `CountryCode::as_str()` over the *parsed* country list — those
-/// strings are CVE-canonical trigraphs (`USA`, `GBR`, `CAN`, …)
-/// drawn from the closed ODNI `CVEnumISMCATRelTo` set, **not**
-/// document text. Post-Commit-10 the audit record carries no
-/// document bytes for this path: the `Diagnostic.fix` field is a
-/// `FixIntent` whose `replacement` is
+/// The diagnostic and fix-intent messages carry no document bytes: the
+/// `Diagnostic.fix` field is a `FixIntent` whose `replacement` is
 /// `Recanonicalize { RecanonScope::Page }`, the `Confidence` is a
-/// scalar, and the `Message` is a closed template + closed args.
-/// The pre-Commit-10 `FixProposal.original` byte channel retired
-/// with the `mvp-2 → mvp-3` schema flip; the structural payload
-/// closes G13 by construction at this rule's emission site.
+/// scalar, and the `Message` is a closed template + closed args. The
+/// structural payload keeps document text out of the audit record by
+/// construction (Constitution V).
 pub(super) struct JointUsaFirstRule;
 
-/// S003 secondary CAPCO §-citations.
+/// Secondary CAPCO §-citation for this rule.
 ///
-/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
-/// pre-migration string form `"CAPCO-2016 §H.3 p56 + §H.8 pp 150-151 (IC convention)"`
-/// into a single `capco(SectionLetter::H, 3, 56)` value on the emitted
-/// diagnostic. The cross-reference to §H.8 p150 (REL TO USA-first
-/// convention — the analogous IC convention S003 layers above §H.3's
-/// pure-alpha JOINT default) survived in the rule's doc-comment but
-/// was un-checked. This constant pins the dropped cross-reference
-/// structurally.
+/// The typed `Citation` on the emitted diagnostic carries one passage
+/// (§H.3 p56). This constant pins the cross-reference to §H.8 p150 (the
+/// REL TO USA-first convention this rule ports to JOINT classifications)
+/// structurally, so a regression that loses the connection still fails a
+/// test rather than only mutating a doc-comment.
 ///
-/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
-/// Commit 4 authorship per Constitution VIII propagation rule: §H.8
-/// pp 150-151 establish the REL TO USA-first convention ("USA first,
-/// remaining trigraphs alphabetical") that S003 ports to JOINT
-/// classifications. Anchor citation uses p150 since typed `Citation`
-/// holds a single page; the range "pp 150-151" lives in the rule
-/// doc-comment.
+/// §H.8 pp 150-151 establish the REL TO USA-first convention ("USA
+/// first, remaining trigraphs alphabetical"). The anchor uses p150 since
+/// typed `Citation` holds a single page; the range "pp 150-151" lives in
+/// the rule doc-comment.
 ///
-/// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale —
-/// this is rule-authoritative metadata read by
+/// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the
+/// rationale — this is rule-authoritative metadata read by
 /// `citation_cross_refs_tests` (bottom of this file). The runtime
 /// `Rule::cited_authorities()` surface reads [`JOINT_USA_FIRST_AUTHORITIES`]
 /// instead, which combines the primary `§H.3 p56` anchor with the
@@ -139,10 +116,10 @@ pub(super) struct JointUsaFirstRule;
 #[allow(dead_code)]
 pub(crate) const JOINT_USA_FIRST_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
-/// Citations S003 may emit on diagnostics. Primary anchor §H.3 p56
+/// Citations this rule may emit on diagnostics. Primary anchor §H.3 p56
 /// (the JOINT pure-alpha rule the IC convention layers above) plus
-/// the §H.8 p150 REL TO precedent S003 ports forward. See
-/// [`Rule::cited_authorities`] for the F.1 gate contract.
+/// the §H.8 p150 REL TO precedent it ports forward. See
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate contract.
 const JOINT_USA_FIRST_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 3, 56),
     capco(SectionLetter::H, 8, 150),
@@ -193,9 +170,9 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         }
 
         // Locate the `Classification` token to anchor the diagnostic
-        // span; the replacement-bytes computation retired with the
-        // mvp-3 cutover (`MarkingScheme::render_canonical` produces
-        // canonical JOINT bytes at fix-application time).
+        // span; `MarkingScheme::render_canonical` produces the canonical
+        // JOINT bytes at fix-application time, so no replacement bytes
+        // are computed here.
         let Some(classification_tok) = attrs
             .token_spans
             .iter()
@@ -204,11 +181,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             return vec![];
         };
 
-        // G13: drop the runtime country lists from the message;
-        // they appeared in the format!-built string but are document
-        // bytes by way of `j.countries.iter().map(|t| t.as_str())`.
-        // The typed `Message` identifies the ordering-violation class
-        // for the JOINT axis.
+        // Audit content-ignorance: the message carries no runtime
+        // country lists (those would be document bytes). The typed
+        // `Message` identifies the ordering-violation class for the
+        // JOINT axis.
         //
         // Build the category-bearing `Message` once and clone it for
         // both the parent diagnostic and the `FixIntent` (#739). Both
@@ -217,15 +193,15 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         // FixIntent-mirrors-parent convention in `nato.rs`
         // (`WrongTokenForm` + `token`) and `dissem_closure.rs`
         // (`RequiredByPresence`). Dropping `category` from only the
-        // FixIntent message lost the JOINT axis context for any
+        // FixIntent message would lose the JOINT axis context for any
         // consumer that reads `FixIntent.message` rather than the
         // parent `Diagnostic.message`.
         //
-        // G13 (Constitution V Principle V): `CAT_JOINT_CLASSIFICATION`
-        // is a `CategoryId` constant — a permitted audit identifier,
-        // not document content. `MessageTemplate::NonCanonicalOrder`
-        // documents `category` as its arg ("which axis is out of
-        // order"), so the category is meant to flow through.
+        // `CAT_JOINT_CLASSIFICATION` is a `CategoryId` constant — a
+        // permitted audit identifier, not document content.
+        // `MessageTemplate::NonCanonicalOrder` documents `category` as
+        // its arg ("which axis is out of order"), so the category is
+        // meant to flow through (Constitution V).
         let message = Message::new(
             MessageTemplate::NonCanonicalOrder,
             MessageArgs {
@@ -234,10 +210,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             },
         );
 
-        // PR 3c.B Commit 10 — structural FixIntent only. JOINT
-        // classification rendering is a page-scope concern (the
-        // banner-line classification axis); the convention is layered
-        // above the renderer's §H.3 pure-alpha default.
+        // Structural FixIntent only. JOINT classification rendering is a
+        // page-scope concern (the banner-line classification axis); the
+        // convention is layered above the renderer's §H.3 pure-alpha
+        // default.
         //
         // Citation: §H.3 p56 prescribes pure alphabetical for JOINT
         // with no USA-first carve-out; S003 encodes the IC convention
@@ -271,20 +247,19 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
 }
 
 // ===========================================================================
-// W004 — JOINT producer-disunity collapse (issue #461 — Phase::PageFinalization)
+// JOINT producer-disunity collapse (issue #461)
 // ===========================================================================
 //
-// Authority (verified 2026-05-16 against CAPCO-2016.md):
+// Authority (verified against CAPCO-2016.md):
 // - §H.3 p57 (JOINT not carried to banner in US documents — Derivative
 //   Use bullets specify the FGI [LIST] migration trigger).
 // - §H.7 p123 (FGI source-acknowledged form — the grammar the
 //   migrated producers render under).
 //
-// Constitution V Principle V G13: the W004 diagnostic message MUST
-// NOT contain document text. Permitted identifiers: `CountryCode`
-// canonical trigraphs (vocabulary atoms), `Span` byte offsets,
-// category IDs. The message template below uses placeholders only
-// — no input bytes are interpolated.
+// Audit content-ignorance: the diagnostic message carries no document
+// text. Permitted identifiers: `CountryCode` canonical trigraphs
+// (vocabulary atoms), `Span` byte offsets, category IDs. The message
+// template uses placeholders only (Constitution V).
 
 /// JOINT producer-disunity collapse rule.
 ///
@@ -297,13 +272,11 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
 ///
 /// **Mixed JOINT + non-JOINT portions** (§H.3 p57 — "the JOINT
 /// marking is not carried forward to the banner line in US
-/// documents") do **NOT** fire W004. That case is `JointSet::Mixed`
-/// (C-3 PR 4b-B follow-up — was `Bottom` pre-split) and is handled
-/// by the existing PageContext-resident `expected_fgi_marker` path;
-/// no W004 diagnostic emits on `Mixed`.
+/// documents") do **NOT** fire this rule. That case is `JointSet::Mixed`
+/// and is handled by the existing PageContext-resident
+/// `expected_fgi_marker` path; no diagnostic emits on `Mixed`.
 ///
-/// Severity: `Warn` (per `feedback_dissem_conflicts_emit_subtractive_fix.md`,
-/// JOINT disunity is a subtractive-fix case).
+/// Severity: `Warn`. JOINT disunity is a subtractive-fix case.
 ///
 /// **Fix payload deferred.** The cross-axis JOINT → FGI [LIST]
 /// migration is a renderer-canonical concern, not a single-span text
@@ -313,31 +286,28 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
 /// FGI [LIST] elsewhere, and `Diagnostic::text_correction` /
 /// `ReplacementIntent::FactAdd` / `FactRemove` / `Recanonicalize` are
 /// all single-axis-scoped. The `MarkingScheme::render_canonical`
-/// trait surface (PR 5+ Stage 4) is the right home for this
-/// transformation. The W004 diagnostic surfaces the transformation
-/// today so users have an audit trail without an auto-applied fix.
+/// trait surface is the right home for this transformation. The
+/// diagnostic surfaces the transformation today so users have an audit
+/// trail without an auto-applied fix.
 ///
 /// Authority: §H.3 p57 (JOINT not carried to banner — Derivative
 /// Use bullets specify the FGI [LIST] migration trigger) + §H.7 p123
-/// (FGI grammar). Verified 2026-05-16 against
-/// `crates/capco/docs/CAPCO-2016.md`.
+/// (FGI grammar). Verified against `crates/capco/docs/CAPCO-2016.md`.
 ///
-/// **Phase: PageFinalization (issue #461).** Pre-#461 W004 declared
-/// `Phase::WholeMarking` and gated on `MarkingType::Banner`, which
-/// produced a documented false-negative on banner-first layouts (no
-/// closing banner → no Banner candidate ever runs against a
-/// non-empty PageContext) AND a 6th-pass false-positive on Mixed
-/// pages when the rule was briefly extended to Portion candidates
-/// (intermediate snapshot misread as DisunityCollapse before the
-/// final non-JOINT portion arrived). Phase::PageFinalization closes
-/// both: the engine dispatches W004 once per page on the page-level
-/// fixpoint snapshot, so banner-first layouts fire via the
-/// end-of-document path and Mixed-page false-positives don't recur.
+/// **Phase: PageFinalization.** The engine dispatches this rule once
+/// per page on the page-level fixpoint snapshot. Firing only on
+/// `MarkingType::Banner` would miss banner-first layouts (no closing
+/// banner means no Banner candidate runs against a non-empty
+/// PageContext); firing on Portion candidates would misread an
+/// intermediate snapshot as DisunityCollapse before the final
+/// non-JOINT portion arrived. PageFinalization avoids both: the rule
+/// fires exactly once per page on the closed state, so banner-first
+/// layouts fire via the end-of-document path and Mixed-page
+/// false-positives can't recur.
 pub(super) struct JointDisunityCollapseRule;
 
-/// Citations W004 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
-/// contract.
+/// Citations this rule may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate contract.
 const JOINT_DISUNITY_COLLAPSE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 3, 57)];
 
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {
@@ -350,17 +320,11 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-    /// Phase::PageFinalization (issue #461): observes the
-    /// page-level fixpoint snapshot of the classification axis. The
-    /// engine dispatches this rule once per page at every
-    /// scanner-emitted `MarkingType::PageBreak` BEFORE the
-    /// PageContext reset, plus once at end-of-document. The
-    /// pre-#461 Banner-only firing produced a documented
-    /// false-negative on banner-first layouts (closed by the EOD
-    /// path); the 6th-pass Portion-firing experiment produced a
-    /// Mixed-page false-positive (not recur under PageFinalization
-    /// because the rule fires exactly once per page on the closed
-    /// state).
+    /// Phase::PageFinalization: observes the page-level fixpoint
+    /// snapshot of the classification axis. The engine dispatches this
+    /// rule once per page at every scanner-emitted
+    /// `MarkingType::PageBreak` BEFORE the PageContext reset, plus once
+    /// at end-of-document.
     fn phase(&self) -> Phase {
         Phase::PageFinalization
     }
@@ -369,7 +333,7 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     /// a `format!` message synthesis using only `CountryCode` canonical
     /// trigraphs and a fixed §-citation. No mutable global state, no
     /// I/O, no allocation that could fail unexpectedly; the rule is
-    /// safe to skip `catch_unwind` per PR #448.
+    /// safe to skip `catch_unwind`.
     fn trusted(&self) -> bool {
         true
     }
@@ -385,18 +349,12 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // engine refactors that might relax the invariant; it should
         // never fire in production.
         //
-        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads the
-        // per-portion attrs slice rather than `ctx.page_marking`.
+        // This rule intentionally reads the per-portion attrs slice
+        // (`ctx.page_portions`) rather than `ctx.page_marking`.
         // `JointSet::from_attrs_iter` requires the per-portion
         // `CanonicalAttrs` slice that `ProjectedMarking` does not
         // expose (the JointSet `DisunityCollapse` state is structurally
-        // per-portion). Lifting `JointSet`'s derived state onto
-        // `ProjectedMarking` is post-PR-6c future work.
-        //
-        // PR 6c migration (T069): read `ctx.page_portions` (the
-        // `Box<[CanonicalAttrs]>` slice snapshot) instead of the
-        // retired `ctx.page_context` / `PageContext::portions()`
-        // accessor pair.
+        // per-portion).
         let Some(page_portions) = ctx.page_portions.as_ref() else {
             return vec![];
         };
@@ -413,7 +371,7 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
 
         // Render the producer set as canonical trigraphs, sorted
         // alphabetically. These are CountryCode vocabulary atoms;
-        // no document text leaks per Constitution V G13.
+        // no document text leaks (Constitution V).
         let producers_str: String = non_us
             .iter()
             .map(|c| c.as_str())
@@ -434,11 +392,10 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         //
         // Authority: §H.3 p57 (Derivative Use bullets specify the
         // FGI [LIST] migration trigger) + §H.7 p123 (FGI grammar).
-        // Re-verified 2026-05-16 against
-        // `crates/capco/docs/CAPCO-2016.md`.
-        // G13: drop the runtime `producers_str` interpolation. The
-        // typed `MessageTemplate::BannerRollupMismatch` with
-        // `category=CAT_JOINT_CLASSIFICATION` identifies the
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
+        // The runtime `producers_str` is not interpolated into the
+        // message. The typed `MessageTemplate::BannerRollupMismatch`
+        // with `category=CAT_JOINT_CLASSIFICATION` identifies the
         // collapse-to-FGI class. Typed Citation anchors at §H.3 p57
         // (Derivative Use FGI [LIST] migration trigger); the §H.7
         // p123 FGI grammar reference lives in the rule doc comment.
