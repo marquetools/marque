@@ -16,7 +16,7 @@ Three modes of operation over a text corpus, selected via `--mode`:
   markings, applies one of six labeled mangling transforms, and emits
   one JSON file per case under `tests/fixtures/mangled/<class>/` (see
   `tests/fixtures/mangled/README.md`). Required case count matches the
-  SC-004 gate (default `--min-cases 200`).
+  corpus-accuracy gate (default `--min-cases 200`).
 
 ## Quick Start
 
@@ -90,7 +90,7 @@ See `docs/plans/2026-04-16-probabilistic-recognition.md` for the full analysis a
 See `crates/capco/corpus/README.md` for the full schema contract. In
 short: `schema_version` (pinned; `build.rs` refuses unknown versions),
 `token_base_rates` (count + precomputed Laplace-smoothed `log_prior`),
-`template_base_rates`, and `strict_context_priors` (FR-011 floors).
+`template_base_rates`, and `strict_context_priors` (probability floors).
 Output floats are rounded to 6 decimal places for diff stability across
 runs with the same corpus.
 
