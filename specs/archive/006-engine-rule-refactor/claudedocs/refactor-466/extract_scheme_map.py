@@ -29,7 +29,6 @@ import re
 import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Iterable
 
 # ---------------------------------------------------------------------------
 # Configuration
