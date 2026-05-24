@@ -5,17 +5,13 @@
 //! Regression pin on the audit-schema accept-list and the active
 //! schema constant.
 //!
-//! Post T044 (atomic cutover) the accept-list contracts to a single
-//! value: `["marque-2.0"]`. T044 reshaped `RuleId` from a 1-tuple
-//! `&'static str` opaque newtype into a `(scheme, predicate_id)`
-//! 2-tuple and structured the audit-record `"rule"` JSON field
-//! accordingly; the pre-cutover `marque-1.0` shape is not
-//! interoperable with post-cutover binaries (clean break per
-//! FR-037). The earlier `mvp-1` / `mvp-2` / `mvp-3` shapes retired
-//! in PR 3c.2.D alongside the v2 `AppliedFix` reshape, BLAKE3
-//! digesting, closed `MessageTemplate` JSON serialization, and
-//! `Canonical<S>` provenance wiring, to close the G13 audit-
-//! content-ignorance channel structurally.
+//! The accept-list is a single value: `["marque-2.0"]`. Under that
+//! schema, `RuleId` is a `(scheme, predicate_id)` 2-tuple and the
+//! audit-record `"rule"` JSON field is structured accordingly; older
+//! record shapes are not interoperable with current binaries (clean
+//! break). The audit envelope carries a BLAKE3 digest, closed
+//! `MessageTemplate` JSON serialization, and `Canonical<S>` provenance,
+//! which structurally closes the audit content-ignorance channel.
 //!
 //! These tests pin both surfaces:
 //!
@@ -24,7 +20,7 @@
 //!   2. The build script's `ACCEPTED` literal matches the expected
 //!      shape — adding or removing a value must coordinate with
 //!      audit-emit paths, and a silent drift would weaken the
-//!      single-schema-per-build invariant (FR-014).
+//!      single-schema-per-build invariant.
 
 #[test]
 fn audit_schema_version_is_v2_0_by_default() {

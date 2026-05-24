@@ -2,19 +2,18 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-D.2 Pattern-D corpus fixtures.
+//! Closure-cone corpus fixtures.
 //!
 //! Companion to [`closure_hotpath.rs`]. Where `closure_hotpath.rs`
 //! pins the seven `CLOSURE_NOFORN_*` rows + idempotence/monotonicity
 //! laws + the `apply_fact_add` NOFORN-supersession routing, this
-//! file covers three additional Pattern-D scenarios called out in
-//! the PR 4b-D.2 spec:
+//! file covers three additional closure scenarios:
 //!
 //! - `closure_nato_rel_to_solely_nato`: closure injects USA/NATO
-//!   into REL TO silently (Severity::Info per D20) on a solely-NATO
-//!   page. S007 (the text-layer Severity::Suggest sibling) is
-//!   suppressed because there is no US-document context to emit a
-//!   text-layer suggestion against. Asserts via `scheme.project()`.
+//!   into REL TO silently (Severity::Info) on a solely-NATO page. S007
+//!   (the text-layer Severity::Suggest sibling) is suppressed because
+//!   there is no US-document context to emit a text-layer suggestion
+//!   against. Asserts via `scheme.project()`.
 //! - `closure_nato_rel_to_us_plus_nato`: US doc with a NATO portion.
 //!   The §H.7 pp123-125 reciprocal-raise flattens the NATO
 //!   classification to `Us(_)` at join time, so `TOK_NATO_CLASS` is
@@ -26,30 +25,20 @@
 //!   S007 owns the text-layer Severity::Suggest behavior for this
 //!   scenario, exercised end-to-end in
 //!   `crates/capco/tests/dissem_nato_*.rs`.
+//! - `closure_relido_unanimity`: confirms the RELIDO-observed-unanimity
+//!   overlay survives the hot-path projection. When every portion on a
+//!   page carries RELIDO, the projected marking keeps RELIDO; when some
+//!   portion doesn't, RELIDO is dropped at banner roll-up.
 //!
-//!   Copilot R1 review #6 fixed this doc — pre-fix the summary
-//!   claimed "Closure injects USA/NATO into REL TO" which is the
-//!   opposite of what the test actually verifies.
-//! - `closure_relido_unanimity`: confirms the PR 4b-B
-//!   RELIDO-observed-unanimity overlay survives the PR 4b-D.2 hot-path
-//!   flip. When every portion on a page carries RELIDO, the projected
-//!   marking keeps RELIDO; when some portion doesn't, RELIDO is
-//!   dropped at banner roll-up.
-//!
-//! Authority (re-verified 2026-05-17 against
-//! `crates/capco/docs/CAPCO-2016.md`):
+//! Authority (`crates/capco/docs/CAPCO-2016.md`):
 //! - §H.7 p127 + §G.2 Table 5 p40 — NATO REL TO closure cone.
 //! - §H.8 pp155-156 — RELIDO observed-unanimity at banner roll-up.
 //! - §H.7 pp123-125 — solely-NATO classification preservation (the
-//!   `pure_nato_both_paths_preserve_nato_variant` parity fixture,
-//!   established in PR 4b-B Commit 8 as `pure_nato_lattice_vs_pagecontext_diverges`
-//!   and renamed in PR 4b-E review fix-up to reflect post-deletion
-//!   convergence).
+//!   `pure_nato_both_paths_preserve_nato_variant` parity fixture).
 //!
 //! ### Why not JSON-file fixtures
 //!
-//! PR 4b-D.2's spec originally asked for `input.json` + `expected.ndjson`
-//! file siblings. `CanonicalAttrs` does not derive `serde::Serialize`
+//! `CanonicalAttrs` does not derive `serde::Serialize`
 //! (Constitution VII would require an out-of-scope cross-crate
 //! type-system change to add it); building a JSON-driven fixture format
 //! would require either inventing a Marque-source-to-attrs encoder or
@@ -234,14 +223,14 @@ fn closure_nato_rel_to_us_plus_nato() {
 }
 
 // ---------------------------------------------------------------------------
-// Pattern D fixture 7: closure_relido_unanimity
+// closure_relido_unanimity
 // ---------------------------------------------------------------------------
 
-/// PR 4b-B installed the RELIDO observed-unanimity overlay on
-/// `DissemSet`: at banner roll-up, RELIDO survives only if every
-/// portion on the page carries RELIDO (§H.8 pp155-156). This fixture
-/// confirms the overlay survives the PR 4b-D.2 hot-path flip — the
-/// production page-projection path (`scheme.project(Scope::Page, ...)`)
+/// `DissemSet` carries a RELIDO observed-unanimity overlay: at banner
+/// roll-up, RELIDO survives only if every portion on the page carries
+/// RELIDO (§H.8 pp155-156). This fixture confirms the overlay survives
+/// the hot-path projection — the production page-projection path
+/// (`scheme.project(Scope::Page, ...)`)
 /// must preserve the same supersession semantic the parity-gate
 /// fixtures (`crates/capco/tests/page_context_lattice_parity.rs`)
 /// already pin.

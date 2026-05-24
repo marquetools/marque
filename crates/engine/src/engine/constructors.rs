@@ -34,20 +34,18 @@ impl Engine {
         // a registered `Rule`. The user-supplied generic `scheme: S`
         // is `drop()`-ped below the corrections-map setup and
         // `bridge_scheme` becomes the engine's stored scheme (the
-        // `let scheme = bridge_scheme;` step) — see PR 3c.B Commit
-        // 7.2's silent-drop note inside that block for the broader
-        // design rationale.
+        // `let scheme = bridge_scheme;` step).
         let bridge_scheme = CapcoScheme::new();
 
         // Canonicalize [rules] overrides against the registered rule
-        // set: accept either the rule ID (e.g. "E001") or the rule
-        // name (e.g. "portion-mark-in-banner"), resolve both to the
-        // canonical ID before the engine stores the map, and hard-fail
+        // set: accept the wire-string rule ID, its predicate-id half,
+        // or the rule's descriptive name, resolve all to the canonical
+        // predicate id before the engine stores the map, and hard-fail
         // on any unknown key. See `canonicalize_rule_overrides`.
         canonicalize_rule_overrides(&mut config, &rule_sets, &bridge_scheme)?;
 
-        // PR 3c.B Sub-PR 8.F engine-prereq: validate every
-        // `CategoryAction::Intent` payload BEFORE scheduling. Reordering
+        // Validate every `CategoryAction::Intent` payload BEFORE
+        // scheduling. Reordering
         // matters when a rewrite table contains both an unroutable
         // Intent token AND a topological cycle: validate-first surfaces
         // the per-rewrite-id error (more actionable) instead of the
@@ -140,8 +138,8 @@ impl Engine {
 
         let scheme = bridge_scheme;
 
-        // PR 7a phase-partition walk (FR-021). Read every registered
-        // rule's declared `Phase` and partition the rule set into a
+        // Phase-partition walk. Read every registered rule's declared
+        // `Phase` and partition the rule set into a
         // pass-1 (Localized) list, a pass-2 (WholeMarking) list, and
         // (issue #461) a pass-finalization (PageFinalization) list,
         // each indexed by `(rule_set_index, rule_index_within_set)`.
@@ -218,8 +216,9 @@ impl Engine {
     /// without introducing trait-object dispatch.
     ///
     /// Prefer this helper in latency-sensitive strict-only paths (for
-    /// example SC-001 benchmark setups). Use [`Engine::with_recognizer`]
-    /// when installing a custom recognizer implementation.
+    /// example interactive-latency benchmark setups). Use
+    /// [`Engine::with_recognizer`] when installing a custom recognizer
+    /// implementation.
     ///
     /// ```ignore
     /// let engine = Engine::new(config, rules, scheme)?
@@ -234,17 +233,15 @@ impl Engine {
     /// Install a CLI-supplied corpus override. Only available when
     /// the engine is built with the `corpus-override` Cargo feature
     /// (CLI-only — `marque-server` rejects override input on every
-    /// channel per T066, and the WASM crate cannot enable the feature
-    /// at all per T067).
+    /// channel, and the WASM crate cannot enable the feature at all).
     ///
-    /// Phase 4 PR-5 minimal scope: the engine retains the override
-    /// for audit-annotation purposes only. Every subsequent decoder-
-    /// path fix produced by [`Engine::lint`] gets a
-    /// [`FeatureId::CorpusOverrideInEffect`] feature contribution
-    /// appended to its `Confidence.features` so an auditor can
-    /// identify fixes produced under organizational overrides vs.
-    /// stock priors. Substituting the override priors into the
-    /// decoder's prior-table lookup is the next-PR step.
+    /// Today the engine retains the override for audit-annotation
+    /// purposes only. Every subsequent decoder-path fix produced by
+    /// [`Engine::lint`] gets a [`FeatureId::CorpusOverrideInEffect`]
+    /// feature contribution appended to its `Confidence.features` so an
+    /// auditor can identify fixes produced under organizational
+    /// overrides vs. stock priors. Substituting the override priors into
+    /// the decoder's prior-table lookup is not yet implemented.
     #[cfg(feature = "corpus-override")]
     #[must_use = "with_corpus_override returns a new Engine; the result must be bound to take effect — `engine.with_corpus_override(o)` alone leaves the engine without an override installed"]
     pub fn with_corpus_override(
@@ -279,11 +276,11 @@ impl Engine {
 
     /// Borrow the engine's active marking scheme.
     ///
-    /// Used by the CLI / WASM audit-record renderers (PR 3c.2.D / D4)
-    /// to project [`AuditLine<CapcoScheme>`] values through the
-    /// scheme's [`Vocabulary`](marque_scheme::Vocabulary) and
+    /// Used by the CLI / WASM audit-record renderers to project
+    /// [`AuditLine<CapcoScheme>`] values through the scheme's
+    /// [`Vocabulary`](marque_scheme::Vocabulary) and
     /// [`MarkingScheme::categories`](marque_scheme::MarkingScheme::categories)
-    /// surfaces for the `marque-1.0` JSON shape. Off the lint/scan
+    /// surfaces for the audit JSON shape. Off the lint/scan
     /// hot path — purely a wire-format projection helper.
     pub fn scheme(&self) -> &CapcoScheme {
         &self.scheme

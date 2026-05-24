@@ -142,7 +142,7 @@ fn classify_segment(seg: &str) -> SegmentClass {
         // NATO classification abbreviations (single-token forms).
         // The five legacy compound forms (CTSA / NSAT / NCA / CTS-B /
         // CTS-BALK) stay in the decoder recognition set because the
-        // strict parser, post-PR-9c.1 T134, canonicalizes them into
+        // strict parser canonicalizes them into
         // bare class + AEA/SCI companion writes (CAPCO-2016 §H.7 p122
         // for ATOMAL → AEA; §G.2 p40 + §H.7 p127 for BALK/BOHEMIA →
         // SCI). The E066 autofix rule then surfaces the text-level
@@ -343,12 +343,12 @@ pub(in crate::decoder) fn try_add_non_us_prefix(text: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// FR-011 strict-context floor
+// Strict-context classification floor
 // ---------------------------------------------------------------------------
 
 /// True when `marking`'s classification level is ≥ `floor`.
 ///
-/// FR-011 invariant. `floor` is the `Classification as u8` encoding
+/// `floor` is the `Classification as u8` encoding
 /// (Unclassified=0 … TopSecret=4) — see [`ParseContext::classification_floor`].
 ///
 /// A marking with no classification info cannot clear a non-trivial

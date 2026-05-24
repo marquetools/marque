@@ -40,7 +40,7 @@ pub(super) struct ScoredCandidate {
     /// The dispatch logic in `DecoderRecognizer::recognize` §6
     /// compares this against [`Self::posterior`] for the top
     /// candidate. When `null_posterior > posterior` the decoder
-    /// returns zero candidates (FR-015 — prose wins the null
+    /// returns zero candidates (prose wins the null
     /// hypothesis competition, no fix is emitted). When
     /// `null_posterior <= posterior` the null hypothesis becomes a
     /// virtual runner-up that flows into `recognition_score`.
@@ -99,7 +99,7 @@ pub(super) fn feature_entry_to_evidence(f: &FeatureEntry) -> EvidenceFeature {
 /// strings fit in 64 bytes (portion shapes are tiny; banners can
 /// spill to the heap when REL TO grows long) and most attempts record
 /// 1–4 features. The inline path saves a per-attempt heap allocation
-/// on the deep-scan latency budget (SC-002).
+/// on the deep-scan latency budget.
 pub(super) struct CanonicalAttempt {
     pub(super) bytes: SmallVec<[u8; 64]>,
     pub(super) features: SmallVec<[FeatureEntry; 4]>,

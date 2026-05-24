@@ -64,7 +64,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
     ) -> Parsed<CapcoMarking> {
         // Strict-path callers get zero candidates so the engine's
         // strict recognizer remains the authoritative answer under
-        // interactive-authoring latency (SC-001). The engine only
+        // interactive-authoring latency. The engine only
         // invokes the decoder when `strict_evidence = false` is
         // explicitly requested (deep-scan mode or rule-escalated
         // region).
@@ -197,12 +197,9 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 }
 
                 // Canonicalization seam: `MarkingScheme::canonicalize`
-                // is the sole `ParsedAttrs → CanonicalAttrs` route per
-                // FR-043 (the transitional
-                // `marque_ism::from_parsed_unchecked` adapter has been
-                // retired). The recognizer receives the scheme via
-                // the `&S` parameter threaded through `recognize()`
-                // after issue #634 landed.
+                // is the sole `ParsedAttrs → CanonicalAttrs` route. The
+                // recognizer receives the scheme via the `&S` parameter
+                // threaded through `recognize()` (issue #634).
                 let mut attrs = scheme.canonicalize(parsed.attrs);
 
                 // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
@@ -259,7 +256,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 continue;
             }
 
-            // 3d. FR-011 — drop candidates below the page's strict
+            // 3d. Drop candidates below the page's strict
             //     classification floor.
             if let Some(floor) = cx.classification_floor
                 && !meets_classification_floor(&marking, floor)
@@ -485,8 +482,8 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             // more likely prose than any of the recovery candidates
             // (e.g., `(s)` mid-sentence in Federalist 10). Return
             // zero-candidate Ambiguous so the engine emits no
-            // diagnostic and no auto-fix. FR-015: "we see signal,
-            // can't resolve."
+            // diagnostic and no auto-fix — the honest "we see signal,
+            // can't resolve" outcome.
             return Parsed::Ambiguous {
                 candidates: Vec::new(),
             };

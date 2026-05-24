@@ -292,18 +292,16 @@ pub(super) fn dispatch_page_finalization(
     // `Box<[_]>` with no `&mut` API, so a conformant rule cannot
     // violate the contract through the public API; the sentinel is
     // a static guard against future API changes that would open a
-    // mutation path. See
-    // `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
+    // mutation path.
     //
-    // **Sibling sentinel (PR 4b-D.2).** The closure-operator's
-    // rewrite-application site now lives in `CapcoScheme::project`
+    // **Sibling sentinel.** The closure-operator's
+    // rewrite-application site lives in `CapcoScheme::project`
     // (`crates/capco/src/scheme/marking_scheme_impl.rs`), where it
     // sits between the `join_via_lattice` composition and the
     // declarative PageRewrite catalog. That site carries its own
     // `#[cfg(debug_assertions)]` snapshot-and-compare against the raw
     // per-portion CanonicalAttrs slice it observes, asserting the
-    // closure's read-only-attrs invariant per
-    // `docs/plans/2026-05-01-lattice-design.md` §3 (e.1). The two
+    // closure's read-only-attrs invariant. The two
     // sentinels cover different invocation contexts: this one fires
     // around `Phase::PageFinalization` rule dispatch (where rules
     // read `ctx.page_portions`); the scheme-side sentinel fires
@@ -405,8 +403,8 @@ pub(super) fn dispatch_page_finalization(
     // (`left: {left:?} right: {right:?}`) regardless of any custom
     // message. That would dump both `&[CanonicalAttrs]` slices —
     // token IDs, span offsets, country lists, AEA blocks — into the
-    // panic output, violating G13 (Constitution V Principle V:
-    // audit-content-ignorance). The helper-returns-`String` shape
+    // panic output, violating audit content-ignorance (Constitution V
+    // Principle V). The helper-returns-`String` shape
     // formats only counts + indices; debug builds may still run in
     // classified-content environments.
     //
@@ -430,40 +428,27 @@ pub(super) fn dispatch_page_finalization(
 /// [`marque_ism::ProjectedMarking`] via the scheme's production
 /// page-projection path.
 ///
-/// PR 4b-D.2 flipped the hot path from `PageContext::project()` (the
-/// transitional PageContext-driven projection) to
-/// `scheme.project(Scope::Page, ...)` (the lattice + closure +
-/// PageRewrite pipeline). The bridge from `CanonicalAttrs` to
+/// The hot path runs `scheme.project(Scope::Page, ...)` (the lattice +
+/// closure + PageRewrite pipeline). The bridge from `CanonicalAttrs` to
 /// `ProjectedMarking` lives in `marque_ism::ProjectedMarking::from_canonical`
 /// so the scheme crate and the engine crate share one source of truth.
 ///
-/// Authorization: this helper centralizes the projection-call shape
-/// shared by the primary lazy-init in `Engine::lint` (around the
-/// banner/CAB candidate dispatch) and the secondary
-/// `dispatch_page_finalization` initialization. Both sites need the
-/// scheme handle to drive the lattice path; passing `scheme` and
-/// the accumulator slice here keeps the closure capture minimal at
-/// each call site and avoids duplicating the per-portion conversion
-/// logic.
+/// This helper centralizes the projection-call shape shared by the
+/// primary lazy-init in `Engine::lint` (around the banner/CAB candidate
+/// dispatch) and the secondary `dispatch_page_finalization`
+/// initialization. Both sites need the scheme handle to drive the
+/// lattice path; passing `scheme` and the accumulator slice here keeps
+/// the closure capture minimal at each call site and avoids duplicating
+/// the per-portion conversion logic.
 ///
-/// PR 4b-D.2 Copilot R1 #5: this helper lives BELOW
-/// `dispatch_page_finalization` so its doc-comment doesn't run into
-/// the dispatch function's `# Returns` block. The placement is purely
-/// for doc-attribution clarity.
-///
-/// PR 6c (T069) flattened the parameter from `&PageContext` to
-/// `&[CanonicalAttrs]` so the caller no longer needs to construct
-/// the intermediate accumulator type.
-///
-/// Authority: `docs/plans/2026-05-01-lattice-design.md` §4.7.4
-/// pipeline ordering.
+/// The parameter is a `&[CanonicalAttrs]` so the caller does not need to
+/// construct an intermediate accumulator type.
 pub(super) fn project_page_marking(
     scheme: &CapcoScheme,
     page_join_acc: &marque_ism::CanonicalAttrs,
 ) -> marque_ism::ProjectedMarking {
-    // PR 4b-D.2 Commit 7 perf optimization: route through
-    // `CapcoScheme::project_from_attrs_slice`, the engine fast-path
-    // that consumes the per-page accumulator slice directly.
+    // Route through `CapcoScheme::project_from_attrs_slice`, the engine
+    // fast-path that consumes the per-page accumulator slice directly.
     //
     // Issue #306 (O(N²) fix): the caller now passes the pre-computed
     // incremental join accumulator (`page_join_acc`) rather than the
@@ -477,19 +462,18 @@ pub(super) fn project_page_marking(
 
 /// Compare two `CanonicalAttrs` slices for the PageFinalization
 /// read-only-attrs sentinel. Returns `Ok(())` on equality,
-/// `Err(msg)` with a G13-compliant diagnostic message on mismatch
+/// `Err(msg)` with a content-ignorant diagnostic message on mismatch
 /// (counts + indices only — never portion content).
 ///
 /// Debug-only — only callers inside a `#[cfg(debug_assertions)]`
 /// block invoke this. `pub(crate)` for unit-testability: the
-/// helper is the detection primitive for the invariant described
-/// in `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
-/// Extracted from the inline `debug_assert!` body in
+/// helper is the detection primitive for the read-only-attrs
+/// invariant. Extracted from the inline `debug_assert!` body in
 /// [`dispatch_page_finalization`] so the comparison +
 /// error-message-construction paths land in Codecov patch coverage
 /// (PR #498 / issue #490).
 ///
-/// # G13 (Constitution V Principle V) compliance
+/// # Audit content-ignorance (Constitution V Principle V) compliance
 ///
 /// The returned error message contains **only**:
 ///
