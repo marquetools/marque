@@ -59,7 +59,7 @@ fn lint_accuracy_invalid_fixtures() {
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no invalid fixtures found in corpus — cannot validate SC-002"
+        "no invalid fixtures found in corpus — cannot validate lint accuracy"
     );
 
     // Per-rule tracking: rule_id -> (matched, expected_total)
@@ -134,7 +134,7 @@ fn lint_accuracy_invalid_fixtures() {
 
     assert!(
         failures.is_empty() && overall >= 0.95,
-        "SC-002 lint accuracy FAILED\n\
+        "lint accuracy FAILED\n\
          Overall: {total_matched}/{total_expected} = {:.1}%\n\
          Per-rule failures:\n{}",
         overall * 100.0,
@@ -157,7 +157,7 @@ fn fix_accuracy_invalid_fixtures() {
     let threshold = Config::default().confidence_threshold();
     assert!(
         !fixtures.is_empty(),
-        "no invalid fixtures found in corpus — cannot validate SC-003"
+        "no invalid fixtures found in corpus — cannot validate fix accuracy"
     );
 
     // Per-rule tracking: rule_id -> (fixed_clean, total_fixtures_with_fixable_rule)
@@ -263,7 +263,7 @@ fn fix_accuracy_invalid_fixtures() {
 
     assert!(
         failures.is_empty() && overall >= 0.95,
-        "SC-003 fix accuracy FAILED\n\
+        "fix accuracy FAILED\n\
          Overall: {total_fixed_clean}/{total_fixable} = {:.1}%\n\
          Per-rule failures:\n{}",
         overall * 100.0,
@@ -276,10 +276,10 @@ fn fix_accuracy_invalid_fixtures() {
 }
 
 // ---------------------------------------------------------------------------
-// SC-003a: Zero diagnostics on clean prose (precision gate)
+// Zero diagnostics on clean prose (precision gate)
 // ---------------------------------------------------------------------------
 //
-// Per-fixture suppression mechanism (HIGH 2, review; Copilot #4 — verified).
+// Per-fixture suppression mechanism.
 //
 // The prose corpus exercises FOUR distinct suppression paths in the
 // decoder. The single zero-diagnostic assertion below covers all
@@ -288,7 +288,7 @@ fn fix_accuracy_invalid_fixtures() {
 // specific mechanism that suppresses it so a future bisect can route
 // the failure correctly.
 //
-// **Verification methodology (Copilot #4 follow-up).** The
+// **Verification methodology.** The
 // attributions below were checked by temporarily disabling the null
 // gate (`scored.retain(...)` in `decoder.rs::recognize`) and
 // re-running this test against each fixture. Fixtures that newly
@@ -304,7 +304,7 @@ fn fix_accuracy_invalid_fixtures() {
 // | fixture                       | mechanism (verified)                                                                                                          |
 // |-------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
 // | `article.txt`                 | Null gate. With gate disabled, R001 emits on `(s)` at offset 106370 (confidence 0.110).                                       |
-// | `federalist_10_excerpt.txt`   | Null gate. With gate disabled, R001 emits on `(s)` at offset 16 (confidence 0.110). The original SC-003a regression target.   |
+// | `federalist_10_excerpt.txt`   | Null gate. With gate disabled, R001 emits on `(s)` at offset 16 (confidence 0.110). The original precision-gate regression target.   |
 // | `cms_mid_prose.txt`           | Null gate. With gate disabled, R001 emits on `(CMS)` at offset 28 (confidence 0.282); fuzzy-correction lands on NATO `CTS`.   |
 // | `cts_mid_prose.txt`           | Null gate. With gate disabled, R001 emits on `(CTs)` at offset 20 (confidence 0.103) after LinePos + LowercaseContext penalties drop posterior. |
 // | `c_mid_prose.txt`             | **Whitelist bypass + no-op-rewrite filter** (NOT the null gate). `(C)` is on `is_bare_classification_shape` so the null gate is skipped; `build_decoder_diagnostic` returns `None` because observed bytes (`(C)`) equal canonical bytes (`(C)`). |
@@ -336,7 +336,7 @@ fn precision_prose_zero_diagnostics() {
     let fixtures = prose_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no prose fixtures found in corpus — cannot validate SC-003a"
+        "no prose fixtures found in corpus — cannot validate the precision gate"
     );
 
     for path in &fixtures {
@@ -347,18 +347,18 @@ fn precision_prose_zero_diagnostics() {
         // rules (S004, S008, etc.) may surface low-confidence hints
         // even on prose-shaped inputs that the strict parser
         // tentatively recognized as markings. These don't violate
-        // SC-003a (which targets precision on hard error / warn
+        // the precision gate (which targets precision on hard error / warn
         // signals); the closure-driven Suggest channel is a separate
         // surface and any prose noise it produces is by design opt-out
-        // via `[rules] S00X = "off"`.
+        // via the per-rule `"off"` severity.
         //
-        // #559 close-out C1 (2026-05-19): added explicit Suggest-tier
-        // filter after S008 began surfacing the prose-vs-marking
+        // #559 (2026-05-19): added explicit Suggest-tier
+        // filter after the Suggest-tier rule began surfacing the prose-vs-marking
         // ambiguity in `article.txt` where `(S) same advantage which a
         // republic` was tentatively parsed as a US Secret portion. The
         // root false-positive (parser accepting `(S)` glued to a word
         // boundary) is tracked separately; filtering at the precision
-        // gate keeps the load-bearing SC-003a hard-error precision
+        // gate keeps the load-bearing hard-error precision
         // pin intact without absorbing the unrelated parser concern.
         let hard_diagnostics: Vec<_> = result
             .diagnostics
@@ -368,7 +368,7 @@ fn precision_prose_zero_diagnostics() {
 
         assert!(
             hard_diagnostics.is_empty(),
-            "SC-003a precision failure on {}: expected zero hard \
+            "precision failure on {}: expected zero hard \
              (Error/Warn/Fix/Info) diagnostics, got {}:\n{}",
             path.file_name().unwrap().to_string_lossy(),
             hard_diagnostics.len(),

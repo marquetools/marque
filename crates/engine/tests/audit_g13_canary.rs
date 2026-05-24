@@ -402,7 +402,7 @@ fn canary_passes_on_full_corpus() {
             total_lines_scanned += 1;
             if let Some((leaked, json_path)) = detect_content_leak(&source, &ndjson) {
                 panic!(
-                    "G13 canary violation: input substring {:?} (len {}) leaked into \
+                    "content-ignorance canary violation: input substring {:?} (len {}) leaked into \
                      audit NDJSON at JSON path {:?}.\n\n\
                      Fixture: {}\n\
                      NDJSON line: {}\n\n\

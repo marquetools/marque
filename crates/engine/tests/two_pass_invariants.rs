@@ -187,7 +187,7 @@ proptest! {
         for (key, count) in &counts {
             prop_assert!(
                 *count == 1,
-                "rule + span key {:?} appears {} times in applied — FR-023 / I-19 violated for input {:?}",
+                "rule + span key {:?} appears {} times in applied — each rule+span pair must apply at most once for input {:?}",
                 key, count, src
             );
         }
