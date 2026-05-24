@@ -57,7 +57,7 @@ impl SarSet {
         if self.programs.is_empty() {
             return None;
         }
-        // Helpers carry the LA-4 inline-capacity sizing (see
+        // Helpers carry the inline-capacity sizing (see
         // `SciSet::to_markings` for the rationale): programs at
         // inline-4, compartments at inline-8, sub-compartments at
         // inline-4 — all heap-free for ordinary documents.

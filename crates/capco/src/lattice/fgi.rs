@@ -67,12 +67,10 @@ use std::collections::BTreeSet;
 /// via `MarkingClassification::Joint` on the classification axis. The two are
 /// mutually exclusive at the portion level. Cross-system join (e.g., a page
 /// that mixes FGI GBR portions with JOINT USA GBR portions) is not modeled
-/// by `FgiSet` — that is the JOINT-attribution incompatibility-class reframe
-/// deferred to Stage 4 of the engine refactor (per
-/// `docs/plans/2026-05-01-lattice-design.md` §4.7, open question "FGI vs
-/// JOINT attribution").
+/// by `FgiSet` — cross-system FGI/JOINT attribution is a future
+/// incompatibility-class reframe, not modeled here.
 ///
-/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// **`#[non_exhaustive]`**: the
 /// state space is closed today (`None` and `Present { concealed, countries }`
 /// over an open `CountryCode` axis), but future CAPCO grammar
 /// extensions or decoder-confidence partial states may add a
@@ -190,11 +188,11 @@ impl MeetSemilattice for FgiSet {
                     countries: b_cs,
                 },
             ) => {
-                // P-9-1 (9th-pass): source-concealed acts as lattice TOP
-                // in the FGI source-disclosure dimension.  The join already
-                // makes concealed dominate (P-1, 8th-pass), so the dual
-                // absorption law `a ⊓ (a ⊔ b) = a` requires meet to treat
-                // the concealed form as top — meet(x, top) = x.
+                // Source-concealed acts as lattice TOP in the FGI
+                // source-disclosure dimension. The join makes concealed
+                // dominate, so the dual absorption law `a ⊓ (a ⊔ b) = a`
+                // requires meet to treat the concealed form as top —
+                // meet(x, top) = x.
                 //
                 // Three cases:
                 //   (a) both concealed  → concealed (idempotent top)
@@ -252,8 +250,8 @@ impl MeetSemilattice for FgiSet {
     }
 }
 
-// `FgiSet` deliberately does NOT implement `BoundedLattice` (B-1, PR 4b-B
-// 8th-pass follow-up). Although `SourceConcealed` is a valid syntactic
+// `FgiSet` deliberately does NOT implement `BoundedLattice`.
+// Although `SourceConcealed` is a valid syntactic
 // supersession-top for the `JoinSemilattice::join` operation (it dominates every
 // non-concealed state), the `CountryCode` axis underneath
 // `Present { concealed: false, countries: BTreeSet<CountryCode> }` is
@@ -441,9 +439,8 @@ mod tests {
 
     #[test]
     fn fgi_set_none_is_empty() {
-        // B-1 (PR 4b-B 8th-pass): `FgiSet::bottom()` retired alongside
-        // the `BoundedLattice` impl. `FgiSet::empty()` is the public
-        // bottom constructor; `FgiSet::None` is the variant it maps to.
+        // `FgiSet::empty()` is the public bottom constructor;
+        // `FgiSet::None` is the variant it maps to.
         assert_eq!(FgiSet::empty(), FgiSet::None);
     }
 
@@ -486,7 +483,7 @@ mod tests {
 
     #[test]
     fn fgi_marker_acknowledged_rejects_empty_list() {
-        // FR-017 / CHK028: the empty-Acknowledged shape MUST be
+        // The empty-Acknowledged shape MUST be
         // type-system-unrepresentable from the public surface.
         let empty: Vec<CountryCode> = Vec::new();
         assert!(FgiMarker::acknowledged(empty).is_none());
@@ -534,9 +531,8 @@ mod tests {
         assert_eq!(d, FgiSet::None);
     }
 
-    // `fgi_set_top_is_concealed_empty` retired in B-1 (PR 4b-B 8th-pass
-    // follow-up). `FgiSet` no longer implements `BoundedLattice`; the
-    // `SourceConcealed` supersession sentinel is still reachable via
+    // `FgiSet` does not implement `BoundedLattice`; the
+    // `SourceConcealed` supersession sentinel is reachable via
     // `FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))`, exercised
     // by `fgi_set_meet_both_concealed_preserved` below.
 

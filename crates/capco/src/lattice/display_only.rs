@@ -161,7 +161,7 @@ impl DisplayOnlyBlock {
         // (4) Per-portion display permission = expand(REL TO) ∪
         // expand(DISPLAY ONLY) — release subsumes disclosure (§D.2
         // Table 3 row 26 Note). Inline-8 covers the typical per-page
-        // portion count; 9+ portions spill to heap cleanly (LA-4).
+        // portion count; 9+ portions spill to heap cleanly.
         let expanded: SmallVec<[BTreeSet<&str>; 8]> = portions
             .iter()
             .map(|a| {
@@ -360,14 +360,12 @@ mod tests {
         // row-27 subtraction has nothing to subtract — the DO
         // intersection survives intact.
         //
-        // Copilot R1 fix: the previous combined test computed
-        // `RelToBlock::from_attrs_iter(portions)` and admitted
-        // an ambiguous outcome ("Lattice{GBR} or Empty are both
-        // acceptable"). That admitted-ambiguity passes even if
-        // a future change silently swaps the variants. Splitting
-        // into two tests with deterministic `rel_to_block` inputs
-        // (`empty()` and the `Lattice {USA,GBR}` construction
-        // below) pins each row-27 branch independently.
+        // This test uses a deterministic `rel_to_block` input
+        // (`empty()`, with the `Lattice {USA,GBR}` construction in the
+        // companion test below) so each row-27 branch is pinned
+        // independently — a combined test that admitted an ambiguous
+        // outcome would pass even if a future change silently swapped
+        // the variants.
         let portions = [
             portion_with_rel_to(Classification::Secret, &["USA", "GBR"]),
             portion_with_display_only(Classification::Secret, &["GBR"]),
@@ -394,8 +392,8 @@ mod tests {
         // empties the DO list — the explicit REL TO authorization
         // makes the explicit DISPLAY ONLY redundant.
         //
-        // Copilot R1 fix: companion to
-        // `display_only_block_cross_axis_with_empty_rel_to_keeps_gbr`
+        // Companion to
+        // `display_only_block_cross_axis_with_empty_rel_to_keeps_gbr`,
         // pinning the non-empty banner REL TO branch. Construct
         // `RelToBlock::Lattice {USA,GBR}` directly inside the crate
         // (the variant is `#[non_exhaustive]` for external callers
