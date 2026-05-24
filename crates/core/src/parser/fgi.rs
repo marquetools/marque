@@ -283,7 +283,7 @@ pub(super) fn parse_fgi_marker_with_spans(
     //
     // Only commit the staged per-country spans on a successful
     // acknowledged parse — keeps the failure path span-clean.
-    let marker = FgiMarker::acknowledged(countries)?; 
+    let marker = FgiMarker::acknowledged(countries)?;
     token_spans.extend(pending);
     Some(marker)
 }
