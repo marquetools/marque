@@ -11,10 +11,10 @@
 //! vocabulary-derived English country names (`Austria`, `Australia`),
 //! and span offsets — none of which are document text.
 //!
-//! # PR 3c.2.C C5 reshape
+//! # Message reshape
 //!
 //! Under the closed-template `Message` shape and the typed `Citation`
-//! struct, the message- and citation-leak channels are now
+//! struct, the message- and citation-leak channels are
 //! STRUCTURALLY closed:
 //!
 //! - `Diagnostic.message: Message` carries `MessageTemplate` (closed
@@ -30,8 +30,7 @@
 //! (the one remaining bytes-carrying surface) and a transitive check
 //! on Display renders.
 //!
-//! PM-C-3: cfg-gate lifted in PR 3c.2.C C5. Test-fixture carve-out
-//! per Constitution V Principle V.
+//! Test-fixture carve-out per Constitution V Principle V.
 
 use std::sync::Arc;
 
@@ -54,8 +53,8 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_set = CapcoRuleSet::new();
     let scheme = CapcoScheme::new();
     let mut out = Vec::new();
-    // PR 6c (T069): inline Vec<CanonicalAttrs> + Arc<Box<[_]>> snapshot
-    // mirrors the post-retirement engine accumulator shape.
+    // The inline Vec<CanonicalAttrs> + Arc<Box<[_]>> snapshot mirrors
+    // the engine accumulator shape.
     let mut page_portions: Vec<CanonicalAttrs> = Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
     let mut page_portions_arc: Option<Arc<Box<[CanonicalAttrs]>>> = None;
     for candidate in &candidates {
@@ -76,9 +75,8 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
-        // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-        // override; reuse the already-constructed `scheme` for zero
-        // new allocation cost.
+        // Canonicalize via the trait override; reuse the
+        // already-constructed `scheme` for zero new allocation cost.
         let attrs = scheme.canonicalize(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
             page_portions.push(attrs.clone());
@@ -93,9 +91,9 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         } else {
             None
         };
-        // PR 4b-B 9th-pass follow-up: `RuleContext` is
-        // `#[non_exhaustive]`; cross-crate construction goes through
-        // `RuleContext::new` + `with_*` setters.
+        // `RuleContext` is `#[non_exhaustive]`; cross-crate
+        // construction goes through `RuleContext::new` + `with_*`
+        // setters.
         let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_portions(ctx_page);
         for rule in rule_set.rules() {
             // Issue #672 — mirror the engine's `Severity::Off` gate
@@ -165,9 +163,9 @@ const FORBIDDEN_PHRASES: &[&str] = &[
 
 #[test]
 fn s004_diagnostic_message_carries_only_closed_template() {
-    // PR 3c.2.C C5: G13 closure for `Diagnostic.message` is
-    // STRUCTURALLY enforced by `Message` (closed template + closed
-    // args). The test verifies the structural property: S004's
+    // Audit content-ignorance for `Diagnostic.message` is STRUCTURALLY
+    // enforced by `Message` (closed template + closed args). The test
+    // verifies the structural property: S004's
     // template label is a fixed `&'static str` from the closed
     // `MessageTemplate` enum, and the args carry only typed
     // identifiers (no raw bytes).
@@ -207,11 +205,10 @@ fn s004_text_correction_replacement_contains_no_document_content() {
     // surface on the diagnostic; Constitution V requires it to be a
     // permitted identifier from the closed CAPCO vocabulary.
     //
-    // PR 3c.2.C C5: the retired `FixProposal.original` field is gone
-    // (the engine derives the original bytes from `source[span]` at
-    // promotion time per PM-C-5 renderer-responsibility), so the
-    // legacy `fix.original.contains` check is dropped — that channel
-    // doesn't exist anymore.
+    // The retired `FixProposal.original` field is gone (the engine
+    // derives the original bytes from `source[span]` at promotion
+    // time), so the legacy `fix.original.contains` check is dropped —
+    // that channel doesn't exist anymore.
     let diags = lint(FIXTURE);
     let s004: Vec<_> = diags
         .iter()
@@ -242,8 +239,8 @@ fn s004_text_correction_replacement_contains_no_document_content() {
 
 #[test]
 fn s004_citation_carries_only_typed_capco_anchor() {
-    // PR 3c.2.C C5: `Diagnostic.citation` is now a typed `Citation`
-    // struct. The Display impl emits a fixed `§<L>.<sub> p<N>` shape
+    // `Diagnostic.citation` is a typed `Citation` struct. The Display
+    // impl emits a fixed `§<L>.<sub> p<N>` shape
     // for CAPCO sources (no free-form prose). The legacy substring
     // sweep is replaced by a structural check on the rendered form.
     let diags = lint(FIXTURE);

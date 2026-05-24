@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7a phase-assignment drift backstop (FR-021).
+//! Phase-assignment drift backstop.
 //!
 //! Walks every registered `Rule::id()` in `CapcoRuleSet::new()` and
 //! asserts the rule's declared `Phase` matches a hand-maintained
@@ -11,14 +11,13 @@
 //! and renaming or repurposing an existing rule without reconsidering
 //! phase fails the test loudly.
 //!
-//! # Why this test exists (PM decision D-7.2)
+//! # Why this test exists
 //!
-//! The `Rule::phase()` trait method defaults to `Phase::WholeMarking`
-//! (`docs/refactor-006/pr-7-pm-decisions.md` D-7.2). The default is
-//! the safer dispatch — a whole-marking rule mistakenly running in
-//! pass-1 violates the span-shape constraint and trips the PR 7b
+//! The `Rule::phase()` trait method defaults to `Phase::WholeMarking`.
+//! The default is the safer dispatch — a whole-marking rule mistakenly
+//! running in pass-1 violates the span-shape constraint and trips the
 //! first-fire check, whereas a localized rule mistakenly running in
-//! pass-2 is conservative (no I-19 false positive).
+//! pass-2 is conservative (no false positive).
 //!
 //! The trade-off the default buys (no 27-line `fn phase() -> Phase
 //! { Phase::WholeMarking }` boilerplate across the whole-marking
@@ -44,10 +43,6 @@
 //! 2. If an existing rule's phase changes (rare), update its row and
 //!    re-justify the change in the PR description.
 //! 3. If a rule is retired, remove its row.
-//!
-//! Authority: `specs/006-engine-rule-refactor/spec.md` FR-021;
-//! `docs/refactor-006/pr-7-pm-decisions.md` D-7.2;
-//! `docs/plans/2026-05-02-engine-refactor-consolidated.md` §9.1.
 
 use marque_capco::CapcoRuleSet;
 use marque_rules::{Phase, RuleSet};
@@ -63,11 +58,11 @@ use std::collections::BTreeMap;
 /// `impl Rule<CapcoScheme> for X` block via the doc comment on
 /// `fn phase(&self) -> Phase`. This table is the audit-controlled
 /// reflection of those per-rule declarations.
-// T044: phase-allowlist keys updated to the post-T044 predicate-ID form
-// (the second half of the `(scheme, predicate_id)` 2-tuple, since this
-// table keys on `r.id().predicate_id()` per the production code below).
-// Legacy IDs (`C001`, `E006`, etc.) preserved in the trailing inline
-// comment for archaeology — see legacy-rule-id-map §1 for the mapping.
+// Phase-allowlist keys use the predicate-ID form (the second half of
+// the `(scheme, predicate_id)` 2-tuple, since this table keys on
+// `r.id().predicate_id()` per the production code below). Legacy IDs
+// (`C001`, `E006`, etc.) appear in the trailing inline comment — see
+// legacy-rule-id-map for the mapping.
 const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // ----- Phase::Localized (5 rules + E064/E065/E067 declared inline
     // below) ----------------------------------------------------------
@@ -156,8 +151,8 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // deprecated long-form token); text-correction replacements are
     // byte-precise single-token splices.
     ("portion.sci.deprecated-long-form", Phase::Localized), // E065
-    // PR 9c.1 T134: legacy NATO compound text re-marking. Whole-marking
-    // because the canonical re-rendering needs to span the full
+    // Legacy NATO compound text re-marking. Whole-marking because the
+    // canonical re-rendering needs to span the full
     // candidate — the classification block AND the appended AEA/SCI
     // companion block need to land together (e.g.,
     // `(//CTSA)` → `(//CTS//ATOMAL)`).
@@ -177,8 +172,8 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
         "portion.classification.joint-usa-first-style",
         Phase::WholeMarking,
     ), // S003
-    // PR 9c.2 / FR-048: S007 emits text_correction at the
-    // classification token's span; the augmentation branch can also
+    // S007 emits text_correction at the classification token's span;
+    // the augmentation branch can also
     // emit at a RelToBlock token's span (a different token than the
     // classification block — crosses a token boundary). Phase::Localized's
     // single-token-span contract would fail the augmentation branch.
