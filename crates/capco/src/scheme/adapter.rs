@@ -403,7 +403,7 @@ impl CapcoScheme {
         _marking_type: MarkingType,
     ) -> Option<marque_rules::Message> {
         use marque_rules::{Message, MessageArgs, MessageTemplate};
-        // PR 3c.2.C C5: typed `Message` return per PM-C-1. Each
+        // typed `Message` return per PM-C-1. Each
         // arm maps the constraint label to a closed-template +
         // closed-args record. Runtime byte text is dropped per G13;
         // the narrative descriptions live in the legacy `&str` arms

@@ -161,7 +161,7 @@ pub(crate) fn emit_hcs_o_companions(
         ));
     }
     if let Some((span, text)) = usgov_entry {
-        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // Audit content-ignorance: drop runtime byte text. Template names
         // the conflict class; `MessageArgs.category` carries the
         // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -230,7 +230,7 @@ pub(crate) fn emit_hcs_p_sub_companions(
         ));
     }
     if let Some((span, text)) = usgov_entry {
-        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // Audit content-ignorance: drop runtime byte text. Template names
         // the conflict class; `MessageArgs.category` carries the
         // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
@@ -297,7 +297,7 @@ pub(crate) fn emit_si_g_companions(
         ));
     }
     if let Some((span, text)) = usgov_entry {
-        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // Audit content-ignorance: drop runtime byte text. Template names
         // the conflict class; `MessageArgs.category` carries the
         // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {

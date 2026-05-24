@@ -36,26 +36,21 @@ use super::*;
 // per-rule guard table to keep in sync with `CAPCO_CLOSURE_RULES`
 // catalog order.
 
-// T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
-// implemented on `CapcoScheme`, so calling
-// `marque_scheme::constraint::evaluate(&CapcoScheme::new(), &m)`
-// (or equivalently `scheme.validate(&m)` via the trait default)
+// `satisfies` and `evaluate_custom` are implemented on `CapcoScheme`,
+// so calling `marque_scheme::constraint::evaluate(&CapcoScheme::new(),
+// &m)` (or equivalently `scheme.validate(&m)` via the trait default)
 // fires every dyadic and Custom constraint in the catalog.
 //
-// The 11 hand-written rule impls retired by T035 dispatch through the
-// engine's scheme-adapter bridge (`crate::scheme::adapter`), which
-// synthesizes fixes and messages via `CapcoScheme::fix_intent_by_name`
-// / `message_by_name` (not the trait-path `validate`) for byte-identical
-// message/span/fix output. E018 / E019 remain hand-written pending the
-// T035b predicate audit.
+// Declarative rules dispatch through the engine's scheme-adapter bridge
+// (`crate::scheme::adapter`), which synthesizes fixes and messages via
+// `CapcoScheme::fix_intent_by_name` / `message_by_name` (not the
+// trait-path `validate`) for byte-identical message/span/fix output.
 impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;
     type ParseError = CapcoParseError;
     type OpenVocabRef = CapcoOpenVocabRef;
 
-    // GAT + plain associated type bindings introduced in PR 3c.2.A
-    // per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1.
     type Parsed<'src> = ParsedAttrs<'src>;
     type Canonical = CanonicalAttrs;
 
@@ -65,21 +60,18 @@ impl MarkingScheme for CapcoScheme {
     ///
     /// **Structural rename only.** Every field is moved across without
     /// transformation — no case folding, no deprecated-token migration,
-    /// no canonicalization. Phase A: this is the only shape CapcoScheme
-    /// needs; future schemes (CUI / NATO) that fold or migrate fields
-    /// override this method with their own logic.
+    /// no canonicalization. This is the only shape CapcoScheme needs;
+    /// future schemes (CUI / NATO) that fold or migrate fields override
+    /// this method with their own logic.
     ///
     /// `&self` is unused today, but the trait signature reserves it
     /// for stateful future schemes.
     ///
-    /// **FR-043 sole-path invariant**: this is the only public
+    /// **Sole-path invariant**: this is the only public
     /// `ParsedAttrs → CanonicalAttrs` route for production code.
-    /// The `marque_ism::from_parsed_unchecked` adapter that PR 3a–3c
-    /// kept in `crates/ism/src/canonical.rs` retired in PR 3c.2.E
-    /// once `ParsedAttrs` and `CanonicalAttrs` lost their
-    /// `#[non_exhaustive]` attributes — destructure and literal
-    /// construction outside `marque-ism` is the path that lets this
-    /// body live in the scheme adapter, where it belongs.
+    /// `ParsedAttrs` and `CanonicalAttrs` are not `#[non_exhaustive]`,
+    /// so destructure-and-literal construction outside `marque-ism` lets
+    /// this body live in the scheme adapter, where it belongs.
     fn canonicalize<'src>(&self, parsed: Self::Parsed<'src>) -> Self::Canonical {
         let ParsedAttrs {
             classification,
@@ -116,10 +108,9 @@ impl MarkingScheme for CapcoScheme {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             fgi_marker: fgi_marker.map(|p| p.value),
-            // PR 9b (T132): preserve the parser-side attribution. The
-            // attribution function lives on the `ParsedAttrs` side; this
-            // canonicalize impl is a pure structural rename and must not
-            // re-run it.
+            // Preserve the parser-side attribution. The attribution
+            // function lives on the `ParsedAttrs` side; this canonicalize
+            // impl is a pure structural rename and must not re-run it.
             dissem_us: Vec::from(dissem_us)
                 .into_iter()
                 .map(|p| p.value)
@@ -152,10 +143,10 @@ impl MarkingScheme for CapcoScheme {
             token_spans,
         };
 
-        // PR 9b (T132) invariant insurance. `attribute_dissems` is the
-        // single source of truth; this debug-only assertion catches a
-        // future bug where attribution is skipped or the canonical
-        // adapter is fed a hand-built `ParsedAttrs` with both fields
+        // Invariant insurance. `attribute_dissems` is the single source
+        // of truth; this debug-only assertion catches a future bug where
+        // attribution is skipped or the canonical adapter is fed a
+        // hand-built `ParsedAttrs` with both fields
         // populated.
         #[cfg(debug_assertions)]
         {
@@ -191,10 +182,9 @@ impl MarkingScheme for CapcoScheme {
     }
 
     fn parse(&self, _input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
-        // Phase A: the trait impl exists to validate the abstraction's
-        // shape against CAPCO. Callers continue to use
-        // `marque_core::Parser` directly. Phase B/E tie parse() into
-        // the engine once the ambiguity resolver lands.
+        // The trait impl exists to validate the abstraction's shape
+        // against CAPCO; callers use `marque_core::Parser` directly. The
+        // engine ties parse() in once the ambiguity resolver lands.
         Err(CapcoParseError::NotImplemented)
     }
 
@@ -202,7 +192,7 @@ impl MarkingScheme for CapcoScheme {
     /// storage. Drives the dyadic-variant arms of
     /// [`marque_scheme::constraint::evaluate`].
     ///
-    /// **Token-presence semantics** (T035):
+    /// **Token-presence semantics**:
     /// - [`TokenRef::Token(id)`] returns true when the marking carries
     ///   the named token *anywhere* relevant — `TOK_USA` ⇒ "USA in
     ///   REL TO" (the dissemination context), `TOK_RD` ⇒ "RD anywhere
@@ -211,17 +201,14 @@ impl MarkingScheme for CapcoScheme {
     /// - [`TokenRef::AnyInCategory(cat)`] returns true when the
     ///   category has at least one populated value. `CAT_DISSEM`
     ///   intentionally counts both the dissem axis (`dissem_us` and
-    ///   `dissem_nato` together, walked via `attrs.dissem_iter()`
-    ///   post PR 9b / FR-046 split) AND `rel_to` as dissem-flavored
-    ///   presence, matching the historical E015
-    ///   predicate ("non-US classification needs SOME dissem").
+    ///   `dissem_nato` together, walked via `attrs.dissem_iter()`) AND
+    ///   `rel_to` as dissem-flavored presence ("non-US classification
+    ///   needs SOME dissem").
     ///
     /// Sentinel `TokenId`s not used by the current catalog
     /// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`
-    /// — they remain declared for future T035b consumption when the
-    /// E018/E019 catalog entries are added back with corrected
-    /// predicates. Categories not listed (none today) likewise fall
-    /// through.
+    /// — they remain declared for future consumption. Categories not
+    /// listed (none today) likewise fall through.
     ///
     /// The free-function `satisfies_attrs` below is the authoritative
     /// implementation; this trait method is a thin forwarder.
@@ -249,11 +236,10 @@ impl MarkingScheme for CapcoScheme {
                     CAT_SCI
                 }
                 CapcoOpenVocabRef::FgiTetragraph(_) => CAT_FGI_MARKER,
-                // PR 3c.B Sub-PR 8.D.4 — open-vocab REL TO country codes
-                // route to CAT_REL_TO so E014's `FactAdd { CountryCode,
-                // Portion }` intents land on the same axis as the
-                // closed-CVE `TOK_USA` / `TOK_REL_TO` sentinels used by
-                // FactRemove paths in PR 3c.B Sub-PR 8.D.2.
+                // Open-vocab REL TO country codes route to CAT_REL_TO so
+                // the REL TO `FactAdd { CountryCode, Portion }` intents
+                // land on the same axis as the closed-CVE `TOK_USA` /
+                // `TOK_REL_TO` sentinels used by FactRemove paths.
                 CapcoOpenVocabRef::CountryCode(_) => CAT_REL_TO,
             }),
         }
@@ -347,10 +333,8 @@ impl MarkingScheme for CapcoScheme {
                     .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
             }
             Scope::Page | Scope::Document | Scope::Diff => {
-                // PR 4b-D.2 (this commit) flipped the production page
-                // projection from the PageContext aggregator to the
-                // post-PR-4b-B lattice path. Pipeline ordering per
-                // `docs/plans/2026-05-01-lattice-design.md` §4.7.4:
+                // The production page projection runs the lattice
+                // pipeline:
                 //
                 //     parse → join (lattice) → Cl_supp (closure)
                 //                            → PageRewrites
@@ -368,22 +352,19 @@ impl MarkingScheme for CapcoScheme {
                 // `crates/engine/src/scheduler.rs`) — the rewrite graph
                 // is a DAG, every rewrite fires at most once per
                 // projection, and there is no fixpoint loop at this
-                // layer (unlike `closure`'s Kleene fixpoint). Copilot
-                // R2 #6 caught the previous "both monotone" claim.
+                // layer (unlike `closure`'s Kleene fixpoint).
                 //
-                // Commit 7 perf: the trait path still pays the
+                // The trait path pays the
                 // `markings.iter().map(|m| m.0.clone()).collect()`
                 // clone round because the trait's `markings:
                 // &[CapcoMarking]` slice ties us to per-portion
                 // CapcoMarking values. The engine's hot path bypasses
-                // this via `CapcoScheme::project_from_attrs_slice`
-                // (PR 6c successor to `project_from_page_context`),
-                // which consumes the engine accumulator's slice
-                // directly and delegates to the same shared
+                // this via `CapcoScheme::project_from_attrs_slice`,
+                // which consumes the engine accumulator's slice directly
+                // and delegates to the same shared
                 // `project_attrs_pipeline` body — without paying the
                 // trait wrap-then-unwrap round. Test fixtures and
-                // external tooling continue to use this trait-path
-                // entry.
+                // external tooling continue to use this trait-path entry.
                 let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
                 let out_attrs = self.project_attrs_pipeline(&raw);
                 CapcoMarking::new(out_attrs)
@@ -395,8 +376,8 @@ impl MarkingScheme for CapcoScheme {
         &self.page_rewrites
     }
 
-    /// Commit 5 — substantive `render_canonical` body driven by the
-    /// per-axis dispatch table [`RENDER_TABLE`].
+    /// Substantive `render_canonical` body driven by the per-axis
+    /// dispatch table [`RENDER_TABLE`].
     ///
     /// The dispatch loop walks `RENDER_TABLE` in declaration order
     /// (which matches `Category::ordering_rank` per §A.6 p15-17
@@ -424,14 +405,11 @@ impl MarkingScheme for CapcoScheme {
         ctx: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
-        // PR 3c.2.A: signature migrated from bare `scope: Scope` to
-        // `ctx: &RenderContext` per
-        // `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. The
-        // body continues to dispatch on `ctx.scope` exactly as it did
-        // pre-3c.2 — `ctx.emission_form` and `ctx.schema_version` are
-        // plumbed through but NOT yet consumed by the per-axis
-        // renderers (a future PR will land the §G.1 Table 4 dispatch
-        // body). T056 corpus regression is the byte-identity gate.
+        // The body dispatches on `ctx.scope`. `ctx.emission_form` and
+        // `ctx.schema_version` are plumbed through but NOT yet consumed
+        // by the per-axis renderers (a future change will land the
+        // §G.1 Table 4 dispatch body). Corpus regression is the
+        // byte-identity gate.
         if matches!(ctx.scope, Scope::Diff) {
             return Err(core::fmt::Error);
         }
@@ -498,13 +476,12 @@ impl MarkingScheme for CapcoScheme {
     }
 
     fn render_portion(&self, m: &Self::Marking) -> String {
-        // Override retained for the Phase A byte-identity gate
-        // (`render_canonical_default_chain.rs`). Commit 5's
-        // render_canonical body is the substantive renderer; this
-        // override delegates to it through the trait-default String
-        // round-trip. Removing the override is a follow-up once the
-        // engine call sites move off `render_portion` to
-        // `render_canonical` (commit 6+).
+        // Override retained for the byte-identity gate
+        // (`render_canonical_default_chain.rs`). `render_canonical` is
+        // the substantive renderer; this override delegates to it
+        // through the trait-default String round-trip. Removing the
+        // override is a follow-up once the engine call sites move off
+        // `render_portion` to `render_canonical`.
         //
         // `Write for String` is infallible, so a `String` write target
         // never produces `fmt::Error`. The only way the discarded
@@ -516,8 +493,8 @@ impl MarkingScheme for CapcoScheme {
         // a panic (matching the trait-default behavior in
         // `MarkingScheme::render_portion`).
         //
-        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
-        // a future PR will land the §G.1 Table 4 dispatch body.
+        // Construct an `Auto + MarqueMvp3` RenderContext; a future
+        // change will land the §G.1 Table 4 dispatch body.
         let mut s = String::new();
         let ctx = RenderContext::new(
             Scope::Portion,
@@ -540,7 +517,7 @@ impl MarkingScheme for CapcoScheme {
         // infallible, so `Err` here would be a conforming-impl bug
         // forbidden by the trait doc.
         //
-        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext.
+        // Construct an `Auto + MarqueMvp3` RenderContext.
         let mut s = String::new();
         let ctx = RenderContext::new(
             Scope::Page,
@@ -613,12 +590,11 @@ impl MarkingScheme for CapcoScheme {
     /// canonical FD&R enumeration consumed by
     /// `Vocabulary::is_fdr_dissem` and the supersession overlays.
     ///
-    /// All bitmask rows ship at [`Severity::Info`] per
-    /// `decisions.md` D19 B (closure firings are silent
-    /// lattice-layer fact propagation, not byte-level fixes);
-    /// user-visible byte diffs ride on independent
-    /// `Severity::Suggest` text-layer rules (e.g., S007 for the
-    /// NATO row — see `decisions.md` D20).
+    /// All bitmask rows ship at [`Severity::Info`]: closure firings are
+    /// silent lattice-layer fact propagation, not byte-level fixes.
+    /// User-visible byte diffs ride on independent `Severity::Suggest`
+    /// text-layer rules (e.g., `BareNatoRequiresRelToRule` for the NATO
+    /// row).
     ///
     /// Scheme-agnostic discovery should use
     /// [`Self::closure_inventory()`], which projects the bitmask
@@ -643,12 +619,11 @@ impl MarkingScheme for CapcoScheme {
             } else {
                 inventory.push(ClosureRuleMetadata {
                     name: row.name,
-                    // PR 10.A.1 split the pre-existing `label: &'static str`
-                    // into `display_label: &'static str` (human-facing UI
-                    // text) + `label: Citation` (typed authoritative-source
-                    // anchor). Metadata reads from each field directly —
-                    // no string-form display of the citation, which would
-                    // need runtime formatting.
+                    // `display_label: &'static str` is human-facing UI
+                    // text; `label: Citation` is the typed
+                    // authoritative-source anchor. Metadata reads from
+                    // each field directly — no string-form display of the
+                    // citation, which would need runtime formatting.
                     label: row.display_label,
                     citation: Some(row.label),
                     default_severity: row.default_severity,
@@ -870,39 +845,27 @@ impl CapcoScheme {
         let _ = self;
         (derive_bits(&marking.0).bits() & ALL_TRIGGER_MASK) != 0
     }
-    /// PR 6c successor to `project_from_page_context` — engine-facing
-    /// hot-path entry that consumes a pre-built per-page slice of
-    /// portion attributes directly. The engine owns the accumulator
-    /// that grows portions across the document; this entry forwards
-    /// the slice to the shared [`Self::project_attrs_pipeline`] body,
-    /// skipping the trait-path's `Vec<CapcoMarking> → Vec<CanonicalAttrs>`
-    /// wrap-then-unwrap round.
+    /// Engine-facing hot-path entry that consumes a pre-built per-page
+    /// slice of portion attributes directly. The engine owns the
+    /// accumulator that grows portions across the document; this entry
+    /// forwards the slice to the shared [`Self::project_attrs_pipeline`]
+    /// body, skipping the trait-path's
+    /// `Vec<CapcoMarking> → Vec<CanonicalAttrs>` wrap-then-unwrap round.
     ///
     /// The trait-level [`MarkingScheme::project`] entry handles
     /// `&[Self::Marking]` callers — test fixtures and external
     /// tooling — and pays one `.0.clone()` per portion to bridge into
-    /// the same `project_attrs_pipeline`.
-    ///
-    /// Phase-attribution profiling (`crates/engine/benches/profile_project.rs`)
-    /// found the tmp_ctx-build round earlier PRs paid at ~2.8µs / n=50
-    /// portions; eliminating it closed ~60-80µs of the lint_10kb
-    /// regression on the bench's monotone-growing call sequence
-    /// (sum_i=1^50 of the per-call tmp_ctx cost). PR 4b-F retired the
-    /// last remnant of that tmp_ctx build at every layer. PR 6c
-    /// (T069) flattened the parameter from `&PageContext` to
-    /// `&[CanonicalAttrs]` so the caller no longer needs to construct
-    /// the intermediate accumulator type.
+    /// the same `project_attrs_pipeline`. The `&[CanonicalAttrs]`
+    /// parameter lets the engine caller avoid constructing an
+    /// intermediate accumulator type on the hot path.
     ///
     /// ## Same-slice property
     ///
     /// `raw` flows directly to `project_attrs_pipeline`. There is no
-    /// parallel slice the inner pipeline could drift from, so the
-    /// earlier debug-assert that PR 4b-D.2 carried at the fold-body
-    /// boundary became vacuous in PR 4b-F and retired with the
-    /// `_with_context` variant. Future maintenance that reintroduces
-    /// a parallel derivation path MUST re-add the contract at the new
-    /// fork — the invariant lives in this doc-comment, not in a
-    /// runtime check.
+    /// parallel slice the inner pipeline could drift from. Future
+    /// maintenance that reintroduces a parallel derivation path MUST
+    /// re-add the contract at the new fork — the invariant lives in this
+    /// doc-comment, not in a runtime check.
     pub fn project_from_attrs_slice(&self, raw: &[CanonicalAttrs]) -> CanonicalAttrs {
         self.project_attrs_pipeline(raw)
     }
@@ -911,9 +874,8 @@ impl CapcoScheme {
     /// post-`close()` / post-`apply_default_fill` CanonicalAttrs.
     ///
     /// Runs as part of [`Self::project_attrs_pipeline`] between
-    /// `apply_default_fill` and the declarative `PageRewrites`.
-    /// The post-#704 R2-1 refactor split this method into two
-    /// honest steps:
+    /// `apply_default_fill` and the declarative `PageRewrites`, in two
+    /// steps:
     ///
     /// 1. **Dissem-axis overlay re-application (unconditional)** —
     ///    calls
@@ -1038,41 +1000,33 @@ impl CapcoScheme {
     /// [`MarkingScheme::project`] (trait entry, after a per-portion
     /// `.0.clone()`) and [`Self::project_from_attrs_slice`] (engine
     /// fast-path) delegate here, so the pipeline-step semantics are
-    /// identical across all surfaces. Per PR 4b-D.2 §4.7.4:
+    /// identical across all surfaces. Pipeline:
     ///
     /// ```text
     /// join_via_lattice → closure → PageRewrites
     /// ```
     ///
-    /// PR 4b-F retired the `page_ctx: &PageContext` parameter — the
-    /// pipeline consumes only `raw: &[CanonicalAttrs]`. The same-slice
-    /// contract that earlier PRs threaded as a debug-assert at this
-    /// layer became vacuous once `join_via_lattice_body` no longer
-    /// reads a `PageContext`: there is no parallel slice for the inner
-    /// body to drift from. PR 6c (T069) retired the `PageContext`
-    /// struct entirely; engine callers reach this pipeline via
+    /// The pipeline consumes only `raw: &[CanonicalAttrs]` — there is no
+    /// `PageContext` parameter and no parallel slice for the inner body
+    /// to drift from. Engine callers reach this pipeline via
     /// [`Self::project_from_attrs_slice`].
     fn project_attrs_pipeline(&self, raw: &[CanonicalAttrs]) -> CanonicalAttrs {
-        // PR 4b-D.2 D23 (decisions.md): closure-rewrite-application
-        // sentinel. Per `docs/plans/2026-05-01-lattice-design.md`
-        // §3 (e.1) read-only-attrs invariant, the closure operator
+        // Closure-rewrite-application sentinel: the closure operator
         // MUST NOT mutate the per-portion CanonicalAttrs slice it
-        // observes. Snapshot the input pre-closure and assert
-        // byte-identity afterward.
+        // observes (read-only-attrs invariant). Snapshot the input
+        // pre-closure and assert byte-identity afterward.
         //
-        // ## G13 content-ignorance (Constitution V Principle V +
-        // Copilot R2 #4)
+        // ## Audit content-ignorance (Constitution V)
         //
         // The failure path emits ONLY counts and the §-citation
-        // literal — never `raw` / `raw_snapshot` content. `debug_assert_eq!`'s
-        // default `{:?}` format would dump full `CanonicalAttrs`
-        // (token values, country lists, spans), violating G13. The
-        // explicit `if !=` + `panic!` with a count-only message
-        // mirrors the `check_portions_unchanged` pattern in
-        // `crates/engine/src/engine.rs` (PageFinalization-rule-dispatch
-        // sentinel). Both sentinels enforce the same §3 (e.1)
-        // read-only-attrs invariant; both must keep audit-content-
-        // ignorance on the failure path.
+        // literal — never `raw` / `raw_snapshot` content.
+        // `debug_assert_eq!`'s default `{:?}` format would dump full
+        // `CanonicalAttrs` (token values, country lists, spans), leaking
+        // document content. The explicit `if !=` + `panic!` with a
+        // count-only message mirrors the `check_portions_unchanged`
+        // pattern in `crates/engine/src/engine.rs`. Both sentinels
+        // enforce the same read-only-attrs invariant; both must keep
+        // audit content-ignorance on the failure path.
         #[cfg(debug_assertions)]
         let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
 
@@ -1097,7 +1051,7 @@ impl CapcoScheme {
         // is honored while the default-if-absent semantics are
         // faithfully reproduced.
         //
-        // Pipeline order post-#704:
+        // Pipeline order:
         //
         //   1. join_via_lattice (existing per-axis overlays)
         //   2. closure (purely additive Kleene fixpoint over Rows 1-6)
@@ -1150,10 +1104,10 @@ impl CapcoScheme {
             }
         }
 
-        // Apply declarative page rewrites. PR 4b-D.2 hot-path flip:
-        // page rewrites run on the post-closure state, so any cone
-        // facts the closure operator added are visible to rewrite
-        // triggers. NOFORN-clears-REL-TO and similar absorbing rewrites
+        // Apply declarative page rewrites. Page rewrites run on the
+        // post-closure state, so any cone facts the closure operator
+        // added are visible to rewrite triggers. NOFORN-clears-REL-TO
+        // and similar absorbing rewrites
         // remain inflationary on the closed state (they remove
         // dominated tokens but the remaining tokens are already members
         // of the closure's fixed point).
@@ -1247,24 +1201,17 @@ impl CapcoScheme {
                         capco_category_replace(&mut out, *category, with);
                     }
                     CategoryAction::Promote { from, to, .. } => {
-                        // Phase 3 T034 declares the JOINT-promotion and
-                        // FGI-absorption rewrites for the scheduler +
-                        // catalog surface. Post-PR-4b-D.2 the engine
-                        // drives page-marking aggregation through
-                        // `scheme.project(Scope::Page, ...)`, so this
-                        // arm is reachable at runtime. `Promote` stays
-                        // a no-op here because the JOINT-promotion and
-                        // FGI-absorption rewrites are renderer-canonical
-                        // territory — they restate the same fact set in
-                        // a different surface form, which is
-                        // `render_canonical`'s job, not the projection
-                        // lattice's. The renderer-vs-lattice boundary
-                        // is documented in
-                        // `docs/plans/2026-05-01-lattice-design.md`
-                        // §10 row 4 (SCI per-system canonicalization)
-                        // + §10 row 5 (SAR ordering). PR 5+ Stage 4
-                        // lands the renderer trait surface that picks
-                        // these rewrites up.
+                        // The JOINT-promotion and FGI-absorption rewrites
+                        // are declared for the scheduler + catalog
+                        // surface, and the engine drives page-marking
+                        // aggregation through `scheme.project(Scope::Page,
+                        // ...)`, so this arm is reachable at runtime.
+                        // `Promote` stays a no-op here because those
+                        // rewrites are renderer-canonical territory —
+                        // they restate the same fact set in a different
+                        // surface form, which is `render_canonical`'s
+                        // job, not the projection lattice's. A future
+                        // renderer trait surface picks these rewrites up.
                         tracing::debug!(
                             rewrite_id = rw.id,
                             action = "Promote",
