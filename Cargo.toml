@@ -135,13 +135,10 @@ static_assertions = "1.1.0"
 secrecy = "0.10.3"
 zeroize = "1.8.2"
 
-# BLAKE3 cryptographic hash for audit-record digesting (FR-002/FR-004 wire-up
-# at PR 3c.2.D). Workspace-only declaration at 3c.2.A per
-# `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-4; per-crate consumer
-# (in `marque-engine`) lands at 3c.2.D alongside `Blake3Hash::zero()`
-# replacement. `default-features = false, features = ["pure"]` selects the
-# pure-Rust SIMD-free path on `wasm32-unknown-unknown` per Constitution III
-# WASM-size discipline (D25.7 ≤5% WASM size budget).
+# BLAKE3 cryptographic hash for audit-record digesting.
+# `default-features = false, features = ["pure"]` selects the pure-Rust
+# SIMD-free path on `wasm32-unknown-unknown` per Constitution III
+# WASM-size discipline.
 blake3 = { version = "1", default-features = false, features = ["pure"] }
 
 # Property-based testing
@@ -178,7 +175,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 #
 # `corpus-override` is a real feature in marque-engine / marque-capco /
 # marque-config / marque (CLI) but is DELIBERATELY absent from
-# marque-wasm's own `[features]` (T067 / T3 enforcement — see
+# marque-wasm's own `[features]` (corpus-override enforcement — see
 # `docs/security/WHITEPAPER.md` §10.3). The `#[cfg(feature = "corpus-override")]`
 # probe in `crates/wasm/src/lib.rs` and `crates/wasm/tests/no_corpus_override.rs`
 # is the load-bearing part of that enforcement; without this check-cfg entry
@@ -191,17 +188,11 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [workspace.lints.clippy]
-# PR 3c.2.E lifted `#[non_exhaustive]` from `ParsedAttrs<'src>` and
-# `CanonicalAttrs` so the structural rename body could move from
-# `marque_ism::from_parsed_unchecked` into `CapcoScheme::canonicalize`
-# (FR-043 sole-path invariant). The lift made the
-# `let mut x = T::default(); x.foo = ...;` test-fixture pattern
-# (legible under `#[non_exhaustive]` because struct-update was
-# unavailable outside `marque-ism`) trip clippy::field_reassign_with_default
-# at hundreds of pre-existing sites. The style preference is real but
-# the migration cost is mechanical churn across ~270 test sites with
-# no correctness gain; suppress workspace-wide and reconsider when a
-# new construction pattern lands.
+# The `let mut x = T::default(); x.foo = ...;` test-fixture pattern trips
+# clippy::field_reassign_with_default at hundreds of sites. The style
+# preference is real but the migration cost is mechanical churn across
+# ~270 test sites with no correctness gain; suppress workspace-wide and
+# reconsider when a new construction pattern lands.
 field_reassign_with_default = "allow"
 
 [profile.bench]
