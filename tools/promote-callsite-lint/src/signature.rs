@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Pass B — D12 / R-11 signature-shape lint.
+//! Pass B — signature-shape lint.
 //!
 //! Walk every `*.rs` file under
 //! `<workspace_dir>/{crates/*/{src,tests},tests,<top-level-members>/{src,tests}}`
@@ -22,15 +22,15 @@
 //!    transition. Detected by enclosing `impl <...> MarkingScheme<...> for T`
 //!    plus method ident `canonicalize`.
 //!
-//! Targeting **shape, not name** is the D12 rationale: a future
+//! Targeting **shape, not name** is deliberate: a future
 //! contributor renaming `from_parsed_raw` evades a name-suffix
 //! lint without altering the failure pattern.
 //!
-//! The PR 3a → PR 3c keystone window also carried a path-based
-//! whitelist 3 for `crates/ism/src/canonical.rs::from_parsed_unchecked`.
-//! That carve-out retired in PR 3c.2.E along with the adapter
-//! itself; the inlined structural rename now lives in
-//! `CapcoScheme::canonicalize` (whitelist 2).
+//! An earlier transitional adapter
+//! (`crates/ism/src/canonical.rs::from_parsed_unchecked`) once carried a
+//! third path-based whitelist. That carve-out has since been retired
+//! along with the adapter itself; the inlined structural rename now
+//! lives in `CapcoScheme::canonicalize` (whitelist 2).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -370,7 +370,7 @@ impl SignatureWalker<'_> {
         }
 
         // Whitelist 3 (`crates/ism/src/canonical.rs::from_parsed_unchecked`)
-        // retired in PR 3c.2.E along with the adapter itself.
+        // retired along with the adapter itself.
 
         let loc = sig.ident.span().start();
         self.sink.push(Diagnostic {
@@ -382,7 +382,7 @@ impl SignatureWalker<'_> {
             message: format!(
                 "function {fn_name} has signature shape (ParsedAttrs -> CanonicalAttrs) \
                  outside MarkingScheme::canonicalize \
-                 (FR-040 amendment per D12 / R-11)",
+                 (signature-shape discipline)",
                 fn_name = sig.ident,
             ),
         });

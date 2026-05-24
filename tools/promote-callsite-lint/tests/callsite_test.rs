@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Integration tests for the FR-040 base call-site lint.
+//! Integration tests for the base call-site lint.
 //!
 //! Each test materializes a synthetic workspace tree under a
 //! `tempfile::TempDir`, writes one `.rs` source file at a path
@@ -74,7 +74,7 @@ impl Engine {
 
 #[test]
 fn production_denied_apply_text_corrections_calling_promote_marking() {
-    // Copilot suppressed: per-reserved-name allow-list. Even though
+    // Per-reserved-name allow-list. Even though
     // `apply_text_corrections` is in the `Engine` allow-list for
     // `__engine_promote_text_correction`, it MUST NOT call
     // `__engine_promote` (the marking-fix promoter). The two audit-
@@ -388,7 +388,7 @@ fn naughty() {
 
 #[test]
 fn top_level_workspace_member_src_is_walked_and_flagged() {
-    // Regression test for Copilot R1 #1 / R8 #1: the previous walker
+    // Regression test: the previous walker
     // only visited `crates/*/src` + `crates/*/tests`, missing the
     // top-level `marque/` binary crate. This fixture creates a
     // `<member>/Cargo.toml` + `<member>/src/lib.rs` pair (mimicking
@@ -436,7 +436,7 @@ fn top_level_workspace_member_tests_carve_out_is_recognized() {
     // with the carve-out comment must be allowed (PRC001 not fired).
     // Verifies BOTH the discovery path AND the corresponding
     // `is_test_path` branch that handles the `<member>/tests/<...>`
-    // shape (R6 #1 fix).
+    // shape.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
@@ -462,7 +462,7 @@ fn marque_top_level_test_fixture() {
 
 #[test]
 fn aliased_import_does_not_bypass_lint() {
-    // Regression test for the round-8 audit blocker: a `use ... as ...`
+    // Regression test: a `use ... as ...`
     // import does NOT bypass the lint. Last-segment-only matching on
     // `__engine_promote` / `__engine_construct` ensures any call to
     // those reserved names is caught regardless of the path qualifier
@@ -525,8 +525,8 @@ fn naughty_fqn() {
 
 #[test]
 fn engine_promote_legacy_is_not_caught_by_suffix_match() {
-    // PR 3c.B Commit 2 regression: `AppliedFix::__engine_promote_legacy`
-    // was added as the back-compat path during the FixIntent migration.
+    // Regression: `AppliedFix::__engine_promote_legacy`
+    // was once a back-compat path during the FixIntent migration.
     // The reserved-name lint flags calls whose last path-segment is
     // EXACTLY `__engine_promote` (or `__engine_construct`) — anchored
     // on string equality, NOT on prefix containment. The companion
@@ -535,8 +535,8 @@ fn engine_promote_legacy_is_not_caught_by_suffix_match() {
     //
     // If a future refactor switches `path_ends_with`'s comparison to
     // prefix-match (e.g., `starts_with("__engine_promote")`), this
-    // test will fail loudly. The brief for PR 3c.B Commit 2 pins
-    // last-segment exact-equality as load-bearing.
+    // test will fail loudly: last-segment exact-equality is
+    // load-bearing.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
@@ -584,8 +584,8 @@ fn naughty_proper_name() {
 
 #[test]
 fn production_allowed_inside_two_pass_fixer_apply_kept_fixes() {
-    // PR 7b extracts the two `__engine_promote` calls from
-    // `Engine::fix_inner` into `TwoPassFixer::apply_kept_fixes`.
+    // The two `__engine_promote` calls live in
+    // `TwoPassFixer::apply_kept_fixes` (extracted from `Engine::fix_inner`).
     // The phase-split orchestrator is a private struct in
     // `crates/engine/src/engine.rs`; its `apply_kept_fixes` method
     // is the new authorized production call site. The allow-list
@@ -625,7 +625,7 @@ fn two_pass_fixer_method_not_on_allow_list_is_denied() {
     // calling the promotion API must be rejected, forcing any
     // future fourth-promotion-site addition to be a deliberate
     // amendment to the allow-list — exactly the property the
-    // FR-040 contract pins.
+    // engine-only contract pins.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
@@ -650,14 +650,14 @@ impl TwoPassFixer {
 
 #[test]
 fn two_pass_fixer_shadow_type_outside_canonical_file_is_denied() {
-    // Copilot round-3 R3-1 regression test: a same-name `TwoPassFixer`
+    // Regression test: a same-name `TwoPassFixer`
     // type defined in a different file under `crates/engine/src/**`
     // MUST NOT inherit the canonical allow-list. The allow-list is
     // pinned to the single canonical home `crates/engine/src/engine.rs`
     // via the `is_engine_canonical_helper_file` path guard. Without
     // that guard, type-name-only matching on `impl_self_type` would
     // let any shadow type with `apply_kept_fixes` defined anywhere
-    // under `crates/engine/src/**` bypass the FR-040 engine-only
+    // under `crates/engine/src/**` bypass the engine-only
     // contract.
     //
     // Mirrors the existing free-fn pin (`ENGINE_FREE_FN_ALLOW_LIST` +
@@ -698,10 +698,10 @@ impl TwoPassFixer {
 
 #[test]
 fn engine_promote_text_correction_proper_name_is_caught() {
-    // PR 3c.2.D fixup F-1 (Security H-001): the new
+    // The
     // `AppliedTextCorrection::__engine_promote_text_correction`
-    // reserved name (PM-D-4 text-correction split) MUST be flagged
-    // when called from non-engine, non-test code — same FR-040
+    // reserved name (the text-correction split) MUST be flagged
+    // when called from non-engine, non-test code — same
     // engine-only contract as `__engine_promote`. The matcher uses
     // exact-equality on the last path segment, so this name is
     // explicitly enumerated alongside `__engine_promote` and
@@ -729,9 +729,9 @@ fn naughty_text_correction_call() {
 
 #[test]
 fn engine_promote_text_correction_production_allowed_inside_apply_text_corrections() {
-    // PR 3c.2.D fixup F-1: the production carve-out for
-    // `__engine_promote_text_correction` is `Engine::apply_text_corrections`
-    // (PM-D-4 + PM-D-13). The existing `ENGINE_METHOD_ALLOW_LIST`
+    // The production carve-out for
+    // `__engine_promote_text_correction` is `Engine::apply_text_corrections`.
+    // The existing `ENGINE_METHOD_ALLOW_LIST`
     // already lists `apply_text_corrections`, and the matcher now
     // recognizes the new reserved name. End-to-end the call site
     // must be allowed.
@@ -759,7 +759,7 @@ impl Engine {
 
 #[test]
 fn engine_promote_text_correction_test_fixture_carve_out_honored() {
-    // PR 3c.2.D fixup F-1: the Constitution V Principle V test-
+    // The Constitution V Principle V test-
     // fixture carve-out applies symmetrically to
     // `__engine_promote_text_correction`. A call site inside a
     // `tests/` integration file with the marker comment within five

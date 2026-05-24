@@ -17,8 +17,8 @@ use anyhow::Result;
 use clap::Parser;
 use promote_callsite_lint::{Diagnostic, Severity, callsite, signature};
 
-/// AST-based CI lint enforcing FR-040 + decision D12 for marque
-/// (engine-refactor-006).
+/// AST-based CI lint enforcing the engine-only promote-callsite
+/// discipline plus the signature-shape discipline for marque.
 #[derive(Debug, Parser)]
 #[command(name = "promote-callsite-lint", version, about)]
 struct Cli {

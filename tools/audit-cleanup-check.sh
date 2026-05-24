@@ -3,20 +3,17 @@
 #
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 #
-# T138a — FR-037 absence-check (006 polish phase, PR 10.B).
+# audit-reader absence-check.
 #
-# FR-037 from `specs/006-engine-rule-refactor/spec.md` declares a
-# *negative* property: there is no `marque-audit-reader` crate, no
-# reader-only feature flag, and no `marque_engine::reader::*` public
-# surface. The clean-break audit-schema cutover (`marque-mvp-3` →
-# `marque-1.0`, landed in PR 3c.2.D) depends on this property — pre-
-# cutover audit records are unreadable by post-cutover binaries by
-# *type-level* construction, not by convention.
+# This check defends a *negative* property: there is no
+# `marque-audit-reader` crate, no reader-only feature flag, and no
+# `marque_engine::reader::*` public surface. The clean-break
+# audit-schema cutover depends on this property — pre-cutover audit
+# records are unreadable by post-cutover binaries by *type-level*
+# construction, not by convention.
 #
-# Negative properties need positive enforcement. Source plan §10.1
-# (`docs/plans/2026-05-02-engine-refactor-consolidated.md`) calls for
-# a CI absence-check; comment-propagated absence is the failure mode
-# the murder board (W6) called out. This script is that gate.
+# Negative properties need positive enforcement: comment-propagated
+# absence is the failure mode this gate guards against.
 #
 # Three structural asserts:
 #
@@ -61,8 +58,8 @@ print_fail() {
 if [ -d "crates/audit-reader" ]; then
     print_fail \
         "crates/audit-reader/ directory exists" \
-        "FR-037 forbids a reader crate. Found: crates/audit-reader/" \
-        "spec.md FR-037; consolidated plan §10.1"
+        "A reader crate is forbidden. Found: crates/audit-reader/" \
+        "the audit-reader absence property (clean-break audit-schema cutover)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -77,7 +74,7 @@ fi
 # `target/` are deliberately excluded — a sibling worktree at
 # `.worktrees/some-branch/` may legitimately reference experimental
 # crate names without that work having merged to the active branch.
-# The FR-037 invariant applies to the live workspace surface, not to
+# The invariant applies to the live workspace surface, not to
 # every checked-out parallel branch.
 # ---------------------------------------------------------------------------
 CARGO_HITS="$(grep -RnE '\b(audit[-_]reader|marque[-_]audit[-_]reader)\b' \
@@ -90,7 +87,7 @@ if [ -n "${CARGO_HITS}" ]; then
     print_fail \
         "audit-reader identifier present in Cargo.toml" \
         "$(echo "${CARGO_HITS}" | sed 's/^/    /')" \
-        "spec.md FR-037; consolidated plan §10.1"
+        "the audit-reader absence property (clean-break audit-schema cutover)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -122,18 +119,17 @@ if [ -d "crates/engine/src" ]; then
         print_fail \
             "pub mod reader / pub use ...::reader present in marque-engine" \
             "$(echo "${READER_HITS}" | sed 's/^/    /')" \
-            "spec.md FR-037; consolidated plan §10.1"
+            "the audit-reader absence property (clean-break audit-schema cutover)"
     fi
 fi
 
 if [ ${EXIT_CODE} -ne 0 ]; then
     echo "" >&2
     echo "audit-cleanup-check FAILED — see asserts above." >&2
-    echo "FR-037 keeps the clean-break audit-schema property" >&2
-    echo "(marque-mvp-3 → marque-1.0 cutover, PR 3c.2.D) a type-level" >&2
-    echo "guarantee rather than a convention. Removing the reader" >&2
-    echo "surface entirely is the enforcement." >&2
+    echo "This check keeps the clean-break audit-schema property a" >&2
+    echo "type-level guarantee rather than a convention. Removing the" >&2
+    echo "reader surface entirely is the enforcement." >&2
     exit ${EXIT_CODE}
 fi
 
-echo "audit-cleanup-check OK: FR-037 absence properties hold."
+echo "audit-cleanup-check OK: audit-reader absence properties hold."

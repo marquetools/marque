@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `citation-lint` — CI lint enforcing FR-018 citation fidelity.
+//! `citation-lint` — CI lint enforcing citation fidelity.
 //!
 //! See `README.md` for design and `--help` for invocation.
 
@@ -27,7 +27,7 @@ use citation_lint::lint_workspace;
 #[derive(Debug, Parser)]
 #[command(
     name = "citation-lint",
-    about = "AST-based lint enforcing FR-018 citation fidelity",
+    about = "AST-based lint enforcing citation fidelity",
     version
 )]
 struct Cli {
