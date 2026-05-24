@@ -4,17 +4,10 @@
 
 //! `CapcoScheme` — CAPCO's implementation of the `MarkingScheme` trait.
 //!
-//! This is the Phase A proof that CAPCO's hand-written aggregation in
-//! [`PageContext`] falls out of the generic `marque-scheme` abstraction.
-//! The adapter wraps `CanonicalAttrs` as `CapcoMarking`, implements
-//! [`Lattice`] by delegating the join to `PageContext`'s existing
-//! rollup, and exposes a minimal three-constraint sample to validate
-//! that declarative constraints can reproduce existing rule behavior.
-//!
-//! The bulk of the migration — moving every CAPCO rule and replacing
-//! `PageContext`'s internals — is Phase B/C work. The design doc
-//! `docs/plans/2026-04-17-marking-scheme-lattice-design.md` sequences
-//! the full migration.
+//! The adapter wraps `CanonicalAttrs` as `CapcoMarking`, composes
+//! per-axis page aggregation through the per-axis lattice types, and
+//! declares the constraint / closure / page-rewrite catalogs that the
+//! shared `marque-scheme` evaluator runs.
 //!
 //! # Category identifiers
 //!
@@ -117,10 +110,9 @@ mod tests;
 // preserve the pre-split paths so no external file needs to learn about
 // the sibling-module layout.
 pub(crate) use self::predicates::capco_token_category;
-// `is_fdr_dominator` and `is_orcon_family` are public crate API per the
-// original `scheme.rs` (pre-split visibility); `pub use` keeps them
-// reachable at `marque_capco::scheme::is_fdr_dominator` for downstream
-// callers that wire into PR 4 rule-wrapper dispatch.
+// `is_fdr_dominator` and `is_orcon_family` are public crate API;
+// `pub use` keeps them reachable at
+// `marque_capco::scheme::is_fdr_dominator` for downstream callers.
 pub use self::predicates::{is_fdr_dominator, is_orcon_family};
 
 // Stage 2 PR B (issue #466) — re-exports for the new sibling modules
@@ -164,25 +156,23 @@ pub(crate) use self::class_floor::{CLASS_FLOOR_CATALOG, ClassFloorPolicy, ClassF
 // leaf-glob pattern, so the catalog surface needs to live in the
 // parent namespace.
 //
-// T044: the walker-shared `RULE_E059` constant was deleted; per OD-8.A
-// each row's `name` IS the canonical predicate ID and emit functions
-// construct `RuleId::new("capco", row.name)` directly.
+// Each row's `name` IS the canonical predicate ID; emit functions
+// construct `RuleId::new("capco", row.name)` directly (no walker-level
+// shared rule-ID constant).
 pub(crate) use self::sci_per_system::{
     CompanionForm, SCI_PER_SYSTEM_CATALOG, SciPerSystemKind, SciPerSystemRow,
 };
 
-// Post-Stage-2 PR B (issue #466) — the hub's own implementation bodies
-// moved into sibling modules, but the pre-split mod.rs cross-sibling
-// glob imports stay HERE because the in-tree `tests.rs` and the
-// `super::super::*` glob in PR-A leaf modules were authored against
-// the assumption that every `pub(crate)` item declared in
-// `actions/` / `constraints/` / `predicates/` is reachable through
-// mod.rs's namespace via the glob (Rust resolves `use super::*;` in a
-// child by walking the parent's namespace, and plain `use foo::*;`
-// brings each imported `pub(crate)` name into the parent at that
-// visibility). Keeping the three globs intact preserves leaf + test
-// glob-import resolution byte-for-byte; the hub's own impls no longer
-// reference these symbols directly post-split. `#[allow(unused_imports)]`
+// The hub's own implementation bodies live in sibling modules, but the
+// cross-sibling glob imports stay HERE because the in-tree `tests.rs`
+// and the `super::super::*` glob in the leaf modules rely on every
+// `pub(crate)` item declared in `actions/` / `constraints/` /
+// `predicates/` being reachable through mod.rs's namespace via the glob
+// (Rust resolves `use super::*;` in a child by walking the parent's
+// namespace, and plain `use foo::*;` brings each imported `pub(crate)`
+// name into the parent at that visibility). Keeping the three globs
+// intact preserves leaf + test glob-import resolution; the hub's own
+// impls no longer reference these symbols directly. `#[allow(unused_imports)]`
 // is required because the lib build proper of mod.rs alone doesn't
 // track the leaf consumers — clippy `-D warnings` would otherwise
 // reject the globs even though they're load-bearing.
@@ -230,23 +220,17 @@ pub const CAT_DISPLAY_ONLY_TO: CategoryId = CategoryId(12);
 // Sentinel token ids for constraint expressions
 // ---------------------------------------------------------------------------
 //
-// Phase C will replace these with generated ids pointing to specific
-// CVE tokens. For Phase A we only need enough ids to express the three
-// sample constraints that the equivalence tests exercise.
+// Sentinel token ids for the constraint expressions. These could be
+// replaced with generated ids pointing to specific CVE tokens; today
+// they are hand-assigned distinct values.
 
 pub const TOK_NOFORN: TokenId = TokenId(100);
 pub const TOK_JOINT: TokenId = TokenId(103);
 pub const TOK_USA: TokenId = TokenId(104);
 
-// Sentinel token ids for the Phase 3 declarative constraint catalog
-// (T033). These identify specific tokens referenced by
-// `Constraint::{Conflicts, Requires, Supersedes}` entries in the
-// 12-rule migration set. Phase 4 replaces them with generated
-// per-CVE-value ids; Phase 3 uses sentinels because the engine's
-// `lint` path still consults hand-written rule impls as the
-// authoritative diagnostic source, and the declarative constraint
-// data here exists for scheme-exploration + Phase 4 decoder
-// consumption — not (yet) for runtime evaluation.
+// Sentinel token ids for the declarative constraint catalog. These
+// identify specific tokens referenced by
+// `Constraint::{Conflicts, Requires, Supersedes}` entries.
 
 pub const TOK_RESTRICTED: TokenId = TokenId(110);
 pub const TOK_RD: TokenId = TokenId(111);
@@ -261,18 +245,18 @@ pub const TOK_IC_DISSEM: TokenId = TokenId(119);
 pub const TOK_NON_IC_DISSEM: TokenId = TokenId(120);
 pub const TOK_NON_US_CLASSIFICATION: TokenId = TokenId(121);
 
-// T035c-21: NODIS / EXDIS sentinels for E037 (Conflicts) + E038
+// NODIS / EXDIS sentinels for the mutual-exclusion (Conflicts) +
+// requires-NOFORN
 // (Requires NOFORN). Resolved via `satisfies_attrs` against
 // `attrs.non_ic_dissem`, where the `NonIcDissem::Nodis` and
 // `NonIcDissem::Exdis` variants live.
 pub const TOK_NODIS: TokenId = TokenId(122);
 pub const TOK_EXDIS: TokenId = TokenId(123);
 
-// PR 3b.C (T026c): RELIDO incompatibility roster sentinels.
-// Resolved via `satisfies_attrs` against `attrs.dissem_iter()`
-// (the namespace-agnostic walk over `dissem_us ++ dissem_nato`,
-// post PR 9b / FR-046 split) — all four tokens are IC dissem
-// controls living in `marque_ism::DissemControl`.
+// RELIDO incompatibility roster sentinels. Resolved via
+// `satisfies_attrs` against `attrs.dissem_iter()` (the
+// namespace-agnostic walk over `dissem_us ++ dissem_nato`) — all four
+// tokens are IC dissem controls living in `marque_ism::DissemControl`.
 //
 // DissemControl variant → CVE string form (from generated values.rs):
 //   Relido     → "RELIDO"
@@ -284,15 +268,15 @@ pub const TOK_DISPLAY_ONLY: TokenId = TokenId(125);
 pub const TOK_ORCON: TokenId = TokenId(126);
 pub const TOK_ORCON_USGOV: TokenId = TokenId(127);
 
-// PR 3c.B Sub-PR 8.D.2 — REL TO whole-axis-clear sentinel.
+// REL TO whole-axis-clear sentinel.
 //
 // Resolved via `apply_fact_remove`'s CAT_REL_TO arm. Unlike `TOK_USA`
 // (which removes only the USA entry from `attrs.rel_to`),
 // `TOK_REL_TO` is a sentinel meaning "clear the entire CAT_REL_TO
 // axis." E053 (NOFORN ⊥ REL TO, §H.8 p145) emits
 // `FactRemove { FactRef::Cve(TOK_REL_TO), Scope::Portion }`; the
-// per-country open-vocab removal channel will land alongside the
-// `FactRef::OpenVocab` open-vocab country-removal Stage-4 sub-PR.
+// per-country open-vocab removal channel will land alongside a
+// future `FactRef::OpenVocab` country-removal path.
 //
 // The sentinel does NOT introduce a new category/axis in
 // `capco_token_category` — CAT_REL_TO already exists (USA maps
@@ -302,25 +286,24 @@ pub const TOK_ORCON_USGOV: TokenId = TokenId(127);
 // `TOK_USA` removes only USA; `TOK_REL_TO` clears the whole axis.
 pub const TOK_REL_TO: TokenId = TokenId(128);
 
-// PR 3c.B Sub-PR 8.F.2 — SBU-NF and LES-NF Pattern A sentinels.
+// SBU-NF and LES-NF Pattern A sentinels.
 //
 // These tokens route through `capco_token_category` to
 // `CAT_NON_IC_DISSEM`, scanning `attrs.non_ic_dissem` for the
 // `NonIcDissem::SbuNf` and `NonIcDissem::LesNf` variants
-// respectively (declared at `crates/ism/src/attrs.rs:1163`/`:1168`).
+// respectively.
 //
 // Used by the new `capco/sbu-nf-implies-noforn` (§H.9 p178) and
 // `capco/les-nf-implies-noforn` (§H.9 p185) PageRewrites in
 // `build_page_rewrites()` — Pattern A NOFORN-supremacy for SBU-NF
-// and LES-NF. Mirrors the NODIS/EXDIS pair (`TOK_NODIS`, `TOK_EXDIS`)
-// added in PR 3c.B Sub-PR 8.F.
+// and LES-NF. Mirrors the NODIS/EXDIS pair (`TOK_NODIS`, `TOK_EXDIS`).
 pub const TOK_SBU_NF: TokenId = TokenId(129);
 pub const TOK_LES_NF: TokenId = TokenId(130);
 
-// Stage D (PR 3.7 T108c): Closure-rule catalog sentinels.
+// Closure-rule catalog sentinels.
 //
-// These tokens are needed to express trigger and suppressor predicates in the
-// §4.7 implicit-default trio and per-marking unconditional implication rows.
+// These tokens express trigger and suppressor predicates in the
+// implicit-default trio and per-marking unconditional implication rows.
 // All resolve via `satisfies_attrs` against the appropriate ISM attribute field.
 //
 // IC dissemination controls (DissemControl variants):
@@ -338,8 +321,7 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // parser preserves DissemControl::Eyes
 // for legacy-input recognition).
 
-// PR 4b-C Commit 1 (T112 OQ-1 Path A): vocab sentinels for Pattern B
-// + future-decoder coverage. Each token is resolved by `satisfies_attrs`
+// Vocab sentinels for Pattern B + future-decoder coverage. Each token is resolved by `satisfies_attrs`
 // against the appropriate ISM attribute field; the
 // `capco_token_category` table below routes them to the correct
 // CategoryId. Routed AS-IF the §H.8 / §H.9 trigger family they
@@ -390,12 +372,11 @@ pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 // `crates/capco/src/scheme/actions/strip.rs`) read the AEA axis
 // directly via `AeaMarking::DodUcni` / `AeaMarking::DoeUcni`
 // variant match and do NOT depend on sentinel identity, so adding
-// `TOK_DCNI` is Pattern-C-neutral. verified 2026-05-16.
+// `TOK_DCNI` is Pattern-C-neutral.
 pub const TOK_DCNI: TokenId = TokenId(147); // DCNI — DOD UCNI portion form, §H.6 p116
 
-// canonical NATO control-marking sentinels for
-// ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
-// shapes added in `marque-ism` PR 9c.1 Commit 1:
+// Canonical NATO control-marking sentinels for ATOMAL / BALK / BOHEMIA.
+// These tokens identify the structural shapes in `marque-ism`:
 //   - ATOMAL lives in the AEA axis as `AeaMarking::Atomal(AtomalBlock)`
 //     per CAPCO-2016 §H.7 p122 worked example
 //     `SECRET//RD/ATOMAL//FGI NATO//NOFORN`.
