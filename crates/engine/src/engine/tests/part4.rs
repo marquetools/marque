@@ -12,7 +12,7 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
     struct LocalizedFixIntentStub;
     impl Rule<CapcoScheme> for LocalizedFixIntentStub {
         fn id(&self) -> RuleId {
-            // T044: test-fixture synthetic id in `"test"` scheme.
+            // Test-fixture synthetic id in `"test"` scheme.
             RuleId::new("test", "synthetic.e898-fixture")
         }
         fn name(&self) -> &'static str {
@@ -91,16 +91,14 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
 
 #[test]
 fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
-    // Copilot round-2 finding R2-3 lock.
+    // Regression lock: `apply_kept_fixes` must not short-circuit in
+    // DryRun mode and return the unspliced source as `post_buffer`.
+    // If it did, the outer `TwoPassFixer::run` would re-lint that
+    // unspliced buffer and dispatch pass-2 against the WRONG
+    // coordinate space — same byte input as Apply but a different
+    // pass-2 context, breaking the DryRun-as-preview contract.
     //
-    // Pre-R2-3, `apply_kept_fixes` short-circuited in DryRun mode
-    // and returned the unspliced source as `post_buffer`. The outer
-    // `TwoPassFixer::run` then re-linted that unspliced buffer and
-    // dispatched pass-2 against the WRONG coordinate space — same
-    // byte input as Apply but a different pass-2 context, breaking
-    // the DryRun-as-preview contract (FR-022 / FR-023).
-    //
-    // Post-R2-3, `apply_kept_fixes` always builds the post-splice
+    // `apply_kept_fixes` always builds the post-splice
     // buffer in BOTH modes; only the OUTER `FixResult.source`
     // differs between Apply and DryRun (the outer layer in
     // `run_pass2_whole_marking` substitutes `self.source.to_vec()`
@@ -117,7 +115,7 @@ fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
     let engine = engine_with(vec![]);
     let source = b"SECRET//NOFORN";
 
-    // FR-016-sorted (span.end DESC): the synth helper produces
+    // Sorted span.end DESC: the synth helper produces
     // one fix at 8..14 replacing "NOFORN" with "REL TO USA".
     let kept_fixes = vec![synth_fix("E001", 8, 14, "REL TO USA")];
     let expected_post_buffer = b"SECRET//REL TO USA".to_vec();
@@ -229,9 +227,9 @@ fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
 /// the helpers only read `rule`/`span`/`replacement`.
 fn synth_fix(rule: &'static str, start: usize, end: usize, replacement: &str) -> SynthesizedFix {
     SynthesizedFix {
-        // T044: synthesized-fix helper uses the reserved `"test"`
-        // scheme; the `rule` arg is the predicate id (caller picks
-        // a unique discriminant per fix).
+        // Synthesized-fix helper uses the reserved `"test"` scheme;
+        // the `rule` arg is the predicate id (caller picks a unique
+        // discriminant per fix).
         rule: RuleId::new("test", rule),
         severity: Severity::Fix,
         span: Span::new(start, end),
@@ -261,16 +259,16 @@ fn synth_fix(rule: &'static str, start: usize, end: usize, replacement: &str) ->
 
 #[test]
 fn sort_and_c1_dedup_orders_descending_by_span_end() {
-    // FR-016 sort key: span.end DESC, then span.start DESC, then
-    // rule ASC, then replacement ASC. Use truly disjoint spans
-    // so the C-1 dedup walk keeps all of them.
+    // Sort key: span.end DESC, then span.start DESC, then rule ASC,
+    // then replacement ASC. Use truly disjoint spans so the C-1 dedup
+    // walk keeps all of them.
     let synthesized = vec![
         synth_fix("E001", 0, 2, "AA"),   // span 0..2
         synth_fix("E002", 10, 14, "BB"), // span 10..14
         synth_fix("E003", 4, 8, "CC"),   // span 4..8
     ];
     let sorted = super::sort_and_c1_dedup(synthesized);
-    // Disjoint spans, so all three survive. FR-016 sort →
+    // Disjoint spans, so all three survive. Sort →
     // 10..14, 4..8, 0..2.
     assert_eq!(sorted.len(), 3);
     assert_eq!(sorted[0].span.end, 14);
@@ -281,7 +279,7 @@ fn sort_and_c1_dedup_orders_descending_by_span_end() {
 #[test]
 fn sort_and_c1_dedup_drops_overlapping_fixes() {
     // Two overlapping fixes: keep the lex-min winner per C-1.
-    // After FR-016 sort, span 4..10 comes first (later end),
+    // After the sort, span 4..10 comes first (later end),
     // then 0..8 (earlier end) — but 0..8 overlaps with 4..10,
     // so it is dropped.
     let synthesized = vec![
@@ -304,7 +302,7 @@ fn sort_and_c1_dedup_tiebreaks_lex_min_rule_then_replacement() {
     let kept = super::sort_and_c1_dedup(synthesized);
     // C-1 dedup: only one fix survives the overlap walk
     // (lex-min winner). With same span across all three, the
-    // first to enter the kept set is the FR-016 sort head.
+    // first to enter the kept set is the sort head.
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].rule.predicate_id(), "E001");
 }
@@ -319,7 +317,7 @@ fn sort_and_c1_dedup_empty_input_returns_empty() {
 fn splice_fixes_forward_splices_in_reverse_order() {
     // Source: "SECRET//NOFORN" (14 bytes).
     // Two fixes: 0..6 → "AA", 8..14 → "BB".
-    // FR-016 sort (span.end DESC) → 8..14 first, then 0..6.
+    // Sort (span.end DESC) → 8..14 first, then 0..6.
     // forward walk via `iter().rev()` yields 0..6 then 8..14.
     let source = b"SECRET//NOFORN";
     let fixes = super::sort_and_c1_dedup(vec![
@@ -532,8 +530,8 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
     // tests; the fabricated record is never commingled with engine
     // output.
     let applied = AppliedFix::__engine_promote(
-        // T044: synthetic test fixture uses `"test"` scheme; the
-        // `rule` arg is the predicate-id discriminant.
+        // Synthetic test fixture uses `"test"` scheme; the `rule` arg
+        // is the predicate-id discriminant.
         RuleId::new("test", rule),
         Severity::Fix,
         span,

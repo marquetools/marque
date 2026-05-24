@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 4 — fix pipeline integration tests (T044, T046).
+//! Fix pipeline integration tests.
 //!
 //! Drives `Engine::fix` against corpus fixtures and stub rules, verifying:
-//! - Mixed confidence: only high-confidence fixes applied (FR-004)
+//! - Mixed confidence: only high-confidence fixes applied
 //! - Dry-run parity: identical applied list, dry_run=true, source unchanged
 //! - Missing classifier identity: field is None
-//! - Overlap guard: deterministic FR-016 ordering
+//! - Overlap guard: deterministic confidence-then-span ordering
 //! - Post-fix re-lint: fewer diagnostics after fixing
 
 use marque_capco::capco_rules;
@@ -31,24 +31,12 @@ fn test_engine() -> Engine {
 }
 
 fn mixed_confidence_source() -> Vec<u8> {
-    // E002 at confidence 0.97 (REL TO missing USA → fix applied), and
-    // E010 (bare HCS legacy form, §H.4 p62) emitting a no-fix
-    // Severity::Error diagnostic that stays in `remaining_diagnostics`.
-    //
-    // Fixture history:
-    // - PR 3c.B Commit 6 retired the original E001/E003 fixture; the
-    //   replacement used `//JOINT SECRET USA GBR\n` for the no-fix
-    //   line (E014 + E015 both Error-no-fix at the time).
-    // - PR 3c.B Sub-PR 8.D.4 migrated E014 to FactAdd; the JOINT
-    //   fixture's E014 now auto-applies the missing co-owners to REL
-    //   TO, transitively satisfying E015 (CAT_DISSEM is satisfied by
-    //   non-empty rel_to per `satisfies_attrs`). The JOINT line no
-    //   longer exercises the "remaining no-fix Error diagnostic"
-    //   channel. `(TS//HCS)\n` is the stable replacement — E010 is
-    //   consciously-deferred (HCS-O vs HCS-P is a classifier decision
-    //   per §H.4) and intentionally has no auto-fix path, so its
-    //   diagnostic persists through the fix pass and lands in
-    //   `remaining_diagnostics`.
+    // First line: REL TO missing USA at confidence 0.97 → fix applied.
+    // Second line `(TS//HCS)`: bare HCS legacy form (§H.4 p62) emitting
+    // a no-fix Severity::Error diagnostic that stays in
+    // `remaining_diagnostics`. HCS-O vs HCS-P is a classifier decision
+    // per §H.4, so the rule has no auto-fix path and its diagnostic
+    // persists through the fix pass.
     b"SECRET//REL TO GBR, AUS\n(TS//HCS)\n".to_vec()
 }
 
@@ -58,16 +46,15 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // Only E002 (confidence 0.97 ≥ 0.95) should be applied. The
-    // remaining diagnostic on this fixture is E010 (bare HCS legacy
-    // form, no-fix on the `(TS//HCS)\n` second line — conscious-defer
-    // per §H.4 p62, classifier picks HCS-O vs HCS-P) — verified below
-    // in the `remaining_diagnostics` assertion.
-    // PR 3c.2.D fixup F-3: `applied_fixes()` returns `impl Iterator`;
-    // collect once for index access + Debug formatting.
+    // Only the REL-TO-missing-USA fix (confidence 0.97 ≥ 0.95) should
+    // be applied. The remaining diagnostic on this fixture is the bare
+    // HCS legacy form (no-fix on the `(TS//HCS)\n` second line —
+    // conscious-defer per §H.4 p62, classifier picks HCS-O vs HCS-P) —
+    // verified below in the `remaining_diagnostics` assertion.
+    // `applied_fixes()` returns `impl Iterator`; collect once for index
+    // access + Debug formatting.
     let applied: Vec<_> = result.applied_fixes().collect();
     assert_eq!(applied.len(), 1, "applied: {applied:?}");
-    // T044: legacy `E002` → predicate id `portion.dissem.rel-to-missing-usa`.
     assert_eq!(
         applied[0].rule.predicate_id(),
         "portion.dissem.rel-to-missing-usa"
@@ -224,21 +211,16 @@ fn classifier_id_propagated_when_configured() {
     }
 }
 
-// --- H3: insta snapshot tests for audit NDJSON shape (T046) ---
+// --- audit NDJSON shape ---
 //
-// Post-PR-3c.2.D (atomic schema cutover): the v1 snapshot helper +
-// the two snapshot tests retired here. The marque-1.0 NDJSON wire
-// shape is pinned at two layers:
+// The NDJSON wire shape is pinned at two layers:
 //
 //   1. `marque/src/render.rs::render_audit_line_produces_valid_v1_0_ndjson`
 //      exercises the CLI emit path on a synthetic AuditLine.
 //   2. `crates/wasm/tests/audit_v1_0_parity.rs` pins CLI/WASM
-//      byte-identity on the same shape (SC-008 invariant).
+//      byte-identity on the same shape.
 //
-// The retired snapshot tests added zero coverage beyond those two —
-// the v1 envelope they pinned is no longer representable, and the
-// audit-record contract spec at `contracts/audit-record.md` body §
-// is the single wire-format source of truth.
+// `contracts/audit-record.md` is the single wire-format source of truth.
 
 // --- L4: parity test verifies rule IDs, not just count ---
 
@@ -267,7 +249,7 @@ fn dry_run_parity_rule_ids_match() {
     );
 }
 
-// --- T035c-10: E002 REL TO canonicalization round-trip ---
+// --- REL TO canonicalization round-trip ---
 //
 // Verifies that E002's fix splices the canonical REL TO list into the
 // banner as a single replacement. The rule's span covers first → last
@@ -285,8 +267,8 @@ fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
     let source = b"SECRET//REL TO GBR, AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator`; collect
-    // once for the filter pass + Debug-render in the assertion message.
+    // `applied_fixes()` is `impl Iterator`; collect once for the filter
+    // pass + Debug-render in the assertion message.
     let applied: Vec<_> = result.applied_fixes().collect();
     let e002_applied: Vec<_> = applied
         .iter()
@@ -352,8 +334,8 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     let source = b"SECRET//REL TO GBR//NF//REL TO AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // No E002 fix should have been applied — the proposal is None.
-    // PR 3c.2.D fixup F-3: collect once for filter + Debug.
+    // No REL-TO-missing-USA fix should have been applied — the proposal is None.
+    // Collect once for filter + Debug.
     let applied: Vec<_> = result.applied_fixes().collect();
     let e002_applied: Vec<_> = applied
         .iter()
@@ -377,7 +359,7 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 7b — TwoPassFixer behavioral locks
+// TwoPassFixer behavioral locks
 // ---------------------------------------------------------------------------
 //
 // These tests lock the consumer-visible properties of the two-pass

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 US1 — Scheduler (T019–T022).
+//! Scheduler tests.
 //!
 //! Drives `Engine::new` through a synthetic [`marque_scheme::MarkingScheme`]
 //! whose `page_rewrites()` table we manipulate directly. Because
@@ -135,7 +135,7 @@ impl MarkingScheme for StubScheme {
 
 fn try_build(scheme: StubScheme) -> Result<Engine, EngineConstructionError> {
     // The engine is hardcoded to `CapcoScheme` for its internal rule
-    // dispatch (decoder, recognizer) post-PR 3c.B; the scheduler test
+    // dispatch (decoder, recognizer); the scheduler test
     // exercises only the `MarkingScheme::page_rewrites` axis of a
     // *separate* `StubScheme` value, so the rule-set type parameter
     // here is `CapcoScheme` (matching the engine's bound), not the
@@ -203,7 +203,7 @@ fn declarative_rewrite(
 }
 
 // ---------------------------------------------------------------------------
-// T019 — Cycle rejection (pair + 3-rewrite variant).
+// Cycle rejection (pair + 3-rewrite variant).
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -358,7 +358,7 @@ fn cyclic_three_rewrite_cycle_reports_all_members() {
 }
 
 // ---------------------------------------------------------------------------
-// T020 — Unannotated `custom` rewrite rejected.
+// Unannotated `custom` rewrite rejected.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -392,7 +392,7 @@ fn unannotated_custom_rewrite_with_empty_writes_fails_construction() {
 }
 
 // ---------------------------------------------------------------------------
-// T021 — Declaration-order independence.
+// Declaration-order independence.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -447,7 +447,7 @@ fn scheduled_order_independent_of_declaration() {
 }
 
 // ---------------------------------------------------------------------------
-// T022 — Real producer/consumer edge for JOINT-promotion → FGI-absorption.
+// Real producer/consumer edge for JOINT-promotion → FGI-absorption.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -477,8 +477,7 @@ fn joint_promotion_before_fgi_absorption() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 3c.B Sub-PR 8.F engine-prereq — `CategoryAction::Intent` scheduler
-// integration.
+// `CategoryAction::Intent` scheduler integration.
 // ---------------------------------------------------------------------------
 
 /// `CategoryAction::Intent` is a data-shaped action whose
@@ -520,10 +519,9 @@ fn intent_action_with_empty_axes_does_not_trigger_unannotated_custom_error() {
 /// Scheduler ordering: a declarative `Clear` rewrite writes
 /// CAT_X; an `Intent` rewrite reads CAT_X. The scheduler must order
 /// the writer before the reader regardless of declaration order.
-/// This is the prereq-level guard for the Sub-PR 8.F R1 mitigation
-/// — when the actual NOFORN-supremacy / FOUO-eviction rewrites
-/// land, the ordering between writers and `Intent`-reader rewrites
-/// is already correct by topological sort.
+/// This guards the ordering between writers and `Intent`-reader
+/// rewrites: when NOFORN-supremacy / FOUO-eviction rewrites land, the
+/// ordering is already correct by topological sort.
 #[test]
 fn intent_action_orders_correctly_against_existing_rewrite_writers() {
     const READS_X: &[CategoryId] = &[CAT_X];

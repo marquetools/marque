@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T072a — Fuzz target driving `Engine::lint` on arbitrary `&[u8]`.
+//! Fuzz target driving `Engine::lint` on arbitrary `&[u8]`.
 //!
 //! Assertions:
 //!   (a) `lint` never panics

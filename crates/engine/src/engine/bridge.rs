@@ -36,14 +36,14 @@ impl Engine {
     /// Returns `None` for advisory violations — entries whose `span`
     /// or `severity` is `None` are tooling-only signals that never
     /// surface to users. Returns `None` for severity-`Off` overrides
-    /// (FR-008: `Off`-severity diagnostics are unrepresentable).
+    /// (`Off`-severity diagnostics are unrepresentable).
     ///
     /// For qualifying violations the bridge:
     ///
     /// 1. Constructs the `RuleId` 2-tuple `("capco",
     ///    constraint_label)` — the catalog row's `constraint_label`
-    ///    IS the predicate id (T044 OD-8.A, no string folding, no
-    ///    legacy-id lookup table).
+    ///    IS the predicate id (no string folding, no legacy-id lookup
+    ///    table).
     /// 2. Applies the user-configured severity override
     ///    (`emitted_id_overrides`) keyed on the resolved RuleId's
     ///    predicate id.
@@ -95,25 +95,12 @@ impl Engine {
             }
         };
 
-        // T044 (OD-8.A) — the bridge is a no-op pass-through. The
-        // catalog row's `constraint_label` IS the predicate id
-        // post-T044, so we construct `RuleId::new("capco",
-        // constraint_label)` directly — no prefix recovery, no
-        // legacy-id lookup table.
-        //
-        // Pre-T044 the bridge parsed
-        // `constraint_label.split('/').next()` to recover a flat
-        // `E### / W###` legacy id and applied a 15-row special-case
-        // table to remap `capco/...` rows to specific `E0xx`. That
-        // translation layer was the source of a class of "label says
-        // one thing, rule id says another" drift bugs (CLAUDE.md "PR
-        // 3b umbrella closeout" entry). Eliminating the translation
-        // table eliminates the drift surface. See
-        // `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
-        // §2.2 + OD-8.A + the rename table in §1.5; the
-        // `docs/refactor-006/legacy-rule-id-map.md` records each
-        // pre-T044 catalog label's predicate-id successor for
-        // archaeology.
+        // The bridge is a no-op pass-through. The catalog row's
+        // `constraint_label` IS the predicate id, so we construct
+        // `RuleId::new("capco", constraint_label)` directly — no prefix
+        // recovery, no legacy-id lookup table. There is no translation
+        // layer between label and rule id, so the "label says one
+        // thing, rule id says another" drift surface does not exist.
         let rule_id = RuleId::new("capco", v.constraint_label);
 
         let final_severity = self
@@ -130,14 +117,11 @@ impl Engine {
             .scheme
             .fix_intent_by_name(v.constraint_label, attrs, candidate.kind);
 
-        // PR 3c.2.C C5 / PM-C-1 / PR 10.A.1 bridge layer: convert the
-        // carrier-string `ConstraintViolation.message: String` to a typed
-        // `Diagnostic.message: Message`. The citation channel is no
-        // longer bridged — PR 10.A.1 made `Constraint.label: Citation`
-        // typed at declaration, and `ConstraintViolation.citation:
-        // Citation` flows verbatim through the evaluator. The
-        // `citation_by_name` lookup and `EngineInternal` sentinel
-        // fallback were retired in PR 10.A.1.
+        // Convert the carrier-string `ConstraintViolation.message:
+        // String` to a typed `Diagnostic.message: Message`. The citation
+        // channel is not bridged — `Constraint.label: Citation` is typed
+        // at declaration, and `ConstraintViolation.citation: Citation`
+        // flows verbatim through the evaluator.
         //
         // The message lookup still falls back to a generic sentinel
         // when the constraint_label is not in the explicit mapping;
@@ -150,8 +134,8 @@ impl Engine {
                 // Unknown constraint label — emit a generic
                 // `ConflictsWith` template with no args so the audit
                 // record is still closed-template. The original String
-                // message is dropped (G13). Future labels SHOULD be
-                // added to `message_by_name` explicitly.
+                // message is dropped (audit content-ignorance). Future
+                // labels SHOULD be added to `message_by_name` explicitly.
                 tracing::trace!(
                     target: "marque_engine::constraint_bridge",
                     constraint = v.constraint_label,
@@ -163,12 +147,11 @@ impl Engine {
                 )
             });
 
-        // PR 10.A.1: catalog-row citations are now typed end-to-end. The
-        // `ConstraintViolation.citation: Citation` value flowed verbatim
+        // Catalog-row citations are typed end-to-end. The
+        // `ConstraintViolation.citation: Citation` value flows verbatim
         // from the constraint's `label: Citation` declaration via
-        // `marque_scheme::constraint::evaluate`, so the bridge is a direct
-        // copy — the prior `citation_by_name` fallback and
-        // `EngineInternal` sentinel are gone.
+        // `marque_scheme::constraint::evaluate`, so the bridge is a
+        // direct copy.
         let citation = v.citation;
 
         let mut diag =

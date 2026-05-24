@@ -1,6 +1,6 @@
 use super::*;
 
-/// Inline span-containment predicate (PR 7b D-7.16). Endpoints
+/// Inline span-containment predicate. Endpoints
 /// inclusive on both sides: a fix whose span exactly matches a
 /// token's boundaries is still sub-token-shape. Inline because the
 /// pass-1 dispatch loop calls this per-fix.
@@ -10,7 +10,7 @@ pub(super) fn span_is_within_marking(inner: Span, outer: Span) -> bool {
 }
 
 /// True when two byte spans overlap (share at least one byte). Used
-/// by PR 7c's I-18 overlap demotion to detect pass-2 diagnostics that
+/// by the overlap demotion to detect pass-2 diagnostics that
 /// land on byte ranges already promoted by pass-1.
 ///
 /// The half-open `[start, end)` convention matches the rest of
@@ -22,17 +22,17 @@ pub(super) fn spans_overlap(a: Span, b: Span) -> bool {
     a.start < b.end && b.start < a.end
 }
 
-/// PR 7c FR-023 + I-18 — apply reshape-aware disambiguation and
-/// overlap demotion to a pass-2 diagnostic partition. Returns an
-/// owned vector of post-adjustment diagnostics.
+/// Apply reshape-aware disambiguation and overlap demotion to a pass-2
+/// diagnostic partition. Returns an owned vector of post-adjustment
+/// diagnostics.
 ///
 /// Adjustments:
 ///
-/// - **FR-023 disambiguation**: a pass-2 diagnostic whose
+/// - **Disambiguation**: a pass-2 diagnostic whose
 ///   `(rule, candidate_span ?? span)` matches a pass-1 promoted fix is
 ///   dropped. The same rule already fired on the same marking-scope
 ///   span; re-emitting it after the reshape would double-fire.
-/// - **I-18 overlap demotion**: a pass-2 diagnostic whose
+/// - **Overlap demotion**: a pass-2 diagnostic whose
 ///   marking-scope span overlaps ANY pass-1 promoted span (any rule)
 ///   at `Severity::{Error, Warn, Fix}` is demoted to
 ///   `Severity::Suggest`. The pass-1 fix already shipped, so pass-2
@@ -50,25 +50,25 @@ pub(super) fn spans_overlap(a: Span, b: Span) -> bool {
 /// Cloning the entire partition (rather than threading an index +
 /// owned-only-on-demotion vector through Rust's borrow checker) is
 /// the safe-code shape that satisfies Constitution `forbid(unsafe_code)`.
-/// On the FR-023 / I-18 hot path the allocation is one `Vec` with
-/// ≤32 `Diagnostic` clones — well below the SC-001 budget at 10 KB.
+/// On this hot path the allocation is one `Vec` with ≤32 `Diagnostic`
+/// clones — well below the interactive-latency budget at 10 KB.
 pub(super) fn apply_fr023_and_i18(
     pass2_diags: &[&Diagnostic<CapcoScheme>],
     pass1_applied_keys: &HashSet<(RuleId, Span)>,
 ) -> Vec<Diagnostic<CapcoScheme>> {
     let mut out: Vec<Diagnostic<CapcoScheme>> = Vec::with_capacity(pass2_diags.len());
     for &d in pass2_diags {
-        // FR-023: drop diagnostics with the same (rule, span) as a
+        // Drop diagnostics with the same (rule, span) as a
         // pass-1 promoted fix. The candidate_span is the marking-
         // scope anchor — match against it (falling back to `span` for
         // diagnostics that don't carry a candidate span; matches the
-        // `apply_kept_fixes` keying convention at engine.rs:2228+).
+        // `apply_kept_fixes` keying convention).
         let key_span = d.candidate_span.unwrap_or(d.span);
         if pass1_applied_keys.contains(&(d.rule, key_span)) {
             continue;
         }
 
-        // I-18: demote diagnostics whose marking-scope span overlaps
+        // Demote diagnostics whose marking-scope span overlaps
         // any pass-1 promoted span at promote-eligible severity. The
         // overlap check uses `key_span` so a sub-token pass-2 finding
         // within a reshaped marking is also caught. The predicate
@@ -173,16 +173,14 @@ pub(super) fn lookup_marking(
     None
 }
 
-/// FR-016 sort + C-1 dedup walk extracted into a helper so pass-1
-/// and pass-2 share an identical ordering/dedup pipeline. The
-/// walks are run independently per pass (architect pre-flight §2);
-/// the helper exists to factor the algorithm, not the state.
+/// Confidence-then-span sort + C-1 dedup walk extracted into a helper
+/// so pass-1 and pass-2 share an identical ordering/dedup pipeline. The
+/// walks are run independently per pass; the helper exists to factor
+/// the algorithm, not the state.
 ///
 /// Sorts `synthesized` **in place** and consumes each kept fix
-/// into the result vector. Avoids the prior intermediate
-/// `Vec<&SynthesizedFix>` reference-vector + per-element clone
-/// (pre-PR-7b allocated and cloned twice; this pass allocates zero
-/// extra `SynthesizedFix` values).
+/// into the result vector. Allocates zero extra `SynthesizedFix`
+/// values — no intermediate reference vector, no per-element clone.
 pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix> {
     synthesized.sort_by(|a, b| {
         b.span
@@ -205,17 +203,14 @@ pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<Syn
 }
 
 /// Forward-pass buffer construction shared by pass-1 and pass-2
-/// via [`TwoPassFixer::apply_kept_fixes`]. `fixes` MUST be FR-016
-/// sorted (span.end DESC, span.start DESC) so `iter().rev()` yields
-/// ascending order for the left-to-right walk. Pre-allocates
-/// capacity using the per-fix growth contribution (`saturating_sub`
-/// upper bound).
+/// via [`TwoPassFixer::apply_kept_fixes`]. `fixes` MUST be sorted
+/// span.end DESC, span.start DESC so `iter().rev()` yields ascending
+/// order for the left-to-right walk. Pre-allocates capacity using the
+/// per-fix growth contribution (`saturating_sub` upper bound).
 ///
-/// The earlier name `apply_pass1_fixes` predated the PR 7b
-/// phase-split orchestrator and implied pass-1 exclusivity; the
-/// renamed `splice_fixes_forward` names what the function actually
-/// does — a forward splice — so a reader scanning either pass's
-/// caller can see the operation without re-reading the body.
+/// `splice_fixes_forward` names what the function does — a forward
+/// splice — so a reader scanning either pass's caller can see the
+/// operation without re-reading the body.
 ///
 /// # Overlap handling
 ///
@@ -279,7 +274,7 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 ///
 /// When multiple diagnostics share a `candidate_span`, the function
 /// collapses them into ONE record whose `rule` is the
-/// lexicographically-smallest rule_id in the group (FR-016 deterministic
+/// lexicographically-smallest rule_id in the group (deterministic
 /// ordering) and whose carried `intent.confidence` is scaled down to
 /// the minimum combined-confidence across the group's intents
 /// (conservative — the engine's threshold gate compares against the
@@ -305,7 +300,7 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// The synthesized record carries the rule's `FixIntent` directly;
 /// `__engine_promote` moves it into
 /// `AppliedFixProposal::FixIntent(_)`. Original bytes are never
-/// copied into the audit record — Constitution V Principle V (G13).
+/// copied into the audit record — Constitution V Principle V.
 pub(super) fn synthesize_fixes(
     scheme: &CapcoScheme,
     parsed_markings: &[(Span, marque_capco::CapcoMarking)],
@@ -497,7 +492,7 @@ pub(super) fn synthesize_fixes(
 }
 
 // ---------------------------------------------------------------------------
-// Decoder-path diagnostic synthesis (Phase 4 PR-4b — T068)
+// Decoder-path diagnostic synthesis
 // ---------------------------------------------------------------------------
 
 /// Build the synthetic `R001 decoder-recognition` diagnostic the engine
@@ -511,7 +506,7 @@ pub(super) fn synthesize_fixes(
 /// is a separate bug to surface — silently dropping the synthetic
 /// diagnostic is the conservative move.
 ///
-/// # Audit-shape contract (Constitution V Principle V / G13)
+/// # Audit-shape contract (Constitution V Principle V)
 ///
 /// The diagnostic's `message` MUST NOT carry verbatim input bytes —
 /// only token canonicals, span offsets, and digests/posterior scalars
@@ -521,14 +516,11 @@ pub(super) fn synthesize_fixes(
 /// recognition became (a `Recanonicalize { scope: RecanonScope::Page }`
 /// emission for R001).
 ///
-/// Post-Commit-10 the audit record's `AppliedFix.proposal` no longer
-/// carries any document bytes for the decoder path: the
-/// `AppliedFixProposal::FixIntent(_)` variant carries the structural
-/// intent only. Original document bytes already exist in the source;
-/// the audit record is not the right channel for them. The legacy
-/// `FixProposal { original, replacement }` byte-precise carrier that
-/// previously held canonical bytes on this path retired with the
-/// `mvp-2 → mvp-3` schema flip.
+/// The audit record's `AppliedFix.proposal` carries no document bytes
+/// for the decoder path: the `AppliedFixProposal::FixIntent(_)` variant
+/// carries the structural intent only. Original document bytes already
+/// exist in the source; the audit record is not the right channel for
+/// them.
 ///
 /// Note: this contract addresses the audit-record *shape*. A separate
 /// upstream concern was whether the canonical-bytes synthesis was
@@ -594,12 +586,12 @@ pub(super) fn build_decoder_diagnostic(
     // Dispatch on the decoder's `fix_source`. Standard vocab-based
     // recognition emits at `Severity::Fix` with `rule = 1.0` (engine
     // applies whenever `recognition >= confidence_threshold`). The
-    // position-aware classification heuristic (issue #133 PR 2) emits
+    // position-aware classification heuristic (issue #133) emits
     // at `Severity::Warn` (always-visible in `--check`, non-zero exit
     // code) with `rule = HEURISTIC_RULE_AXIS_CAP = 0.95` matching the
-    // default `confidence_threshold`. PR 4's empirical corpus
-    // measurement justifies the `0.95` value — see the cap's doc
-    // comment for the analysis script and measured numbers.
+    // default `confidence_threshold`. The `0.95` value is justified by
+    // empirical corpus measurement — see the cap's doc comment for the
+    // analysis script and measured numbers.
     let (severity, rule_axis, fix_source) = match provenance.fix_source {
         FixSource::DecoderClassificationHeuristic => (
             Severity::Warn,
@@ -623,13 +615,12 @@ pub(super) fn build_decoder_diagnostic(
         runner_up_ratio: provenance.runner_up_ratio,
         features,
     };
-    // T044: DECODER_RULE_ID is now a `RuleId` (was a flat `&'static
-    // str` literal pre-T044), so the dispatcher hands it through
+    // DECODER_RULE_ID is a `RuleId`, so the dispatcher hands it through
     // directly — no `RuleId::new` wrapping needed. The `Copy` bound
-    // on the new 2-tuple `RuleId` makes the let-binding free.
+    // on the 2-tuple `RuleId` makes the let-binding free.
     let rule = DECODER_RULE_ID;
     // Audit-shape contract: the decoder-path engine-minted record
-    // carries no document bytes (Constitution V Principle V / G13). The
+    // carries no document bytes (Constitution V Principle V). The
     // span identifies *where* the fix landed; the engine's synthesis
     // path re-renders the canonical form from a `Recanonicalize` intent
     // at promotion time.
@@ -689,7 +680,7 @@ pub(super) fn build_decoder_diagnostic(
 }
 
 /// Build the synthetic `R002 reparse-failed` diagnostic the engine
-/// emits when the post-pass-1 buffer cannot be re-parsed (PR 7b, FR-024).
+/// emits when the post-pass-1 buffer cannot be re-parsed.
 ///
 /// R002 is a **diagnostic, never an [`AppliedFix`]** (Constitution V
 /// Principle V): it has no replacement, no intent, no fix proposal.
@@ -707,28 +698,25 @@ pub(super) fn build_decoder_diagnostic(
 /// renderer that wants to highlight the failure region can detect the
 /// sentinel by comparing against the buffer length.
 ///
-/// # Audit-content-ignorance (Constitution V Principle V / G13)
+/// # Audit-content-ignorance (Constitution V Principle V)
 ///
 /// The diagnostic carries:
 /// - [`R002_RULE_ID`] (permitted identifier)
 /// - [`Span`] (permitted identifier — byte offsets only)
-/// - A short fixed message string with the contributing rule IDs
-///   interpolated by `RuleId::as_str()` (permitted identifiers, each
-///   a CAPCO rule ID like `"C001"` / `"E006"` — token canonicals from
-///   a closed vocabulary)
+/// - A closed-template message with the contributing rule IDs as a
+///   structured field (permitted identifiers — predicate IDs from a
+///   closed vocabulary)
 ///
 /// No document bytes flow through R002.
 ///
-/// # Deferred wire-up to `MessageArgs`
+/// # Wire-up to `MessageArgs`
 ///
-/// The structured `MessageArgs.contributing_rule_ids` field (PM
-/// D-7.5 / D-7.17) is plumbed at the type level today — the
-/// closed-set destructure-pin test at
+/// The structured `MessageArgs.contributing_rule_ids` field is plumbed
+/// at the type level — the closed-set destructure-pin test at
 /// `crates/rules/tests/message_args_closed_set.rs` enforces its
 /// presence. The R002 `Diagnostic` carries the contributing rule
-/// IDs as a typed `SmallVec<[RuleId; 4]>` field on `MessageArgs`
-/// — PR 3c.2.C completed the `Diagnostic.message: Box<str>` →
-/// `Message` migration, so this function constructs
+/// IDs as a typed `SmallVec<[RuleId; 4]>` field on `MessageArgs`, so
+/// this function constructs
 /// `Message::new(MessageTemplate::ReparseFailed,
 /// MessageArgs { contributing_rule_ids, .. })` directly. The
 /// `contributing_rule_ids` parameter is moved into the args struct
@@ -747,7 +735,7 @@ pub(super) fn build_r002_diagnostic(
     contributing_rule_ids: SmallVec<[RuleId; 4]>,
     failure_span: Span,
 ) -> Diagnostic<CapcoScheme> {
-    // PR 3c.2.C C5: typed `Message` per `MessageTemplate::ReparseFailed`.
+    // Typed `Message` per `MessageTemplate::ReparseFailed`.
     // `MessageArgs.contributing_rule_ids` carries the closed-list of
     // pass-1 RuleIds that contributed to the failure — `RuleId` is on
     // Constitution V's permitted-identifier list (enumerated identifier,

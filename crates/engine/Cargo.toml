@@ -57,9 +57,9 @@ name = "closure_pass"
 
 [dependencies]
 aho-corasick = { workspace = true }
-# PR 3c.2.D (T046) — the engine slices pre-fix bytes at `span` and
-# threads them into `AppliedFix::__engine_promote`, which hashes
-# inline. The `blake3` crate is the digest type owner via
+# The engine slices pre-fix bytes at `span` and threads them into
+# `AppliedFix::__engine_promote`, which hashes inline. The `blake3`
+# crate is the digest type owner via
 # `marque-rules`; this entry pulls the same workspace dep so the
 # engine can call `blake3::hash(...)` directly when it needs to
 # digest scratch buffers in the same body (Constitution V Principle V).
@@ -88,9 +88,9 @@ tracing = { workspace = true }
 # engine's deadline check (spec 005) calls `Instant::now()` per
 # candidate; without this dep, that call panics in the WASM target.
 web-time = { workspace = true }
-# PR 3c.B Commit 10: `FixIntent.feature_ids: SmallVec<[FeatureId; 4]>`
-# is constructed in production code (R001 decoder-path diagnostic
-# synthesis), so smallvec moved out of `[dev-dependencies]`.
+# `FixIntent.feature_ids: SmallVec<[FeatureId; 4]>` is constructed in
+# production code (R001 decoder-path diagnostic synthesis), so smallvec
+# is a regular dependency, not dev-only.
 smallvec = { workspace = true }
 # `smol_str` types flow through the engine's text-correction promotion
 # path (`TextCorrectionProposal` internal carrier mirroring
@@ -121,7 +121,7 @@ batch = ["dep:futures", "dep:recoco-utils", "dep:tokio"]
 corpus-harness = ["marque-capco/corpus-harness"]
 # Proxies to the `marque-capco` and `marque-config` gates. The engine
 # itself needs a compile-time signal so it can thread the override
-# through `Engine::lint_inner` / `fix_inner` (US2 / T063–T069). Must
+# through `Engine::lint_inner` / `fix_inner`. Must
 # stay out of `default` — WASM disables it by taking engine with
 # `default-features = false` (see `crates/wasm/Cargo.toml`).
 corpus-override = [

@@ -4,55 +4,26 @@
 
 //! Engine::lint latency benchmarks. Two functions live here:
 //!
-//! - **SC-001 strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
+//! - **strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
 //!   representative input with [`StrictRecognizer`] explicitly
-//!   installed. Target p95 <= 16ms. Pinning the strict recognizer
-//!   directly (rather than relying on the engine default, which is the
-//!   strict-then-decoder dispatcher) keeps SC-001 measuring a pure
-//!   strict-path number even if the dispatcher's overhead grows.
-//! - **SC-002 decoder-path**: `decoder_10kb_one_mangled_region` —
+//!   installed. Target p95 <= 16ms (the interactive-latency gate).
+//!   Pinning the strict recognizer directly (rather than relying on the
+//!   engine default, which is the strict-then-decoder dispatcher) keeps
+//!   this measuring a pure strict-path number even if the dispatcher's
+//!   overhead grows.
+//! - **decoder-path**: `decoder_10kb_one_mangled_region` —
 //!   `Engine::lint` on a 10KB representative input where exactly one
 //!   region contains a mangled marking that forces the decoder to fire.
 //!   Target p95 <= 18ms. The gap (18 - 16 = 2ms) is the per-document
 //!   budget the decoder gets for fuzzy correction + canonical generation
 //!   on a single mangled region; corpus-wide accuracy is gated separately
-//!   by SC-004 in `tests/decoder_accuracy.rs`.
+//!   by the decoder accuracy harness in `tests/decoder_accuracy.rs`.
 //!
 //! Both targets are enforced by `scripts/bench-check.sh`, not by this
 //! benchmark file. Run `./scripts/bench-check.sh` to gate.
 //!
 //! Reference baseline: x86_64 >= 3.0 GHz single-thread (e.g. modern laptop-class CPU),
 //! warm cache, `--release` build, no tracing subscriber.
-//!
-//! ## PR 4b-B (006 T112) bench-impact note
-//!
-//! PR 4b-B installs the per-category Lattice impls
-//! (ClassificationLattice, NatoClassLattice, JointSet, DissemSet,
-//! NatoDissemSet, RelToBlock, DeclassifyOnLattice) and exposes them
-//! via `CapcoMarking::join_via_lattice`. **The production
-//! `Lattice::join` impl still delegates to PageContext** — the
-//! hot-path flip is deferred to PR 4b-D per the plan-of-record
-//! `docs/plans/2026-05-15-pr4b-B-lattice-impls-rest-plan.md` §3.2.
-//! Quick `cargo bench --quick lint_10kb` after Commit 7 measured
-//! 594-613µs (well under the 900µs gate and the historical 828µs
-//! baseline), confirming the lattice work is NOT on the hot path yet.
-//!
-//! When PR 4b-D flips `CapcoScheme::project(Scope::Page, ...)` to use
-//! the lattice path, expect the bench to move — the per-axis lattice
-//! types' overhead is bounded (BTreeSet/BTreeMap over closed-vocab
-//! axes; same asymptotic shape as `PageContext::expected_*`). PR 4b-B
-//! Commit 2 already collapsed the OC-USGOV branch to O(1) set-
-//! containment (`seen.contains(&DissemControl::Oc) && seen.contains(
-//! &DissemControl::OcUsgov)`); the historical `oc_portions.iter()`
-//! O(n) walk it replaced no longer exists, so 4b-D won't reshape that
-//! particular path. Net delta on 4b-D landing should be neutral or
-//! marginally improved overall.
-//!
-//! Bench-baseline staleness pre-flight per project memory
-//! `project_bench_baseline_staleness.md`: the gate is 900µs / baseline
-//! 828µs / current measurements 594-880µs depending on tree state.
-//! One `gh run rerun <id> --failed` after PR 4b-D's open is the
-//! standard mitigation for noise-band flakes.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
@@ -91,7 +62,7 @@ fn build_representative_input(target_bytes: usize) -> Vec<u8> {
     let complete_blocks = target_bytes / block_bytes.len();
     input.truncate(complete_blocks.max(1) * block_bytes.len());
     // Pad with spaces to reach exactly target_bytes so the benchmark name
-    // (`lint_10kb`) and the SC-001 gate are measured against a true 10KB input.
+    // (`lint_10kb`) and the interactive-latency gate are measured against a true 10KB input.
     // Trailing whitespace does not affect any token boundaries.
     input.resize(target_bytes, b' ');
     input
@@ -105,7 +76,7 @@ fn lint_latency_benchmark(c: &mut Criterion) {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    // INTENTIONAL-STRICT: SC-001 interactive-latency bench pins the strict recognizer to measure the latency floor; the dispatcher's decoder fallback is benchmarked separately in decoder_10kb_rel_to_invariant.rs
+    // INTENTIONAL-STRICT: the interactive-latency bench pins the strict recognizer to measure the latency floor; the dispatcher's decoder fallback is benchmarked separately in decoder_10kb_rel_to_invariant.rs
     .with_strict_recognizer();
 
     c.bench_function("lint_10kb", |b| {
@@ -119,7 +90,7 @@ fn lint_latency_benchmark(c: &mut Criterion) {
 /// strict-path cost is identical and the measured delta isolates the
 /// decoder's fuzzy-correction + canonical-generation cost.
 ///
-/// SC-002 measures the *worst-case* decoder cost on a single document:
+/// This measures the *worst-case* decoder cost on a single document:
 /// one region triggers the slow path while the rest stays on the fast
 /// strict path. A document with many mangled regions amortizes the
 /// per-token fuzzy work over more matches; a single mangled region in
@@ -169,8 +140,8 @@ fn build_decoder_input(target_bytes: usize) -> Vec<u8> {
     let truncated_len = mangled_bytes.len() + complete_blocks.max(1) * block_bytes.len();
     input.truncate(truncated_len);
     // Pad with spaces to reach exactly `target_bytes` so the bench
-    // name (`decoder_10kb_one_mangled_region`) and the SC-002 gate are
-    // measured against a true 10KB input.
+    // name (`decoder_10kb_one_mangled_region`) and its p95 ≤ 18 ms gate
+    // are measured against a true 10KB input.
     input.resize(target_bytes, b' ');
     input
 }
@@ -222,73 +193,61 @@ fn decoder_latency_benchmark(c: &mut Criterion) {
 /// Rules disabled in the `lint_off_heavy_config` bench. Chosen to maximize
 /// the number of pre-resolved Off entries the lint hot loop's Site A
 /// short-circuits past, while avoiding the rules the bench fixture is
-/// known to exercise (`capco:banner.banner-rollup.sar-portions-roll-up`
-/// — the banner-roll-up walker formerly known as E031;
-/// `capco:portion.dissem.rel-to-missing-usa` — the missing-USA-trigraph
-/// rule formerly known as E002 that doesn't actually fire on this
-/// fixture since `REL TO USA, GBR` already contains USA).
+/// known to exercise (`capco:banner.banner-rollup.sar-portions-roll-up`,
+/// the banner-roll-up walker; `capco:portion.dissem.rel-to-missing-usa`,
+/// the missing-USA-trigraph rule, which doesn't fire on this fixture
+/// since `REL TO USA, GBR` already contains USA).
 ///
 /// Source set: the registered rule IDs pinned by
 /// `crates/capco/tests/post_3b_registration_pin.rs::EXPECTED_RULE_IDS`
-/// (32 at T044 cutover) and the dyadic-collapse predicate IDs exposed
-/// through `CapcoScheme::bridge_emitted_rule_ids` (the rules retired
-/// into declarative `Constraint::Custom` rows at PR 3b.A et al.). The
-/// picks below cover the long-tail the bench fixture doesn't trigger —
-/// the SCI suggest/long-form rules, the NATO and dyadic-classification
-/// rules, the warning suite, and the rare-fire dissem / SCI / AEA
-/// per-axis rules. Together they exercise the Site A fast-path
-/// Off-skip on every candidate (~10 per 10KB).
+/// and the dyadic-collapse predicate IDs exposed through
+/// `CapcoScheme::bridge_emitted_rule_ids` (the rules collapsed into
+/// declarative `Constraint::Custom` rows). The picks below cover the
+/// long-tail the bench fixture doesn't trigger — the SCI
+/// suggest/long-form rules, the NATO and dyadic-classification rules,
+/// the warning suite, and the rare-fire dissem / SCI / AEA per-axis
+/// rules. Together they exercise the Site A fast-path Off-skip on every
+/// candidate (~10 per 10KB).
 ///
 /// IDs use the canonical wire-string form (`<scheme>:<predicate_id>`)
-/// the override resolver accepts at `Engine::new` post-T044. The
-/// override resolver also accepts the bare predicate-id form and the
-/// rule's descriptive alias, but the wire string matches what users
-/// type in `.marque.toml [rules]` keys and what `RuleId::Display`
-/// emits, so the bench pins that form.
-///
-/// Pre-T044 archaeology (see `docs/refactor-006/legacy-rule-id-map.md`)
-/// for the rename history:
-/// - SCI suggest/long-form ↔ E061-E065
-/// - NATO recanonicalize / bare-NATO ↔ E066, S007
-/// - Warning suite ↔ W003, W034
-/// - Style suggestions ↔ S003, S004, S005
-/// - Dyadic-classification (declarative-collapsed, bridge-emitted) ↔
-///   E010, E012, E014, E015, E016, E036
-/// - AEA dyadic (declarative-collapsed, bridge-emitted) ↔ E021, E024
-/// - Misc rare-fire ↔ E005, E006, E007, E008
+/// the override resolver accepts at `Engine::new`. The override
+/// resolver also accepts the bare predicate-id form and the rule's
+/// descriptive alias, but the wire string matches what users type in
+/// `.marque.toml [rules]` keys and what `RuleId::Display` emits, so the
+/// bench pins that form.
 const OFF_RULES: &[&str] = &[
     // SCI suggest / long-form (very rare in clean fixture).
-    "capco:portion.sci.hcs-bare-at-confidential-legacy-remark", // ex-E061
-    "capco:portion.sci.hcs-bare-suggest-subcompartment",        // ex-E062
-    "capco:portion.sci.rsv-bare-requires-compartment",          // ex-E063
-    "capco:portion.dissem.eyes-only-convert-to-rel-to",         // ex-E064
-    "capco:portion.sci.deprecated-long-form",                   // ex-E065
+    "capco:portion.sci.hcs-bare-at-confidential-legacy-remark",
+    "capco:portion.sci.hcs-bare-suggest-subcompartment",
+    "capco:portion.sci.rsv-bare-requires-compartment",
+    "capco:portion.dissem.eyes-only-convert-to-rel-to",
+    "capco:portion.sci.deprecated-long-form",
     // NATO recanonicalize / bare-NATO (don't fire in this fixture).
-    "capco:marking.recanonicalize.legacy-nato-compound", // ex-E066
-    "capco:portion.nato.bare-nato-requires-rel-to-usa-nato", // ex-S007
-    // Warning suite. (W002 retired in PR closing #470.)
-    "capco:page.dissem.non-ic-dissem-in-classified-banner", // ex-W003
-    "capco:portion.sci.unpublished-custom-control",         // ex-W034
+    "capco:marking.recanonicalize.legacy-nato-compound",
+    "capco:portion.nato.bare-nato-requires-rel-to-usa-nato",
+    // Warning suite.
+    "capco:page.dissem.non-ic-dissem-in-classified-banner",
+    "capco:portion.sci.unpublished-custom-control",
     // Style suggestions.
-    "capco:portion.classification.joint-usa-first-style", // ex-S003
-    "capco:portion.dissem.rel-to-trigraph-suggest",       // ex-S004
-    "capco:page.dissem.rel-to-uncertain-reduction",       // ex-S005
+    "capco:portion.classification.joint-usa-first-style",
+    "capco:portion.dissem.rel-to-trigraph-suggest",
+    "capco:page.dissem.rel-to-uncertain-reduction",
     // Misc rare-fire (registered, not bridge-emitted).
-    "capco:portion.declassification.declassify-on-misplaced", // ex-E005
-    "capco:marking.deprecation.deprecated-dissem-control",    // ex-E006
-    "capco:portion.metadata.x-shorthand-date-pattern",        // ex-E007
-    "capco:marking.metadata.unrecognized-token",              // ex-E008
+    "capco:portion.declassification.declassify-on-misplaced",
+    "capco:marking.deprecation.deprecated-dissem-control",
+    "capco:portion.metadata.x-shorthand-date-pattern",
+    "capco:marking.metadata.unrecognized-token",
     // Dyadic classification / SCI (declarative-collapsed; routed
     // through `CapcoScheme::bridge_emitted_rule_ids`).
-    "capco:portion.sci.hcs-system-constraints", // ex-E010
-    "capco:portion.classification.dual-classification", // ex-E012
-    "capco:portion.classification.joint-requires-rel-to-coverage", // ex-E014
-    "capco:portion.classification.non-us-requires-dissem", // ex-E015
-    "capco:portion.classification.joint-conflicts-restricted", // ex-E016
-    "capco:portion.classification.joint-conflicts-hcs", // ex-E036
+    "capco:portion.sci.hcs-system-constraints",
+    "capco:portion.classification.dual-classification",
+    "capco:portion.classification.joint-requires-rel-to-coverage",
+    "capco:portion.classification.non-us-requires-dissem",
+    "capco:portion.classification.joint-conflicts-restricted",
+    "capco:portion.classification.joint-conflicts-hcs",
     // AEA dyadic (declarative-collapsed; bridge-emitted).
-    "capco:portion.aea.rd-frd-requires-noforn", // ex-E021
-    "capco:portion.aea.rd-precedence",          // ex-E024
+    "capco:portion.aea.rd-frd-requires-noforn",
+    "capco:portion.aea.rd-precedence",
 ];
 
 fn lint_default_config_benchmark(c: &mut Criterion) {
@@ -301,7 +260,7 @@ fn lint_default_config_benchmark(c: &mut Criterion) {
     .expect("default CAPCO scheme has no rewrite cycles")
     // INTENTIONAL-STRICT: matches lint_10kb's recognizer pin so the
     // severity-hoist delta is measured against a pure strict-path
-    // baseline. Same rationale as the SC-001 bench.
+    // baseline. Same rationale as the interactive-latency bench.
     .with_strict_recognizer();
 
     c.bench_function("lint_default_config", |b| {
@@ -537,7 +496,7 @@ fn lint_high_candidate_count_benchmark(c: &mut Criterion) {
 fn build_decoder_dense_mangled_input(target_bytes: usize) -> Vec<u8> {
     // ~500-byte block carrying one mangled portion + a chunk of prose
     // and a few canonical markings. `SERCET` is edit-distance-1 from
-    // `SECRET`, mirroring the SC-002 single-region fixture above.
+    // `SECRET`, mirroring the single-region decoder fixture above.
     let block = concat!(
         "(SERCET//NF) Mangled portion forces decoder dispatch.\n",
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
@@ -630,23 +589,25 @@ fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 //
 // `lint_intent_heavy_10kb` measures the per-candidate cost on an
-// input shape where every JOINT portion fires an E014 `FactAdd`
-// FixIntent — JOINT participants must appear in the REL TO list per
-// §H.3 p57, and the rule emits one FixIntent per missing co-owner.
-// This is the input shape where issue #433's deferred
-// `parsed_markings` insert still pays the cost: every candidate
-// emits a FixIntent-bearing diagnostic, so the cache populates on
-// every candidate. Pair with `lint_10kb` (intent-light, typical) to
-// measure both shapes — #433's win lands on intent-light inputs and
-// should not regress this intent-heavy worst case.
+// input shape where every JOINT portion fires a
+// joint-requires-rel-to-coverage `FactAdd` FixIntent — JOINT
+// participants must appear in the REL TO list per §H.3 p57, and the
+// rule emits one FixIntent per missing co-owner. This is the input
+// shape where issue #433's deferred `parsed_markings` insert still
+// pays the cost: every candidate emits a FixIntent-bearing diagnostic,
+// so the cache populates on every candidate. Pair with `lint_10kb`
+// (intent-light, typical) to measure both shapes — #433's win lands on
+// intent-light inputs and should not regress this intent-heavy worst
+// case.
 //
-// E058 class-floor diagnostics carry `fix: None` today
+// Class-floor diagnostics carry `fix: None` today
 // (`CapcoScheme::fix_intent_by_name` returns `None` for those rows
 // — see `crates/capco/src/scheme/adapter.rs`), so a class-floor-only
 // fixture would measure an
 // intent-light path even though it triggers lots of diagnostics.
-// E014 is the right driver for the intent-heavy worst case because
-// the JOINT REL-TO-coverage fix produces a `FactAdd` `FixIntent` per
+// The JOINT REL-TO-coverage rule is the right driver for the
+// intent-heavy worst case because its fix produces a `FactAdd`
+// `FixIntent` per
 // missing JOINT participant — the open-vocab `CountryCode` FactAdd
 // applied by `crate::scheme::actions::intent::apply_fact_add` in
 // `marque-capco`. The constraint is evaluated for the live
@@ -655,8 +616,7 @@ fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
 // and other JOINT-block tests in `crates/capco/tests/` are the
 // active CI guards covering this rule's predicate; the
 // `e014_fact_add_engine.rs` file is disabled
-// (`#![cfg(any())]`) pending the PR 3c.B Commit 10 FixProposal-
-// shape rewrite, so it is NOT a current CI guard for this bench.
+// (`#![cfg(any())]`), so it is NOT a current CI guard for this bench.
 // The `Inserted FactAdd` audit-stream invariant pinned in
 // `crates/engine/tests/intent_only_byte_identity.rs` exercises the
 // FixIntent emission path this bench measures.
@@ -666,7 +626,8 @@ fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
 // number in PRs that touch the lint hot loop's cache discipline.
 
 fn build_intent_heavy_input(target_bytes: usize) -> Vec<u8> {
-    // JOINT portion shapes that each fire E014 `FactAdd` FixIntents
+    // JOINT portion shapes that each fire the
+    // joint-requires-rel-to-coverage `FactAdd` FixIntents
     // — every JOINT co-owner missing from `REL TO` produces one
     // FixIntent-bearing diagnostic. Mix of two- and three-country
     // JOINT lists keeps the per-candidate intent count >0.
@@ -719,8 +680,8 @@ fn lint_intent_heavy_benchmark(c: &mut Criterion) {
 // Two paired benches measure the cache cost on opposite paths so the
 // decomposition is transparent. Both share the
 // `build_parsed_markings_cache_stress_input(1000)` fixture — 1000
-// E014-FactAdd-emitting JOINT portions packed without prose so the
-// cache populates on every candidate (each E014 diagnostic carries
+// FactAdd-emitting JOINT portions packed without prose so the
+// cache populates on every candidate (each diagnostic carries
 // `fix.is_some()`, triggering issue #433's deferred-cache insert
 // gate).
 //
@@ -750,7 +711,7 @@ fn lint_intent_heavy_benchmark(c: &mut Criterion) {
 // them.
 
 fn build_parsed_markings_cache_stress_input(candidate_count: usize) -> Vec<u8> {
-    // Same E014 FactAdd shape as `build_intent_heavy_input` so each
+    // Same JOINT FactAdd shape as `build_intent_heavy_input` so each
     // candidate fires a FixIntent and populates the cache. One portion
     // per line; no prose interleaving so the document stays compact and
     // the scanner emits all `candidate_count` portions in one pass.

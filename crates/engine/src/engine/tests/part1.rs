@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn fix_applies_disjoint_fixes_in_reverse_order() {
-    // Two non-overlapping fixes; FR-016 sorts by span.end DESC so the
+    // Two non-overlapping fixes; the sort orders by span.end DESC so the
     // later one is applied first, preserving the earlier span's offsets.
     let engine = engine_with(vec![
         proposal("E001", 0, 6, "AA"),  // "SECRET" → "AA"

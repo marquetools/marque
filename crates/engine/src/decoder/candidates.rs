@@ -169,7 +169,7 @@ pub(super) fn generate_candidate_bytes(
         None => repaired_text,
     };
 
-    // ---- NATO longhand fold (T129, CAPCO-2016 §G.1 Table 4 pp 36-38).
+    // ---- NATO longhand fold (CAPCO-2016 §G.1 Table 4 pp 36-38).
     //      Recovers portions like `(NATO S)` / `(NATO S//NF)` by
     //      substituting the canonical abbreviation (`NS`, `CTS`, etc.)
     //      before the fuzzy-correction pass operates on it.
@@ -199,7 +199,7 @@ pub(super) fn generate_candidate_bytes(
             // single-letter tokens `"R"`/`"C"` with high prose frequency) to fail
             // the null-hypothesis filter even after `for_each_canonical_token` maps to
             // the low-prose-frequency NATO abbreviation form. The `SupersededToken`
-            // feature still appears in the audit trail for provenance (T129).
+            // feature still appears in the audit trail for provenance.
             delim_features.push(FeatureEntry {
                 id: FeatureId::SupersededToken,
                 delta: 0.0,
@@ -215,8 +215,7 @@ pub(super) fn generate_candidate_bytes(
     let (fuzzy_corrected, fuzzy_features) = fuzzy_correct_tokens(&repaired_text, &matcher);
 
     // Emit the straightforward "normalize + fuzzy-correct" attempt
-    // first — this covers typos (T046) and case/delimiter mangling
-    // by default.
+    // first — this covers typos and case/delimiter mangling by default.
     let mut features = delim_features.clone();
     features.extend(fuzzy_features.iter().copied());
     emit(
@@ -491,7 +490,7 @@ pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
     // Derive `kind` the same way the production recognizer does so the
     // diagnostic exercises the same CAB / Portion / Banner dispatch as
     // `DecoderRecognizer::recognize`. The public signature stays
-    // `bytes: &[u8]` (FR-049 frozen surface).
+    // `bytes: &[u8]` (frozen surface).
     let kind = super::shape::infer_marking_type(bytes).unwrap_or(MarkingType::Banner);
     generate_candidate_bytes(bytes, kind)
         .into_iter()
