@@ -41,7 +41,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
         with:
           workspaces: tools/masking-pin-lint
 
@@ -77,7 +77,7 @@ jobs:
       # via workflow_dispatch, verify the resulting PR.
       - name: Open cache-refresh PR
         if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@67ccf781d68cd99b580ae25a5c18a1cc84ffff1f
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/masking-pin-cache-refresh

@@ -48,6 +48,7 @@
 //! schema tree anymore.
 
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
 use std::{env, fs, path::Path};
@@ -845,9 +846,14 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
                     // produce wrong canonicalization at runtime.
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"value" {
-                            let val = attr.unescape_value().unwrap_or_else(|err| {
-                                panic!("XSD attribute unescape error in {}: {err}", path.display())
-                            });
+                            let val = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .unwrap_or_else(|err| {
+                                    panic!(
+                                        "XSD attribute normalization/decoding error in {}: {err}",
+                                        path.display()
+                                    )
+                                });
                             entries.push((val.into_owned(), String::new()));
                             break;
                         }
@@ -1820,12 +1826,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                             let key_local = local_name(attr.key.as_ref()).to_owned();
                             match key_local.as_slice() {
                                 b"decomposable" => {
-                                    let value = attr.unescape_value().unwrap_or_else(|err| {
-                                        panic!(
-                                            "{}: failed to unescape `decomposable`: {err}",
-                                            path.display()
-                                        )
-                                    });
+                                    let value = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_else(|err| {
+                                            panic!(
+                                                "{}: failed to normalize `decomposable`: {err}",
+                                                path.display()
+                                            )
+                                        });
                                     current_decomposable = Some(match value.as_ref() {
                                         "Yes" => TaxDecomposable::Yes,
                                         "No" => TaxDecomposable::No,
@@ -1838,12 +1846,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                     });
                                 }
                                 b"deprecated" => {
-                                    let value = attr.unescape_value().unwrap_or_else(|err| {
-                                        panic!(
-                                            "{}: failed to unescape `deprecated`: {err}",
-                                            path.display()
-                                        )
-                                    });
+                                    let value = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_else(|err| {
+                                            panic!(
+                                                "{}: failed to normalize `deprecated`: {err}",
+                                                path.display()
+                                            )
+                                        });
                                     current_deprecated = Some(value.into_owned());
                                 }
                                 _ => {}
@@ -1861,12 +1871,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                 )
                             });
                             if local_name(attr.key.as_ref()) == b"dateLastVerified" {
-                                let value = attr.unescape_value().unwrap_or_else(|err| {
-                                    panic!(
-                                        "{}: failed to unescape `dateLastVerified`: {err}",
-                                        path.display()
-                                    )
-                                });
+                                let value = attr
+                                    .normalized_value(XmlVersion::Implicit1_0)
+                                    .unwrap_or_else(|err| {
+                                        panic!(
+                                            "{}: failed to normalize `dateLastVerified`: {err}",
+                                            path.display()
+                                        )
+                                    });
                                 current_last_verified = Some(value.into_owned());
                             }
                         }
