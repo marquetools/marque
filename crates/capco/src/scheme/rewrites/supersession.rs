@@ -69,8 +69,6 @@ pub(super) fn supersession_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //
         // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_SBU_NF)` — fires
         // when SBU-NF is present on the page's `non_ic_dissem` axis.
-        // (Resolved by the `capco_category_contains` extension in
-        // .)
         //
         // Action: `Intent(FactRemove { Cve(TOK_SBU), Scope::Page })`
         // — drops bare SBU. Per-intent no-op

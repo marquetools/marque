@@ -151,8 +151,8 @@ use crate::fact_bitmask::fact_bit;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ClosureRow {
     pub name: &'static str,
-    /// Human-readable display label for inventory surfaces. Migrated
-    /// split the pre-existing `label: &'static str` field into two
+    /// Human-readable display label for inventory surfaces. A
+    /// migration split the pre-existing `label: &'static str` field into two
     /// parts so the typed Citation can stand alone on `citation` while
     /// inventory consumers still get a human-facing string here.
     pub display_label: &'static str,

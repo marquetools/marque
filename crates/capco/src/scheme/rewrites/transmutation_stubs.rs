@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Transmutation stubs (8 rows) from the transmutation
-//! transmutation roster. Each row declares
+//! roster. Each row declares
 //! `Custom(never_fires)` + `Custom(noop_action)`; only the
 //! `reads` / `writes` axis annotations are consumed today
 //! (by the Kahn scheduler). Lifted from the monolithic

@@ -14,8 +14,8 @@ use super::super::*;
 /// can't express cleanly (e.g., the cross-axis transmutations).
 ///
 /// Runtime page-rewrite dispatch stays in
-/// `CapcoScheme::project_attrs_pipeline` until they
-/// lands real rewrite bodies; until then the action body is a no-op
+/// `CapcoScheme::project_attrs_pipeline` until real rewrite bodies
+/// land; until then the action body is a no-op
 /// and only the row's `reads` / `writes` axis annotations are
 /// consumed (by the engine's topological scheduler).
 /// Pairs with [`never_fires`] for triggers.

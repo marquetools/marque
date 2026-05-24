@@ -385,7 +385,7 @@ impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
     /// single `TokenKind::Unknown` `TokenSpan`; this rule splits the
     /// tail on whitespace and computes per-token offsets so the
     /// diagnostic points at the rejected token, not the whole marker.
-    /// Audit-content-ignorance (Constitution V audit content-ignorance) is preserved: the
+    /// Audit content-ignorance (Constitution V) is preserved: the
     /// span is a byte-offset locator into the source buffer, not a
     /// content payload.
     ///
