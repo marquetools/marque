@@ -535,7 +535,7 @@ fn whitelist_anchors_exist_in_report() {
     // Load-bearing 5-year property: every `(citation, anchor)` row in
     // `EXPECTED_UNCOVERED` MUST resolve to a matching
     // `<a id="..."></a>` fragment in
-    // `docs/refactor-006/citation-coverage-report.md`. Without this
+    // `data/citation-coverage-report.md`. Without this
     // assertion, the whitelist silts up over time as report anchors
     // get renamed, deleted, or never written — the test would still
     // pass because the citation-side mechanics (in-set / not-harvested)
@@ -546,8 +546,7 @@ fn whitelist_anchors_exist_in_report() {
     // failure mode is precisely diagnosed: a missing anchor is a
     // documentation-side defect distinct from a coverage gap.
     let report_path = workspace_root()
-        .join("docs")
-        .join("refactor-006")
+        .join("data")
         .join("citation-coverage-report.md");
     let report = fs::read_to_string(&report_path).unwrap_or_else(|e| {
         panic!(
