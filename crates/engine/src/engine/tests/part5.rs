@@ -293,23 +293,23 @@ mod sentinel_tests {
         // names that would imply portion content leakage.
         assert!(
             !err.contains("CanonicalAttrs"),
-            "G13 violation: type name `CanonicalAttrs` in error: {err}"
+            "audit content-ignorance violation: type name `CanonicalAttrs` in error: {err}"
         );
         assert!(
             !err.contains("SciControl"),
-            "G13 violation: type name `SciControl` in error: {err}"
+            "audit content-ignorance violation: type name `SciControl` in error: {err}"
         );
         assert!(
             !err.contains("Span"),
-            "G13 violation: type name `Span` in error: {err}"
+            "audit content-ignorance violation: type name `Span` in error: {err}"
         );
         assert!(
             !err.contains("MarkingClassification"),
-            "G13 violation: type name `MarkingClassification` in error: {err}"
+            "audit content-ignorance violation: type name `MarkingClassification` in error: {err}"
         );
         assert!(
             !err.contains("Secret"),
-            "G13 violation: classification variant `Secret` in error: {err}"
+            "audit content-ignorance violation: classification variant `Secret` in error: {err}"
         );
     }
 
@@ -378,7 +378,7 @@ mod sentinel_tests {
         let after: Vec<CanonicalAttrs> = vec![];
 
         let err = check_portions_unchanged(&before, &after, 1)
-            .expect_err("mismatch must surface as Err for the G13 check");
+            .expect_err("mismatch must surface as Err for the content-ignorance check");
 
         // The load-bearing assertion: the distinctive sentinel
         // string MUST NOT appear anywhere in the rendered error.
@@ -386,7 +386,7 @@ mod sentinel_tests {
         // leaking through the panic surface.
         assert!(
             !err.contains(G13_SENTINEL),
-            "G13 violation: classified_by content leaked into sentinel \
+            "audit content-ignorance violation: classified_by content leaked into sentinel \
              error message. Sentinel string `{G13_SENTINEL}` found in \
              rendered error: {err}"
         );
@@ -396,7 +396,7 @@ mod sentinel_tests {
         // making the helper a no-op).
         assert!(
             !err.is_empty(),
-            "G13 test fixture invalid: helper returned empty error \
+            "content-ignorance test fixture invalid: helper returned empty error \
              string — the negative assertion above is vacuous."
         );
     }

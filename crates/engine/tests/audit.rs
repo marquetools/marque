@@ -203,7 +203,7 @@ fn assert_text_correction_clean(
     for sentinel in PROSE_SENTINELS {
         if value.contains(sentinel) {
             panic!(
-                "G13 violation: prose sentinel {sentinel:?} leaked into \
+                "content-ignorance violation: prose sentinel {sentinel:?} leaked into \
                  AppliedTextCorrection.{field_name} \
                  (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
                  field value: {value:?}",
@@ -239,7 +239,7 @@ fn no_document_text_leaks_from_invalid_corpus() {
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no invalid fixtures found — cannot validate G13"
+        "no invalid fixtures found — cannot validate audit content-ignorance"
     );
     for path in &fixtures {
         let source = load_fixture(path);
@@ -254,7 +254,7 @@ fn no_document_text_leaks_from_valid_corpus() {
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no valid fixtures found — cannot validate G13"
+        "no valid fixtures found — cannot validate audit content-ignorance"
     );
     for path in &fixtures {
         let source = load_fixture(path);
@@ -269,7 +269,7 @@ fn no_document_text_leaks_from_prose_corpus() {
     let fixtures = prose_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no prose fixtures found — cannot validate G13"
+        "no prose fixtures found — cannot validate audit content-ignorance"
     );
     for path in &fixtures {
         let source = load_fixture(path);
@@ -371,7 +371,7 @@ fn no_document_text_leaks_into_diagnostic_messages() {
     assert!(
         !sources.is_empty(),
         "no fixtures found across invalid/valid/prose — \
-         cannot validate G13 against diagnostic messages \
+         cannot validate audit content-ignorance against diagnostic messages \
          (vacuous-pass guard)"
     );
 
@@ -392,7 +392,7 @@ fn no_document_text_leaks_into_diagnostic_messages() {
             for sentinel in PROSE_SENTINELS {
                 assert!(
                     !template_label.contains(sentinel),
-                    "G13 violation: prose sentinel {sentinel:?} leaked into \
+                    "content-ignorance violation: prose sentinel {sentinel:?} leaked into \
                      Diagnostic.message template (rule: {}, fixture: {label})\n\n\
                      template: {template_label}",
                     d.rule,
@@ -436,7 +436,7 @@ fn no_document_text_leaks_into_fix_remaining_diagnostics() {
     assert!(
         !sources.is_empty(),
         "no fixtures found across invalid/valid/prose — \
-         cannot validate G13 against fix-remaining-diagnostic messages \
+         cannot validate audit content-ignorance against fix-remaining-diagnostic messages \
          (vacuous-pass guard)"
     );
 
@@ -462,7 +462,7 @@ fn no_document_text_leaks_into_fix_remaining_diagnostics() {
             for sentinel in PROSE_SENTINELS {
                 assert!(
                     !template_label.contains(sentinel),
-                    "G13 violation: prose sentinel {sentinel:?} leaked into \
+                    "content-ignorance violation: prose sentinel {sentinel:?} leaked into \
                      FixResult.remaining_diagnostics[].message template \
                      (rule: {}, fixture: {label})\n\n\
                      template: {template_label}",
@@ -530,7 +530,7 @@ fn fabricate_leaky_text_correction() -> AppliedTextCorrection {
 }
 
 #[test]
-#[should_panic(expected = "G13 violation")]
+#[should_panic(expected = "content-ignorance violation")]
 fn sentinel_check_panics_on_synthetic_leak() {
     // Guard against future regressions of the checker itself: a
     // refactor that emptied `PROSE_SENTINELS` or disabled
@@ -585,7 +585,7 @@ fn audit_v2_strict_path_invariants() {
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no invalid fixtures found — cannot validate T052 strict-path invariants"
+        "no invalid fixtures found — cannot validate strict-path invariants"
     );
 
     // Vacuity guard: the test is meaningful only if the engine's
@@ -649,7 +649,7 @@ fn audit_v2_strict_path_invariants() {
 
     assert!(
         total_fixes_examined > 0,
-        "T052 sweep produced zero applied fixes — \
+        "strict-path sweep produced zero applied fixes — \
          either the invalid corpus is empty or the engine's strict path \
          is not firing (vacuous-pass guard)"
     );
@@ -863,7 +863,7 @@ fn decoder_path_record_shape() {
         );
         assert!(
             !c.features.is_empty(),
-            "decoder-path Confidence.features must be non-empty (FR-009); \
+            "decoder-path Confidence.features must be non-empty; \
              got 0 features for rule {} at {}..{}",
             fix.rule,
             fix.span.start,
@@ -917,7 +917,7 @@ fn decoder_path_record_shape() {
 
     assert!(
         decoder_fixes_examined > 0,
-        "T053 vacuity guard: zero decoder-path fixes were produced for \
+        "vacuity guard: zero decoder-path fixes were produced for \
          the mangled fixture {:?}. Either the deep-scan dispatcher never \
          reached the decoder, or the decoder declined to canonicalize. \
          Without ≥1 fix examined the per-fix shape assertions above pass \

@@ -71,13 +71,13 @@
 //! split becomes necessary, the path is a separate `pub(crate)` bench
 //! crate inside `marque_capco` rather than widening the public API.
 //!
-//! ## Phase F vs Phases G-I — synthesis caveat
+//! ## Full-lint bench vs isolated micro-benches — synthesis caveat
 //!
-//! **Phase F** runs the full `Engine::lint` on the same 10KB input
-//! `lint_latency.rs` uses; it's an authoritative measurement of the
-//! end-to-end cost.
+//! The `phase_f_engine_lint_full` bench runs the full `Engine::lint`
+//! on the same 10KB input `lint_latency.rs` uses; it's an
+//! authoritative measurement of the end-to-end cost.
 //!
-//! **Phases A-E and G-I** measure isolated calls against
+//! Every other bench here measures isolated calls against
 //! **synthesized** `CanonicalAttrs` portions (`collect_portions`
 //! returns a hand-built `(S//NF)` + `(TS//SI)` pair rather than
 //! lifting the parser's actual output). The synthesis is a
@@ -142,8 +142,9 @@ fn build_input(target_bytes: usize) -> Vec<u8> {
 /// and the body below synthesizes a representative `(S//NF)` +
 /// `(TS//SI)` pair AFTER an Engine::lint warmup call.
 ///
-/// The synthesis is intentional — see the file-level "Phase F vs
-/// Phases G-I — synthesis caveat" doc. The Engine::lint call kept
+/// The synthesis is intentional — see the file-level "Full-lint
+/// bench vs isolated micro-benches — synthesis caveat" doc. The
+/// Engine::lint call kept
 /// here is a warmup so the per-phase benches see a stable runtime
 /// state (criterion caching, instruction cache, etc.); the returned
 /// portions are NOT extracted from the lint result.
@@ -191,7 +192,7 @@ fn phase_attribution(c: &mut Criterion) {
     let portions = collect_portions();
     let scheme = CapcoScheme::new();
 
-    // Phase A: join_via_lattice in isolation.
+    // phase_a_join_via_lattice: join_via_lattice in isolation.
     c.bench_function("phase_a_join_via_lattice", |b| {
         b.iter(|| {
             let attrs = CapcoMarking::join_via_lattice(black_box(&portions));
@@ -199,7 +200,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase B: closure in isolation, applied to a pre-joined marking.
+    // phase_b_closure: closure in isolation, applied to a pre-joined marking.
     //
     // Post-#704 scope note: `scheme.closure()` runs the 6-row
     // `CLOSURE_TABLE` Kleene fixpoint only (Rows 1-6, per-marking
@@ -229,12 +230,12 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase C input, shared with Phase B′ below so both pay the same
+    // phase_c input, shared with phase_b_prime below so both pay the same
     // `&[CapcoMarking]` → `Vec<CanonicalAttrs>` clone bridge that
     // `MarkingScheme::project` performs internally.
     let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
 
-    // Phase B′ (b-prime): mirror `scheme.project()`'s prefix — the
+    // phase_b_prime: mirror `scheme.project()`'s prefix — the
     // `&[CapcoMarking]` → `Vec<CanonicalAttrs>` clone bridge, then
     // `join_via_lattice` + `closure` — on the same `(S//NF) + (TS//SI)`
     // synthesis pair. Pairs with phase_c so the delta
@@ -249,9 +250,9 @@ fn phase_attribution(c: &mut Criterion) {
     // Why this is necessary: `phase_b_closure` hoists both the bridge
     // and `join_via_lattice` out of the iter loop, so `phase_c −
     // phase_b` recovers the bridge + join PLUS the three post-close
-    // stages, not just the post-close stages. The original #714 framing
+    // stages, not just the post-close stages. An earlier framing (#714)
     // claimed the delta was `default_fill + page_rewrites` only; this
-    // bench closes that gap. (Copilot PR #754 review caught that an
+    // bench closes that gap. (Review on #754 caught that an
     // earlier `phase_b_prime` joined `&portions` directly and never
     // paid the bridge, so `phase_c − phase_b_prime` still leaked the
     // bridge-clone cost — fixed here by paying it inside the loop.)
@@ -273,7 +274,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase C: whole scheme.project(Scope::Page, ...) call.
+    // phase_c_scheme_project: whole scheme.project(Scope::Page, ...) call.
     c.bench_function("phase_c_scheme_project", |b| {
         b.iter(|| {
             let out = scheme.project(Scope::Page, black_box(&markings));
@@ -281,7 +282,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase D: from_canonical bridge.
+    // phase_d_from_canonical: from_canonical bridge.
     let projected = scheme.project(Scope::Page, &markings);
     c.bench_function("phase_d_from_canonical", |b| {
         b.iter(|| {
@@ -290,7 +291,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase E: end-to-end engine-side replay through the
+    // phase_e_engine_project_path: end-to-end engine-side replay through the
     // `project_from_attrs_slice` fast-path (successor to
     // `project_from_page_context`).
     let page_portions: Vec<CanonicalAttrs> = portions.to_vec();
@@ -302,7 +303,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase F: lint_10kb-style replay — full Engine::lint call. This
+    // phase_f_engine_lint_full: lint_10kb-style replay — full Engine::lint call. This
     // gives us the bench's actual call shape so we can compare the
     // per-phase costs against the total to find the missing time.
     {
@@ -319,7 +320,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     }
 
-    // Phase G: scaling — project_from_attrs_slice at portion counts
+    // phase_g_project: scaling — project_from_attrs_slice at portion counts
     // matching the lint_10kb call sequence (1, 5, 10, 25, 50). The
     // bench profiling discovered that ~50 cache-miss calls happen
     // with portions growing monotonically; the per-call O(n) work
@@ -335,7 +336,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     }
 
-    // Phase H: isolate the per-page accumulator rebuild cost.
+    // phase_h_tmp_ctx_rebuild: isolate the per-page accumulator rebuild cost.
     // Mirrors the engine's per-PageBreak `page_portions =
     // Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY)` + per-portion
     // `push` sequence.
@@ -352,10 +353,10 @@ fn phase_attribution(c: &mut Criterion) {
         });
     }
 
-    // Phase I: measures the full `join_via_lattice` call, including
+    // phase_i_join: measures the full `join_via_lattice` call, including
     // its internal tmp_ctx build. There is no clean isolation of the
     // tmp_ctx step alone from the rest of `join_via_lattice` on the
-    // current public surface, so this phase reports the whole-function
+    // current public surface, so this bench reports the whole-function
     // cost. Pair with `phase_h_tmp_ctx_rebuild_n*` for a rough
     // attribution: phase_h ≈ tmp_ctx alone, phase_i ≈ tmp_ctx +
     // per-axis composition.

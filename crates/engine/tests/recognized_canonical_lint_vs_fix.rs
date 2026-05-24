@@ -208,6 +208,6 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
     assert!(
         !audit_ndjson.contains(canonical_utf8),
         "audit NDJSON must NOT contain the canonical bytes verbatim \
-         (Constitution V Principle V / G13 content-ignorance); got: {audit_ndjson}",
+         (Constitution V Principle V / audit content-ignorance); got: {audit_ndjson}",
     );
 }
