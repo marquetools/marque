@@ -22,13 +22,11 @@ use super::helpers::{HierarchicalTreeSet, sorted_compartment_items};
 ///
 /// Internally a map from control-system to compartment → sub-compartment
 /// tree; `join` is component-wise union and `meet` is component-wise
-/// equal-depth intersection per the module-level §3.3a policy. Ordering
+/// equal-depth intersection per the module-level meet policy. Ordering
 /// of output is deterministic (BTreeMap / BTreeSet backing storage).
 ///
 /// `SciSet` round-trips with `[SciMarking]` via [`SciSet::from_markings`]
-/// and [`SciSet::to_markings`]. The byte-level equivalence with the
-/// retired `PageContext::expected_sci_markings` output was the Phase B
-/// verification gate; post-PR-4b-E `SciSet::to_markings()` is the
+/// and [`SciSet::to_markings`]. `SciSet::to_markings()` is the
 /// production roll-up path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SciSet {
@@ -117,18 +115,18 @@ impl SciSet {
     /// per-portion only; a rolled-up structural projection has no
     /// single corresponding enum variant.
     pub fn to_markings(&self) -> Box<[SciMarking]> {
-        // LA-2 empty-axis fast-path: skip all sorting / allocation
-        // when no SCI markings were accumulated (the common case on
-        // documents with no SCI portions).
+        // Empty-axis fast-path: skip all sorting / allocation when no
+        // SCI markings were accumulated (the common case on documents
+        // with no SCI portions).
         if self.is_empty() {
             return Box::default();
         }
-        // The shared `sorted_entries` / `sorted_compartment_items`
-        // helpers (HierarchicalTreeSet, PR 613) carry the SmallVec
-        // inline-capacity sizing from PR 614 — systems/programs at
-        // inline-4, compartments at inline-8, sub-compartments at
-        // inline-4 — so scratch buffers stay on the stack for ordinary
-        // classified documents.
+        // The shared `HierarchicalTreeSet` `sorted_entries` /
+        // `sorted_compartment_items` helpers carry the SmallVec
+        // inline-capacity sizing — systems/programs at inline-4,
+        // compartments at inline-8, sub-compartments at inline-4 — so
+        // scratch buffers stay on the stack for ordinary classified
+        // documents.
         let entries = self.systems.sorted_entries(|k| k.text());
         let mut out: Vec<SciMarking> = Vec::with_capacity(entries.len());
         for (sys_key, comp_map) in entries {

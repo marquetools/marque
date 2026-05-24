@@ -5,11 +5,7 @@
 //! Classified-page trigger predicates for Pattern-C strip rows
 //! (FOUO / LIMDIS / SBU / UCNI on classified pages), the UCNI
 //! NOFORN-promotion siblings, and (#554) the Pattern-A SBU-NF /
-//! LES-NF NOFORN-promotion rows. Originally lifted from the
-//! monolithic `predicates.rs` per the issue #466 Stage 2 PR A leaf
-//! split (`claudedocs/refactor-466/stage2_leaves_plan.md`); #554
-//! broadened the consumer set when the classification gate was
-//! added to the Pattern-A SBU-NF / LES-NF rows.
+//! LES-NF NOFORN-promotion rows (#554).
 //!
 //! Of the SBU-NF / LES-NF triggers below, `sbu_nf_classified_trigger`
 //! drives BOTH Pattern-C strip
@@ -25,7 +21,7 @@
 use super::super::*;
 
 // ---------------------------------------------------------------------------
-// PR 4b-C Commit 3 — Pattern-C strip-row helpers
+// Pattern-C strip-row helpers
 // ---------------------------------------------------------------------------
 //
 // Pattern C (classification-driven strip) and the UCNI NOFORN-promotion
@@ -161,9 +157,9 @@ pub(crate) fn sbu_classified_trigger(m: &CapcoMarking) -> bool {
 /// reflected in the portion mark; however a NOFORN marking must be
 /// added to the portion mark, e.g., (C//NF)."*
 ///
-/// # §3.5 compound-NF carve-out for SBU-NF (not LES-NF)
+/// # Compound-NF carve-out for SBU-NF (not LES-NF)
 ///
-/// The earlier §3.5 compound-NF invariant said "Pattern-C strip rows
+/// The compound-NF invariant says "Pattern-C strip rows
 /// MUST NOT touch SbuNf/LesNf because the parallel implies-noforn
 /// rewrites carry NF identity separately." That invariant is correct
 /// for **LES-NF** — §H.9 p185 (LES NOFORN Precedence Rules)

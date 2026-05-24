@@ -14,7 +14,7 @@
 //!
 //! Issue #183 PR-B made this module a thin re-export over
 //! [`marque_ism::TETRAGRAPH_MEMBERS`] / [`marque_ism::lookup_tetragraph_members`].
-//! Pre-PR-B this crate and `marque-ism::page_context` carried two private
+//! This crate and `marque-ism::page_context` carried two private
 //! copies of the FVEY/ACGU table that drifted independently; consolidating
 //! to one source eliminated the drift.
 //!

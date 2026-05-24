@@ -4,16 +4,14 @@
 
 //! Pattern-B FOUO-eviction helpers plus the FD&R-membership / dissem-
 //! sentinel / `rel_to_covers` utilities used across the predicate
-//! family. Lifted from the monolithic `predicates.rs` per the issue
-//! #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! family.
 
 use marque_scheme::{CategoryId, TokenId, TokenRef};
 
 use super::super::*;
 
 // ---------------------------------------------------------------------------
-// PR 4b-C Commit 4 — Pattern-B helpers
+// Pattern-B helpers
 // ---------------------------------------------------------------------------
 //
 // Pattern B is two structural rows per the §H.8 p134 verbatim:
@@ -77,7 +75,7 @@ pub(crate) fn dissem_has_non_fdr_other_than_fouo(m: &CapcoMarking) -> bool {
 /// `Token` arms — the `AnyInCategory` arms in `FDR_DOMINATORS`
 /// (CAT_REL_TO) cover country codes on the REL TO axis, not
 /// `DissemControl` tokens, so they are excluded from this lookup
-/// path. PR 4b-C local helper for Pattern-B's per-token
+/// path. Local helper for Pattern-B's per-token
 /// membership check; once `Vocabulary::is_fdr_dissem` is reachable
 /// from a no-scheme-instance context (e.g., a `&'static` helper),
 /// this helper can delegate.
@@ -131,7 +129,7 @@ pub(crate) fn fouo_with_non_fdr_other_control_trigger(m: &CapcoMarking) -> bool 
 /// `Vocabulary::is_fdr_dissem` membership lookup.
 ///
 /// Mirrors the `dissem_to_tok` arms scattered through `scheme.rs`
-/// (no centralized helper exists at PR 4b-C time). Variants without
+/// (no centralized helper exists). Variants without
 /// a TOK_* sentinel return `None`; the caller treats those as
 /// non-FD&R (correct by inspection — FD&R members all have
 /// TOK_* sentinels).

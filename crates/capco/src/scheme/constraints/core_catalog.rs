@@ -4,9 +4,6 @@
 
 //! Core constraint rows: dyadic Conflicts / Requires / Custom rows
 //! covering E010 through E057 (plus `capco/joint-requires-usa`).
-//! Lifted from the monolithic `constraints.rs` per the issue #466
-//! Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 //!
 //! Row order is load-bearing for the predicate evaluator's
 //! tiebreakers; the entries below preserve the exact pre-split
@@ -29,21 +26,17 @@ use super::super::*;
 /// valid citation targets. See Constitution VIII and the project
 /// memory entry "CAPCO doc structure".
 ///
-/// T035 (2026-04-21) wired runtime evaluation through this
-/// catalog: dyadic variants dispatch via the generic evaluator
-/// (`crate::constraint::evaluate`) using
-/// [`Self::satisfies`]; `Custom` variants dispatch through
-/// [`Self::evaluate_custom`] to scheme-private predicate
-/// helpers below. The hand-written `Rule` impls in
-/// `crate::rules` that previously enforced these invariants
-/// are retired in the same PR; the engine's scheme-adapter bridge
-/// (`crate::scheme::adapter`) hosts the dispatch that calls
-/// `scheme.validate()` and constructs `Diagnostic` values with
-/// byte-identical message/span/fix output.
+/// Runtime evaluation runs through this catalog: dyadic variants
+/// dispatch via the generic evaluator (`crate::constraint::evaluate`)
+/// using [`Self::satisfies`]; `Custom` variants dispatch through
+/// [`Self::evaluate_custom`] to scheme-private predicate helpers below.
+/// The engine's scheme-adapter bridge (`crate::scheme::adapter`) hosts
+/// the dispatch that calls `scheme.validate()` and constructs
+/// `Diagnostic` values.
 ///
-/// T035b audit (2026-04-21): E017, E018, and E019 were
-/// retired as over-restrictive relative to CAPCO-2016 §H.3
-/// pp 56–57:
+/// No JOINT-incompatibility constraints are declared for IC / Non-IC
+/// dissemination control markings — that would be over-restrictive
+/// relative to CAPCO-2016 §H.3 pp 56–57:
 ///
 /// - §H.3 p57 lists "FGI, IC and Non-IC dissemination
 ///   control markings (excluding NOFORN)" among markings
@@ -161,11 +154,10 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // HCS exclusion has no such indirect coverage, so it
         // gets its own catalog entry.
         //
-        // Supersedes the retired E017/E018/E019 which over-
-        // restricted JOINT against FGI content markers, arbitrary
-        // IC dissem, and non-IC dissem respectively. Those rules
-        // forbade combinations §H.3 p57 explicitly permits.
-        // See T035b retirement commit and project memory
+        // This is the only JOINT-incompatibility constraint: JOINT
+        // conflicts with HCS. JOINT is NOT forbidden against FGI content
+        // markers, arbitrary IC dissem, or non-IC dissem — §H.3 p57
+        // explicitly permits those combinations. See project memory
         // `feedback_audit_predicates_against_source.md`.
         Constraint::Conflicts {
             name: "portion.classification.joint-conflicts-hcs",
@@ -221,18 +213,14 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // earlier in this file); `TOK_RD` is satisfied by any
         // `AeaMarking::Rd(_)`. The two are not independently
         // settable — `TOK_CNWDI` strictly implies `TOK_RD` at
-        // the predicate level. An earlier draft of PR 4b-A
-        // added a `Constraint::Requires { TOK_CNWDI, TOK_RD }`
-        // row to enforce the §H.6 p106 "subset of RD" rule, but
-        // Copilot review caught that the row is unreachable —
-        // it can never fire because the right-hand side is
-        // necessarily true whenever the left-hand side is true.
+        // the predicate level. A `Constraint::Requires { TOK_CNWDI,
+        // TOK_RD }` row enforcing the §H.6 p106 "subset of RD" rule
+        // would be unreachable — it could never fire because the
+        // right-hand side is necessarily true whenever the left-hand
+        // side is true.
         //
-        // The §H.6 p106 invariant therefore lives at the data-
-        // model level rather than the constraint-catalog level.
-        // See `docs/plans/2026-05-01-lattice-design.md` §7.5
-        // "Cross-axis constraints" for the §-cited record of
-        // this decision.
+        // The §H.6 p106 invariant therefore lives at the data-model
+        // level rather than the constraint-catalog level.
         //
         // If a future change to `AeaMarking` ever splits CNWDI
         // into a sibling variant (decoupling it from `Rd`), the
@@ -241,37 +229,24 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // satisfies_attrs predicate for `TOK_CNWDI` MUST be
         // amended to no longer match through the `Rd(...)`
         // variant.
-        // ---- E022 retired in PR 3b.D (T026d) -----------------
-        //
-        // The CNWDI classification floor moved into the class-
-        // floor catalog block below as
-        // `E058/CNWDI-classification-floor`. The legacy
-        // `E022/CNWDI-classification-floor` entry that previously
-        // lived here is removed because (a) the catalog walker
-        // emits the diagnostic via `E058/...`, and (b) keeping the
-        // `E022/...` entry alongside the `E058/...` entry produced
-        // a dead duplicate constraint row that never fires (the
-        // dispatch in `evaluate_custom_by_attrs` no longer routes
-        // to a predicate for it). Per
-        // `feedback_pre_users_no_deprecation_phasing.md`, no
-        // alias map is preserved.
+        // The CNWDI classification floor lives in the class-floor
+        // catalog block below, not as a core constraint row.
 
-        // ---- E024: RD precedence (§H.6 p104) -----------------
+        // ---- RD precedence (§H.6 p104) -----------------
         //
         // §H.6 RD entry p104: "If RD, FRD, and TFNI
         // portions are in a document, the RD takes precedence
         // and is conveyed in the banner line." Custom (not
         // Supersedes) because Supersedes is a banner-rollup
         // hint that doesn't fire diagnostics; the per-portion
-        // commingling violation is what E024 reports. The
-        // banner-rollup Supersedes entries are intentionally
-        // deferred until Phase E wires them through
-        // `project(Scope::Page, ...)`.
+        // commingling violation is what this row reports. The
+        // banner-rollup Supersedes entries are deferred until they
+        // are wired through `project(Scope::Page, ...)`.
         Constraint::Custom {
             name: "portion.aea.rd-precedence",
             label: capco(SectionLetter::H, 6, 104),
         },
-        // ---- E070: FRD precedence over TFNI (§H.6 p120) ------
+        // ---- FRD precedence over TFNI (§H.6 p120) ------
         //
         // §H.6 TFNI subsection p120: "If the TFNI marking is
         // contained in any portion of a document that contains
@@ -281,28 +256,18 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // FRD takes precedence and 'RD' or 'FRD,' as
         // appropriate, is annotated in the portion mark."
         //
-        // Sibling of E024: E024 covers RD>FRD and RD>TFNI; this
-        // row carries the FRD>TFNI leg so the policy decision
-        // "FRD supersedes TFNI" has its own audit lineage
-        // independent of RD presence. #559 close-out PM
-        // decision 2026-05-19.
+        // Sibling of the RD-precedence row: that row covers RD>FRD and
+        // RD>TFNI; this row carries the FRD>TFNI leg so the "FRD
+        // supersedes TFNI" decision has its own audit lineage
+        // independent of RD presence (#559).
         Constraint::Custom {
             name: "portion.aea.frd-tfni-precedence",
             label: capco(SectionLetter::H, 6, 120),
         },
-        // ---- E025 retired in PR 3b.D (T026d) -----------------
-        //
-        // The UCNI ceiling invariant moved into the class-floor
-        // catalog block below as TWO rows
-        // (`E058/DOD-UCNI-classification-ceiling` at §H.6 p116 and
-        // `E058/DOE-UCNI-classification-ceiling` at §H.6 p118),
-        // split per PM decision #1 so each variant carries its
-        // own §H.6 sub-page citation. The legacy
-        // `E025/ucni-conflicts-classification` aggregated entry
-        // that previously lived here is removed for the same
-        // reason as the E022 entry above (the dispatch in
-        // `evaluate_custom_by_attrs` no longer routes to a
-        // predicate for it).
+        // The UCNI ceiling invariant lives in the class-floor catalog
+        // block below as TWO rows (DOD-UCNI-classification-ceiling at
+        // §H.6 p116 and DOE-UCNI-classification-ceiling at §H.6 p118),
+        // split so each variant carries its own §H.6 sub-page citation.
 
         // ---- W002: retired in the PR closing #470 ------------
         //
@@ -389,15 +354,12 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
         // "Cannot be used with NOFORN or DISPLAY ONLY."
         //
-        // PR 3.7 update: this row STAYS as an enumerated `Conflicts`
-        // (reverted from Stage D's compaction). The scheme-adapter bridge
-        // (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
+        // This row is an enumerated `Conflicts`. The scheme-adapter
+        // bridge (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
         // dispatches by the constraint name
         // `"portion.dissem.relido-conflicts-noforn"`; without an
-        // enumerated row here, the bridge silently emits no diagnostics.
-        // PR 4 (T112) will rebuild the bridge dispatch to be family-aware
-        // and then retire this row. Per plan rev 1 §0 "Non-scope (deferred
-        // to PR 4): RELIDO Conflicts compaction".
+        // enumerated row here, the bridge would silently emit no
+        // diagnostics.
         Constraint::Conflicts {
             name: "portion.dissem.relido-conflicts-noforn",
             left: TokenRef::Token(TOK_RELIDO),
@@ -406,72 +368,53 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
-        // ---- E055 / E056 / E057 — retired in #559 close-out (2026-05-19) + #618 ----
-        //
-        // All three RELIDO-exclusion pairs that lived here as
-        // `Constraint::Conflicts` rows moved into
+        // The three RELIDO-exclusion pairs live in
         // `crates/capco/src/scheme/rewrites/relido_clears.rs` as
-        // subtractive PageRewrites:
+        // subtractive PageRewrites, not as core constraint rows:
         //
-        //   `capco/display-only-clears-relido` (E055, §H.8 p154)
-        //   `capco/orcon-clears-relido`        (E056, §H.8 p136)
-        //   `capco/orcon-usgov-clears-relido`  (E057, §H.8 p140)
+        //   `capco/display-only-clears-relido` (§H.8 p154)
+        //   `capco/orcon-clears-relido`        (§H.8 p136)
+        //   `capco/orcon-usgov-clears-relido`  (§H.8 p140)
         //
-        // Each fires at `Scope::Page` and emits a
-        // `FactRemove(RELIDO)` intent — exactly what the retired
-        // `fix_intent_by_name` arm produced, but at the right scope
-        // for cross-portion supersession (e.g., ORCON on portion A
-        // and RELIDO on portion B was missed by the per-portion
-        // Conflicts gate). Per Marque convention, dissem-axis
-        // conflicts emit subtractive fixes: the engine guides the
-        // author toward a canonical resolution (RELIDO removed when
-        // a stronger originator decision is on the page) rather
-        // than just flagging the conflict.
+        // Each fires at `Scope::Page` and emits a `FactRemove(RELIDO)`
+        // intent at the right scope for cross-portion supersession
+        // (e.g., ORCON on portion A and RELIDO on portion B is missed by
+        // a per-portion Conflicts gate). Per Marque convention,
+        // dissem-axis conflicts emit subtractive fixes: the engine
+        // guides the author toward a canonical resolution (RELIDO removed
+        // when a stronger originator decision is on the page) rather than
+        // just flagging the conflict.
         //
-        // The E055 DISPLAY ONLY row was deferred behind #618 until
-        // `satisfies(TOK_DISPLAY_ONLY)` was widened to recognize the
-        // canonical wire form. Pre-#618 the parser routed
-        // `DISPLAY ONLY [LIST]` into `attrs.display_only_to` (a
-        // country-list axis parallel to `attrs.rel_to`) without
-        // setting the `DissemControl::Displayonly` variant in
-        // `dissem_us`, so a `Contains(CAT_DISSEM, TOK_DISPLAY_ONLY)`
-        // trigger would silently no-op on the canonical input. #618
-        // widened the predicate to OR both axes, unblocking the row.
+        // The DISPLAY ONLY clears-RELIDO rewrite requires
+        // `satisfies(TOK_DISPLAY_ONLY)` to recognize the canonical wire
+        // form: the parser routes `DISPLAY ONLY [LIST]` into
+        // `attrs.display_only_to` (a country-list axis parallel to
+        // `attrs.rel_to`) without setting the `DissemControl::Displayonly`
+        // variant in `dissem_us`, so a `Contains(CAT_DISSEM,
+        // TOK_DISPLAY_ONLY)` trigger would silently no-op on the
+        // canonical input unless the predicate ORs both axes (#618).
         //
-        // E054 (RELIDO ⊥ NOFORN) stays a Conflicts row because the
-        // companion `capco/noforn-clears-fdr-family` PageRewrite in
-        // `noforn_clears.rs` already covers the page-scope eviction
-        // — E054 surfaces the per-portion form as an Error for user
-        // visibility on the source line that triggered the conflict.
-        // NOTE — S004 (REL TO trigraph suggest) is NOT a catalog row.
-        // The retired-rule consolidation in PR #578 attempted to move
-        // S004 into the constraint-catalog bridge, but S004's
-        // replacement string is a corpus-derived candidate computed
+        // The RELIDO ⊥ NOFORN row below stays a Conflicts row because
+        // the companion `capco/noforn-clears-fdr-family` PageRewrite in
+        // `noforn_clears.rs` already covers the page-scope eviction — the
+        // Conflicts row surfaces the per-portion form as an Error for
+        // user visibility on the source line that triggered the conflict.
+        // NOTE — the REL TO trigraph suggest rule is NOT a catalog row.
+        // Its replacement string is a corpus-derived candidate computed
         // during evaluation — the bridge's
-        // `fix_intent_by_name(name, attrs, marking_type)` shape
-        // cannot produce that candidate without re-running the
-        // evaluator. The walker rule `RelToTrigraphSuggestRule`
-        // therefore stays registered in `CapcoRuleSet::new()` and
-        // owns both the predicate and the `text_correction` emission.
-        // See `crates/capco/src/rules.rs` S004 registration block for
-        // the rationale.
+        // `fix_intent_by_name(name, attrs, marking_type)` shape cannot
+        // produce that candidate without re-running the evaluator. The
+        // walker rule `RelToTrigraphSuggestRule` therefore stays
+        // registered in `CapcoRuleSet::new()` and owns both the
+        // predicate and the `text_correction` emission.
         //
-        // NOTE — ConflictsWithFamily primitive showcase removed in PR 3.7 rev 3.
-        //
-        // An earlier rev added two additive `ConflictsWithFamily` rows
-        // (`capco/relido-conflicts-fdr-family` and
-        // `capco/orcon-family-conflicts-relido`) alongside the
-        // enumerated E054/E055/E056/E057 rows above as a "primitive
-        // showcase". Copilot PR 3.7 review pass 3 surfaced that this
-        // shape causes `CapcoScheme::validate()` to emit DOUBLE
-        // diagnostics for any input that triggers both the enumerated
-        // row and the family row (the same matching pair appears once
-        // per row). The primitive is already exercised on a stub scheme
+        // NOTE — the catalog uses enumerated `Conflicts` rows, not
+        // additive `ConflictsWithFamily` rows. Adding a family row
+        // alongside an enumerated row would make `CapcoScheme::validate()`
+        // emit DOUBLE diagnostics for any input that triggers both (the
+        // same matching pair appears once per row). The
+        // `ConflictsWithFamily` primitive is exercised on a stub scheme
         // by `crates/scheme/tests/proptest_constraint_rhs_family_distributive.rs`;
-        // the CAPCO catalog does not need active family-row entries to
-        // validate the primitive. PR 4 (T112) lands the actual
-        // compaction (delete E054-E057 enumerated rows AND add the
-        // family rows AND rewire the scheme-adapter bridge dispatch to
-        // use family-row name) as one coordinated change.
+        // the CAPCO catalog does not need active family-row entries.
     ]
 }

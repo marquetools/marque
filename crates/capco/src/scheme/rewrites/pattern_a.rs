@@ -4,9 +4,7 @@
 
 //! Pattern-A NOFORN-supremacy rows: `capco/nodis-implies-noforn`,
 //! `capco/exdis-implies-noforn`, `capco/sbu-nf-implies-noforn`,
-//! `capco/les-nf-implies-noforn`. Lifted from the monolithic
-//! `rewrites.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! `capco/les-nf-implies-noforn`.
 //!
 //! Row declaration order preserved verbatim from the pre-split
 //! catalog — DAG-sibling rows whose declaration order seeds Kahn's
@@ -48,7 +46,7 @@ use super::super::*;
 ///   unclassified pages and produces a divergence from the lattice
 ///   helper's `needs_nf = false` semantic.
 pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
-    // PR 3c.B Sub-PR 8.F — Pattern A NOFORN-supremacy: NODIS and EXDIS.
+    // Pattern A NOFORN-supremacy: NODIS and EXDIS.
     //
     // Both rewrites read `CAT_NON_IC_DISSEM` (to detect the
     // NODIS / EXDIS token) and write `CAT_DISSEM` (to add NOFORN).
@@ -77,30 +75,25 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // TK-BLFH / TK-KAND per §H.4 p64 / p68 / p87 / p91 / p95)
     // will read `CAT_SCI` and write `CAT_DISSEM`. They are a
     // structural peer of these two entries but land in a follow-on
-    // sub-PR (8.F.2 or Stage-4 SCI NOFORN-implication PR) after
-    // `capco_category_contains` is extended for `CAT_SCI` + token
-    // dispatch.
+    // change after `capco_category_contains` is extended for
+    // `CAT_SCI` + token dispatch.
     //
-    // Runtime execution gap (design spec §5): these rewrites are
-    // scheduler-validated (Engine::new validates intent payloads +
-    // topological ordering) but execution-deferred (`Engine::lint` /
-    // `Engine::fix` drives banner-validation through
-    // `marque_ism::PageContext` directly, not through
-    // `scheme.project`). Callers that invoke
-    // `scheme.project(Scope::Page, …)` directly see the full
-    // declarative effect today. Engine-level effect lands when
-    // Phase D/E wires the banner-validation path through
-    // `scheme.project`.
+    // Runtime execution gap: these rewrites are scheduler-validated
+    // (Engine::new validates intent payloads + topological ordering)
+    // but execution-deferred (`Engine::lint` / `Engine::fix` drives
+    // banner-validation directly, not through `scheme.project`).
+    // Callers that invoke `scheme.project(Scope::Page, …)` directly see
+    // the full declarative effect today; engine-level effect lands when
+    // the banner-validation path is wired through `scheme.project`.
     const NODIS_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
     const NODIS_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
     const EXDIS_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
     const EXDIS_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
-    // PR 3c.B Sub-PR 8.F.2 — SBU-NF and LES-NF Pattern A axes (axis
-    // annotations revised in #554; classification gate added).
+    // SBU-NF and LES-NF Pattern A axes (#554).
     //
     // Reads `CAT_CLASSIFICATION` only — predicate-scan-vs-dataflow
-    // convention from PR 4b-C Pattern-C (see `pattern_c.rs`
+    // convention from Pattern-C (see `pattern_c.rs`
     // `PATTERN_C_FOUO_READS` / `PATTERN_C_LIMDIS_READS`). The
     // non_ic_dissem scan (SBU-NF / LES-NF presence) lives in the
     // Custom predicate body (`sbu_nf_classified_trigger` /
@@ -118,7 +111,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
     const LES_NF_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
     vec![
-        // PR 3c.B Sub-PR 8.F — `capco/nodis-implies-noforn`.
+        // `capco/nodis-implies-noforn`.
         //
         // CAPCO-2016 §H.9 p174 (NO DISTRIBUTION, Relationship(s) to
         // Other Markings):
@@ -138,7 +131,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_NODIS)` — fires
         // when any portion on the page carries NODIS in its
         // `non_ic_dissem` axis. Resolved by the
-        // `capco_category_contains` extension in PR 3c.B Sub-PR 8.F.
+        // `capco_category_contains` extension.
         //
         // Action: `Intent(FactAdd { Cve(TOK_NOFORN), Scope::Page })`
         // — adds NOFORN to the projected page dissem axis. Monotone-
@@ -172,7 +165,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // ordering) but execution-deferred (`Engine::lint` / `Engine::fix`
         // drives banner-validation through PageContext directly). Effect
         // is visible through `scheme.project(Scope::Page, …)`. Engine-
-        // level effect lands when Phase D/E wires banner-validation
+        // level effect lands when banner-validation is wired
         // through `scheme.project`.
         PageRewrite::declarative(
             "capco/nodis-implies-noforn",
@@ -188,7 +181,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
             NODIS_IMPLIES_NF_READS,
             NODIS_IMPLIES_NF_WRITES,
         ),
-        // PR 3c.B Sub-PR 8.F — `capco/exdis-implies-noforn`.
+        // `capco/exdis-implies-noforn`.
         //
         // CAPCO-2016 §H.9 p172 (EXCLUSIVE DISTRIBUTION, Relationship(s)
         // to Other Markings):
@@ -252,7 +245,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
             EXDIS_IMPLIES_NF_READS,
             EXDIS_IMPLIES_NF_WRITES,
         ),
-        // PR 3c.B Sub-PR 8.F.2 — `capco/sbu-nf-implies-noforn`
+        // `capco/sbu-nf-implies-noforn`
         // (#554: classification gate added; was classification-agnostic).
         //
         // CAPCO-2016 §H.9 p178 (SBU-NF) does NOT contain a "Requires NOFORN."
@@ -324,7 +317,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
             SBU_NF_IMPLIES_NF_READS,
             SBU_NF_IMPLIES_NF_WRITES,
         ),
-        // PR 3c.B Sub-PR 8.F.2 — `capco/les-nf-implies-noforn`
+        // `capco/les-nf-implies-noforn`
         // (#554: classification gate added; was classification-agnostic).
         //
         // CAPCO-2016 §H.9 p185 (LES-NF) does NOT contain a "Requires NOFORN."

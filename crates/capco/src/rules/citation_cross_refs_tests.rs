@@ -3,37 +3,30 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 // ---------------------------------------------------------------------------
-// PR 10.A.1 Commit 4 — Citation cross-reference pins
+// Citation cross-reference pins
 // ---------------------------------------------------------------------------
 //
 // Live `#[cfg(test)]` module carrying the cross-reference
-// secondary-passage guards that PR 10.A.1 Commit 2 dropped when
-// collapsing the dual-passage `.contains("§...") + .contains("§...")`
-// assertions on diagnostic citation strings into single typed-
-// `Citation` `assert_eq!`s. The pre-#561 inline `mod tests`
-// block that originally carried the `.contains(...)` test bodies
-// was quarantined to `_disabled_tests.rs` (`#[cfg(any())]`-gated
-// dead code, disposition tracked in issue #722) — the active test
-// surface in this file is the cross-ref pins below plus the
-// integration tests under `crates/capco/tests/`.
+// secondary-passage guards: each rule's typed `Citation` on its emitted
+// diagnostic carries one passage, so these pins assert the
+// cross-reference constants still include the secondary passages.
 //
 // # Why the consts live adjacent to each rule, not centralized
 //
-// Per the PR brief, the cross-references are rule-authoritative
-// metadata. Living adjacent to each rule's struct (or, for the
-// declarative E037/E038 family, adjacent to the corresponding rule
-// struct at E039) makes "where is this rule's cross-reference?"
-// answerable by reading the rule's source file alone. A future PR
-// 10.A.2 `Rule::cited_authorities()` trait method (deferred per the
-// brief) would migrate these consts to the trait surface.
+// The cross-references are rule-authoritative metadata. Living adjacent
+// to each rule's struct (or, for the declarative NODIS/EXDIS family,
+// adjacent to the corresponding `NodisExdisClearsBannerRelToRule`) makes
+// "where is this rule's cross-reference?" answerable by reading the
+// rule's source file alone.
 //
 // # CAPCO §-citation verification
 //
-// Every literal §-reference asserted below was re-verified against
-// `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1 Commit 4 authorship
-// per Constitution VIII propagation rule. See the per-const doc
-// comments on `DECLASSIFY_MISPLACED_CROSS_REFS` / `JOINT_USA_FIRST_CROSS_REFS` / `NODIS_EXDIS_MUTEX_CROSS_REFS`
-// / `NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS` / `NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS` for the source passages.
+// Every literal §-reference asserted below was verified against
+// `crates/capco/docs/CAPCO-2016.md` (Constitution VIII). See the
+// per-const doc comments on `DECLASSIFY_MISPLACED_CROSS_REFS` /
+// `JOINT_USA_FIRST_CROSS_REFS` / `NODIS_EXDIS_MUTEX_CROSS_REFS` /
+// `NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS` /
+// `NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS` for the source passages.
 
 use super::joint::JOINT_USA_FIRST_CROSS_REFS;
 use super::nodis_exdis::{
@@ -43,12 +36,9 @@ use super::nodis_exdis::{
 use super::text_handling::DECLASSIFY_MISPLACED_CROSS_REFS;
 use marque_scheme::{Citation, SectionLetter, capco};
 
-/// E005: secondary §D.1 p27 (banner categories exclude
-/// declassification — negative-inference complement to the
-/// primary §E.1 p31). PR 10.A.1 Commit 2 dropped the
-/// `.contains("§D.1 p27")` assertion in
-/// `e005_citation_points_at_specific_sections` (now quarantined
-/// in `_disabled_tests.rs`, disposition #722).
+/// declassify-misplaced rule: secondary §D.1 p27 (banner categories
+/// exclude declassification — negative-inference complement to the
+/// primary §E.1 p31).
 #[test]
 fn e005_cross_refs_pin_section_d_1_p27() {
     let expected: Citation = capco(SectionLetter::D, 1, 27);
@@ -59,10 +49,9 @@ fn e005_cross_refs_pin_section_d_1_p27() {
     );
 }
 
-/// S003: secondary §H.8 p150 (REL TO USA-first convention — the
-/// IC-convention analogue S003 ports to JOINT classifications).
-/// PR 10.A.1 Commit 2 dropped the `.contains("§H.8 pp 150")`
-/// assertion in `s003_citation_frames_as_convention_not_mandate`.
+/// joint-usa-first rule: secondary §H.8 p150 (REL TO USA-first
+/// convention — the IC-convention analogue this rule ports to JOINT
+/// classifications).
 #[test]
 fn s003_cross_refs_pin_section_h_8_p150() {
     let expected: Citation = capco(SectionLetter::H, 8, 150);
@@ -73,10 +62,8 @@ fn s003_cross_refs_pin_section_h_8_p150() {
     );
 }
 
-/// E037: secondary §H.9 p174 (NODIS mutual-exclusion clause —
-/// mirror of the EXDIS clause at p172). PR 10.A.1 Commit 2
-/// dropped the `.contains("p174")` assertion in
-/// `e037_fires_when_nodis_and_exdis_coexist`.
+/// NODIS/EXDIS mutual-exclusion: secondary §H.9 p174 (NODIS clause —
+/// mirror of the EXDIS clause at p172).
 #[test]
 fn e037_cross_refs_pin_section_h_9_p174() {
     let expected: Citation = capco(SectionLetter::H, 9, 174);
@@ -87,10 +74,8 @@ fn e037_cross_refs_pin_section_h_9_p174() {
     );
 }
 
-/// E038: secondary §H.9 p174 (NODIS "Requires NOFORN" — mirror
-/// of the EXDIS clause at p172). PR 10.A.1 Commit 2 dropped the
-/// `.contains("p174")` assertion in
-/// `e038_fires_on_nodis_without_noforn`.
+/// NODIS/EXDIS requires-NOFORN: secondary §H.9 p174 (NODIS "Requires
+/// NOFORN" — mirror of the EXDIS clause at p172).
 #[test]
 fn e038_cross_refs_pin_section_h_9_p174() {
     let expected: Citation = capco(SectionLetter::H, 9, 174);
@@ -101,12 +86,9 @@ fn e038_cross_refs_pin_section_h_9_p174() {
     );
 }
 
-/// E039: secondary §H.9 p174 (NODIS authority for the
-/// REL-TO-not-authorized rule — mirror of the EXDIS clause at
-/// p172). PR 10.A.1 Commit 2 dropped the `.contains("p174")`
-/// assertion in `e039_fires_on_banner_rel_to_with_nodis_portion`
-/// AND the corresponding `e039_still_fires_after_engine_gap_close`
-/// regression-pin site (one const covers both sites).
+/// NODIS/EXDIS clears banner REL TO: secondary §H.9 p174 (NODIS
+/// authority for the REL-TO-not-authorized rule — mirror of the EXDIS
+/// clause at p172).
 #[test]
 fn e039_cross_refs_pin_section_h_9_p174() {
     let expected: Citation = capco(SectionLetter::H, 9, 174);

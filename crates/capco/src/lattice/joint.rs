@@ -24,9 +24,9 @@ use std::collections::BTreeSet;
 ///
 /// The state space is a closed four-variant enum that captures the
 /// decision tree from CAPCO-2016 §H.3 + §H.7. The `Mixed` variant
-/// (added in PR 4b-B follow-up C-3) distinguishes "no JOINT seen"
-/// (the lattice identity `Bottom`) from "JOINT and non-JOINT both
-/// observed" (an absorbing state) so `join` stays **associative**.
+/// distinguishes "no JOINT seen" (the lattice identity `Bottom`) from
+/// "JOINT and non-JOINT both observed" (an absorbing state) so `join`
+/// stays **associative**.
 ///
 /// - `Bottom`: no JOINT-bearing portion observed. Lattice identity.
 /// - `UnanimousProducers`: every observed portion is JOINT with the
@@ -43,19 +43,20 @@ use std::collections::BTreeSet;
 ///   joins.
 ///
 /// The transitions on `JoinSemilattice::join` are structural operations on
-/// the deterministic state space — NOT "normalization" in the
-/// `JoinSemilattice` module-docs Gotcha-1 sense — and the property test
-/// `joint_disunity_lattice_laws` exhausts the state-space cube to
-/// verify assoc/comm/idem.
+/// the deterministic state space — not content normalization — and the
+/// property test `joint_disunity_lattice_laws` exhausts the state-space
+/// cube to verify assoc/comm/idem.
 ///
-/// **The W004 Warn rule** (in `crates/capco/src/rules.rs`) reads
-/// the post-projection JointSet state from the engine's
-/// `PageContext` flow. W004 fires only on `DisunityCollapse`;
-/// `Mixed` is the §H.3 p57 case where FGI migration rides through
-/// `expected_fgi_marker` and no W004 fires. The lattice does not
-/// itself emit the diagnostic; the rule does.
+/// **`JointDisunityCollapseRule`** (the JOINT Warn rule, in
+/// `crate::rules::joint::JointDisunityCollapseRule`) reads the
+/// post-projection JointSet
+/// state from the engine's `PageContext` flow. It fires only on
+/// `DisunityCollapse`; `Mixed` is the §H.3 p57 case where FGI
+/// migration rides through `expected_fgi_marker` and the rule does
+/// not fire. The lattice does not itself emit the diagnostic; the
+/// rule does.
 ///
-/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// §-authority (CAPCO-2016.md):
 ///
 /// - §H.3 p56 (JOINT classification grammar).
 /// - §H.3 pp55-59 (JOINT worked examples).
@@ -64,13 +65,12 @@ use std::collections::BTreeSet;
 /// - §H.7 p123 (FGI source-acknowledged form for disunity-collapse
 ///   non-US producer migration).
 ///
-/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
-/// four-variant decision tree is the lawful closed set per §H.3 p57
-/// today, but future CAPCO revisions or partial-decoder states may
-/// add a `PartialDisunity` / `Inferred` variant — declaring
-/// `#[non_exhaustive]` requires downstream matchers to handle the
-/// unknown case with a wildcard arm so a future variant addition
-/// is a non-breaking change.
+/// **`#[non_exhaustive]`**: the four-variant decision tree is the
+/// lawful closed set per §H.3 p57 today, but future CAPCO revisions
+/// or partial-decoder states may add a `PartialDisunity` / `Inferred`
+/// variant — declaring `#[non_exhaustive]` requires downstream
+/// matchers to handle the unknown case with a wildcard arm so a future
+/// variant addition is a non-breaking change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum JointSet {
@@ -91,7 +91,7 @@ pub enum JointSet {
     /// Disunity observed: every portion is JOINT-classified but the
     /// producer lists differ across portions. The lattice records the
     /// union of non-US producers; the engine's banner rendering migrates
-    /// them to FGI [LIST] per §H.7 p123 and the W004 Warn rule
+    /// them to FGI [LIST] per §H.7 p123 and `JointDisunityCollapseRule`
     /// surfaces the cross-axis transformation to the user.
     DisunityCollapse {
         /// Highest level observed via OrdMax across portions.
@@ -105,7 +105,8 @@ pub enum JointSet {
     /// banner in US documents. Absorbing for the JOINT axis — once
     /// `Mixed`, subsequent joins cannot resurrect a JOINT roll-up
     /// state. Non-US producers ride to `FgiSet` via
-    /// `expected_fgi_marker`; no W004 fires on `Mixed`.
+    /// `expected_fgi_marker`; `JointDisunityCollapseRule` does not fire
+    /// on `Mixed`.
     Mixed,
 }
 
@@ -126,10 +127,10 @@ impl JointSet {
     /// 3. **All portions JOINT** with disagreeing producer lists →
     ///    `DisunityCollapse { OrdMax(level), union_non_us }`.
     /// 4. **Mixed JOINT + non-JOINT** → `Mixed`. The §H.3 p57
-    ///    "JOINT does not roll up in US documents" rule. **No W004
-    ///    fires** in this case — JOINT non-US producers ride to FGI
-    ///    via the existing PageContext-resident `expected_fgi_marker`
-    ///    path. Pre-existing behavior preserved bit-for-bit.
+    ///    "JOINT does not roll up in US documents" rule.
+    ///    `JointDisunityCollapseRule` does not fire in this case —
+    ///    JOINT non-US producers ride to FGI via the
+    ///    PageContext-resident `expected_fgi_marker` path.
     ///
     /// **Empty-producer-list defensive shape**: an `UnanimousProducers`
     /// variant with an empty producer set is malformed per §H.3
@@ -177,7 +178,7 @@ impl JointSet {
         let has_usa = |j: &JointClassification| j.countries.contains(&CountryCode::USA);
         // Inline-4 covers the typical JOINT portion count per page;
         // deeply collaborative documents with 5+ JOINT portions spill
-        // to heap cleanly (LA-4).
+        // to heap cleanly.
         let mut joint_portions: SmallVec<[&JointClassification; 4]> =
             SmallVec::with_capacity(portions.len().min(4));
         let mut has_non_joint = false;
@@ -203,9 +204,9 @@ impl JointSet {
         }
 
         // §H.3 p57: in US documents (mixed JOINT + US),
-        // JOINT does not roll up. The FGI-migration path is the
-        // existing PageContext::expected_fgi_marker; we return
-        // `Mixed` (absorbing) and no W004 fires.
+        // JOINT does not roll up. The FGI-migration path is
+        // PageContext::expected_fgi_marker; we return `Mixed`
+        // (absorbing) and the JOINT disunity rule does not fire.
         if has_non_joint {
             return Self::Mixed;
         }
@@ -260,7 +261,7 @@ impl JointSet {
     }
 
     /// Whether this JointSet represents a disunity-collapse state
-    /// (the W004 rule reads this).
+    /// (`JointDisunityCollapseRule` reads this).
     pub fn is_disunity_collapse(&self) -> bool {
         matches!(self, Self::DisunityCollapse { .. })
     }
@@ -305,8 +306,8 @@ impl JointSet {
     ///   from the cross-axis fold).
     /// - `UnanimousProducers { level, producers }` → `Some(Joint(...))`.
     /// - `DisunityCollapse { highest_level, .. }` → `Some(Us(highest_level))`
-    ///   (the non-US producers ride to FgiSet via a separate flow —
-    ///   see `Commit 7 CapcoMarking::join` rewrite).
+    ///   (the non-US producers ride to FgiSet via a separate flow in
+    ///   `CapcoMarking::join`).
     pub fn to_marking_classification(&self) -> Option<MarkingClassification> {
         match self {
             Self::Bottom | Self::Mixed => None,
@@ -328,21 +329,20 @@ impl JointSet {
     }
 }
 
-// P-9-3 (9th-pass) — Partial-lattice divergence note for `JointSet`.
+// Partial-lattice divergence note for `JointSet`.
 //
 // `JointSet` implements only `JoinSemilattice`, NOT `MeetSemilattice`.
 // The `Mixed` / `DisunityCollapse` distinction is a record of observed
 // page composition (join-side aggregation), not an algebraic element;
 // `meet` has no natural reading for non-identical producer sets — the
 // dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold over the full state
-// space. Independently, the pre-split `meet` was non-idempotent on
-// `DisunityCollapse` self-pairs (`a ⊓ a = Bottom ≠ a`) because the
-// fallback arm collapsed every non-identical-payload pair to `Bottom`
-// — the partial behavior was stronger than dual-absorption failure alone.
-// PR #502 (issue #456) resolved this by splitting the `Lattice` trait
-// into `JoinSemilattice` and `MeetSemilattice` halves; `JointSet`
-// implements only the join half, so the type system now rejects any
-// attempt to call `.meet()` on it at compile time.
+// space. A `meet` would also be non-idempotent on `DisunityCollapse`
+// self-pairs (`a ⊓ a = Bottom ≠ a`), since the fallback arm collapses
+// every non-identical-payload pair to `Bottom`. The `Lattice` trait
+// split (issue #456 / PR #502) into `JoinSemilattice` and
+// `MeetSemilattice` halves lets `JointSet` implement only the join half,
+// so the type system rejects any attempt to call `.meet()` on it at
+// compile time.
 impl JoinSemilattice for JointSet {
     ///   with union of non-US producers and max level.
     fn join(&self, other: &Self) -> Self {
