@@ -277,7 +277,7 @@ fn e002_fix_output_is_idempotent() {
     let round1 = fix_to_string(src);
     assert!(
         round1.contains("REL TO USA, DEU, FRA"),
-        "round-1 E002 fix must produce canonical REL TO; got: {round1:?}",
+        "first-pass E002 fix must produce canonical REL TO; got: {round1:?}",
     );
     // Round 2: feed the canonicalized banner back through the engine;
     // E002 must NOT fire again on the rewritten banner.
