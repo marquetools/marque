@@ -40,9 +40,6 @@ use std::collections::BTreeSet;
 ///   the marking FGI may be used without identifying the country").
 ///   This maps to `Present { concealed: true, countries: [] }`.
 ///
-/// Per `docs/plans/2026-05-01-lattice-design.md` §4.8 and `marque-applied.md`
-/// §4.8.
-///
 /// ## §4.8.5 worked example
 ///
 /// Two portions: `(C//NF)` and `(//GBR TS)`. The first portion carries US

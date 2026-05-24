@@ -48,7 +48,8 @@ use std::collections::BTreeSet;
 /// cube to verify assoc/comm/idem.
 ///
 /// **`JointDisunityCollapseRule`** (the JOINT Warn rule, in
-/// `crates/capco/src/rules.rs`) reads the post-projection JointSet
+/// `crate::rules::joint::JointDisunityCollapseRule`) reads the
+/// post-projection JointSet
 /// state from the engine's `PageContext` flow. It fires only on
 /// `DisunityCollapse`; `Mixed` is the §H.3 p57 case where FGI
 /// migration rides through `expected_fgi_marker` and the rule does

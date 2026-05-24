@@ -111,10 +111,10 @@ pub enum UcniKind {
 ///
 /// # Cross-axis invariants (validated by `CapcoScheme`, not the lattice)
 ///
-/// - **CNWDI requires RD** (§H.6 p106): the lattice admits the
-///   syntactically-reachable state `cnwdi=true, primary=None`, which
-///   the `Constraint::Requires` row `cnwdi-requires-rd` on
-///   `CapcoScheme::build_constraints()` catches at validation time.
+/// - **CNWDI requires RD** (§H.6 p106): enforced structurally by
+///   [`AeaSet::from_markings_iter`], which only sets `cnwdi` while
+///   processing `AeaMarking::Rd` and therefore always produces
+///   `primary=Some(Rd)` whenever `cnwdi=true`.
 /// - **CNWDI requires class ≥ S** (§H.6 p106): covered by the
 ///   CNWDI classification-floor rule in the class-floor catalog.
 ///   Not duplicated here.
