@@ -1,25 +1,23 @@
 #![cfg(any())]
-// PR 3c.B Commit 10: file gated on the legacy `FixProposal` /
-// `Message::contains` / `ReplacementIntent::as_ref` shapes that no
-// longer exist post-PR-3c.B. The predicate-ID filters in the body
-// have been T044-migrated (HIGH-2 reviewer finding, 2026-05-22) so
-// when this file is re-enabled it will exercise the post-T044
-// 2-tuple shape correctly — but the remaining API drift (Message
-// type, FixIntent shape) is out of scope for the T044 PR. Re-enable
-// once the FixIntent/Message accessors are rewritten end-to-end.
+// Gated on the legacy `FixProposal` / `Message::contains` /
+// `ReplacementIntent::as_ref` shapes that no longer exist. The
+// predicate-ID filters in the body use the 2-tuple rule-ID shape, but
+// the remaining API drift (Message type, FixIntent shape) means this
+// file stays disabled until the FixIntent/Message accessors are
+// rewritten end-to-end.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3b.E (T026e) — SCI per-system catalog walker behavior tests.
+//! SCI per-system catalog walker behavior tests.
 //!
-//! Post-T044: each catalog row's `name` IS its predicate ID
-//! (`marking.sci.<row>`); there is no walker-level `"E059"` rule ID.
-//! Severity-override is per-row via `[rules] "capco:marking.sci.<row>" =
-//! "..."`. Tests filter by `predicate_id().starts_with("marking.sci.")`
-//! to capture all 5 catalog rows or by the specific row's predicate ID
-//! when testing per-row behavior.
+//! Each catalog row's `name` IS its predicate ID (`marking.sci.<row>`);
+//! there is no walker-level rule ID. Severity-override is per-row via
+//! `[rules] "capco:marking.sci.<row>" = "..."`. Tests filter by
+//! `predicate_id().starts_with("marking.sci.")` to capture all 5
+//! catalog rows or by the specific row's predicate ID when testing
+//! per-row behavior.
 //!
 //! The 5 catalog rows declared in `crate::scheme::SCI_PER_SYSTEM_CATALOG`
 //! are exercised by:
@@ -31,17 +29,17 @@
 //! 3. **Severity escalation** — no-IC-dissem-block portions escalate to
 //!    `Severity::Error` no-fix.
 //! 4. **Scope guard** — pure foreign classifications (NATO/JOINT/FGI)
-//!    do not fire E059 since §H.4 is US-only-scoped.
-//! 5. **PR-D × PR-E overlap** — class-floor + companion violations fire
-//!    side-by-side without overlap-guard interference.
+//!    do not fire since §H.4 is US-only-scoped.
+//! 5. **Class-floor × companion overlap** — class-floor + companion
+//!    violations fire side-by-side without overlap-guard interference.
 //! 6. **Audit traceability** — each emitted message carries the row's
 //!    marking label.
 //! 7. **Naming convention** — every catalog row name starts with
-//!    `sci-per-system/`.
-//! 8. **Severity::Off** — `[rules] E059 = "off"` suppresses all PR-E
-//!    diagnostics (FR-008 invariant).
+//!    `marking.sci.`.
+//! 8. **Severity::Off** — a per-row `off` override suppresses that
+//!    row's diagnostics: an `Off`-severity rule cannot fire.
 //! 9. **Citation fidelity** — every row's citation matches the
-//!    verified §H.4 page anchors from the planning doc §2.
+//!    verified §H.4 page anchors.
 
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, capco_rules};
@@ -70,8 +68,8 @@ fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
 }
 
 /// Filter the diagnostic stream to SCI per-system catalog emissions
-/// whose message contains `marker_text` (substring match). Post-T044
-/// each of the 5 catalog rows has its own predicate ID
+/// whose message contains `marker_text` (substring match). Each of the
+/// 5 catalog rows has its own predicate ID
 /// (`marking.sci.<row>`); the `starts_with("marking.sci.")` prefix
 /// match captures every row. Per-row identification flows via either
 /// the diagnostic message text (this helper) or the row's predicate
@@ -101,8 +99,7 @@ fn sci_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>>
 }
 
 /// Filter the diagnostic stream to a specific catalog row by its
-/// exact predicate ID (post-T044 form, e.g.,
-/// `"marking.sci.hcs-o-companions"`). Use for tests that need
+/// exact predicate ID (e.g., `"marking.sci.hcs-o-companions"`). Use for tests that need
 /// row-level granularity (e.g., per-row severity override tests).
 fn sci_diags_with_predicate<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
@@ -155,8 +152,7 @@ const EXPECTED_ROWS: &[(&str, &str)] = &[
 #[test]
 fn sci_per_system_catalog_naming_convention() {
     // Every expected row's `name` MUST start with `marking.sci.` per
-    // the T044 PR predicate-ID convention (legacy-rule-id-map §4); the
-    // pre-T044 form used the `sci-per-system/` slash-prefix. The companion
+    // the predicate-ID convention. The companion
     // `sci_per_system_catalog_citations` test below pins the same
     // expected names against their citations as they appear on
     // `CapcoScheme.constraints()` — together the two tests catch:
@@ -178,7 +174,7 @@ fn sci_per_system_catalog_naming_convention() {
     for (name, _) in EXPECTED_ROWS {
         assert!(
             name.starts_with("marking.sci."),
-            "PR-E catalog row {name:?} must start with `marking.sci.`"
+            "catalog row {name:?} must start with `marking.sci.`"
         );
     }
 }
@@ -186,7 +182,7 @@ fn sci_per_system_catalog_naming_convention() {
 #[test]
 fn sci_per_system_catalog_citations() {
     // Every row's citation must match one of the verified §H.4 page
-    // anchors from PR 3b.E plan §2.1.
+    // anchors.
     let scheme = CapcoScheme::new();
     for (name, citation) in EXPECTED_ROWS {
         let row = scheme
@@ -205,16 +201,14 @@ fn sci_per_system_catalog_citations() {
 
 #[test]
 fn sci_per_system_diagnostics_flow_through_engine_bridge_per_row() {
-    // PR 3c.B Commit 7.4: `DeclarativeSciPerSystemRule` retired from
-    // `CapcoRuleSet`. The 5 catalog rows still emit diagnostics —
-    // they flow through the engine's constraint-catalog bridge via
-    // the direct path (`CapcoScheme::bridge_sci_per_system_diagnostics`)
-    // with each row carrying its own predicate ID
-    // (`marking.sci.<row>`) post-T044, and full `FixProposal`
-    // payloads intact. This test pins the post-deletion + post-T044
-    // external surface:
-    //   1. The 10 PR-3b.E-retired legacy rules (E042–E051) remain
-    //      unregistered (regression guard from PR 3b.E preserved);
+    // The SCI per-system walker is not a registered rule; the 5 catalog
+    // rows emit diagnostics through the engine's constraint-catalog
+    // bridge via the direct path
+    // (`CapcoScheme::bridge_sci_per_system_diagnostics`), each row
+    // carrying its own predicate ID (`marking.sci.<row>`) and full
+    // `FixProposal` payloads. This test pins the external surface:
+    //   1. The 10 legacy per-system rules (E042–E051) remain
+    //      unregistered;
     //   2. `engine.lint` still emits the row's predicate ID with a
     //      fix for a known-firing fixture (TS//HCS-O//NF missing
     //      ORCON → `marking.sci.hcs-o-companions`).
@@ -225,13 +219,13 @@ fn sci_per_system_diagnostics_flow_through_engine_bridge_per_row() {
     ] {
         assert!(
             !ids.contains(&retired),
-            "{retired} retired in PR 3b.E; rule set must not register the legacy per-system rule"
+            "{retired} must not be registered: the legacy per-system rule is retired"
         );
     }
 
-    // Bridge-emission anchor: confirm the deleted walker's external
-    // surface — and the fix payload — is preserved end-to-end
-    // through `engine.lint`. `(TS//HCS-O//NF)` is a portion with
+    // Bridge-emission anchor: confirm the walker's external surface —
+    // and the fix payload — is preserved end-to-end through
+    // `engine.lint`. `(TS//HCS-O//NF)` is a portion with
     // HCS-O and NOFORN; row #1 (HCS-O companions, predicate
     // `marking.sci.hcs-o-companions`) must fire the ORCON-missing
     // diagnostic with a `FixProposal` that inserts ORCON into the
@@ -248,12 +242,12 @@ fn sci_per_system_diagnostics_flow_through_engine_bridge_per_row() {
     assert_eq!(
         hcs_o.len(),
         1,
-        "post-T044: bridge must emit `marking.sci.hcs-o-companions` for (TS//HCS-O//NF) \
+        "bridge must emit `marking.sci.hcs-o-companions` for (TS//HCS-O//NF) \
          (HCS-O missing ORCON per §H.4 p64): {diags:?}"
     );
     assert!(
         hcs_o[0].fix.is_some(),
-        "post-T044: SCI per-system bridge MUST preserve the walker's fix payload \
+        "SCI per-system bridge MUST preserve the walker's fix payload \
          (companion-insertion); got: {:?}",
         hcs_o[0]
     );
@@ -601,14 +595,14 @@ fn tk_compartment_noforn_does_not_fire_when_present() {
 
 #[test]
 fn e059_skips_joint_classifications() {
-    // JOINT banner with every PR-E SCI marking. `us_level()` returns
+    // JOINT banner with every per-system SCI marking. `us_level()` returns
     // None for JOINT, so all 5 rows must short-circuit.
     let src = "//JOINT S USA GBR//HCS-O HCS-P JJJ//SI-G//TK-BLFH//REL TO USA, GBR";
     let diags = lint(src);
     let hits = sci_diags(&diags);
     assert!(
         hits.is_empty(),
-        "E059 must not fire on JOINT (non-US) classification; \
+        "SCI per-system rows must not fire on JOINT (non-US) classification; \
          §H.4 companion constraints are US-scoped: {hits:?}"
     );
 }
@@ -619,20 +613,20 @@ fn e059_still_fires_on_us_classifications() {
     let diags = lint("(S//HCS-O HCS-P)");
     assert!(
         sci_diags_for(&diags, "HCS-O").iter().any(|_| true),
-        "E059 must fire on US-classified HCS-O without companions: {diags:?}"
+        "SCI per-system rows must fire on US-classified HCS-O without companions: {diags:?}"
     );
     assert!(
         sci_diags_for(&diags, "HCS-P").iter().any(|_| true),
-        "E059 must fire on US-classified HCS-P without NOFORN: {diags:?}"
+        "SCI per-system rows must fire on US-classified HCS-P without NOFORN: {diags:?}"
     );
 }
 
 // ===========================================================================
-// PR-D × PR-E overlap — class-floor + companion fire side-by-side
+// Class-floor × companion overlap — both fire side-by-side
 // ===========================================================================
 
 /// Filter the diagnostic stream to class-floor catalog emissions.
-/// Post-T044 class-floor rows carry per-row predicate IDs like
+/// Class-floor rows carry per-row predicate IDs like
 /// `banner.classification.floor-hcs-comp` and `banner.aea.floor-rd`;
 /// the `banner.*.floor-` / `banner.*.ceiling-` prefix match captures
 /// every row regardless of axis.
@@ -656,9 +650,9 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_distinctly() {
     // `banner.classification.floor-hcs-comp`), missing ORCON + NOFORN.
     //
     // Expected:
-    //  - PR D class-floor (any axis) does NOT fire (S meets S-floor).
-    //  - PR E HCS-O companions fires (Error no-fix because no IC
-    //    dissem block exists).
+    //  - class-floor (any axis) does NOT fire (S meets S-floor).
+    //  - HCS-O companions fires (Error no-fix because no IC dissem
+    //    block exists).
     let diags = lint("(S//HCS-O)");
     let class_floor = class_floor_diags(&diags);
     assert!(
@@ -669,7 +663,7 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_distinctly() {
     assert_eq!(
         companion.len(),
         2,
-        "PR E must fire for both ORCON and NOFORN missing: {companion:?}"
+        "companions must fire for both ORCON and NOFORN missing: {companion:?}"
     );
 }
 
@@ -679,9 +673,9 @@ fn pr_d_class_floor_only_fires_when_companion_satisfied() {
     // companions correct.
     //
     // Expected:
-    //  - PR D `banner.classification.floor-hcs-comp` fires (C below
+    //  - `banner.classification.floor-hcs-comp` fires (C below
     //    S-floor).
-    //  - PR E HCS-P NOFORN does NOT fire (NOFORN present).
+    //  - HCS-P NOFORN does NOT fire (NOFORN present).
     let diags = lint("(C//HCS-P//OC/NF)");
     let class_floor: Vec<_> =
         sci_diags_with_predicate(&diags, "banner.classification.floor-hcs-comp");
@@ -693,7 +687,7 @@ fn pr_d_class_floor_only_fires_when_companion_satisfied() {
     let companion = sci_diags_for(&diags, "HCS-P");
     assert!(
         companion.is_empty(),
-        "PR E HCS-P NOFORN must not fire when NOFORN present: {companion:?}"
+        "HCS-P NOFORN must not fire when NOFORN present: {companion:?}"
     );
 }
 
@@ -703,9 +697,9 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_when_both_violated() {
     // companions and no IC dissem block.
     //
     // Expected:
-    //  - PR D class-floor (banner.classification.floor-hcs-comp)
-    //    fires (C below S-floor).
-    //  - PR E HCS-O companions fires for both ORCON and NOFORN
+    //  - class-floor (banner.classification.floor-hcs-comp) fires
+    //    (C below S-floor).
+    //  - HCS-O companions fires for both ORCON and NOFORN
     //    (escalated to Error no-fix because no IC dissem block).
     let diags = lint("(C//HCS-O)");
     let class_floor = class_floor_diags(&diags);
@@ -717,7 +711,7 @@ fn pr_d_class_floor_and_pr_e_companion_both_fire_when_both_violated() {
     assert_eq!(
         companion.len(),
         2,
-        "PR E must fire for both ORCON and NOFORN missing: {companion:?}"
+        "companions must fire for both ORCON and NOFORN missing: {companion:?}"
     );
     for d in &companion {
         assert_eq!(d.severity, Severity::Error);
@@ -741,17 +735,15 @@ fn rules_use_full_form_in_banner_when_dissem_is_full() {
 }
 
 // ===========================================================================
-// Severity::Off override — FR-008 invariant + T044 per-row dispatch
+// Severity::Off override — per-row dispatch
 // ===========================================================================
 
 #[test]
 fn sci_per_system_off_severity_suppresses_specific_row() {
-    // Post-T044: each catalog row is independently overridable via its
-    // own wire-string key. Setting
+    // Each catalog row is independently overridable via its own
+    // wire-string key. Setting
     // `[rules] "capco:marking.sci.hcs-o-companions" = "off"` MUST
-    // suppress only HCS-O diagnostics — the other 4 rows are
-    // untouched. The pre-T044 walker-level "E059" key no longer
-    // exists.
+    // suppress only HCS-O diagnostics — the other 4 rows are untouched.
     let mut config = Config::default();
     config.rules.overrides.insert(
         "capco:marking.sci.hcs-o-companions".to_owned(),
@@ -770,8 +762,7 @@ fn sci_per_system_off_severity_suppresses_specific_row() {
     let hcs_o_hits = sci_diags_with_predicate(&diags, "marking.sci.hcs-o-companions");
     assert!(
         hcs_o_hits.is_empty(),
-        "capco:marking.sci.hcs-o-companions = off must suppress that row \
-         (FR-008): {hcs_o_hits:?}"
+        "capco:marking.sci.hcs-o-companions = off must suppress that row: {hcs_o_hits:?}"
     );
 }
 
@@ -779,9 +770,8 @@ fn sci_per_system_off_severity_suppresses_specific_row() {
 fn sci_per_system_off_does_not_leak_to_other_rows() {
     // Severity-override scoping check: setting one row to `off` MUST
     // NOT suppress the other 4 rows. Verifies the per-row dispatch
-    // shape correctness — under the pre-T044 walker-level hoist
-    // (always-None post-T044), every row's diagnostics would have
-    // leaked through unchanged regardless of any override.
+    // shape — a walker-level hoist would let every row's diagnostics
+    // leak through unchanged regardless of any override.
     let mut config = Config::default();
     config.rules.overrides.insert(
         "capco:marking.sci.hcs-o-companions".to_owned(),
@@ -807,9 +797,8 @@ fn sci_per_system_off_does_not_leak_to_other_rows() {
 #[test]
 fn sci_per_system_off_all_five_rows_independently() {
     // Belt-and-suspenders: override all 5 rows to `off` simultaneously
-    // and assert every catalog row is suppressed. This is the closest
-    // analog to the retired walker-level `E059 = off` semantic, now
-    // expressed as per-row keys per the T044 OD-8.A design intent.
+    // and assert every catalog row is suppressed — the per-row-key
+    // analog of suppressing the whole walker.
     let mut config = Config::default();
     for row in [
         "capco:marking.sci.hcs-o-companions",
@@ -835,8 +824,7 @@ fn sci_per_system_off_all_five_rows_independently() {
     let hits = sci_diags(&diags);
     assert!(
         hits.is_empty(),
-        "all 5 SCI per-system rows off must suppress every catalog diagnostic \
-         (FR-008): {hits:?}"
+        "all 5 SCI per-system rows off must suppress every catalog diagnostic: {hits:?}"
     );
 }
 
@@ -848,7 +836,7 @@ fn sci_per_system_off_all_five_rows_independently() {
 fn sci_per_system_diagnostic_stream_per_row_identifiable() {
     // Lint a fixture exercising all 5 row violations; assert each
     // emitted message contains its row's marking label AND carries
-    // the row's predicate ID post-T044.
+    // the row's predicate ID.
     //
     // Row #1 HCS-O: (S//HCS-O) — missing ORCON + NOFORN
     // Row #2 HCS-P: (S//HCS-P) — missing NOFORN
