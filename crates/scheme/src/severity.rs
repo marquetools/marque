@@ -24,7 +24,7 @@
 ///
 /// # Variants
 ///
-/// - **`Off`** — Rule is disabled entirely. FR-008: an `Off`-severity
+/// - **`Off`** — Rule is disabled entirely. An `Off`-severity
 ///   diagnostic is unrepresentable, because a rule configured `Off`
 ///   never fires.
 /// - **`Suggest`** — Advisory channel — diagnostic carries a candidate
@@ -58,9 +58,9 @@
 /// including downgrades.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Severity {
-    /// Rule is disabled entirely. FR-008: severity=off is
-    /// unrepresentable on emitted diagnostics — a rule at `Off` never
-    /// fires, so no `Diagnostic` is produced.
+    /// Rule is disabled entirely. severity=off is unrepresentable on
+    /// emitted diagnostics — a rule at `Off` never fires, so no
+    /// `Diagnostic` is produced.
     Off,
     /// Advisory channel — diagnostic carries a candidate fix that
     /// will **not** auto-apply.
@@ -101,15 +101,15 @@ impl Severity {
     /// Non-promoting: `Off`, `Suggest`.
     ///
     /// `Off` is non-promoting trivially — no diagnostic is emitted at
-    /// all under FR-008. `Suggest` is the explicit advisory channel
-    /// (see this enum's variant doc: "carries a candidate fix that
-    /// will **not** auto-apply"). Every other severity carries a fix
-    /// to the auto-apply pipeline when one is attached.
+    /// all. `Suggest` is the explicit advisory channel (see this enum's
+    /// variant doc: "carries a candidate fix that will **not**
+    /// auto-apply"). Every other severity carries a fix to the
+    /// auto-apply pipeline when one is attached.
     ///
     /// Two engine sites consume this predicate and MUST stay aligned:
     /// the pass-2 promotion gate in `synthesize_fixes` (which skips
-    /// non-eligible diagnostics) and the I-18 overlap-demotion guard
-    /// in `apply_fr023_and_i18` (which demotes eligible diagnostics
+    /// non-eligible diagnostics) and the overlap-demotion guard in
+    /// `apply_fr023_and_i18` (which demotes eligible diagnostics
     /// overlapping a pass-1 fix span to `Suggest`). If they drift, an
     /// overlapping pass-2 fix at a previously-untracked severity can
     /// be promoted on the same byte range as a pass-1 fix, violating
@@ -158,10 +158,9 @@ mod tests {
     /// added variant) forces this table to be updated, which surfaces
     /// the consequence for the two engine sites cited in the helper's
     /// doc comment (`synthesize_fixes` promotion gate +
-    /// `apply_fr023_and_i18` I-18 overlap-demotion guard). Without
-    /// this lock, an additive enum variant (or a typo in the match
-    /// arms) could silently re-open the leak channel that Copilot R1
-    /// caught on PR #414.
+    /// `apply_fr023_and_i18` overlap-demotion guard). Without this
+    /// lock, an additive enum variant (or a typo in the match arms)
+    /// could silently re-open the auto-apply leak channel (#414).
     #[test]
     fn is_promote_eligible_exhaustive_classification() {
         let cases: &[(Severity, bool)] = &[

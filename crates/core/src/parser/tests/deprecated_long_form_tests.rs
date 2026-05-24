@@ -7,7 +7,7 @@ use super::*;
 // SPECIAL INTELLIGENCE, ECI <COMP>, EL <COMP>, KDK-<COMP>,
 // KLONDIKE-<COMP>, etc.) as their canonical SCI category internally
 // while preserving source bytes verbatim in `TokenSpan.text`. The
-// Commit 3 walker rule (E065) consumes the preserved text to emit
+// walker rule (E065) consumes the preserved text to emit
 // canonicalization fixes.
 //
 // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
@@ -168,10 +168,10 @@ fn kdk_bluefish_maps_to_tk_blfh() {
     // and associated portions according to the instructions in the
     // TK-BLFH, TK-IDIT, and TK-KAND marking templates".
     //
-    // CRITICAL: pre-T135a, KDK-BLUEFISH would have routed through
-    // `parse_sci_block` as `SciControlSystem::Custom("KDK")` with
-    // compartment `BLUEFISH` because `KDK` is a 3-letter custom-
-    // control shape match. The new recognizer must fire FIRST to
+    // CRITICAL: without long-form recognition, KDK-BLUEFISH would
+    // route through `parse_sci_block` as `SciControlSystem::Custom("KDK")`
+    // with compartment `BLUEFISH` because `KDK` is a 3-letter custom-
+    // control shape match. The long-form recognizer must fire FIRST to
     // route it to SciControlBare::Tk + canonical compartment "BLFH".
     let parsed = parse_banner("TOP SECRET//KDK-BLUEFISH//NOFORN");
     let marking = parsed
@@ -223,7 +223,7 @@ fn bare_kdk_recognized_as_tk_no_compartment() {
 }
 
 // -------------------------------------------------------------------
-// T135a Commit 5 — EYES / EYES ONLY compound block recognition
+// EYES / EYES ONLY compound block recognition
 // (issue #307). CAPCO-2016 §H.8 p157.
 //
 // The recognizer accepts `<TRIGRAPH>(/<TRIGRAPH>)* EYES [ONLY]` as
@@ -236,9 +236,9 @@ fn bare_kdk_recognized_as_tk_no_compartment() {
 #[test]
 fn eyes_only_compound_block_recognized() {
     // §H.8 p157 — EYES ONLY block with Five Eyes trigraph list.
-    // Pre-T135a Commit 5 this would be a 3-token Unknown soup;
-    // now it lands as a single DissemControl::Eyes block with
-    // source bytes preserved verbatim.
+    // Without compound-block recognition this would be a 3-token
+    // Unknown soup; it lands as a single DissemControl::Eyes block
+    // with source bytes preserved verbatim.
     let parsed = parse_portion("(S//USA/GBR/CAN EYES ONLY)");
     let eyes_tokens: Vec<&TokenSpan> = parsed
         .attrs
@@ -253,7 +253,7 @@ fn eyes_only_compound_block_recognized() {
     );
 
     // Dissem axis carries EYES. US-classified portion attributes
-    // dissem to dissem_us per CAPCO-2016 p41 (PR 9b / FR-046).
+    // dissem to dissem_us per CAPCO-2016 p41.
     assert!(
         parsed
             .attrs
@@ -315,8 +315,7 @@ fn source_bytes_preserved_for_all_long_forms() {
     // Regression guard: the parser must NEVER rewrite the user's
     // input. Every recognized deprecated long form must carry its
     // original source bytes verbatim in `TokenSpan.text`. The
-    // walker rule (Commit 3) uses these bytes to emit the
-    // canonicalization fix.
+    // walker rule uses these bytes to emit the canonicalization fix.
     for input in [
         "TOP SECRET//HUMINT//NOFORN",
         "TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN",

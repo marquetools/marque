@@ -15,10 +15,9 @@
 //! `Rc<_>`, `RefCell<_>`, or any other non-thread-safe field on
 //! `CanonicalAttrs` fails to compile here.
 //!
-//! PR 6c (T069) retired the `PageContext` newtype that previously
-//! carried the assertion. The thread-safety pin moved to the
-//! foundational type (`CanonicalAttrs`); the parallel pin on
-//! `RuleContext` lives in `crates/rules/tests/send_sync.rs`.
+//! The thread-safety pin lives on the foundational type
+//! (`CanonicalAttrs`); the parallel pin on `RuleContext` lives in
+//! `crates/rules/tests/send_sync.rs`.
 
 use marque_ism::CanonicalAttrs;
 use static_assertions::assert_impl_all;

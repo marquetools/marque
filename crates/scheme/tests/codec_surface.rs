@@ -2,22 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Compile-test for the `Codec<S>` trait surface (Phase 5 PR-3,
-//! task T078).
+//! Compile-test for the `Codec<S>` trait surface.
 //!
-//! Phase E publishes the codec trait without any concrete impls.
-//! Phase G lands XML and JSON impls without further trait evolution
-//! (FR-019, SC-010). This file's only job is to assert that the
-//! surface exists, compiles cleanly with no concrete impls, and that
-//! the auxiliary types (`CodecError`, `Parsed<S::Marking>`) round-trip
-//! through it without any engine-side dependency.
+//! The codec trait ships without concrete impls; XML and JSON impls land
+//! later without further trait evolution. This file's only job is to
+//! assert that the surface exists, compiles cleanly with no concrete
+//! impls, and that the auxiliary types (`CodecError`,
+//! `Parsed<S::Marking>`) round-trip through it without any engine-side
+//! dependency.
 //!
 //! ## Why this is a test, not a doc-test
 //!
 //! The same compile property COULD live as a `///` doc-test on
-//! `crates/scheme/src/codec.rs`, but a separate integration file
-//! makes the SC-010 readiness invariant explicit and gives Phase G
-//! a single file to extend when concrete impls land.
+//! `crates/scheme/src/codec.rs`, but a separate integration file makes
+//! the adoption-readiness invariant explicit and gives a single file to
+//! extend when concrete impls land.
 //!
 //! ## Scope
 //!
@@ -148,11 +147,11 @@ fn accepts_codec_generically<C: Codec<MockScheme>>(_codec: &C) {}
 fn codec_compiles_without_impls() {
     // Scope of the "no impls" claim: no concrete `impl Codec<S>` exists
     // in the `marque_scheme` LIBRARY (`src/`) — only in test crates.
-    // T089b's `tests/adoption_readiness.rs` declares a `StubCodec`
-    // impl as part of the trait-surface readiness exercise, but that
-    // is intentional fixture-side scaffolding outside the library
-    // boundary. Phase G lands the production XML/JSON impls without
-    // further trait evolution (FR-019, SC-010).
+    // `tests/adoption_readiness.rs` declares a `StubCodec` impl as part
+    // of the trait-surface readiness exercise, but that is intentional
+    // fixture-side scaffolding outside the library boundary. The
+    // production XML/JSON impls land later without further trait
+    // evolution.
     //
     // The two `accepts_codec_*` helpers above are the load-bearing
     // compile-time assertion: if they build, `Codec<S>` is a usable

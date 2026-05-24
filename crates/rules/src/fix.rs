@@ -9,12 +9,12 @@ use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 pub enum FixSource {
     /// Hand-written Layer 2 CAPCO rule.
     BuiltinRule,
-    /// User `[corrections]` entry (FR-009).
+    /// User `[corrections]` entry.
     CorrectionsMap,
-    /// Deterministic deprecated-marking conversion (FR-004a).
+    /// Deterministic deprecated-marking conversion.
     MigrationTable,
     /// Probabilistic decoder produced this fix from a recognition
-    /// candidate's posterior (Phase D, see
+    /// candidate's posterior (see
     /// `docs/plans/2026-04-16-probabilistic-recognition.md`). Paired
     /// with a non-trivial `features` list in
     /// [`crate::FixIntent::confidence`] so auditors can reconstruct the
@@ -25,7 +25,7 @@ pub enum FixSource {
     /// to the leading classification slot of a portion or banner
     /// marking when the token is too short for vocab-based fuzzy
     /// matching (e.g., `(YS//NF) → (TS//NF)`, `(W//NF) → (S//NF)`).
-    /// See issue #133 PR 2.
+    /// See issue #133.
     ///
     /// The heuristic is inherently less certain than a fuzzy-vocab
     /// match because the inference is "this token is keyboard-
@@ -52,10 +52,6 @@ pub enum FixSource {
 /// emission site in `marque-engine`; both paths produce the same
 /// audit-record shape.
 ///
-/// PR 3c.2.C C5 migrated the type from `&'static str` → [`Citation`]
-/// per `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-4. The
-/// C2 transitional `CORRECTIONS_MAP_CITATION_TYPED` alias was
-/// consolidated into this canonical name.
 pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
     AuthoritativeSource::Config,
     SectionRef::new(SectionLetter::A),
@@ -68,13 +64,12 @@ pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
 );
 
 // ---------------------------------------------------------------------------
-// AppliedFix (= Audit Record) — v2 / marque-1.0
+// AppliedFix (= Audit Record)
 //
-// Post PR 3c.2.D the canonical `AppliedFix<S>` type is the v2 shape in
+// The canonical `AppliedFix<S>` type lives in
 // `marque_rules::audit::AppliedFix` (re-exported through this crate's
-// prelude). The pre-cutover `AppliedFixProposal<S>` envelope retired
-// atomically with the schema flip. See `crates/rules/src/audit.rs`
-// for the active type definition + engine-promotion constructor.
+// prelude). See `crates/rules/src/audit.rs` for the active type
+// definition + engine-promotion constructor.
 // ---------------------------------------------------------------------------
 
 /// Engine-only proof-of-construction token for [`crate::AppliedFix::__engine_promote`].
@@ -86,8 +81,8 @@ pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
 /// `#[doc(hidden)]` and named to make the bypass intent obvious at the
 /// call site.
 ///
-/// Reused by `AuditNote::__engine_promote` (T108e) under the same
-/// engine-only contract.
+/// Reused by `AuditNote::__engine_promote` under the same engine-only
+/// contract.
 ///
 /// This is the type-level seal for Constitution V Principle V's
 /// engine-only contract on audit-record promotion. See
@@ -117,7 +112,7 @@ pub struct EnginePromotionToken {
 impl EnginePromotionToken {
     /// Mint an [`EnginePromotionToken`].
     ///
-    /// # Reserved name (FR-040 lint contract)
+    /// # Reserved name (promote-callsite lint contract)
     ///
     /// As with [`crate::AppliedFix::__engine_promote`], the function name
     /// `__engine_construct` is reserved by the marque project. The

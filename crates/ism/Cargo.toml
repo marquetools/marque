@@ -68,11 +68,10 @@ ism-ismcat = { workspace = true }
 proptest = { workspace = true }
 # Compile-time `Send + Sync` check on `CanonicalAttrs` — load-bearing
 # axiom for the `Arc<Box<[CanonicalAttrs]>>` snapshot on
-# `marque_rules::RuleContext.page_portions` (`PageContext` was retired
-# in PR 6c; the `RuleContext: Send + Sync` HRTB pin lives in
-# `crates/rules/tests/send_sync.rs`).
-# Originally introduced in PR 4b-E; see `docs/plans/2026-05-18-pr4b-E-rust-preflight.md`
-# Risk #7. The check lives in `crates/ism/tests/send_sync.rs`.
+# `marque_rules::RuleContext.page_portions`; the
+# `RuleContext: Send + Sync` HRTB pin lives in
+# `crates/rules/tests/send_sync.rs`.
+# The check lives in `crates/ism/tests/send_sync.rs`.
 static_assertions = { workspace = true }
 xmloxide = { workspace = true }
 
@@ -92,7 +91,7 @@ toml = { workspace = true }
 # `validate_date` and `days_in_month` in `src/date.rs`. With the feature
 # off, the same two functions fall back to a hand-rolled Gregorian
 # implementation (leap-year + month-length math). Public API of
-# `IsmDate` is identical either way; SC-008 native-parity tests catch
+# `IsmDate` is identical either way; native-parity tests catch
 # divergence. CLI (`marque`) and server (`marque-server`) opt back in
 # via `marque-ism = { workspace = true, features = ["dates"] }`;
 # `marque-extract` and other native crates without a direct `marque-ism`

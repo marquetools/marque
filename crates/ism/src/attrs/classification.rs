@@ -219,8 +219,8 @@ pub struct JointClassification {
 ///   2. A parser failure that silently dropped a country list — the
 ///      classic open-vocabulary corruption case (issue #280).
 ///
-/// FR-017 / CHK028 retire that collision by making the discriminant
-/// explicit. `Acknowledged` is constructed only via [`acknowledged`],
+/// The explicit discriminant retires that collision. `Acknowledged`
+/// is constructed only via [`acknowledged`],
 /// which rejects an empty country list, so the corrupt shape is
 /// type-system-unrepresentable.
 ///
@@ -243,8 +243,8 @@ pub enum FgiMarker {
     ///
     /// Marked `#[non_exhaustive]` so external crates **cannot**
     /// construct this variant via struct-literal syntax. This is
-    /// load-bearing for FR-017 / CHK028: it forces external callers
-    /// through [`FgiMarker::acknowledged`], which rejects the empty
+    /// load-bearing for the discriminant invariant: it forces external
+    /// callers through [`FgiMarker::acknowledged`], which rejects the empty
     /// country list. Pattern matching from outside the crate still
     /// works with the `..` rest pattern:
     /// `FgiMarker::Acknowledged { countries, .. }`. Internal

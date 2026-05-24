@@ -8,10 +8,9 @@
 //! local to specific productions — `(C)` being the canonical case
 //! (CONFIDENTIAL portion vs copyright symbol). For those cases the
 //! parser emits `Parsed::Ambiguous` with a small list of candidates
-//! and per-candidate evidence features. A separate resolver (not in
-//! Phase A) combines the features via Bayesian log-odds to either
-//! resolve above a confidence threshold or surface a verification
-//! request.
+//! and per-candidate evidence features. A separate resolver combines
+//! the features via Bayesian log-odds to either resolve above a
+//! confidence threshold or surface a verification request.
 //!
 //! The typed split `Unambiguous` / `Ambiguous` is what makes the rest
 //! of the engine statically safe: auto-fix paths take only

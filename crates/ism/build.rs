@@ -70,7 +70,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir);
 
-    // T010: Assert schema version matches Cargo.toml metadata.
+    // Assert schema version matches Cargo.toml metadata.
     verify_schema_version();
     // Issue #208: ISMCAT Tetragraph Taxonomy version pin.
     verify_ismcat_tetra_version();
@@ -91,7 +91,7 @@ fn main() {
 }
 
 // ---------------------------------------------------------------------------
-// T010: Schema version pinning assertion
+// Schema version pinning assertion
 // ---------------------------------------------------------------------------
 
 fn verify_schema_version() {
@@ -153,7 +153,7 @@ fn verify_ism_data_version() {
 }
 
 // ---------------------------------------------------------------------------
-// T006: CVE XML parsing → typed Rust enums
+// CVE XML parsing → typed Rust enums
 // ---------------------------------------------------------------------------
 
 /// Parse a CVE XML file and extract all `<Value>` text content.
@@ -602,7 +602,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
         "Exempt-from rule sets from CVEnumISMExemptFrom.xml.",
     );
 
-    // --- T007: Trigraphs from XSD ---
+    // --- Trigraphs from XSD ---
     // Source: the standalone ODNI ISMCAT package (ism-ismcat crate), not the
     // bundled ISMCAT subset inside the ISM zip. The standalone package is the
     // canonical home of the `urn:us:gov:ic:cvenum:ismcat:relto` namespace.
@@ -821,7 +821,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
 }
 
 // ---------------------------------------------------------------------------
-// T007: XSD trigraph parsing
+// XSD trigraph parsing
 // ---------------------------------------------------------------------------
 
 fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
@@ -863,7 +863,7 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
 }
 
 // ---------------------------------------------------------------------------
-// T008: Schematron → validator predicates
+// Schematron → validator predicates
 // ---------------------------------------------------------------------------
 
 fn generate_validators(out: &Path, ism_root: &Path) {
@@ -932,7 +932,7 @@ pub fn banner_requires_full_classification(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// T009: Deprecated marking migrations
+// Deprecated marking migrations
 // ---------------------------------------------------------------------------
 
 fn generate_migrations(out: &Path, _ism_root: &Path) {
@@ -955,8 +955,8 @@ pub struct MigrationEntry {
     pub confidence: f32,
     /// Policy reference (CAPCO section).
     pub reference: &'static str,
-    /// PR 3d (FR-054) — schema version after which the deprecated
-    /// marking is no longer valid in newly-authored documents.
+    /// Schema version after which the deprecated marking is no longer
+    /// valid in newly-authored documents.
     ///
     /// Plumbed through to `marque_scheme::Deprecation::valid_until`
     /// by `crates/capco/src/vocabulary.rs::build_deprecation`. Every
@@ -981,8 +981,8 @@ pub struct MigrationEntry {
 ///   `capco:banner.metadata.uses-portion-form` owns the
 ///   portion-form-in-banner check;
 ///   `capco:portion.metadata.uses-banner-form` owns the
-///   banner-form-in-portion check. A prior `NF → NOFORN` entry was
-///   removed in T035c-4 as misleading — the surviving
+///   banner-form-in-portion check. A `NF → NOFORN` entry would be
+///   misleading and is intentionally absent — the
 ///   `is_dissem_replacement` filter in `crates/capco/src/rules.rs`
 ///   keeps declass-shorthand migrations separate from form-pair
 ///   validation.
@@ -1046,13 +1046,13 @@ pub fn find_migration(deprecated: &str) -> Option<&'static MigrationEntry> {
 }
 
 // ---------------------------------------------------------------------------
-// T080 / T081: Per-token metadata from ODNI JSON sidecars
+// Per-token metadata from ODNI JSON sidecars
 // ---------------------------------------------------------------------------
 //
-// The XML codepath above (T006) extracts the closed CVE token vocabulary —
+// The XML codepath above extracts the closed CVE token vocabulary —
 // that is what the strict parser, the corrections map, and the rule
-// predicates consume. The JSON codepath here is parallel and additive
-// (FR-018 + R5): it reads the ODNI JSON sidecars in the same CVE_ISM/
+// predicates consume. The JSON codepath here is parallel and additive:
+// it reads the ODNI JSON sidecars in the same CVE_ISM/
 // directory to recover *per-term metadata* the XML never carried —
 // publishing authority (URN, source, schema version, point of contact)
 // and the long-form description that pairs with each canonical value.
@@ -1061,11 +1061,11 @@ pub fn find_migration(deprecated: &str) -> Option<&'static MigrationEntry> {
 // other. If a CVE file exists in JSON but not XML, the strict parser
 // will not recognize the values — even though the metadata table will
 // surface them; that is a deliberate split because the strict parser is
-// the sole arbiter of token shape (foundational invariant from PR-3),
+// the sole arbiter of token shape (foundational invariant),
 // and a JSON-only token would bypass that invariant.
 //
-// The emitted tables are the raw data backing PR-2's
-// `impl Vocabulary<CapcoScheme>` (task T084). Per Constitution VII the
+// The emitted tables are the raw data backing the
+// `impl Vocabulary<CapcoScheme>` in `marque-capco`. Per Constitution VII the
 // `marque-scheme` `Vocabulary<S>` / `TokenMetadataFull<Token>` types
 // cannot be referenced from this crate — `marque-ism` does not depend
 // on `marque-scheme`. The composition into the trait surface happens in
@@ -1281,8 +1281,8 @@ fn nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> Option<Stri
 /// 2. Field present but not a JSON string (number / object / null).
 /// 3. Field present, type-correct, but empty or whitespace-only.
 ///
-/// The third case is the one a Copilot review on PR #152 caught:
-/// without it, an empty-but-present sidecar field (e.g.,
+/// The third case (see PR #152): without it, an empty-but-present
+/// sidecar field (e.g.,
 /// `"poc_email": ""`) would compile cleanly and emit `&'static ""` into
 /// the generated `TokenMetadataFull` table — which is exactly the
 /// silent-fallback failure mode `required_string` was added to

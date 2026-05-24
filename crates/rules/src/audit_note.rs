@@ -9,35 +9,27 @@
 //! `AuditNote` records that the engine inferred (or suppressed, in
 //! future variants) a fact via the §4.7 closure operator.
 //!
-//! Per Constitution V Principle V (audit content-ignorance / G13):
+//! Per Constitution V Principle V (audit content-ignorance):
 //! `AuditNote` carries ONLY token canonicals, category IDs, span
 //! offsets, and catalog row identifiers. Document content NEVER appears
 //! in an audit record.
 //!
-//! Per `decisions.md` D19 A, AuditNote is **engine-promoted only**.
-//! The `__engine_promote` constructor reuses `EnginePromotionToken`
-//! (the same seal as `AppliedFix::__engine_promote`); the FR-040
+//! `AuditNote` is **engine-promoted only**. The `__engine_promote`
+//! constructor reuses `EnginePromotionToken` (the same seal as
+//! `AppliedFix::__engine_promote`); the
 //! `tools/promote-callsite-lint` catches every `__engine_promote`-shaped
 //! call site, including AuditNote's, by last-path-segment matching.
 //! See `AppliedFix::__engine_promote` for the full engine-only contract.
 //!
-//! **Note on production status**: PR 3.7 lands the type definition and
-//! the `__engine_promote` sealed constructor ONLY. No NDJSON projection
-//! helper, no renderer dispatch, no production engine call-site land
-//! in PR 3.7.
+//! **Note on production status**: the type definition and the
+//! `__engine_promote` sealed constructor are in place; the NDJSON
+//! projection helper, renderer dispatch, and production engine
+//! call-site are not yet wired. The construct-site lands alongside
+//! `Engine::project::closure()`; the NDJSON renderer dispatch +
+//! `"type"` discriminator lands with a future audit-schema bump.
 //!
-//! Deferral targets:
-//!
-//! - **Engine production construct-site**: lands in PR 4 (T112), alongside
-//!   `Engine::project::closure()` wiring.
-//! - **NDJSON renderer dispatch + `"type"` discriminator**: lands in the
-//!   **audit-schema-bump precursor PR**, not in PR 7 (PR 7b verified the
-//!   bump did not occur; the bump retargeted to a future precursor PR
-//!   per plan §1.2 rev 1.1 and PR 3c.2 per `decisions.md` D-7.18 / PR #412).
-//!
-//! PR 3.7's `AuditNote` is exercised via the Stage C.5 test-fixture
-//! carve-out integration test
-//! (`crates/engine/tests/audit_note_sealing_carve_out.rs`).
+//! `AuditNote` is exercised via the test-fixture carve-out integration
+//! test (`crates/engine/tests/audit_note_sealing_carve_out.rs`).
 
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -57,18 +49,17 @@ use crate::{Confidence, EnginePromotionToken, RuleId};
 /// - The `MARQUE_AUDIT_SCHEMA` env-pinned schema is the wire-level
 ///   contract: the *set* of variants permitted at a given schema
 ///   version is closed by build-time validation. Adding a variant
-///   requires a coordinated schema bump (currently `marque-1.0`,
-///   active as of the PR 3c.2.D atomic cutover) so that downstream
-///   NDJSON consumers can dispatch on schema version without
-///   per-variant introspection.
+///   requires a coordinated schema bump so that downstream NDJSON
+///   consumers can dispatch on schema version without per-variant
+///   introspection.
 ///
 /// Both contracts apply together: `#[non_exhaustive]` covers the
 /// source layer, the schema bump covers the wire layer. They are
 /// orthogonal, not in tension.
 ///
-/// Per D19 A, deferred kinds (`SuppressedByFact`, `DisabledByConfig`)
-/// are engineer-facing tools, not load-bearing for compliance, and
-/// will land in a debug-tracing follow-up.
+/// Deferred kinds (`SuppressedByFact`, `DisabledByConfig`) are
+/// engineer-facing tools, not load-bearing for compliance, and will
+/// land in a debug-tracing follow-up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AuditNoteKind {
@@ -80,23 +71,21 @@ pub enum AuditNoteKind {
 }
 
 /// Structural-only payload for an `AuditNote`, satisfying the
-/// Constitution V Principle V content-ignorance invariant (G13).
+/// Constitution V Principle V content-ignorance invariant.
 ///
 /// Permitted identifiers: token canonicals (`TokenId`), category IDs
 /// (transitively via `TokenId` lookup), span offsets, catalog row
 /// names (`&'static`), enumerated `Scope` value. Document content
 /// (bytes, message-arg free-form text) is FORBIDDEN.
 ///
-/// `suppressed_by` is a forward-compatibility slot per the PR 3.7 plan
-/// (lattice-preflight M4): when the deferred `SuppressedByFact` kind
-/// lands, it populates `suppressed_by` with the TokenIds of suppressing
-/// facts. For `InferredFact`, `suppressed_by` is always `None`.
+/// `suppressed_by` is a forward-compatibility slot: when the deferred
+/// `SuppressedByFact` kind lands, it populates `suppressed_by` with the
+/// TokenIds of suppressing facts. For `InferredFact`, `suppressed_by`
+/// is always `None`.
 #[derive(Debug, Clone)]
 pub struct AuditNoteStructural {
     /// The `ClosureRule.name` that fired (e.g.,
-    /// `"capco:closure.dissem.noforn-if-caveated"` post-T044; legacy
-    /// slash-form `"capco/noforn-if-no-fdr"` retained on existing
-    /// fixtures for archaeological context).
+    /// `"capco:closure.dissem.noforn-if-caveated"`).
     pub row_name: &'static str,
     /// The closure rule's **declared cone slice** — a verbatim reference
     /// to the `ClosureRule.cone` of the firing rule. This is the
@@ -107,18 +96,15 @@ pub struct AuditNoteStructural {
     /// "which facts did this firing materially add" must diff the
     /// pre- and post-closure marking; the cone field is the
     /// declaration the auditor would consult to understand the
-    /// rule's intent.
-    ///
-    /// Per Copilot PR 3.7 review pass 3: this distinction is now
-    /// explicit in the field doc to prevent over-attribution by
-    /// downstream tooling that reads `cone` and assumes "all of
-    /// these were newly inferred."
+    /// rule's intent. Downstream tooling that reads `cone` MUST NOT
+    /// assume "all of these were newly inferred."
     ///
     /// `&'static [TokenRef]` matches `ClosureRule.cone`'s shape so an
     /// audit note can represent every cone shape declared in a
     /// `closure_rules()` catalog, including category-scoped cones like
-    /// `AnyInCategory(CAT_REL_TO)`. Stays G13-pure: `TokenRef` carries
-    /// only `TokenId` / `CategoryId` integers, never document bytes.
+    /// `AnyInCategory(CAT_REL_TO)`. Stays content-ignorant: `TokenRef`
+    /// carries only `TokenId` / `CategoryId` integers, never document
+    /// bytes.
     pub cone: &'static [TokenRef],
     /// The scope at which the firing applied (Portion / Page / Document).
     pub scope: Scope,
@@ -126,9 +112,8 @@ pub struct AuditNoteStructural {
     /// `None` when the firing is a whole-marking fact-set property with
     /// no single blameable token.
     pub span: Option<Span>,
-    /// Forward-compat slot for the future `SuppressedByFact` kind
-    /// (PR 3.7 plan lattice-preflight M4). Always `None` for v1's
-    /// `InferredFact` kind.
+    /// Forward-compat slot for the future `SuppressedByFact` kind.
+    /// Always `None` for v1's `InferredFact` kind.
     pub suppressed_by: Option<Box<[TokenId]>>,
 }
 
@@ -139,18 +124,14 @@ pub struct AuditNoteStructural {
 /// `AuditNote` for fact-level inferences. The two streams serve
 /// different consumers (compliance reviewers + content authors) and
 /// are not conflated; the NDJSON emission carries a `"type"`
-/// discriminator to distinguish them (the `marque-mvp-3 → marque-1.0`
-/// audit-schema cutover at PR 3c.2.D landed the BLAKE3 digesting +
-/// closed `MessageTemplate` JSON + content-ignorant canary tooling
-/// preconditions, so the typed emit path is wired end-to-end).
+/// discriminator to distinguish them.
 #[derive(Debug)]
 pub struct AuditNote<S: MarkingScheme> {
     /// The closure rule's RuleId (e.g., `scheme="capco"`,
-    /// `predicate_id="closure.dissem.noforn-if-caveated"` per the
-    /// T044 wire-string convention).
+    /// `predicate_id="closure.dissem.noforn-if-caveated"`).
     pub rule: RuleId,
-    /// Authoritative-source citation copied from the closure rule's `label`.
-    /// Migrated from `&'static str` to typed [`Citation`] in PR 10.A.1.
+    /// Authoritative-source citation copied from the closure rule's
+    /// `label`.
     pub citation: Citation,
     /// Discriminator (v1: `InferredFact` only).
     pub kind: AuditNoteKind,
@@ -160,7 +141,7 @@ pub struct AuditNote<S: MarkingScheme> {
     pub classifier_id: Option<Arc<str>>,
     /// `true` if produced under `--dry-run`.
     pub dry_run: bool,
-    /// Structural payload (G13 content-ignorant).
+    /// Structural payload (content-ignorant).
     pub structural: AuditNoteStructural,
     /// Confidence propagated from the underlying parse/recognition step.
     /// Mirrors `AppliedFix.confidence` semantics; closure firings carry
@@ -171,11 +152,11 @@ pub struct AuditNote<S: MarkingScheme> {
     _scheme: std::marker::PhantomData<S>,
 }
 
-// Manual Clone (mirroring AppliedFix<S>'s rationale at lib.rs:429):
-// the scheme S is never cloned; what matters is that scheme-internal
-// types stay Clone-able. AuditNote currently carries only S-agnostic
-// payload, so derive(Clone) would work — but we mirror AppliedFix's
-// pattern for consistency in case future fields couple to S::OpenVocabRef.
+// Manual Clone (mirroring AppliedFix<S>'s rationale): the scheme S is
+// never cloned; what matters is that scheme-internal types stay
+// Clone-able. AuditNote currently carries only S-agnostic payload, so
+// derive(Clone) would work — but we mirror AppliedFix's pattern for
+// consistency in case future fields couple to S::OpenVocabRef.
 impl<S: MarkingScheme> Clone for AuditNote<S> {
     fn clone(&self) -> Self {
         Self {
@@ -195,11 +176,11 @@ impl<S: MarkingScheme> Clone for AuditNote<S> {
 impl<S: MarkingScheme> AuditNote<S> {
     /// Promote a closure firing to an `AuditNote` with runtime context.
     ///
-    /// # Reserved name (FR-040 lint contract)
+    /// # Reserved name (promote-callsite lint contract)
     ///
     /// The function name `__engine_promote` is reserved by the marque
-    /// project. The `tools/promote-callsite-lint/` CI lint (FR-040) flags
-    /// every call site whose path's last segment is `__engine_promote`,
+    /// project. The `tools/promote-callsite-lint/` CI lint flags every
+    /// call site whose path's last segment is `__engine_promote`,
     /// regardless of leading qualifier. See `AppliedFix::__engine_promote`
     /// for the full lint contract — this constructor inherits the same
     /// constraints.
@@ -241,10 +222,9 @@ impl<S: MarkingScheme> AuditNote<S> {
         //   - `InferredFact` MUST carry `suppressed_by: None` (suppression
         //     is the future `SuppressedByFact` kind's territory).
         //
-        // Per Copilot PR 3.7 review pass 3 ("suppressed_by invariant
-        // unenforced"): make the documented invariant load-bearing
-        // rather than purely documentary. `debug_assert!` rather
-        // than `assert!` because the wire-format schema's `kind`
+        // The documented invariant is load-bearing, not merely
+        // documentary. `debug_assert!` rather than `assert!` because
+        // the wire-format schema's `kind`
         // field also expresses the constraint (a v1 audit consumer
         // sees `kind: "InferredFact"` and knows `suppressed_by` is
         // semantically empty regardless of the field value), and a

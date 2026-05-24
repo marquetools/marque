@@ -5,33 +5,26 @@
 //! `RenderContext` — the parameter the engine threads through every
 //! `MarkingScheme::render_canonical` call.
 //!
-//! Lands in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-//! PM-2 / PM-3 / PM-6 as a type-only scaffolding step: the trait method
-//! signature is migrated atomically with the introduction of this type
-//! (Commit A4), but no impl body actually consumes
-//! [`EmissionForm`] or [`SchemaVersionId`] at PR 3c.2.A — every call
-//! site passes [`EmissionForm::Auto`] and the engine continues to
-//! produce byte-identical output to the pre-3c.2 emission path.
-//!
-//! The §G.1 Table 4 four-form dispatch (Marking Title /
-//! Banner Line Abbreviation / Portion Mark + the `Auto` fallback) is
-//! reserved for PR 3c.2.B's body migration, when CapcoScheme's
-//! `render_canonical` actually branches on `ctx.emission_form` per the
+//! Carries the projection scope, the desired emission form
+//! ([`EmissionForm`]), and the active audit-schema identifier
+//! ([`SchemaVersionId`]). Engine and trait-default call sites pass
+//! [`EmissionForm::Auto`]; test code and downstream callers may pass
+//! other variants. Current production renderers route on `Scope` alone
+//! and may ignore `emission_form`; the §G.1 Table 4 four-form dispatch
+//! (Marking Title / Banner Line Abbreviation / Portion Mark + the `Auto`
+//! fallback) is reserved for a later CapcoScheme `render_canonical` body
+//! that branches on `ctx.emission_form` per the
 //! `crates/capco/CAPCO-CONTEXT.md` §G.1 Table 4 column terms.
-//!
-//! See `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` for the full
-//! PM contract and `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md`
-//! D25.* for the whole-series rationale.
 
 use crate::scope::Scope;
 
 /// Per-call rendering context threaded through every
 /// [`crate::MarkingScheme::render_canonical`] invocation.
 ///
-/// Carries the projection scope (already required pre-3c.2), the
-/// emission form ([`EmissionForm`] — closes the §G.1 Table 4 four-form
-/// ambiguity from `crates/capco/CAPCO-CONTEXT.md` §1), and the active
-/// audit-schema identifier ([`SchemaVersionId`] — bridges to the
+/// Carries the projection scope, the emission form ([`EmissionForm`] —
+/// closes the §G.1 Table 4 four-form ambiguity from
+/// `crates/capco/CAPCO-CONTEXT.md` §1), and the active audit-schema
+/// identifier ([`SchemaVersionId`] — bridges to the
 /// `MARQUE_AUDIT_SCHEMA` build-time pin in `marque-engine`).
 ///
 /// # Why no `Default` impl
@@ -39,9 +32,7 @@ use crate::scope::Scope;
 /// `RenderContext` deliberately does NOT implement `Default`. Every
 /// emission site MUST construct the context explicitly via
 /// [`RenderContext::new`] so the audit trail catches "I forgot to pass
-/// `Auto` explicitly" at code-review time. The ergonomic cost is the
-/// right trade for the keystone migration; see PM-6 in
-/// `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`.
+/// `Auto` explicitly" at code-review time.
 ///
 /// `RenderContext::new(...)` is `const fn` so future const-renderer
 /// paths and embedded `RenderContext` constants compose cleanly.
@@ -58,15 +49,13 @@ pub struct RenderContext {
     /// Projection scope — `Portion`, `Page`, `Document`, or `Diff`.
     pub scope: Scope,
     /// Which form to emit (Marking Title / Banner Line Abbreviation /
-    /// Portion Mark / Auto-by-scope). At PR 3c.2.A every call site
-    /// passes [`EmissionForm::Auto`]; the §G.1 Table 4 dispatch body
-    /// lands at PR 3c.2.B per PM-1.
+    /// Portion Mark / Auto-by-scope). Today every call site passes
+    /// [`EmissionForm::Auto`]; the §G.1 Table 4 dispatch body is future
+    /// work.
     pub emission_form: EmissionForm,
     /// Active audit-schema identifier for this build. Bridges to the
     /// `MARQUE_AUDIT_SCHEMA` build-time pin in `marque-engine`
-    /// (`marque_engine::AUDIT_SCHEMA_VERSION`); at PR 3c.2.A this is
-    /// always [`SchemaVersionId::MarqueMvp3`]. The closed enum reserves
-    /// `V1_0` for the PR 3c.2.D atomic cutover.
+    /// (`marque_engine::AUDIT_SCHEMA_VERSION`).
     pub schema_version: SchemaVersionId,
 }
 
@@ -106,48 +95,42 @@ impl RenderContext {
 /// NATIONALS"`, `"NOFORN"`, `"NF"`, or whatever the current `Scope`
 /// would default to.
 ///
-/// At PR 3c.2.A this enum is wired through `RenderContext` but every
-/// emission site passes [`Self::Auto`] — the §G.1 Table 4 dispatch
-/// body lands at PR 3c.2.B per `docs/plans/2026-05-19-pr3c2-a-pm-
-/// decisions.md` PM-1 / PM-10.
+/// This enum is wired through `RenderContext` but every emission site
+/// passes [`Self::Auto`] today — the §G.1 Table 4 dispatch body is
+/// future work.
 ///
 /// # `#[non_exhaustive]`
 ///
 /// Reserves grow-path for `IsmDescriptionTitle` (the ODNI ISM JSON
 /// sidecar's per-token title shape; sometimes diverges from the CAPCO
-/// register's banner title — see project memory
-/// `project_formset_banner_abbreviation_semantic`), and `XmlAttribute`
-/// (when the Phase G codec lands and the renderer needs to emit
-/// attribute-form bytes per FR-019). Adding a variant is a non-breaking
-/// change for downstream consumers.
+/// register's banner title), and `XmlAttribute` (when the codec lands
+/// and the renderer needs to emit attribute-form bytes). Adding a
+/// variant is a non-breaking change for downstream consumers.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EmissionForm {
     /// Default-by-scope: when paired with `Scope::Portion` the renderer
     /// emits the Portion Mark form; when paired with `Scope::Page` or
     /// `Scope::Document` it emits the Banner Line Abbreviation. This is
-    /// the only variant actively dispatched on at PR 3c.2.A — every
-    /// emission site passes `Auto`, and the renderer body continues to
-    /// route on `Scope` exactly as it did pre-3c.2.
+    /// the only variant actively dispatched on today — every emission
+    /// site passes `Auto` and the renderer body routes on `Scope`.
     Auto,
     /// Force portion-mark form regardless of scope. CAPCO §G.1 Table 4
     /// column 3 ("Authorized Portion Mark"), e.g., `"NF"` for NOFORN,
-    /// `"S"` for SECRET, `"FOUO"` for FOUO. PR 3c.2.B's body migration
-    /// activates this variant.
+    /// `"S"` for SECRET, `"FOUO"` for FOUO. Not yet dispatched on.
     Portion,
     /// Force banner-title form regardless of scope. CAPCO §G.1 Table 4
     /// column 1 ("Marking Title"), e.g.,
     /// `"NOT RELEASABLE TO FOREIGN NATIONALS"` for NOFORN,
-    /// `"SECRET"` for SECRET, `"FOR OFFICIAL USE ONLY"` for FOUO. PR
-    /// 3c.2.B's body migration activates this variant.
+    /// `"SECRET"` for SECRET, `"FOR OFFICIAL USE ONLY"` for FOUO. Not
+    /// yet dispatched on.
     BannerTitle,
     /// Force banner-line abbreviation form regardless of scope. CAPCO
     /// §G.1 Table 4 column 2 ("Banner Line Abbreviation"), e.g.,
     /// `"NOFORN"` for NOFORN, `"SECRET"` for SECRET, `"FOUO"` for FOUO.
     /// When a marking's abbreviation equals its title (no distinct
     /// short form — e.g., SECRET) the renderer falls back to title
-    /// form per project memory `project_formset_banner_abbreviation_semantic`.
-    /// PR 3c.2.B's body migration activates this variant.
+    /// form. Not yet dispatched on.
     BannerAbbreviation,
 }
 
@@ -155,24 +138,18 @@ pub enum EmissionForm {
 ///
 /// Bridges the `RenderContext` surface (which carries the schema id by
 /// enum) to the `marque-engine` wire-format string surface (which
-/// carries it as a `&'static str`). At PR 3c.2.A the enum has a single
-/// variant; the atomic cutover to `marque-1.0` at PR 3c.2.D adds the
-/// `V1_0` variant and flips the default per PM-3 in
-/// `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`.
+/// carries it as a `&'static str`).
 ///
-/// `#[non_exhaustive]` reserves grow-path for `V1_0`. Every `match` on
-/// `SchemaVersionId` becomes a compile error at D pointing at the site
-/// that needs to decide.
+/// `#[non_exhaustive]` keeps the grow-path open for future schema
+/// versions. Every `match` on `SchemaVersionId` becomes a compile error
+/// when a variant is added, pointing at the site that needs to decide.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaVersionId {
-    /// `marque-mvp-3` — active at PR 3c.2.A landing.
+    /// `marque-mvp-3`.
     MarqueMvp3,
-    /// `marque-1.0` — atomic cutover target landing at PR 3c.2.D per
-    /// FR-035a. Added at the D2 commit boundary (PM-D-10 / additive
-    /// landing); the atomic schema flip at D7 (D-A5's scope) wires
-    /// this variant into the `MARQUE_AUDIT_SCHEMA` accept-list and
-    /// flips [`marque_engine::AUDIT_SCHEMA_VERSION`] default to its
+    /// `marque-1.0` — wired into the `MARQUE_AUDIT_SCHEMA` accept-list,
+    /// with [`marque_engine::AUDIT_SCHEMA_VERSION`] defaulting to its
     /// matching string form.
     V1_0,
 }
@@ -214,15 +191,15 @@ mod tests {
     // Send + Sync forward-defense per Constitution VI. Every field is
     // `Copy` so the properties hold by construction today; any future
     // field addition that breaks them (e.g., `Arc<Mutex<_>>`) trips this
-    // compile-time guard. Same posture as `Rule: Send + Sync` and
-    // `Recognizer: Send + Sync` pins at PR 0 T002 / T003.
+    // compile-time guard. Same posture as the `Rule: Send + Sync` and
+    // `Recognizer: Send + Sync` pins.
     assert_impl_all!(RenderContext: Send, Sync, Copy);
     assert_impl_all!(EmissionForm: Send, Sync, Copy);
     assert_impl_all!(SchemaVersionId: Send, Sync, Copy);
 
     #[test]
     fn render_context_constructs_via_explicit_new() {
-        // PM-6: no `Default` impl on RenderContext. Every emission site
+        // No `Default` impl on RenderContext. Every emission site
         // constructs explicitly so audit trail catches forgotten Auto.
         let ctx = RenderContext::new(
             Scope::Portion,
@@ -249,7 +226,7 @@ mod tests {
     #[test]
     fn schema_version_id_bridges_to_wire_string() {
         // The closed enum and the env-pinned const both carry the same
-        // legal values, by construction. PM-3.
+        // legal values, by construction.
         assert_eq!(SchemaVersionId::MarqueMvp3.as_str(), "marque-mvp-3");
     }
 

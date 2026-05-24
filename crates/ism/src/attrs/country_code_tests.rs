@@ -146,7 +146,7 @@ fn nato_constant_matches_try_new() {
 // admits_fgi_trigraph — Annex B trigraph shape predicate
 // ----------------------------------------------------------------
 //
-// FR-015 / FR-016 closure: this predicate IS the documented FGI /
+// Admission closure: this predicate IS the documented FGI /
 // REL-TO trigraph admission gate. Both the `Vocabulary<CapcoScheme>`
 // adapter (`crates/capco/src/vocabulary.rs`) and the strict parser
 // (`crates/core/src/parser.rs`) call into it. These tests pin the

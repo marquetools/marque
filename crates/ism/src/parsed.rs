@@ -7,8 +7,8 @@
 //!
 //! `marque-core::parser` produces a `ParsedAttrs<'src>` per scanner
 //! candidate. The engine (via the recognizer) immediately canonicalizes
-//! via `MarkingScheme::canonicalize` — the trait route, sole production
-//! path per FR-043. Rules consume the resulting `CanonicalAttrs`,
+//! via `MarkingScheme::canonicalize` — the trait route, the sole
+//! production path. Rules consume the resulting `CanonicalAttrs`,
 //! never `ParsedAttrs`.
 //!
 //! # Lifecycle
@@ -38,7 +38,7 @@ use crate::span::Span;
 
 /// Where in the document the parser ran.
 ///
-/// Threaded onto `ParsedAttrs<'src>` so the canonicalizer (PR 3c) and
+/// Threaded onto `ParsedAttrs<'src>` so the canonicalizer and
 /// the engine can route per-origin rule subsets. Today the parser sets
 /// this from `MarkingType` (`Banner` / `Portion` / `Cab`); the
 /// `PageBreak` variant is unrepresentable here because page-break
@@ -58,7 +58,7 @@ pub enum SourceOrigin {
 ///
 /// Each `Parsed*<'src>` field retains a `&'src str` slice over the
 /// source bytes the parser interpreted as that token, so the
-/// canonicalizer (PR 3c) can compute round-trip properties (FR-019)
+/// canonicalizer can compute round-trip properties
 /// without re-borrowing the input. `token_spans` carries the
 /// pre-existing per-token span array unchanged.
 ///
@@ -84,15 +84,14 @@ pub enum SourceOrigin {
 ///   one; the engine short-circuits before reaching the parser.
 ///
 /// **Exhaustive**: the struct intentionally exposes every field for
-/// brace construction and destructure outside `marque-ism`. PR 3c.2.E
-/// lifted the structural rename body (formerly
-/// `marque_ism::from_parsed_unchecked`) into
-/// `CapcoScheme::canonicalize` in `marque-capco`, and into the four
-/// `marque-core` test helpers that Constitution VII forbids from
-/// reaching `MarkingScheme::canonicalize` (the trait route). Those
-/// inline lifts require destructure, so `#[non_exhaustive]` is gone.
-/// Field additions become explicit migrations of the inlined sites;
-/// FR-043 keeps `MarkingScheme::canonicalize` the sole production
+/// brace construction and destructure outside `marque-ism`. The
+/// structural rename body lives in `CapcoScheme::canonicalize` in
+/// `marque-capco`, and in the four `marque-core` test helpers that
+/// Constitution VII forbids from reaching
+/// `MarkingScheme::canonicalize` (the trait route). Those inline lifts
+/// require destructure, so `#[non_exhaustive]` is not used. Field
+/// additions become explicit migrations of the inlined sites;
+/// `MarkingScheme::canonicalize` remains the sole production
 /// `ParsedAttrs → CanonicalAttrs` constructor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedAttrs<'src> {
@@ -108,17 +107,15 @@ pub struct ParsedAttrs<'src> {
     /// `{ctrl}-{first_comp}` matches a CVE atom and no
     /// sub-compartments are present. Retained verbatim from
     /// `IsmAttributes::sci_controls` because rules currently read it
-    /// (CLAUDE.md: "compatibility view scheduled for removal in Phase
-    /// C or D"). PR 3a does not remove it.
+    /// — a compatibility view scheduled for removal once no rule
+    /// references it.
     pub sci_controls: Box<[SciControl]>,
 
     /// SAR block, if present. CAPCO §A.6 caps SAR at one block per
     /// marking, so cardinality is `Option`, not `Box<[]>`.
     ///
     /// Field name preserves the existing `IsmAttributes::sar_markings`
-    /// (plural) form so the rename layer is purely structural —
-    /// renaming to singular is deferred to PR 3c when shape narrowing
-    /// happens.
+    /// (plural) form so the rename layer is purely structural.
     pub sar_markings: Option<ParsedSarMarking<'src>>,
 
     /// AEA markings (RD/FRD/CNWDI/SIGMA/UCNI/TFNI) per CAPCO §H.6.
@@ -160,8 +157,8 @@ pub struct ParsedAttrs<'src> {
     /// there.
     ///
     /// Tokens that are NATO-only by spec (ATOMAL, BALK, BOHEMIA) are
-    /// NOT dissems and route to the AEA / SCI axes per FR-047 — they
-    /// never appear here.
+    /// NOT dissems and route to the AEA / SCI axes — they never appear
+    /// here.
     pub dissem_nato: Box<[ParsedDissem<'src>]>,
 
     /// Non-IC dissemination controls (LIMDIS/LES/SBU/SSI/...).

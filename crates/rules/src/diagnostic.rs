@@ -11,13 +11,9 @@ use smol_str::SmolStr;
 /// # Generic over the marking scheme
 ///
 /// `Diagnostic<S>` carries a scheme-typed [`FixIntent<S>`] in its
-/// `fix` field. The pre-Commit-10 dual-channel shape (legacy
-/// `FixProposal` + structural `FixIntent<S>`) collapsed into a
-/// single `fix: Option<FixIntent<S>>` channel atomically with the
-/// `marque-mvp-3` audit schema bump; the `marque-1.0` cutover at
-/// PR 3c.2.D then reshaped the engine-side `AppliedFix<S>` audit
-/// record but left the rule-side `Diagnostic<S>.fix` channel
-/// unchanged.
+/// `fix` field — the sole fix-emission channel. The engine-side
+/// `AppliedFix<S>` audit record is reshaped separately; the rule-side
+/// `Diagnostic<S>.fix` channel is independent of that shape.
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct Diagnostic<S: MarkingScheme> {
@@ -27,9 +23,8 @@ pub struct Diagnostic<S: MarkingScheme> {
     pub span: Span,
     /// Optional marking-scope span (full portion or banner) when the
     /// `span` field points at a sub-region (e.g., a single token).
-    /// Rules whose [`Self::fix`] payload is a `FixIntent` (i.e.,
-    /// every fix-emitting rule post Commit 10) set this from
-    /// [`crate::RuleContext::candidate_span`] so the engine's
+    /// Rules whose [`Self::fix`] payload is a `FixIntent` set this
+    /// from [`crate::RuleContext::candidate_span`] so the engine's
     /// intent-synthesis path knows which scope-bytes to re-render
     /// via [`marque_scheme::MarkingScheme::apply_intent`] +
     /// [`marque_scheme::MarkingScheme::render_canonical`].
@@ -39,31 +34,26 @@ pub struct Diagnostic<S: MarkingScheme> {
     pub candidate_span: Option<Span>,
     /// Closed-template description of the violation.
     ///
-    /// PR 3c.2.C C5 migrated this field from `Box<str>` → [`Message`]
-    /// per `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-5 /
-    /// PM-C-6 — closes the `format!`-into-`Diagnostic.message` leak
-    /// channel called out by Constitution V Principle V / G13. Audit
-    /// emitters render via [`Message::template`] + [`Message::args`]
-    /// accessors; there is no `Display` impl on [`Message`] (the
-    /// compile-fail doctest at `message.rs` pins that absence).
+    /// A closed-template [`Message`] rather than a free-form string,
+    /// closing the `format!`-into-`Diagnostic.message` leak channel
+    /// called out by Constitution V Principle V. Audit emitters render
+    /// via [`Message::template`] + [`Message::args`] accessors; there
+    /// is no `Display` impl on [`Message`] (the compile-fail doctest at
+    /// `message.rs` pins that absence).
     pub message: Message,
     /// Typed citation to the authoritative source passage.
     ///
-    /// PR 3c.2.C C5 migrated this field from `&'static str` →
-    /// [`Citation`] per
-    /// `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-2 /
-    /// PM-C-4. [`Citation::Display`] emits the canonical citation-lint
-    /// regex form (`§<L>[.<sub>] [Table <N>] p<page>`) for CAPCO
-    /// citations and a bare `[<source>]` tag for non-CAPCO sentinels
-    /// ([`marque_scheme::AuthoritativeSource::Config`] /
+    /// A typed [`Citation`]. [`Citation::Display`] emits the canonical
+    /// citation-lint regex form (`§<L>[.<sub>] [Table <N>] p<page>`)
+    /// for CAPCO citations and a bare `[<source>]` tag for non-CAPCO
+    /// sentinels ([`marque_scheme::AuthoritativeSource::Config`] /
     /// [`marque_scheme::AuthoritativeSource::EngineInternal`]).
     pub citation: Citation,
     /// Structural fix intent, if the rule can generate one. `None`
     /// for diagnostics that consciously decline to propose a fix
-    /// (e.g. provisional Path-A rules, opaque-uncertain reductions),
-    /// for informational diagnostics, or for C001 text-correction
-    /// diagnostics (which carry their replacement bytes in
-    /// [`Self::text_correction`] instead).
+    /// (e.g. opaque-uncertain reductions), for informational
+    /// diagnostics, or for text-correction diagnostics (which carry
+    /// their replacement bytes in [`Self::text_correction`] instead).
     pub fix: Option<FixIntent<S>>,
     /// Engine-applied byte-substitution payload (the C001 corrections-map
     /// path, plus the closely-shaped E006 deprecation-migration path).
@@ -114,7 +104,7 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// (`render_human`), the CLI NDJSON projection
     /// (`diagnostic_to_json`), and the WASM NDJSON mirror.
     ///
-    /// # Constitution V Principle V (G13 audit-content-ignorance)
+    /// # Constitution V Principle V (audit-content-ignorance)
     ///
     /// The field is **lint-side only**. It MUST NOT be serialized
     /// into `AppliedFix<S>` or any audit-record JSON projection;
@@ -207,8 +197,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// Construct a new diagnostic carrying a structural
     /// [`FixIntent<S>`] (or `None`).
     ///
-    /// This is the sole fix-attached constructor post Commit 10.
-    /// Rules that emit a diagnostic with no fix pass `None`.
+    /// The sole fix-attached constructor. Rules that emit a
+    /// diagnostic with no fix pass `None`.
     pub fn with_fix(
         rule: RuleId,
         severity: Severity,
@@ -327,7 +317,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// renderer, NDJSON projection, WASM mirror) is a grep target
     /// for security review.
     ///
-    /// # Constitution V Principle V (G13 audit-content-ignorance)
+    /// # Constitution V Principle V (audit-content-ignorance)
     ///
     /// Recognized-canonical bytes are **lint-side only**. The audit
     /// envelope continues to carry the BLAKE3 digest of the canonical

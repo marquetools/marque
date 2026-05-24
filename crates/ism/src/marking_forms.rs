@@ -43,8 +43,8 @@
 
 /// A marking where the banner-line abbreviation differs from the portion mark.
 ///
-/// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4. PR 3d
-/// (FR-053) added [`Self::description_title`] to carry an ODNI
+/// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4.
+/// [`Self::description_title`] carries an ODNI
 /// `<Description>` title that diverges from the CAPCO Register
 /// [`Self::title`]. Nine rows in the current ODNI ISM schema package
 /// (ISM-v2022-DEC) carry `description_title: Some(...)` today (typos,
@@ -71,8 +71,8 @@ pub struct MarkingForm {
     /// "Authorized Portion Mark" form (§G.1 Table 4, column 3), e.g., "NF",
     /// "OC".
     pub portion: &'static str,
-    /// PR 3d (FR-053) — ODNI ISM CVE `<Description>` body when it
-    /// diverges from [`Self::title`].
+    /// ODNI ISM CVE `<Description>` body when it diverges from
+    /// [`Self::title`].
     ///
     /// The ODNI XML `<Description>` element body is the long-form title
     /// verbatim — there is no `<title>` sub-element. For nine entries
@@ -213,7 +213,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // §D.1 p27: banner may use either Marking Title or
         // Authorized Abbreviation; Authorized Abbreviation chosen here.
         //
-        // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-EU` is the
+        // ODNI `<Description>` for `SI-EU` is the
         // bare compartment `"ECRU"` — the CAPCO Register prepends the
         // parent control system (`SI-`) to form the compound. The ODNI
         // form is recognize-only on input via
@@ -230,7 +230,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // §D.1 p27: banner may use either Marking Title or
         // Authorized Abbreviation; Authorized Abbreviation chosen here.
         //
-        // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-NK` is the
+        // ODNI `<Description>` for `SI-NK` is the
         // bare compartment `"NONBOOK"`; CAPCO uses the compound
         // `SI-NONBOOK`. Recognize-only on input.
         title: "SI-NONBOOK",
@@ -342,7 +342,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: None,
     },
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` carries the
+        // ODNI `<Description>` carries the
         // Class-A misspelled / non-canonical-cased form
         // `"Controled Nuclear Weapon Design Information Warning
         // statement"` — "Controled" is misspelled (single l) and
@@ -355,7 +355,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: Some("Controled Nuclear Weapon Design Information Warning statement"),
     },
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` is
+        // ODNI `<Description>` is
         // `"DoD CONTROLLED NUCLEAR INFORMATION"` — drops the
         // "UNCLASSIFIED" qualifier CAPCO §H.6 carries. Class-C
         // surface-form divergence; recognize-only on input.
@@ -365,7 +365,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: Some("DoD CONTROLLED NUCLEAR INFORMATION"),
     },
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` is
+        // ODNI `<Description>` is
         // `"DoE CONTROLLED NUCLEAR INFORMATION"` — drops the
         // "UNCLASSIFIED" qualifier CAPCO §H.6 carries. Class-C
         // surface-form divergence; recognize-only on input.
@@ -385,7 +385,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: None,
     },
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` is
+        // ODNI `<Description>` is
         // `"ORIGINATOR CONTROLLED US GOVERNMENT"` — spells out
         // "US GOVERNMENT" instead of the CAPCO `-USGOV` abbreviation
         // and drops the hyphen. Class-C surface-form divergence;
@@ -437,7 +437,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         //
         // The compound banner form `USA/[LIST] EYES ONLY` (with a
         // country-trigraph list) is recognized by the scanner/parser's
-        // `recognize_eyes_only_block` function (PR 9a / T135a Commit 5).
+        // `recognize_eyes_only_block` function.
         // This entry covers the bare banner form `EYES ONLY` (no country
         // list), which exists in legacy documents and in the wild. The
         // mapping `banner_to_portion("EYES ONLY")` → `Some("EYES")` →
@@ -474,7 +474,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: None,
     },
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` adds a regulatory
+        // ODNI `<Description>` adds a regulatory
         // citation and definition. CAPCO §G.1 Table 4 lists the
         // concise title; the ODNI long form is admissible on input
         // via `FormKind::IsmDescriptionTitle` (recognize-only).
@@ -539,7 +539,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         description_title: None,
     },
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` adds the 49 C.F.R.
+        // ODNI `<Description>` adds the 49 C.F.R.
         // §15.5 and §1520.5 citations and definition. CAPCO §G.1
         // Table 4 lists the concise title; the ODNI long form is
         // admissible on input via `FormKind::IsmDescriptionTitle`
@@ -565,7 +565,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     },
     // from ISM `CVEnumISMNonIC` schema
     MarkingForm {
-        // PR 3d.3 (FR-053): ODNI `<Description>` adds the
+        // ODNI `<Description>` adds the
         // reactor-safety definition. CAPCO §G.1 Table 4 lists the
         // concise title; the ODNI long form is admissible on input
         // via `FormKind::IsmDescriptionTitle` (recognize-only).
@@ -827,8 +827,8 @@ mod tests {
         }
     }
 
-    // T035c-1b: title-column lookups for the S001 style rule and the
-    // parser's long-title acceptance path.
+    // Title-column lookups for the S001 style rule and the parser's
+    // long-title acceptance path.
 
     #[test]
     fn title_to_portion_known_entries() {

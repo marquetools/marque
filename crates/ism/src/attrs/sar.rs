@@ -111,13 +111,12 @@ impl SarProgram {
     /// This predicate is the canonical SAR abbreviation shape gate.
     /// The `Vocabulary<CapcoScheme>` adapter at
     /// `crates/capco/src/vocabulary.rs` calls this from
-    /// `shape_admits(CAT_SAR, _)` (Phase 5 PR-2 gating); the strict
-    /// parser at `crates/core/src/parser.rs::parse_sar_program` calls
-    /// it directly to gate the `SarIndicator::Abbrev` branch
-    /// (FR-015 / FR-016, T089). Both call sites MUST go through this
-    /// function rather than inline a length-and-class check —
-    /// keeping the predicate single-sited prevents drift between
-    /// admission and parser surfaces (CHK030).
+    /// `shape_admits(CAT_SAR, _)`; the strict parser at
+    /// `crates/core/src/parser.rs::parse_sar_program` calls it directly
+    /// to gate the `SarIndicator::Abbrev` branch. Both call sites MUST
+    /// go through this function rather than inline a length-and-class
+    /// check — keeping the predicate single-sited prevents drift
+    /// between admission and parser surfaces.
     ///
     /// # Authority
     ///
@@ -214,7 +213,7 @@ impl SarProgram {
     ///
     /// The strict parser at
     /// `crates/core/src/parser.rs::parse_sar_program` calls this to
-    /// gate the `SarIndicator::Full` branch (FR-015 closure
+    /// gate the `SarIndicator::Full` branch (admission closure
     /// alongside the abbreviation predicate). The
     /// `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm
     /// gates the *abbreviation* shape (the most common surface
@@ -223,7 +222,7 @@ impl SarProgram {
     /// own in the current scheme, so the vocabulary surface does
     /// not call this directly. Keeping the predicate symbolic in
     /// `marque-ism` rather than inline at the parser site preserves
-    /// the FR-015 invariant ("admission via documented vocabulary
+    /// the admission invariant ("admission via documented vocabulary
     /// surface") and matches the FGI / abbreviation precedent.
     ///
     /// # Authority
@@ -315,11 +314,10 @@ impl SarCompartment {
     /// `crates/core/src/parser.rs::parse_sar_program` calls this to
     /// gate compartments (segments after the first `-`) and
     /// sub-compartments (space-separated tokens within a
-    /// compartment segment) (FR-015, T090, T091). Both call sites
-    /// MUST go through this function rather than inline a
-    /// length-and-class check — keeping the predicate single-sited
-    /// prevents drift between admission and parser surfaces
-    /// (CHK030).
+    /// compartment segment). Both call sites MUST go through this
+    /// function rather than inline a length-and-class check — keeping
+    /// the predicate single-sited prevents drift between admission and
+    /// parser surfaces.
     ///
     /// The `Vocabulary<CapcoScheme>::shape_admits(CAT_SAR, _)` arm
     /// uses [`SarProgram::admits_program_id_abbrev`] (the

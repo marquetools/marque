@@ -12,8 +12,8 @@
 //! [`Parser`] converts into `marque_ism::ParsedAttrs<'src>`. The engine
 //! then runs `MarkingScheme::canonicalize` (the trait route — for CAPCO
 //! that is `CapcoScheme::canonicalize`) to land owned [`CanonicalAttrs`]
-//! for rule consumption. FR-043 makes that trait method the sole
-//! production `ParsedAttrs → CanonicalAttrs` path.
+//! for rule consumption. That trait method is the sole production
+//! `ParsedAttrs → CanonicalAttrs` path.
 //!
 //! Core ISM types (`Span`, `CanonicalAttrs`, `TokenSet`, etc.) are defined in
 //! `marque-ism` and re-exported here for ergonomic access.

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Parser-level IC dissem attribution (PR 9b / T132 / FR-046).
+//! Parser-level IC dissem attribution.
 //!
 //! Pins the four classification-axis cases for the
 //! [`marque_ism::attribute_dissems`] pass that the parser runs

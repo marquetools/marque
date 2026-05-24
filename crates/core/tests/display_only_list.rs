@@ -506,11 +506,9 @@ fn display_only_populates_parsed_axis() {
     // is the data rules consume after canonicalization. Without
     // it the new axis is invisible to the rule layer.
     //
-    // Pre PR 3c.2.E this test invoked `marque_ism::from_parsed_unchecked`
-    // to round-trip through `CanonicalAttrs`. PR 3c.2.E retired the
-    // adapter; the corresponding canonicalize path now lives in
-    // `CapcoScheme::canonicalize`, which `marque-core` cannot reach
-    // (Constitution VII forbids `marque-core ←── marque-capco`).
+    // The canonicalize path lives in `CapcoScheme::canonicalize`,
+    // which `marque-core` cannot reach (Constitution VII forbids
+    // `marque-core ←── marque-capco`).
     // Asserting directly on the `ParsedAttrs` side is sufficient
     // — the structural rename to `CanonicalAttrs.display_only_to`
     // is a 1:1 `entry.value` copy exercised by the scheme-level
