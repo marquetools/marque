@@ -33,10 +33,8 @@ invalid/banner_abbrev.expected.json
 
 ### `.expected.json` schema
 
-Post-T044, the `rule` field is the structured 2-tuple shape
-`{"scheme": "...", "predicate_id": "..."}` per PM decision OD-2.
-Authority: `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md`
-§2.10.
+The `rule` field is the structured 2-tuple shape
+`{"scheme": "...", "predicate_id": "..."}`.
 
 ```json
 {

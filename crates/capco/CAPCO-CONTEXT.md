@@ -23,21 +23,13 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 > marque-ism work. Cross-domain engine work (marque-engine,
 > marque-scheme) does not need this loaded.
 >
-> **Rule-ID convention (post-T044, 2026-05-22).** Rule IDs and
-> catalog-row labels are 2-tuples / wire strings of the form
-> `<scheme>:<surface>.<category>.<predicate>` (e.g.,
-> `"capco:portion.dissem.noforn-conflicts-rel-to"`,
-> `"capco:banner.classification.floor-hcs-comp-sub"`). The
-> `capco/<slug>` / `class-floor/<slug>` / `sci-per-system/<slug>`
-> slash-form names referenced in the historical sections below
-> (PR 4b-B, PR 4b-C, the lattice-vs-scheme parity §3) are
-> **archaeological** — they describe the catalog-row labels as
-> they existed at each pre-T044 PR. The labels were renamed in
-> lockstep at T044; see
+> **Rule-ID convention.** Rule IDs and catalog-row labels are wire
+> strings of the form `<scheme>:<surface>.<category>.<predicate>`
+> (e.g., `"capco:portion.dissem.noforn-conflicts-rel-to"`,
+> `"capco:banner.classification.floor-hcs-comp-sub"`).
 > [`docs/refactor-006/legacy-rule-id-map.md`](../../docs/refactor-006/legacy-rule-id-map.md)
-> for the rename table. The slash-form descriptions stand as
-> written because rewriting them would erase load-bearing PR
-> history without clarifying the CAPCO content.
+> maps the older `E### / W### / S### / C###` and slash-form labels
+> to their current wire strings if you encounter one.
 
 ---
 
@@ -204,159 +196,45 @@ portions have Y, the banner FD&R becomes Z".
 | 26 | DISPLAY ONLY | REL TO (with common LIST) | DISPLAY ONLY [common LIST] (release implies disclosure) |
 | 27 | REL TO/DISPLAY ONLY | REL TO/DISPLAY ONLY (with common LISTs in each) | REL TO [common]/DISPLAY ONLY [common] |
 
-**Marque gap (current, 2026-05-16 after PR 4b-C).** PR 4b-B (006 T112)
-installed per-category Lattice impls in `marque-capco::lattice`
-(ClassificationLattice, NatoClassLattice, JointSet, DissemSet,
-NatoDissemSet, RelToBlock, DeclassifyOnLattice) and fixed two
-PageContext bugs in lock-step:
+**How marque models this.** Per-category lattice types live in
+`marque-capco::lattice` (`ClassificationLattice`, `NatoClassLattice`,
+`JointSet`, `DissemSet`, `NatoDissemSet`, `RelToBlock`,
+`DeclassifyOnLattice`, `AeaSet`, …), composed by the inherent
+`CapcoMarking::join_via_lattice`. `MarkingScheme::project(Scope::Page,
+...)` drives page roll-up through that lattice path plus the
+declarative `PageRewrite` catalog and the closure rules. Cross-axis
+folds are projections, not lattice joins, so `CapcoMarking` does not
+implement `JoinSemilattice` — a structural-`Eq` idempotence law would
+fail in the presence of per-axis normalization such as `RelToBlock`'s
+tetragraph expansion.
 
-(PR #502 (issue #456) subsequently split `Lattice` into
-`JoinSemilattice + MeetSemilattice` halves; `DissemSet` and `JointSet`
-implement only the join half — see
-`docs/plans/2026-05-01-lattice-design.md` section 12.)
+Specific roll-up semantics worth noting:
 
-- OC-USGOV supersession (replaces unanimity-drop) per §H.8 p136 + p140.
+- OC-USGOV supersession (not unanimity-drop) per §H.8 p136 + p140.
 - RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
-
-PR 4b-B also adds `W004 joint-disunity-collapse-to-FGI` (Warn) per
-§H.3 p57 + §H.7 p123 — fires when all-JOINT portions disagree on
-their producer lists; surfaces the cross-axis FGI migration (CV-4
-PR 4b-B 8th-pass updated from §H.3 p56 to §H.3 p57 — the migration
-trigger lives on p57's "Derivative Use" bullets).
-
-**PR 4b-C (006 T112, 2026-05-16)** lands 9 declarative PageRewrite
-rows on `CapcoScheme` (7 Pattern-C strip rows + 2 Pattern-B
-structural FOUO-eviction rows) and retires the imperative FOUO + UCNI
-eviction branches in `PageContext`. The §H.6 NOFORN-promotion bug
-that the pre-PR-4b-C UCNI strip branch silently dropped is fixed at
-the declarative layer (`capco/{dod,doe}-ucni-promotes-noforn-when-classified`
-rows; load-bearing post-fix test
-`pattern_c_dod_ucni_classified_strip_promotes_noforn` at
-`crates/capco/tests/page_context_lattice_parity.rs`).
-
-PR 4b-C closed two G-divergences from PR 4b-B:
-
-- **G-1 FOUO classified strip** (closed): Pattern-B
-  `capco/classification-evicts-fouo` + Pattern-C
-  `capco/fouo-evicted-by-classified` rows fire on the lattice
-  path via `scheme.project(Scope::Page, ...)`. PageContext loses
-  the Step 3 strip (transitional pending PR 4b-D's hot-path flip);
-  both per-axis projections now keep FOUO observed via the
-  parity-gate helpers — the rename
-  `fouo_classified_pagecontext_and_lattice_both_keep_fouo_pending_pr_4b_d`
-  documents the convergence.
-- **G-2 UCNI classified strip** (closed): Pattern-C
-  `capco/{dod,doe}-ucni-evicted-by-classified` +
-  `capco/{dod,doe}-ucni-promotes-noforn-when-classified` rows.
-  The strip-plus-NOFORN-promotion semantic that the pre-fix
-  branch dropped is now correct. The rename
-  `aea_ucni_classified_pagecontext_and_lattice_both_keep_ucni_pending_pr_4b_d`
-  documents the convergence (the divergence collapsed because
-  PageContext lost the buggy strip; the lattice path always
-  kept UCNI through `AeaSet::from_markings`).
-
-The `CapcoMarking::join_via_lattice` inherent method (and its
-`_with_context` fast-path variant) composes the per-axis lattice
-types. PR 4b-D.2 (2026-05-17) flipped the production
-`MarkingScheme::project` to drive page aggregation through that
-lattice path. Copilot R1 review (decisions.md D24, 2026-05-18)
-subsequently REMOVED `impl JoinSemilattice for CapcoMarking` —
-cross-axis folds are projections, not lattice ops; the
-`JoinSemilattice` claim violated structural-`Eq` idempotence in
-the presence of per-axis normalization (e.g., `RelToBlock`'s
-tetragraph expansion). Page-aggregation flows go through the
-inherent `CapcoMarking::join_via_lattice` (for trait callers)
-and `CapcoScheme::project_from_attrs_slice` (for the engine
-fast-path; renamed from `project_from_page_context` in PR 6c
-alongside the `PageContext` struct retirement); the `JoinSemilattice` trait bound on
-`MarkingScheme::Marking` was also relaxed in commit 11. The parity gate at
-`crates/capco/tests/lattice_vs_scheme_parity.rs` (renamed from
-`page_context_lattice_parity.rs` in PR 4b-E once PageContext's residue
-accessors retired; 74 `#[test]` fixtures: 45+ lattice-vs-scheme
-byte-identity + 3 documented divergences + Pattern-B/C declarative-row
-fixtures via the `project_via_scheme` helper + PR 4b-D.2 retargets)
-continues to guard the two paths, with **3 documented active divergences** (down
-from 4 after PR 4b-D.2 retargeted the two `_pending_pr_4b_d`
-fixtures into `_scheme_project_strips_*` shapes that assert the
-correct post-flip behavior, and the
-`relido_plus_nf_noforn_dominates_parity` row converged in staging
-prior to PR 4b-D.2):
-
-**PR 4b-E convergence (2026-05-18).** The three pre-PR-4b-E
-divergences — `pure_nato_both_paths_preserve_nato_variant` (G-3,
-renamed from `pure_nato_lattice_vs_pagecontext_diverges` in PR 4b-E
-review fix-up),
-`joint_unanimous_two_portions_converge_to_joint_variant` (renamed
-from `joint_unanimous_two_portions`),
-`joint_single_portion_no_us_converge_to_joint_variant` (renamed
-from `joint_single_portion_no_us`) — all
-**CONVERGED to byte-identity** post-PR-4b-E (OQ-7 BLOCKING discipline
-satisfied). Both compared sides are now lattice-derived
-(`project_via_lattice` and `project_via_scheme`); the PageContext
-side retired entirely. Each historically-divergent fixture now
-asserts the surviving lattice + scheme paths produce the same
-non-`Us(_)` classification variant per §H.7 pp123-125 (solely-NATO
-preserves `Nato(_)`) and §H.3 p56 (pure-JOINT preserves `Joint(_)`).
-
-**New divergence class (PR 4b-E).** A different class of divergence
-emerged in the migrated parity gate: 12 fixtures (OC-USGOV unanimous,
-JOINT + NATO/FGI variants, conflict + NATO) exhibit a `dissem_us`
-asymmetry on the post-PR-4b-E lattice-vs-scheme comparison. The
-scheme path runs `CLOSURE_NOFORN_CAVEATED` (§B.3 Table 2 p21 — the
-caveated-classified post-28-Jun-2010 NOFORN rule); the per-axis
-lattice path does not run closure rules. This is correct CAPCO
-behavior on both paths; the asymmetry is annotated with a uniform
-§B.3 Table 2 p21 citation block per fixture's `expected_divergences`
-array. The parity gate's role post-PR-4b-E is exactly to surface
-such asymmetries — the gate catches future PageRewrite catalog
-edits that would silently change scheme-side semantics without a
-parallel lattice update.
-
-**Parity-gate direction (PR 4b-E).** The post-flip comparison is
-`project_via_lattice` ↔ `project_via_scheme` — the file renamed to
-`crates/capco/tests/lattice_vs_scheme_parity.rs`. The retargeted
-fixtures `fouo_classified_scheme_project_strips_fouo` and
-`aea_ucni_classified_scheme_project_strips_and_promotes_noforn`
-encode the same shape: per-axis lattice helper keeps the
-to-be-stripped marking; `scheme.project` strips it through the
-declarative PageRewrite catalog.
-
-G-4..G-9 are parity-RESTORING fixes (each cited inline against its §):
-JOINT-unanimous double-mark suppression (G-4, §H.3 p56 + §H.7 p123),
-explicit-FGI-marker merge with classification-derived producers (G-5,
-§H.7 p123), classified SBU-NF/LES-NF NOFORN injection + REL-TO clear
-(G-6, §H.9 p178 + p185), full byte-identity tightening (G-7), cross-
-axis NOFORN injection through the supersession overlay (G-8, §H.8 p145),
-and `Conflict` participates in the solely-non-US gate (G-9, §H.7
-pp123-125). Each lands as an `assert_byte_identity` parity fixture.
-
-Remaining FD&R rows the lattice path does NOT yet fully model
-(tracked at `docs/plans/2026-05-01-lattice-design.md` §11):
-
-- Rule 17: RELIDO date-pivot + non-FD&R-caveat ambiguity (depends on
-  Table 2 lookup — Layer 2 FD&R inference is post-PR-4b-D territory).
-
-PR 4b-B closed:
-
+- All-JOINT portions that disagree on producer lists collapse to a
+  cross-axis FGI migration (the `joint-disunity-collapse-to-fgi`
+  Warn rule) per §H.3 p57 + §H.7 p123.
+- Classified-document FOUO and UCNI eviction, plus the §H.6
+  NOFORN-promotion that classified UCNI requires, are declarative
+  `PageRewrite` rows on `CapcoScheme`, not procedural branches.
 - Rule 23 tetragraph expansion (FVEY → constituent trigraphs) lives
-  in `RelToBlock::from_attrs_iter` via the existing
-  `marque_ism::lookup_tetragraph_members` table.
+  in `RelToBlock` via `marque_ism::lookup_tetragraph_members`.
+- Rules 26/27 (REL TO + DISPLAY ONLY cross-axis) fold into
+  `DisplayOnlyBlock` per §D.2 Table 3 rows 26-27.
 
-PR 4b-E closed:
+A parity gate (`crates/capco/tests/lattice_vs_scheme_parity.rs`)
+compares the per-axis lattice path against the full scheme pipeline
+and catches future `PageRewrite` catalog edits that would change
+scheme-side semantics without a matching lattice update. Expected
+asymmetries are annotated per fixture: the scheme path runs the
+caveated-classified NOFORN closure rule (§B.3 Table 2 p21) while the
+per-axis lattice path does not run closure rules — correct behavior
+on both sides.
 
-- Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
-  release-implies-disclosure" — folded into
-  `DisplayOnlyBlock::from_attrs_iter` step (4) per §D.2 Table 3 row 26
-  Note (each portion's display-permission set is the union of REL TO
-  and DISPLAY ONLY axes — release subsumes disclosure).
-- Rule 27: dual-channel REL TO/DISPLAY ONLY composition with each
-  channel carrying its own common-LIST — folded into
-  `DisplayOnlyBlock::from_attrs_iter` step (6): subtract banner REL TO
-  countries from the cross-portion DO intersection per §D.2 Table 3
-  row 27.
-
-These are tracked against the lattice / engine refactor at
-`docs/plans/2026-05-01-lattice-design.md` §11.
+The one Table 3 row the lattice path does not yet fully model is
+**rule 17** (RELIDO date-pivot + non-FD&R-caveat ambiguity), which
+depends on a Table 2 date lookup.
 
 > Authority: CAPCO-2016 §D.2 + Table 3, pp 28–30.
 
@@ -402,14 +280,13 @@ For SCI / SAP, within-category multi-value ordering is
 the §A.6 separator alphabet (`/` for control systems, `-` for
 compartments, ` ` for sub-compartments).
 
-### 4.3 Marque gap (current, 2026-05-02)
+### 4.3 Marque gap
 
 We validate **presence** of correct markings and **inter-category**
 order via the `//`-separated category sequence, but we do **not**
 yet enforce the **within-group dissem ordering** or the
 **ascending-sort** rule for SCI/SAP multi-values across the entire
-banner. This is a candidate for a new `W###`-class rule per
-`docs/plans/2026-05-02-engine-refactor-consolidated.md` PR-3c.
+banner. This is a candidate for a future ordering rule.
 
 > Authority: CAPCO-2016 §G.1 + Table 4, pp 36–38.
 
@@ -475,7 +352,7 @@ banner". `<class>` placeholder = TS / S / C / U.
 and compartment, ` ` between sub-compartments. Numbered values sort
 before alphabetic.
 
-**NATO SAPs (BOHEMIA / BALK) — PR 9c.1 T134 routing.** BOHEMIA and
+**NATO SAPs (BOHEMIA / BALK) — routing.** BOHEMIA and
 BALK are NATO Special Access Programs registered in §G.2 p40
 (Table 5: ARH by Registered Marking). They render standalone in the
 SCI category position — NOT as portion-suffixes on the NATO
@@ -486,9 +363,9 @@ block. Legacy fused-classification forms (`CTS-B`, `CTS-BALK`,
 `COSMIC TOP SECRET-BOHEMIA`, `COSMIC TOP SECRET-BALK`) are retired
 per the §G.2 p40 Table 5 registration of BOHEMIA/BALK as
 standalone control markings; the strict parser canonicalizes them
-to bare CTS class + SCI NatoSap companion, and rule E066 emits a
-Recanonicalize fix that re-renders to the canonical multi-block
-form.
+to bare CTS class + SCI NatoSap companion, and a recanonicalization
+rule emits a Recanonicalize fix that re-renders to the canonical
+multi-block form.
 
 ### 5.4 §H.5 Special Access Program (pp 99–102)
 
@@ -516,7 +393,7 @@ linker is `-`. Sub-compartment linker is space.
 | TFNI | H.6 | 120 | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION | TFNI | TFNI | DOE + DNI / AEA §142e + 32CFR2001 §2001.24(i) | TS/S/C only | TFNI appears in banner if no RD/FRD portion present; **fully evicted from banner if any RD or FRD portion present** (§H.6 p104); special "Declassify On" annotation required regardless | RD or FRD takes precedence in portion; TFNI ideally not commingled |
 | ATOMAL (NATO AEA) | H.7 | 122 | ATOMAL | ATOMAL | ATOMAL | NATO / Atomic Energy Act §123 + §144 sharing agreements | TS/S/C NATO classes typically; rendered in AEA category position per §H.7 p122 worked example `SECRET//RD/ATOMAL//FGI NATO//NOFORN` | ATOMAL trails the US-domestic AEA family in the AEA block; same-form across title/banner/portion columns per §G.1 Table 4 p37 | NATO-shared AEA marking; segregation guidance via §H.7 p122 |
 
-**ATOMAL routing — PR 9c.1 T134.** ATOMAL is a NATO AEA marking
+**ATOMAL routing.** ATOMAL is a NATO AEA marking
 (Atomic Energy Act information shared with NATO+UK under bilateral
 §123/§144 sharing agreements). The §H.7 p122 worked example places
 ATOMAL alongside RD in the AEA axis — NOT as a portion-suffix on
@@ -526,9 +403,9 @@ the NATO classification axis. Legacy fused-classification forms
 `NATO CONFIDENTIAL ATOMAL`) are retired per the §G.2 p40 Table 5
 registration of ATOMAL as a standalone control marking; the strict
 parser canonicalizes them to bare NATO class + AEA Atomal companion,
-and rule E066 emits a Recanonicalize fix that re-renders to the
-canonical multi-block form (`(//CTS//ATOMAL)`, `(//NS//ATOMAL)`,
-etc.).
+and a recanonicalization rule emits a Recanonicalize fix that
+re-renders to the canonical multi-block form (`(//CTS//ATOMAL)`,
+`(//NS//ATOMAL)`, etc.).
 
 ### 5.6 §H.7 Foreign Government Information (pp 122–130)
 

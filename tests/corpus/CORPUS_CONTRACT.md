@@ -74,12 +74,12 @@ expectation. Pipeline lives at `tools/cia-crest-corpus/`; see
 
 ## Tagging
 
-The corpus is tagged `mvp-corpus-v1` before Phase 7 begins. SC-002, SC-003,
-and SC-008 are measured against exactly that tag.
+The corpus is tagged `mvp-corpus-v1`; the accuracy gates are measured
+against exactly that tag.
 
 ## Accuracy Thresholds
 
-- **SC-002**: >= 95% match against `.expected.json` (per-rule AND overall)
-- **SC-003**: >= 95% of known-bad fixtures produce zero remaining violations
+- **Lint accuracy**: >= 95% match against `.expected.json` (per-rule AND overall)
+- **Fix accuracy**: >= 95% of known-bad fixtures produce zero remaining violations
   after `Engine::fix` (per-rule AND overall)
-- **SC-003a**: Zero diagnostics on the prose corpus (precision gate)
+- **Prose precision**: Zero diagnostics on the prose corpus
