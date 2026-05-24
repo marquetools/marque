@@ -72,7 +72,7 @@
 //!   `MarkingScheme::project(Scope::Page, …)` instead of
 //!   `PageContext::expected_*`. Drops `impl JoinSemilattice for
 //!   CapcoMarking` and relaxes `MarkingScheme::Marking: JoinSemilattice`
-//!   bound per Copilot R1 D24. **Adds 1 PageRewrite**:
+//!   bound. **Adds 1 PageRewrite**:
 //!   `capco/noforn-clears-display-only-to` in `noforn_clears.rs` per
 //!   §H.8 p145 NOFORN-dominates DISPLAY ONLY axis. PageRewrite count
 //!   23 → 24.
@@ -250,17 +250,16 @@ const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
 ///     reverse-direction E014 check (REL TO entries not in JOINT)
 ///     per §H.3 p57 "[LIST]" superset semantics; the count rises
 ///     from 8 to 9.
-///   - class_floor_catalog (27): the PR 3b.D + 3b.E class-floor
-///     family per §H.4 / §H.6 / §H.7 / §H.8 / §H.9. Includes the
-///     four `passthrough-*` stubs for tokens not yet wired into a
-///     class-level predicate.
-///   - sci_per_system_catalog (5): the PR 3b.E SCI per-system family
-///     per §H.4 (HCS-O / HCS-P-NOFORN / HCS-P-sub / SI-G / TK-comp).
+///   - class_floor_catalog (27): the class-floor family per §H.4 /
+///     §H.6 / §H.7 / §H.8 / §H.9. Includes the four `passthrough-*`
+///     stubs for tokens not yet wired into a class-level predicate.
+///   - sci_per_system_catalog (5): the SCI per-system family per §H.4
+///     (HCS-O / HCS-P-NOFORN / HCS-P-sub / SI-G / TK-comp).
 ///
 /// Total: 9 + 27 + 5 = 41. Note: the four RELIDO E054-E057 rows are
 /// `Constraint::Conflicts`, NOT `Custom` — they do not appear here.
 const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
-    // core_catalog (9) — T044 predicate-ID form
+    // core_catalog (9) — predicate-ID form
     "portion.sci.hcs-system-constraints",
     "portion.classification.dual-classification",
     "portion.classification.joint-requires-rel-to-coverage",
@@ -495,7 +494,7 @@ fn post_pr_4b_declares_exact_41_custom_constraints() {
     // Triple-pin: (1) raw count of filtered `Constraint::Custom`
     // entries before any deduplication, (2) BTreeSet size after
     // deduplication, and (3) raw_count == set_size — the equality
-    // assertion catches the duplicate-name drift Copilot R1 flagged:
+    // assertion catches duplicate-name drift:
     // a duplicate `Constraint::Custom("capco/foo", ...)` row would
     // dedupe in the BTreeSet and the size-only assertion would pass
     // silently. Raw-count-equals-set-size is the load-bearing dedup

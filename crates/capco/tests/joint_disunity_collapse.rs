@@ -10,10 +10,8 @@
 //! - §H.3 p57 ("JOINT not carried forward to banner in US documents").
 //! - §H.7 p123 (FGI source-acknowledged form for disunity-collapse migration).
 //!
-//! PR refactor-006-pr-pagefinalization / issue #461 (Phase::PageFinalization
-//! migration; the JointSet lattice tests originally landed in PR 4b-B
-//! Commit 5 (006 T112) and were rebaselined here under the
-//! PageFinalization dispatch contract).
+//! The JointSet lattice tests and the W004 rule tests share this file
+//! under the `Phase::PageFinalization` dispatch contract (issue #461).
 
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, JointSet};
@@ -105,11 +103,10 @@ fn joint_disunity_two_portions_different_producers_collapses_to_fgi() {
 
 #[test]
 fn joint_mixed_with_us_portions_no_w004_fires() {
-    // §H.3 p57: mixed (JOINT + US) → JOINT does not roll
-    // up. Lattice returns `Mixed` (PR 4b-B follow-up C-3: was
-    // `Bottom` before but that conflated identity with absorption,
-    // breaking associativity under grouped joins); the existing
-    // PageContext path handles FGI migration.
+    // §H.3 p57: mixed (JOINT + US) → JOINT does not roll up. The lattice
+    // returns `Mixed` (a distinct absorbing state, not `Bottom`, which
+    // would conflate identity with absorption and break associativity
+    // under grouped joins).
     let mut us = CanonicalAttrs::default();
     us.classification = Some(MarkingClassification::Us(Classification::Secret));
     let portions = [joint_portion(Classification::Secret, &["USA", "GBR"]), us];
@@ -122,8 +119,8 @@ fn joint_mixed_with_us_portions_no_w004_fires() {
 
 #[test]
 fn joint_disunity_warn_diagnostic_carries_no_document_text() {
-    // Constitution V Principle V G13: the W004 diagnostic message
-    // must not contain document text. We verify this indirectly by
+    // Audit content-ignorance (Constitution V Principle V): the W004
+    // diagnostic message must not contain document text. We verify this indirectly by
     // confirming that the JointSet's `disunity_collapse_non_us_producers`
     // returns only canonical CountryCode vocabulary atoms (3-byte
     // trigraphs). The rule emits these as canonical strings, never
@@ -148,15 +145,16 @@ fn joint_disunity_warn_diagnostic_carries_no_document_text() {
 }
 
 // ---------------------------------------------------------------------------
-// H-2 PR 4b-B follow-up — engine-level W004 tests
+// Engine-level W004 tests
 // ---------------------------------------------------------------------------
 //
 // The JointSet unit tests above exercise the lattice type directly.
 // The tests below run W004 (`JointDisunityCollapseRule`) through the
 // rule/engine path — they verify the diagnostic actually fires,
 // carries the expected severity / rule ID, surfaces only canonical
-// CountryCode trigraph identifiers in its message (Constitution V
-// Principle V G13), and is correctly suppressed on negative cases
+// CountryCode trigraph identifiers in its message (audit
+// content-ignorance, Constitution V Principle V), and is correctly
+// suppressed on negative cases
 // (mixed JOINT+US per §H.3 p57; pure-US pages; pure-JOINT-unanimous
 // pages).
 
@@ -183,19 +181,15 @@ fn w004_fires_on_joint_disunity_banner() {
     // because the same disunity is observable on the closed state
     // regardless of which boundary closes the page.
     //
-    // **Copilot-flagged regression guard.** Pre-fix this test was a
-    // `.find().is_some()` assertion that masked the engine's
-    // main-loop double-dispatch defect: the main candidate loop
-    // ran W004 on the Banner candidate (because the loop had no
-    // phase filter), and `dispatch_page_finalization` ran it
-    // again at EOD. Tightened to `count == 1` so any future
-    // regression that re-introduces a missing phase filter at
-    // the engine main-loop level (`engine.rs:1202-1203`) fails
-    // this test loudly.
+    // Regression guard against the engine's main-loop double-dispatch
+    // defect: if the main candidate loop had no phase filter it would
+    // run W004 on the Banner candidate AND `dispatch_page_finalization`
+    // would run it again at EOD. The `count == 1` assertion fails
+    // loudly if a missing phase filter is re-introduced at the engine
+    // main-loop level.
     //
     // Assertions: rule = "W004", Warn severity, citation references
-    // §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass — updated from
-    // `§H.3 p56`).
+    // §H.3 p57 + §H.7 p123.
     let engine = engine_with_fixed_clock();
     let source = b"(//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion.\n\
@@ -212,8 +206,7 @@ fn w004_fires_on_joint_disunity_banner() {
         1,
         "W004 must fire EXACTLY once on a JOINT-disunity page with a \
          closing banner (regression guard for the engine main-loop \
-         phase-filter defect Copilot flagged on PR #461). All \
-         diagnostics: {:?}",
+         phase-filter defect). All diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.predicate_id())
@@ -221,19 +214,16 @@ fn w004_fires_on_joint_disunity_banner() {
     );
     let w004 = w004_diags[0];
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
-    // CV-4 (PR 4b-B 8th-pass): citation amended from
-    // `§H.3 p56 + §H.7 p123` to `§H.3 p57 + §H.7 p123` — §H.3 p57
-    // ("The FGI marking including all trigraph/tetragraph codes
-    // identified in the JOINT portion(s)" in the Derivative Use
+    // §H.3 p57 ("The FGI marking including all trigraph/tetragraph
+    // codes identified in the JOINT portion(s)" in the Derivative Use
     // bullets) is the precise migration-trigger authority. §H.7 p123
     // grounds the FGI grammar the migrated producers render under.
     //
-    // PR 3c.2.C C5: typed `Citation` carries ONE §-reference per
-    // diagnostic. The rule body anchors at §H.3 p57 (the precise
-    // migration-trigger); the §H.7 p123 FGI grammar reference now
-    // lives in the rule doc comment rather than the diagnostic
-    // citation field (compare `crates/capco/src/rules.rs`
-    // JointDisunityCollapseRule). Assert only the structured anchor.
+    // The typed `Citation` carries ONE §-reference per diagnostic. The
+    // rule body anchors at §H.3 p57 (the precise migration-trigger);
+    // the §H.7 p123 FGI grammar reference lives in the rule doc comment
+    // rather than the diagnostic citation field. Assert only the
+    // structured anchor.
     assert!(
         format!("{}", w004.citation).contains("§H.3 p57"),
         "W004 citation must reference §H.3 p57 (structured anchor): {:?}",
@@ -243,11 +233,10 @@ fn w004_fires_on_joint_disunity_banner() {
 
 #[test]
 fn w004_message_contains_only_canonical_trigraphs() {
-    // Constitution V Principle V G13: the W004 diagnostic message
-    // MUST NOT contain document bytes.
-    //
-    // PR 3c.2.C C5: G13 is now structurally enforced by the closed
-    // `Message` shape — `MessageArgs` field types are restricted to
+    // Audit content-ignorance (Constitution V Principle V): the W004
+    // diagnostic message MUST NOT contain document bytes. This is
+    // structurally enforced by the closed `Message` shape —
+    // `MessageArgs` field types are restricted to
     // `Option<TokenId>` / `Option<CategoryId>` / `Option<Span>` /
     // `Blake3Hash` / `Confidence` / `FeatureId`; raw bytes are
     // unrepresentable. The test purpose strengthens: instead of
@@ -317,12 +306,10 @@ fn w004_does_not_fire_on_pure_us_page() {
 
 #[test]
 fn w004_does_not_fire_on_mixed_joint_plus_us() {
-    // §H.3 p57: JOINT does not roll up in US documents. The
-    // JointSet returns `Mixed` (post-C-3 PR 4b-B follow-up; was
-    // Bottom pre-split). W004 must NOT fire — the FGI migration
-    // for the JOINT non-US producers rides through the existing
-    // PageContext-resident `expected_fgi_marker` path, not through
-    // W004's lattice signal.
+    // §H.3 p57: JOINT does not roll up in US documents. The JointSet
+    // returns `Mixed`. W004 must NOT fire — the FGI migration for the
+    // JOINT non-US producers rides through the `expected_fgi_marker`
+    // path, not through W004's lattice signal.
     let engine = engine_with_fixed_clock();
     let source = b"(//JOINT S USA GBR) joint-classified portion.\n\
                    (S) plain-us-classified portion.\n\
@@ -430,9 +417,8 @@ fn w004_fires_on_banner_first_via_eod_finalization() {
     );
     let w004 = w004.unwrap();
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
-    // PR 3c.2.C C5: typed `Citation` carries one §-reference per
-    // diagnostic. The rule anchors at §H.3 p57; §H.7 p123 lives in
-    // the rule doc comment per PM-C-5/PM-C-6.
+    // The typed `Citation` carries one §-reference per diagnostic. The
+    // rule anchors at §H.3 p57; §H.7 p123 lives in the rule doc comment.
     assert!(
         format!("{}", w004.citation).contains("§H.3 p57"),
         "W004 citation must reference §H.3 p57 (structured anchor): {:?}",
@@ -631,45 +617,36 @@ fn w004_eod_fires_for_trailing_disunity_without_pagebreak() {
 }
 
 // ---------------------------------------------------------------------------
-// Engine main-loop phase-filter regression guards (Copilot review on
-// PR refactor-006-pr-pagefinalization / issue #461).
+// Engine main-loop phase-filter regression guards (issue #461).
 // ---------------------------------------------------------------------------
 //
-// Copilot's HIGH-severity finding: the engine's main candidate-loop
-// (`engine.rs:1202-1203`) iterated `self.rule_sets[..].rules()[..]`
-// with NO phase filter, so every registered rule — including
-// `Phase::PageFinalization` rules — ran on every Portion / Banner /
-// CAB candidate. With W004's body no longer gated on
-// `MarkingType::Banner`, the rule fired TWICE on any page with a
-// closing banner: once from the main loop's Banner-candidate
-// dispatch (because the engine attaches `ctx.page_context` to
+// If the engine's main candidate-loop iterated
+// `self.rule_sets[..].rules()[..]` with NO phase filter, every
+// registered rule — including `Phase::PageFinalization` rules — would
+// run on every Portion / Banner / CAB candidate. With W004's body no
+// longer gated on `MarkingType::Banner`, the rule would fire TWICE on
+// any page with a closing banner: once from the main loop's
+// Banner-candidate dispatch (the engine attaches `ctx.page_context` to
 // non-Portion candidates with non-empty pages), and once from
 // `dispatch_page_finalization` at the next PageBreak / EOD.
 //
 // The two tests below pin "exactly once per page" semantics on the
-// two layout shapes where the pre-fix bug would surface as a
+// two layout shapes where a missing phase filter would surface as a
 // double-fire: single page with closing banner, and two-page document
-// with closing banners on both pages.
-//
-// Both tests would FAIL on the pre-fix engine; they PASS on
-// the post-fix engine (`pass_finalization_rule_indices` skipped from
-// the main loop). The companion regression tightening lives at
-// `w004_fires_on_joint_disunity_banner` (top of file) where
-// `.find().is_some()` was upgraded to `.filter().count() == 1`.
+// with closing banners on both pages. They pass because the main loop's
+// phase filter skips PageFinalization rules.
 
 #[test]
 fn w004_fires_exactly_once_on_page_with_closing_banner() {
     // Single page with two disunified JOINT portions AND a closing
-    // banner. Pre-Copilot-fix the main candidate loop's
-    // Banner-candidate dispatch ran W004 once (the body would early-
-    // return on the Banner-only guard, but the guard was removed in
-    // the PageFinalization migration — now the body runs and
-    // emits because `page_context` is populated on Banner candidates
-    // by accumulation, and `JointSet::DisunityCollapse` is true at
-    // that snapshot). `dispatch_page_finalization` then ran W004 a
-    // second time at EOD. Net: 2 W004 diagnostics. Post-fix: the
-    // main loop's phase filter skips PageFinalization rules entirely,
-    // so only the EOD synthesis dispatches W004 → count == 1.
+    // banner. Without the phase filter, the main candidate loop's
+    // Banner-candidate dispatch would run W004 once (the body runs and
+    // emits because `page_context` is populated on Banner candidates by
+    // accumulation, and `JointSet::DisunityCollapse` is true at that
+    // snapshot), and `dispatch_page_finalization` would run it a second
+    // time at EOD. With the phase filter the main loop skips
+    // PageFinalization rules entirely, so only the EOD synthesis
+    // dispatches W004 → count == 1.
     let engine = engine_with_fixed_clock();
     let source = b"(//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion.\n\
@@ -687,8 +664,7 @@ fn w004_fires_exactly_once_on_page_with_closing_banner() {
          banner. A count of 2 means the engine's main candidate loop \
          did NOT skip Phase::PageFinalization rules and W004 ran both \
          (a) on the Banner candidate in the main loop, AND (b) via \
-         dispatch_page_finalization at EOD. This is the Copilot-HIGH \
-         regression guard for PR #461. Diagnostics: {:?}",
+         dispatch_page_finalization at EOD. Diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.predicate_id())
@@ -698,15 +674,15 @@ fn w004_fires_exactly_once_on_page_with_closing_banner() {
 
 #[test]
 fn w004_fires_exactly_once_per_page_when_banner_closes_page() {
-    // Two-page document, each page has disunified JOINT portions
-    // AND a closing banner before the form-feed (or end-of-document
-    // for page 2). Pre-Copilot-fix this would emit FOUR W004
+    // Two-page document, each page has disunified JOINT portions AND a
+    // closing banner before the form-feed (or end-of-document for
+    // page 2). Without the phase filter this would emit FOUR W004
     // diagnostics: two from main-loop Banner dispatches + two from
-    // PageFinalization (one per `\f` boundary + one at EOD — except
-    // the EOD page's banner doesn't precede a `\f`, so dispatch
-    // fires at EOD instead; either way, one PageFinalization fire
-    // per page). Post-fix: only the PageFinalization-path fires,
-    // one per page → count == 2.
+    // PageFinalization (one per `\f` boundary + one at EOD — except the
+    // EOD page's banner doesn't precede a `\f`, so dispatch fires at
+    // EOD instead; either way, one PageFinalization fire per page).
+    // With the phase filter only the PageFinalization-path fires, one
+    // per page → count == 2.
     let engine = engine_with_fixed_clock();
     let source: &[u8] = b"(//JOINT S USA GBR) page 1 first portion.\n\
                           (//JOINT S USA CAN) page 1 disunity portion.\n\
@@ -728,8 +704,7 @@ fn w004_fires_exactly_once_per_page_when_banner_closes_page() {
          each page has a closing banner (one per page, not four). \
          A count of 4 indicates the main-loop phase filter regressed \
          and W004 dispatched on both Banner candidates AND both \
-         PageFinalization synthesis points. Copilot-HIGH regression \
-         guard for PR #461. Diagnostics: {:?}",
+         PageFinalization synthesis points. Diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.predicate_id())

@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T046 — PR 3c.2.D PM-D-10 pin for
-//! `Vocabulary<CapcoScheme>::qualified_token_label`.
+//! Pin for `Vocabulary<CapcoScheme>::qualified_token_label`.
 //!
-//! The audit-record contract at
-//! `specs/006-engine-rule-refactor/contracts/audit-record.md` requires
-//! the `replacement.canonical.token_id` JSON field to carry the
+//! The audit-record contract requires the
+//! `replacement.canonical.token_id` JSON field to carry the
 //! namespaced `"category.canonical"` form so consumers can resolve
 //! the canonical token's category without performing a separate
 //! vocabulary lookup per record (the self-describing property).

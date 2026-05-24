@@ -1,5 +1,5 @@
 #![cfg(any())]
-// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+// Legacy FixProposal-shape test disabled pending rewrite.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
@@ -13,9 +13,8 @@
 //! in `applied`. The engine excludes Suggest-severity from
 //! auto-apply by construction.
 //!
-//! This test lived in `crates/capco/src/rules.rs::tests` until
-//! PR 3c.B Commit 2. The relocation was forced by the
-//! `marque-capco` ↔ `marque-engine` dev-dep cycle: post-Commit-2,
+//! This test lives here rather than in `crates/capco/src/rules.rs::tests`
+//! because of the `marque-capco` ↔ `marque-engine` dev-dep cycle:
 //! `Engine` consumes `CapcoScheme` through a generic-typed
 //! `MarkingScheme` bound, and the dev-dep cycle compiles two
 //! distinct `CapcoScheme` instances when an in-lib test tries to

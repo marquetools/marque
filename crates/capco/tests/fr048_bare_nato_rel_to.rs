@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 9c.2 / FR-048 — S007 `bare-nato-requires-rel-to-usa-nato`.
+//! S007 `bare-nato-requires-rel-to-usa-nato`.
 //!
 //! A bare NATO classification portion appearing in a US-classified
 //! document should carry `REL TO USA, NATO` per CAPCO-2016 §H.7 p127
@@ -69,7 +69,7 @@ fn engine() -> Engine {
 /// is the production contract, not a test detail to pin numerically).
 fn engine_with_s007_as_fix() -> Engine {
     let mut overrides = HashMap::new();
-    // T044: rule-override keys use the wire-string form per OD-7.
+    // Rule-override keys use the wire-string form.
     overrides.insert(
         "capco:portion.nato.bare-nato-requires-rel-to-usa-nato".to_owned(),
         "fix".to_owned(),
@@ -339,8 +339,8 @@ fn solely_nato_single_portion_fires_then_silent_after_fix() {
 #[test]
 fn atomal_in_us_doc_fires() {
     // CAPCO-2016 §H.7 p127 Notional Example 2: ATOMAL travels on the
-    // AEA axis (PR 9c.1 T134) and the classification axis still
-    // carries a bare NATO variant. The bare-NATO predicate is
+    // AEA axis and the classification axis still carries a bare NATO
+    // variant. The bare-NATO predicate is
     // orthogonal to AEA companions — S007 fires on the
     // `(//CTS//ATOMAL)` portion when a US sibling is present.
     let source = b"(//CTS//ATOMAL)\n(S//NF)";

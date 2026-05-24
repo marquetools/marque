@@ -5,11 +5,9 @@
 //! Cross-axis dominance tests for the per-category lattice impls.
 //!
 //! Each test pins a specific cross-axis rule from CAPCO-2016 to the
-//! corresponding lattice / constraint / page-rewrite behavior. PR 4b-A
-//! lands the AEA-axis coverage; subsequent PRs add the other
-//! categories per `docs/plans/2026-05-01-lattice-design.md` §§2-8.
+//! corresponding lattice / constraint / page-rewrite behavior.
 //!
-//! # AEA category coverage (PR 4b-A)
+//! # AEA category coverage
 //!
 //! Four cross-axis cases:
 //!
@@ -20,8 +18,8 @@
 //!    lattice join.
 //! 3. **UCNI strips when classified** — §H.6 p116 / p118 (UCNI
 //!    suppressed from banner when class > U + NOFORN promoted).
-//!    Tested as the documented predicate; the runtime rewrite
-//!    lands in PR 4b-C.
+//!    Tested as the documented predicate; the runtime strip is a
+//!    page-rewrite.
 //! 4. **ATOMAL routes to AEA, not classification** — §H.7 p122 +
 //!    §G.2 Table 5 p40 (ATOMAL is a registered standalone control
 //!    marking that travels in the AEA category alongside RD/FRD/TFNI).
@@ -141,24 +139,18 @@ fn aea_sigma_coalesces_under_rd() {
 ///
 /// Symmetric rule at §H.6 p118 for DOE UCNI.
 ///
-/// PR 4b-A documents the predicate as a cross-axis rule. The actual
-/// runtime rewrite (strip UCNI + promote NOFORN) lands in PR 4b-C,
-/// alongside the §3 (b) FOUO eviction matrix — same algebraic shape
-/// (cross-axis strip on classification ascent + NOFORN promotion).
+/// The runtime rewrite (strip UCNI + promote NOFORN) is a
+/// post-projection cross-axis rewrite — same algebraic shape as the
+/// FOUO eviction matrix (cross-axis strip on classification ascent +
+/// NOFORN promotion).
 ///
 /// This test verifies the **AeaSet lattice's contribution** to the
-/// rule: the UCNI atom is present in the joined fact set (because
-/// the lattice is permissive — strip happens at the post-projection
-/// rewrite, not at lattice-join time).
-///
-/// **PR 4b-C WILL INVERT THE FINAL ASSERTION** — once the
-/// post-projection rewrite lands, `combined.to_markings()` after
-/// the cross-axis pass should drop UCNI when classification ⊐ U.
-/// This test stays here as the lattice-contribution pin; the new
-/// assertion against the post-rewrite state goes in a separate
-/// test alongside the FOUO eviction matrix in PR 4b-C, NOT by
-/// editing this one (so the regression catch for "lattice
-/// preserves UCNI" stays intact).
+/// rule: the UCNI atom is present in the joined fact set (the lattice
+/// is permissive — strip happens at the post-projection rewrite, not at
+/// lattice-join time). The post-rewrite assertion (UCNI dropped when
+/// classification ⊐ U) lives in a separate test alongside the FOUO
+/// eviction matrix, so the regression catch for "lattice preserves
+/// UCNI" stays intact here.
 #[test]
 fn aea_ucni_strips_when_classified() {
     // (U//DOD UCNI//FOUO) — UCNI carrier portion.
@@ -173,10 +165,10 @@ fn aea_ucni_strips_when_classified() {
     assert!(combined.ucni().contains(&UcniKind::DodUcni));
     assert!(combined.primary().is_none());
 
-    // The actual eviction is a post-projection cross-axis rewrite
-    // (PR 4b-C). Until then, the lattice contributes the
-    // `{DodUcni}` atom faithfully; the §H.6 p116 strip-plus-promote
-    // semantics ride on the cross-axis rewrite layer above.
+    // The actual eviction is a post-projection cross-axis rewrite. The
+    // lattice contributes the `{DodUcni}` atom faithfully; the §H.6
+    // p116 strip-plus-promote semantics ride on the cross-axis rewrite
+    // layer above.
     //
     // The lattice render of the post-join state intentionally
     // emits the UCNI atom (the `to_markings` path is
@@ -185,7 +177,7 @@ fn aea_ucni_strips_when_classified() {
     let has_dod_ucni = rendered.iter().any(|m| matches!(m, AeaMarking::DodUcni));
     assert!(
         has_dod_ucni,
-        "AeaSet rendered form preserves UCNI atom; banner-strip is post-projection (PR 4b-C)"
+        "AeaSet rendered form preserves UCNI atom; banner-strip is post-projection"
     );
 }
 
@@ -208,8 +200,8 @@ fn aea_ucni_strips_when_classified() {
 /// classification* is non-US but its *category placement* on a
 /// US-classified document is AEA (per §H.7 p122 routing).
 ///
-/// This is the PR 9c.1 T134 routing decision (ATOMAL → AEA, not
-/// NATO classification suffix). The test pins it at the `AeaSet`
+/// This is the ATOMAL → AEA routing decision (not NATO classification
+/// suffix). The test pins it at the `AeaSet`
 /// boundary: a portion carrying RD + ATOMAL composes into an
 /// `AeaSet` with both `primary=Some(Rd)` and `atomal=Some(_)`,
 /// confirming ATOMAL lives in the AEA axis.
@@ -243,10 +235,9 @@ fn aea_atomal_routes_to_aea_not_nato_class() {
 }
 
 // ===========================================================================
-// PR-4 test closeout (006 T117) — additional cross-axis dominance fixtures.
+// Additional cross-axis dominance fixtures.
 //
-// The 4 tests below cover the non-AEA fixture classes per PM doc D-2 of
-// `docs/plans/2026-05-19-pr4-tests-closeout-pm-decisions.md`. Each test
+// The 4 tests below cover the non-AEA fixture classes. Each test
 // drives 2-3 hand-built `CanonicalAttrs` portions through
 // `CapcoScheme::project(Scope::Page, &markings)` and asserts on the
 // resulting `CanonicalAttrs` payload. Mirrors the
@@ -288,8 +279,7 @@ fn project_via_scheme(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
 /// Cross-axis: classification × dissem. The classification-ascent path
 /// from `Unclassified` (the FOUO carrier portion) to `Secret` (the
 /// classified peer) triggers the `capco/classification-evicts-fouo`
-/// PageRewrite (PR 4b-C Pattern-B Commit 4). This is the lattice-design
-/// §3 Example 3 worked case and parallels the `fouo-eviction-class.txt`
+/// PageRewrite. This parallels the `fouo-eviction-class.txt`
 /// fixture under `tests/corpus/lattice/`.
 ///
 /// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
@@ -353,11 +343,9 @@ fn class_evicts_fouo_via_classification_ascent() {
 /// FD&R is NOFORN / RELIDO / REL TO / DISPLAY ONLY / EYES only;
 /// LES is a non-IC dissem control per §H.9 p181.
 ///
-/// This is the lattice-design §3 Example 4 worked case and parallels
-/// the `fouo-eviction-non-fdr.txt` fixture under
+/// This parallels the `fouo-eviction-non-fdr.txt` fixture under
 /// `tests/corpus/lattice/`. The `capco/non-fdr-control-evicts-fouo`
-/// PageRewrite is the operative declarative row (PR 4b-C Pattern-B
-/// Commit 4).
+/// PageRewrite is the operative declarative row.
 ///
 /// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
 /// authorship 2026-05-19 (§H.8 p134, UNCLASSIFIED-with-other-control
@@ -610,11 +598,11 @@ fn sci_cross_system_canonicalization() {
 }
 
 // ===========================================================================
-// PR-4 test closeout (006 T117a) — US reciprocates equivalent protection
-// for foreign portions (§H.7 pp123-129)
+// US reciprocates equivalent protection for foreign portions
+// (§H.7 pp123-129)
 // ===========================================================================
 
-/// CAPCO-2016 §H.7 pp123-129 + §H.7 p129 worked example (line ~3168):
+/// CAPCO-2016 §H.7 pp123-129 + §H.7 p129 worked example:
 /// `(S//REL TO USA, AUS) (//CAN S//REL TO USA, AUS, CAN, GBR) (//DEU TS//NF) →
 /// TOP SECRET//FGI CAN DEU//NOFORN`.
 ///

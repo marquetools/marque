@@ -85,7 +85,7 @@ pub(crate) fn render_aea(m: &CapcoMarking, scope: Scope, out: &mut dyn fmt::Writ
 /// Register order per CAPCO-2016 Table 4 row 6 (p36, expanded p108).
 /// Lower rank = earlier in register.
 ///
-/// ATOMAL (PR 9c.1 T134) lands at rank 5 — last in the AEA register
+/// ATOMAL lands at rank 5 — last in the AEA register
 /// — per the §H.7 p122 worked example `SECRET//RD/ATOMAL//FGI NATO//
 /// NOFORN`. The manual's Register Table 4 row 6 does not enumerate
 /// ATOMAL in the AEA sequence (Table 4 lists only US-domestic AEA
@@ -135,7 +135,7 @@ fn write_aea(aea: &AeaMarking, portion: bool, out: &mut dyn fmt::Write) -> fmt::
         AeaMarking::Tfni => {
             out.write_str("TFNI")?;
         }
-        // PR 9c.1 T134: ATOMAL renders same-form across banner and
+        // ATOMAL renders same-form across banner and
         // portion (CAPCO-2016 §G.1 Table 4 p37 row "ATOMAL" — same
         // canonical name in all three columns). No sub-markings to
         // emit; `AtomalBlock` is the empty carrier.

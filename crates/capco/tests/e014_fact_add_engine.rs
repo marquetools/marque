@@ -1,12 +1,12 @@
 #![cfg(any())]
-// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+// Legacy FixProposal-shape test disabled pending rewrite.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Sub-PR 8.D.4 — E014 (JOINT participants must appear in REL
-//! TO list, §H.3 p57) intent-only migration engine-level tests.
+//! E014 (JOINT participants must appear in REL TO list, §H.3 p57)
+//! intent-only engine-level tests.
 //!
 //! These tests cover engine-level behaviors that can't be exercised
 //! through the inline `lint_banner` / `lint_portion` helpers inside
@@ -227,9 +227,8 @@ fn e014_fires_only_for_actually_missing_country() {
 /// # Audit-collapse note (one AppliedFix for N intents)
 ///
 /// `synthesize_intent_only_fixes` groups all intents sharing a
-/// `candidate_span` and emits ONE `FixProposal` per group (Copilot
-/// PR #369 finding #1, architect preflight 2026-05-11, Constitution V
-/// audit-per-rule). When E014 emits three diagnostics for missing AUS,
+/// `candidate_span` and emits ONE `FixProposal` per group (Constitution
+/// V audit-per-rule). When E014 emits three diagnostics for missing AUS,
 /// CAN, USA — all anchored to the same candidate — the engine collapses
 /// them into a single AppliedFix that carries the combined effect of
 /// all three FactAdds. The N=3 diagnostic shape is preserved in the
@@ -267,14 +266,14 @@ fn e014_fix_apply_inserts_missing_countries_idempotently() {
             .collect::<Vec<_>>(),
     );
 
-    // G13 invariant: intent-only AppliedFix carries empty `original`
-    // so document content cannot leak into the audit record. Pinned
-    // here at the rule level; `g13_closure_fix_intent.rs` is the
+    // Audit content-ignorance: intent-only AppliedFix carries empty
+    // `original` so document content cannot leak into the audit record.
+    // Pinned here at the rule level; `g13_closure_fix_intent.rs` is the
     // workspace-wide gate.
     for af in &e014_applied {
         assert!(
             af.proposal.original.is_empty(),
-            "G13: E014 intent-only AppliedFix must carry empty \
+            "E014 intent-only AppliedFix must carry empty \
              `original`; got: {:?}",
             af.proposal.original,
         );

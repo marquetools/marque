@@ -14,9 +14,9 @@
 //!
 //! # Structural closure
 //!
-//! Post PR 3c.2.C C5 (the closed-template `Message` shape + typed
-//! `Citation` struct), the message- and citation-leak channels are
-//! STRUCTURALLY closed:
+//! With the closed-template `Message` shape and typed `Citation`
+//! struct, the message- and citation-leak channels are STRUCTURALLY
+//! closed:
 //!
 //! - `Diagnostic.message: Message` carries `MessageTemplate` (closed
 //!   enum) + `MessageArgs` (closed struct of typed identifiers);
@@ -268,8 +268,9 @@ fn citation_carries_only_typed_capco_anchor() {
 #[test]
 fn diagnostic_span_offsets_are_byte_locators_not_content_payloads() {
     // Span offsets are byte locators into the source buffer, not
-    // content payloads. The G13 invariant is satisfied as long as
-    // the diagnostic surface carries no document-content bytes
+    // content payloads. The audit content-ignorance invariant is
+    // satisfied as long as the diagnostic surface carries no
+    // document-content bytes
     // — which the three tests above already verify. This test
     // pins the structural property: the span field is `Span`
     // (`{start, end}`-typed integer pair), not a `&str` or

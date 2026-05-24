@@ -8,12 +8,12 @@
 //!
 //! # Source tests ported
 //!
-//! - `e005_fires_on_declass_exemption_in_portion` — T035c-16 portion-
-//!   scope coverage expansion. Banner-scope coverage is already
-//!   exercised by `tests/corpus/invalid/` fixtures; the portion-scope
-//!   path was added in T035c-16 (CAPCO-2016 §C.1 p26 mirrors §D.1 p27
-//!   for portions) and was originally tested via the inline `mod tests`
-//!   block. No corpus fixture covers the portion-scope path, so this
+//! - `e005_fires_on_declass_exemption_in_portion` — portion-scope
+//!   coverage. Banner-scope coverage is already exercised by
+//!   `tests/corpus/invalid/` fixtures; the portion-scope path
+//!   (CAPCO-2016 §C.1 p26 mirrors §D.1 p27 for portions) was originally
+//!   tested via the inline `mod tests` block. No corpus fixture covers
+//!   the portion-scope path, so this
 //!   port preserves the coverage.
 //! - `e005_citation_points_at_specific_sections` — citation lockdown
 //!   pin: the diagnostic's typed `Citation` MUST anchor at §E.1 p31.
@@ -61,7 +61,7 @@ fn e005_diags(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
 }
 
 // ---------------------------------------------------------------------------
-// Portion-scope coverage (T035c-16 audit extension)
+// Portion-scope coverage
 // ---------------------------------------------------------------------------
 
 /// CAPCO-2016 §C.1 p26 closed category list for portions mirrors §D.1
@@ -98,11 +98,11 @@ fn e005_fires_on_declass_exemption_in_portion() {
 // Citation lockdown
 // ---------------------------------------------------------------------------
 
-/// Lock down the T035c-16 / PR 10.A.1 citation retargeting. The typed
-/// `Citation` pins the primary anchor (§E.1 p31 — "Declassify On is
-/// a CAB line"). The cross-reference to §D.1 p27 lives on the rule's
-/// `DECLASSIFY_MISPLACED_CROSS_REFS` constant per PR 10.A.1 Commit 4;
-/// the companion assertion (via `DECLASSIFY_MISPLACED_CROSS_REFS.contains(...)`)
+/// Lock down the citation. The typed `Citation` pins the primary
+/// anchor (§E.1 p31 — "Declassify On is a CAB line"). The
+/// cross-reference to §D.1 p27 lives on the rule's
+/// `DECLASSIFY_MISPLACED_CROSS_REFS` constant; the companion assertion
+/// (via `DECLASSIFY_MISPLACED_CROSS_REFS.contains(...)`)
 /// is exercised by `crates/capco/tests/citation_fidelity.rs` +
 /// `crates/capco/src/rules/citation_cross_refs_tests.rs`. This test
 /// pins the diagnostic-side primary anchor only.
@@ -144,7 +144,7 @@ fn e005_citation_anchors_at_e1_p31() {
 /// assertion collapses to "neither fix nor text_correction is
 /// populated".
 ///
-/// The G13 closure walker at
+/// The content-ignorance closure walker at
 /// `crates/capco/tests/g13_closure_fix_intent.rs` only inspects rules
 /// whose `fix.is_some()`; E005 with neither populated is unreached
 /// by that walker, so this symmetry pin is the only guard against a

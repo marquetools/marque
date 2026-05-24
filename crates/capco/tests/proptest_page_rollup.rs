@@ -9,19 +9,12 @@
 //! monotonicity, dissem-control union superset, REL-TO intersection subset,
 //! and empty-page sentinel.
 //!
-//! # PR 4b-E migration note
-//!
-//! Pre-PR-4b-E these proptests fed portions into `PageContext::add_portion`
-//! and read `expected_classification` / `expected_dissem_us` /
-//! `expected_dissem_nato` / `expected_rel_to`. Post-PR-4b-E those
-//! accessors retired and the same invariants are exercised via the
+//! These proptests exercise the page-rollup invariants via the
 //! lattice-native helpers in `marque-capco::lattice`:
 //! `ClassificationLattice::from_attrs_iter`, `DissemSet::from_attrs_iter`,
-//! `NatoDissemSet::from_attrs_iter`, `RelToBlock::from_attrs_iter`.
-//! Test file renamed from `proptest_page_context.rs` →
-//! `proptest_page_rollup.rs` and moved from `crates/ism/tests/` to
-//! `crates/capco/tests/` because the lattice helpers live in
-//! `marque-capco` (and `marque-ism` cannot dev-depend on
+//! `NatoDissemSet::from_attrs_iter`, `RelToBlock::from_attrs_iter`. The
+//! file lives in `crates/capco/tests/` because those lattice helpers
+//! live in `marque-capco` (and `marque-ism` cannot dev-depend on
 //! `marque-capco` without creating a dev-cycle).
 
 use marque_capco::lattice::{ClassificationLattice, DissemSet, NatoDissemSet, RelToBlock};
@@ -226,15 +219,12 @@ proptest! {
     }
 
     // Every dissem token in any portion's `dissem_us` must appear in
-    // the rolled-up `DissemSet`. Pins the US-namespace union
-    // direction (post PR 9b / FR-046 split — the prior
-    // `dissem_controls_union_superset` name referred to the retired
-    // unified field).
+    // the rolled-up `DissemSet`. Pins the US-namespace union direction.
     //
     // Two exception classes are NOT covered by this pure-union claim:
     //
-    // 1. **Supersession-overlay-managed tokens** (PR 4b-B Commit 2)
-    //    — `OcUsgov`, `Relido`, and `Fouo` are excluded because their
+    // 1. **Supersession-overlay-managed tokens** — `OcUsgov`, `Relido`,
+    //    and `Fouo` are excluded because their
     //    banner presence is governed by §H.8 supersession rules, not
     //    by union:
     //    - `OcUsgov` per §H.8 p136 / p140: ORCON ⊐ ORCON-USGOV;

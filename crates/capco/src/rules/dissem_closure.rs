@@ -22,14 +22,14 @@ use marque_scheme::{
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Rule: S008 — RELIDO implied by closure (byte-surfacing twin of
-//              CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS).
+// Rule: RELIDO implied by closure (byte-surfacing twin of
+//       CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS).
 //
-// C1 per #559 close-out (PM decision 2026-05-19). The lattice-layer
-// closures `CLOSURE_RELIDO_SCI` (§H.8 p154; CAT_SCI implies RELIDO
-// absent FD&R suppressors) and `CLOSURE_RELIDO_US_CLASS` (issue #524
-// Phase 3; US collateral classified implies RELIDO absent FD&R
-// suppressors) already propagate the RELIDO fact at the lattice
+// (#559). The lattice-layer closures `CLOSURE_RELIDO_SCI` (§H.8 p154;
+// CAT_SCI implies RELIDO absent FD&R suppressors) and
+// `CLOSURE_RELIDO_US_CLASS` (issue #524; US collateral classified
+// implies RELIDO absent FD&R suppressors) already propagate the RELIDO
+// fact at the lattice
 // layer. This rule is the byte-level twin: when the closure would
 // inject RELIDO into a portion that doesn't currently carry it, S008
 // fires a `Severity::Suggest` diagnostic with a `FactAdd(RELIDO,
@@ -180,16 +180,16 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 /// the portion from canonical attrs after applying the fact. The
 /// candidate_span tells the engine which region to replace.
 ///
-/// # G13 audit-content-ignorance
+/// # Audit content-ignorance
 ///
 /// The diagnostic message is a `&'static`-derived string. No
 /// `format!` interpolation of input bytes. The fact added
 /// (`TOK_RELIDO`) is a `TokenId`, not a byte sequence — Constitution
-/// V Principle V (G13).
+/// V Principle V.
 pub(super) struct RelidoImpliedByClosureRule;
 
 /// Citations S008 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 ///
 /// Authority order matches the doc-comment: §B.3 Table 2 p21 is
@@ -301,7 +301,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             // emission is single-Citation by API shape and §H.8
             // p154 is the marking-template anchor a reader will
             // most directly use to interpret "what is RELIDO". The
-            // F.1 corpus-fidelity gate's EXPECTED_UNCOVERED list
+            // corpus-fidelity gate's EXPECTED_UNCOVERED list
             // carries §B.3 Table 2 p21 for S008 — the trigger
             // citation is declared in the rule's authority slice
             // but not emitted in the per-Diagnostic Citation

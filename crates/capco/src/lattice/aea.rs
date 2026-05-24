@@ -87,23 +87,13 @@ pub enum UcniKind {
 ///    FGI section, not an ATOMAL subsection; ATOMAL has no dedicated
 ///    subsection in §H.1 through §H.9, its registration lives in
 ///    §G.2 Table 5 and its AEA-axis routing is established by the
-///    §H.7 p122 worked example, not by Table 5 itself. The PR 9c.1
-///    T134 routing decision tracked this through the parser layer.
+///    §H.7 p122 worked example, not by Table 5 itself.
 ///
-///    **CV-2 (PR 4b-B 8th-pass follow-up).** Pre-CV-2 wording said
-///    `§G.2 Table 5 p40 (ATOMAL registered as a standalone control
-///    marking; ARH = AEA)`. Verified 2026-05-16 against
-///    `crates/capco/docs/CAPCO-2016.md`: Table 5 places ATOMAL under
-///    its own row (no group header in the markdown rendering between
-///    the NATO classification rows and the BOHEMIA/BALK rows), with
-///    the ARH column reading "Requires ATOMAL read-in" — it does NOT
-///    say "ARH = AEA". The "AEA category position" routing claim
-///    derives from the §H.7 p122 worked example placement, not from
-///    Table 5. The "ARH = AEA" parenthetical was a Constitution VIII
-///    misattribution; the corrected citation pair (§G.2 Table 5 p40
-///    for registration + §H.7 p122 worked example for AEA-axis
-///    placement) preserves the routing-decision rationale without
-///    over-claiming what Table 5 says.
+///    Citation precision: §G.2 Table 5 p40 registers ATOMAL as a
+///    standalone control marking (ARH column reads "Requires ATOMAL
+///    read-in", NOT "ARH = AEA"). The AEA-category-position routing
+///    claim derives from the §H.7 p122 worked example placement, not
+///    from Table 5.
 ///
 /// `AeaSet` round-trips with `&[AeaMarking]` via
 /// [`AeaSet::from_markings`] / [`AeaSet::to_markings`], mirroring
@@ -121,26 +111,20 @@ pub enum UcniKind {
 ///
 /// # Cross-axis invariants (validated by `CapcoScheme`, not the lattice)
 ///
-/// - **CNWDI requires RD** (§H.6 p106): the lattice admits the
-///   syntactically-reachable state `cnwdi=true, primary=None`, which
-///   the `Constraint::Requires` row `E067/cnwdi-requires-rd` on
-///   `CapcoScheme::build_constraints()` catches at validation time.
-/// - **CNWDI requires class ≥ S** (§H.6 p106): covered by
-///   `E058/CNWDI-classification-floor` in the class-floor catalog
-///   (PR 3b.D T026d). Not duplicated here.
+/// - **CNWDI requires RD** (§H.6 p106): enforced structurally by
+///   [`AeaSet::from_markings_iter`], which only sets `cnwdi` while
+///   processing `AeaMarking::Rd` and therefore always produces
+///   `primary=Some(Rd)` whenever `cnwdi=true`.
+/// - **CNWDI requires class ≥ S** (§H.6 p106): covered by the
+///   CNWDI classification-floor rule in the class-floor catalog.
+///   Not duplicated here.
 /// - **UCNI strip on classified** (§H.6 p116-117 + p118-119): a
 ///   post-projection cross-axis rewrite suppresses UCNI from the
 ///   banner and adds NOFORN when banner classification > U. The
-///   algebraic shape mirrors the §3 (b) FOUO eviction matrix;
-///   PR 4b-C wires the catalog row.
+///   algebraic shape mirrors the FOUO eviction matrix.
 /// - **SIGMA cross-modifier coalescing** (§H.6 p108-109 + p113):
-///   handled by the existing `capco/frd-sigma-consolidates-into-rd-sigma`
-///   PageRewrite. PR 4b-B wires the runtime `AeaSet`-driven mutation
-///   to replace the current `never_fires` / `noop_action` stub.
-///
-/// See `docs/plans/2026-05-01-lattice-design.md` §7.5 for the
-/// formal join semantics, four worked examples, and acceptance
-/// attestation.
+///   handled by the `capco/frd-sigma-consolidates-into-rd-sigma`
+///   PageRewrite.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AeaSet {
     /// Primary axis: `Option` because not every page carries an
@@ -277,7 +261,7 @@ impl AeaSet {
     /// post-projection rewrite (see the cross-axis invariant note
     /// on [`AeaSet`]), not a lattice render-time strip.
     pub fn to_markings(&self) -> Box<[AeaMarking]> {
-        // LA-2 empty-axis fast-path: skip SmallVec / sigmas-box
+        // Empty-axis fast-path: skip SmallVec / sigmas-box
         // construction when no AEA markings were accumulated (the
         // common case on documents with no RD/FRD/TFNI/UCNI/ATOMAL
         // portions).
@@ -286,11 +270,11 @@ impl AeaSet {
         }
         // Inline-5 covers all AEA variants (Rd/Frd, DodUcni, DoeUcni,
         // Tfni, Atomal); the output stays heap-free for typical
-        // documents (LA-4).
+        // documents.
         let mut out: SmallVec<[AeaMarking; 5]> = SmallVec::with_capacity(5);
         // Sort SIGMA numbers ascending for §H.6 p108 canonical form.
         // `BTreeSet` already iterates in sorted order. Inline-8 covers
-        // the observed SIGMA range (1–99; in practice 1–5); (LA-4).
+        // the observed SIGMA range (1–99; in practice 1–5).
         let sigmas: Box<[u8]> = self
             .sigmas
             .iter()
@@ -372,7 +356,7 @@ impl AeaSet {
     }
 
     /// Read access to the CNWDI presence flag. Exposed for the
-    /// `E067/cnwdi-requires-rd` constraint and analogous cross-axis
+    /// `cnwdi-requires-rd` constraint and analogous cross-axis
     /// validation.
     pub fn cnwdi(&self) -> bool {
         self.cnwdi

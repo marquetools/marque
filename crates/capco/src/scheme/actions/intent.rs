@@ -4,9 +4,7 @@
 
 //! `ReplacementIntent` dispatch into per-axis fact mutators:
 //! [`apply_intent_to_marking`] + private [`apply_fact_add`] /
-//! [`apply_fact_remove`]. Lifted from the monolithic `actions.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! [`apply_fact_remove`].
 
 use marque_ism::CountryCode;
 use marque_scheme::{ApplyIntentError, CategoryId, FactRef, MarkingScheme, ReplacementIntent};
@@ -23,11 +21,10 @@ use super::super::*;
 /// - `FactRemove` → [`apply_fact_remove`] (CAT_DISSEM, CAT_NON_IC_DISSEM,
 ///   CAT_REL_TO wired for both CVE sentinels and open-vocab country
 ///   codes; other axes return `IntentInapplicable`).
-/// - `FactAdd` → [`apply_fact_add`] (CAT_DISSEM wired in PR 3c.B
-///   Sub-PR 8.D.1 for closed-CVE adds; CAT_REL_TO wired in PR 3c.B
-///   Sub-PR 8.D.4 for open-vocab CountryCode adds — E014's JOINT
-///   co-owner coverage path; other axes return `IntentInapplicable`
-///   until their own migration sub-PRs land).
+/// - `FactAdd` → [`apply_fact_add`] (CAT_DISSEM for closed-CVE adds;
+///   CAT_REL_TO for open-vocab CountryCode adds — the JOINT co-owner
+///   coverage path; other axes return `IntentInapplicable` until their
+///   own migrations land).
 /// - `Recanonicalize` → no fact-set mutation (the engine renders the
 ///   marking via `render_canonical` to produce the canonical form).
 ///
@@ -82,7 +79,7 @@ pub(crate) fn apply_intent_to_marking(
             }
         }
         ReplacementIntent::FactAdd { token, scope: _ } => {
-            // PR 3c.B Sub-PR 8.D.1 — first consumer of FactAdd.
+            // First consumer of FactAdd.
             // Routes through `category_of` then to the per-axis adder
             // (`apply_fact_add`). Pre-migration axes (SCI, SAR,
             // JOINT, AEA, REL TO, classification) return
@@ -123,10 +120,10 @@ pub(crate) fn apply_intent_to_marking(
 ///
 /// Wired axes today:
 ///
-/// - **CAT_DISSEM** (PR 3c.B Sub-PR 8.D.1): closed-CVE FactAdd —
+/// - **CAT_DISSEM**: closed-CVE FactAdd —
 ///   E038 (NODIS/EXDIS-requires-NOFORN) emits `FactAdd { TOK_NOFORN,
 ///   Portion }`; E021 (AEA-requires-NOFORN) emits the same shape.
-/// - **CAT_REL_TO** (PR 3c.B Sub-PR 8.D.4): open-vocab FactAdd via
+/// - **CAT_REL_TO**: open-vocab FactAdd via
 ///   `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(...))` —
 ///   E014 (JOINT-requires-REL-TO-coverage) emits one FactAdd per
 ///   missing JOINT co-owner.
@@ -168,7 +165,7 @@ fn apply_fact_add(
     let attrs = &mut marking.0;
 
     // CAT_REL_TO is the first axis wired for open-vocab FactAdd
-    // (PR 3c.B Sub-PR 8.D.4 — E014 JOINT co-owner coverage). Handle
+    // (the JOINT co-owner coverage path). Handle
     // the open-vocab CountryCode branch BEFORE the CVE-only `id`
     // extraction so we don't have to thread the `FactRef` itself
     // through the closed-vocab match below.
@@ -181,12 +178,9 @@ fn apply_fact_add(
             // CVE-side TOK_USA is mapped to `CountryCode::USA` for
             // back-compat with E002 (`crates/capco/src/rules.rs:559`),
             // which emits `FactAdd { token: Cve(TOK_USA), scope }` to
-            // ensure USA appears in REL TO. Before this arm existed,
-            // E002's FactAdd silently no-op'd through the CAT_REL_TO
-            // fall-through (returning `IntentInapplicable`) and the
-            // dual-population legacy `FixProposal` did the real work;
-            // post-PR-3c.B-Sub-PR-8.D.4 the open-vocab path is wired and
-            // we honor the existing CVE emission too. Mapping is safe
+            // ensure USA appears in REL TO. The open-vocab path is
+            // wired and the existing CVE emission is honored too. Mapping
+            // is safe
             // because `CountryCode::USA` is a `const` literal validated
             // against `try_new` at compile time.
             FactRef::Cve(id) if *id == TOK_USA => marque_ism::CountryCode::USA,
@@ -240,15 +234,14 @@ fn apply_fact_add(
             TOK_ORCON_USGOV => DissemControl::OcUsgov,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
-        // PR 9b (T132): FactAdd on the CAT_DISSEM axis writes to
-        // `dissem_us` by default. The CAPCO-2016 p41 reciprocity rule
-        // says these tokens are US-attributed in any US-classified
-        // marking (the overwhelming majority of FactAdd consumers);
-        // for the rare pure-NATO portion, the engine's caller would
-        // need a namespace-aware intent (out of scope for PR 9b — see
-        // `specs/006-engine-rule-refactor/decisions.md` D9b-1).
-        // Presence check spans both namespaces to avoid duplicating a
-        // token already attributed to the NATO side.
+        // FactAdd on the CAT_DISSEM axis writes to `dissem_us` by
+        // default. The CAPCO-2016 p41 reciprocity rule says these tokens
+        // are US-attributed in any US-classified marking (the
+        // overwhelming majority of FactAdd consumers); for the rare
+        // pure-NATO portion, the engine's caller would need a
+        // namespace-aware intent. Presence check spans both namespaces
+        // to avoid duplicating a token already attributed to the NATO
+        // side.
         if attrs.dissem_iter().any(|d| d == &target) {
             // Per-intent no-op: token already present, no mutation
             // applied. Return `IntentInapplicable` so the batch-level
@@ -342,10 +335,10 @@ fn apply_fact_add(
         }
         let mut next: Vec<DissemControl> = attrs.dissem_us.to_vec();
         next.push(target);
-        // D9b-1 (decisions.md): FactAdd writes to dissem_us unconditionally;
-        // pure-NATO portions needing FactAdd on dissem_nato require namespace-
-        // aware intent. Deferred to PR 10+ if cross-system translation surfaces
-        // the need.
+        // FactAdd writes to dissem_us unconditionally; pure-NATO
+        // portions needing FactAdd on dissem_nato would require a
+        // namespace-aware intent (deferred until cross-system
+        // translation surfaces the need).
         attrs.dissem_us = next.into_boxed_slice();
         return Ok(());
     }
@@ -388,7 +381,7 @@ fn apply_fact_remove(
     let attrs = &mut marking.0;
 
     // CAT_REL_TO open-vocab country-code removal: symmetric with the
-    // FactAdd path wired in PR 3c.B Sub-PR 8.D.4. Wired for
+    // FactAdd path. Wired for
     // round-trip symmetry; no current emitter targets per-country
     // FactRemove on REL TO (E053 uses the `TOK_REL_TO` whole-axis-
     // clear sentinel; E002 USA-not-first uses `Recanonicalize`, not
@@ -426,7 +419,7 @@ fn apply_fact_remove(
             TOK_DISPLAY_ONLY => DissemControl::Displayonly,
             TOK_ORCON => DissemControl::Oc,
             TOK_ORCON_USGOV => DissemControl::OcUsgov,
-            // PR 4b-C Commit 3 — TOK_FOUO removal for the
+            // TOK_FOUO removal for the
             // `capco/classification-evicts-fouo` and
             // `capco/non-fdr-control-evicts-fouo` Pattern-B + C rows.
             // §H.8 p134 (FOUO Precedence Rules for Banner Line Guidance):
@@ -459,13 +452,11 @@ fn apply_fact_remove(
             TOK_EYES => DissemControl::Eyes,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
-        // PR 9b (T132): FactRemove on the CAT_DISSEM axis filters the
-        // target token from BOTH namespaces — a removal request is
-        // namespace-agnostic at the rule level (the rule says "drop
-        // RELIDO", not "drop RELIDO from US"; consumers that need
-        // namespace-aware removal would have to plumb a new
-        // ReplacementIntent variant — out of scope per PR 9b
-        // decision D9b-1).
+        // FactRemove on the CAT_DISSEM axis filters the target token
+        // from BOTH namespaces — a removal request is namespace-agnostic
+        // at the rule level (the rule says "drop RELIDO", not "drop
+        // RELIDO from US"; consumers that need namespace-aware removal
+        // would have to plumb a new ReplacementIntent variant).
         let before = attrs.dissem_us.len() + attrs.dissem_nato.len();
         let kept_us: Vec<DissemControl> = attrs
             .dissem_us
@@ -488,15 +479,15 @@ fn apply_fact_remove(
     }
 
     if category == CAT_NON_IC_DISSEM {
-        // PR 4b-C Commit 3 — extended LIMDIS / SBU removal for the
+        // Extended LIMDIS / SBU removal for the
         // Pattern-C `capco/limdis-evicted-by-classified` /
         // `capco/sbu-evicted-by-classified` rows. #541 extended the
         // dispatch with TOK_SBU_NF for `capco/sbu-nf-evicted-by-
         // classified` (§H.9 p178 Commingling Rule(s) Within a
-        // Portion) — see §3.5 carve-out note below.
+        // Portion) — see the carve-out note below.
         //
         // **§3.5 compound-NF guard (revised #541)**: the original
-        // §3.5 invariant said Pattern-C strip rows MUST NOT touch
+        // The compound-NF invariant: Pattern-C strip rows MUST NOT touch
         // SbuNf / LesNf "because the parallel implies-noforn
         // rewrites carry NF identity separately." That phrasing was
         // correct for LesNf — §H.9 p185 (LES NOFORN Precedence
@@ -595,14 +586,14 @@ fn apply_fact_remove(
         //
         // - `FactRef::OpenVocab(CountryCode(...))`: per-country
         //   removal (handled above before the CVE-id extraction).
-        //   Wired by PR 3c.B Sub-PR 8.D.4 for round-trip symmetry
+        //   Wired for round-trip symmetry
         //   with the E014 FactAdd path; no current emitter targets
         //   FactRemove on a per-country basis (E053 uses the whole-
         //   axis-clear sentinel, E002 USA-not-first uses
         //   Recanonicalize).
         // - `FactRef::Cve(TOK_USA)`: remove only the USA entry from
         //   `attrs.rel_to`.
-        // - `FactRef::Cve(TOK_REL_TO)` (PR 3c.B Sub-PR 8.D.2):
+        // - `FactRef::Cve(TOK_REL_TO)`:
         //   whole-axis clear. E053 (NOFORN ⊥ REL TO, §H.8 p145)
         //   emits this sentinel — NOFORN supersedes the entire
         //   REL TO list, not just USA. Analog to the
@@ -641,7 +632,7 @@ fn apply_fact_remove(
     }
 
     if category == CAT_AEA {
-        // PR 3c.B Sub-PR 8.C — E024 atomic-cluster migration.
+        // E024 atomic-cluster migration.
         // Wire FRD and TFNI removal so the multi-fact FactRemove intent
         // can atomically remove both superseded markings when RD is present.
         // TOK_CNWDI and TOK_UCNI removal are deferred to later sub-PRs

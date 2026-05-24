@@ -7,14 +7,10 @@
 //! Each test translates an authoritative XSpec scenario into a Rust test.
 //! Uses Default::default() + field mutation since CanonicalAttrs is #[non_exhaustive].
 //!
-//! # PR 4b-E migration note
-//!
-//! Pre-PR-4b-E these tests read `PageContext::expected_*` accessors
-//! directly. Post-PR-4b-E those accessors retired in favor of the
-//! lattice-native helpers in `marque-capco::lattice` and the
-//! scheme-level `render_canonical(Scope::Page, ...)` renderer. The
-//! tests now construct `CanonicalAttrs` portions and exercise the
-//! same axes via:
+//! These tests construct `CanonicalAttrs` portions and exercise the
+//! page-rollup axes via the lattice-native helpers in
+//! `marque-capco::lattice` and the scheme-level
+//! `render_canonical(Scope::Page, ...)` renderer:
 //!
 //! - `ClassificationLattice::from_attrs_iter(&[CanonicalAttrs])` for
 //!   the max-classification roll-up.
@@ -105,8 +101,8 @@ fn aea_multiple_sigma_aggregated() {
 
 /// XSpec: "AEARollup Ensure AEA U marks drop in classified doc."
 ///
-/// PR 4b-E (and PR 4b-C Commit 5 / PR 4b-D.2 history): the §H.6 p116 /
-/// p118 UCNI strip lives in the declarative PageRewrite catalog on
+/// The §H.6 p116 / p118 UCNI strip lives in the declarative
+/// PageRewrite catalog on
 /// `CapcoScheme` (`capco/dod-ucni-evicted-by-classified` +
 /// `capco/doe-ucni-evicted-by-classified` + the two NOFORN-promotion
 /// siblings). The per-axis `AeaSet::from_markings(...).to_markings()`
@@ -139,8 +135,8 @@ fn aea_ucni_strip_on_classified_via_scheme_project() {
         aea.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
         "per-axis AeaSet helper keeps DOD UCNI; aea = {aea:?}"
     );
-    // Copilot R1 suppressed-comment fix: the fixture sets both DOD UCNI
-    // (p1) and DOE UCNI (p2). DOD UCNI lives at §H.6 p116; DOE UCNI
+    // The fixture sets both DOD UCNI (p1) and DOE UCNI (p2). DOD UCNI
+    // lives at §H.6 p116; DOE UCNI
     // lives at §H.6 p118. The per-axis helper carries no cross-axis
     // classification gate, so both variants must survive — asymmetric
     // handling between DOD/DOE UCNI in `AeaSet::from_markings` would
@@ -483,9 +479,8 @@ fn dissem_oc_usgov_drops_partial() {
 
 /// OC-USGOV drops under §H.8 p136 supersession when ORCON is present
 /// anywhere — including when both ORCON and ORCON-USGOV are on every
-/// portion. PR 4b-B (006 T112) Commit 2 retired the pre-fix unanimity
-/// semantic (which would have kept OC-USGOV here) in favor of the
-/// authoritative supersession rule.
+/// portion. A unanimity semantic (which would keep OC-USGOV here) is
+/// wrong; the authoritative supersession rule drops it.
 #[test]
 fn dissem_oc_usgov_drops_under_supersession_even_when_unanimous() {
     let mut p1 = portion(Classification::Secret);
@@ -502,7 +497,7 @@ fn dissem_oc_usgov_drops_under_supersession_even_when_unanimous() {
     assert!(
         !dissem.contains(&DissemControl::OcUsgov),
         "ORCON-USGOV should drop under §H.8 p136 supersession when \
-         ORCON is anywhere on the page (PR 4b-B Commit 2): {dissem:?}"
+         ORCON is anywhere on the page: {dissem:?}"
     );
 }
 
@@ -614,8 +609,8 @@ fn country_noforn_supersedes_rel() {
     assert!(dissem.contains(&DissemControl::Nf));
 }
 
-/// PR 3c.B-8F-engine-gap: NODIS in any portion injects NOFORN into the
-/// rendered banner per CAPCO-2016 §H.9 p174 verbatim — "REL TO is not
+/// NODIS in any portion injects NOFORN into the rendered banner per
+/// CAPCO-2016 §H.9 p174 verbatim — "REL TO is not
 /// authorized in the banner line if any portion contains NODIS information.
 /// In this case, NOFORN would convey in the banner line."
 ///
@@ -650,8 +645,8 @@ fn banner_renders_noforn_when_portion_has_nodis() {
     );
 }
 
-/// PR 3c.B-8F-engine-gap: EXDIS in any portion injects NOFORN into the
-/// rendered banner per CAPCO-2016 §H.9 p172 verbatim — "REL TO is not
+/// EXDIS in any portion injects NOFORN into the rendered banner per
+/// CAPCO-2016 §H.9 p172 verbatim — "REL TO is not
 /// authorized in the banner line if any portion contains EXDIS information.
 /// In this case, NOFORN would convey in the banner line."
 ///

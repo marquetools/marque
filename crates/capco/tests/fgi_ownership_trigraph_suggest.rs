@@ -332,7 +332,7 @@ fn diagnostic_span_anchors_on_unregistered_token_bytes() {
 }
 
 // ---------------------------------------------------------------------------
-// Severity::Off gate (Constitution V Principle V / FR-008)
+// Severity::Off gate (Constitution V Principle V)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -351,7 +351,7 @@ fn severity_off_suppresses_all_diagnostics() {
     assert!(
         hits.is_empty(),
         "`{RULE_WIRE_STRING} = off` must suppress all diagnostics \
-         (FR-008 / Constitution V Principle V); got {hits:?}",
+         (Constitution V Principle V); got {hits:?}",
     );
 }
 

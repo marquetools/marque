@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T097 — Layer 2 parse-render round-trip property test (PR 2 / US4).
+//! Layer 2 parse-render round-trip property test.
 //!
 //! Pins the contract: for every well-formed marking `s` in the strict-path
 //! corpus,
@@ -15,16 +15,14 @@
 //! ```
 //!
 //! is idempotent at the AST level. The exact "modulo renderer coverage"
-//! qualifier is the load-bearing detail — the current `MarkingScheme::render_*`
-//! impl on `CapcoScheme` is intentionally a Phase A stub that emits *only* the
-//! classification level (`"SECRET"` for banners, `"S"` for portions); the full
-//! `S::render_canonical` lands in PR 3c (T048 in the same spec). Until that
-//! lands, this file pins the *narrowest defensible* round-trip — the
-//! classification axis the current renderer covers — and gates the full
-//! attr-surface round-trip behind `#[ignore]` with the tracked task reference.
+//! qualifier is the load-bearing detail — when the `MarkingScheme::render_*`
+//! impl on `CapcoScheme` emits only the classification level (`"SECRET"` for
+//! banners, `"S"` for portions), this file pins the *narrowest defensible*
+//! round-trip — the classification axis the renderer covers — and gates the
+//! full attr-surface round-trip behind `#[ignore]`.
 //!
-//! Pinning the narrow round-trip now (rather than waiting for T048) catches a
-//! real regression class: if a future change breaks `Classification` parsing
+//! Pinning the narrow round-trip catches a real regression class: if a
+//! future change breaks `Classification` parsing
 //! or breaks the `effective_level → banner_str / portion_str → re-parse`
 //! cycle, this test fires immediately. The full-attribute round-trip is
 //! useful as a guardrail; the classification round-trip is useful as an
@@ -35,14 +33,8 @@
 //! - CAPCO-2016 §A.6 p15 — banner + portion grammar.
 //! - CAPCO-2016 §H.7 p122 — FGI banner/portion forms (lawful concealed +
 //!   acknowledged variants).
-//! - Specs/006 FR-019 (codec round-trip preservation), SC-010
-//!   (parse-render-parse idempotence on the strict-path corpus).
-//!
-//! # Spec linkage
-//!
-//! - T097 (this test).
-//! - T048 (full `MarkingScheme::render_canonical`; full round-trip is gated
-//!   on this).
+//! The full round-trip is gated on the full
+//! `MarkingScheme::render_canonical` impl landing.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, Scanner};
@@ -65,12 +57,9 @@ fn parse_with_kind(
     source: &[u8],
     kind: MarkingType,
 ) -> Option<CanonicalAttrs> {
-    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
-    // as its first parameter so callers that already construct a scheme
-    // for rendering / lattice work can reuse it. Per PM-B-3: "Where the
-    // test helper is module-level and called from multiple #[test]
-    // functions, the helper takes `&CapcoScheme` as a parameter; each
-    // #[test] constructs the scheme inline."
+    // The helper takes `&CapcoScheme` as its first parameter so callers
+    // that already construct a scheme for rendering / lattice work can
+    // reuse it.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -111,8 +100,8 @@ enum Kind {
     Portion,
     Banner,
     /// Skipped at the round-trip step. The current renderer does not emit
-    /// CAB blocks; T048 will. Counted in the test summary so a corpus
-    /// expansion is visible.
+    /// CAB blocks. Counted in the test summary so a corpus expansion is
+    /// visible.
     Cab,
     /// Multiple markings on the line (e.g., a portion glued to prose). Not
     /// in the round-trip set; the per-fixture corpus covers single-marking
@@ -166,9 +155,8 @@ fn fixture_text(bytes: &[u8]) -> String {
 // Classification round-trip (current renderer coverage)
 //
 // The `MarkingScheme::render_portion` / `render_banner` impl on `CapcoScheme`
-// today emits the classification level only (Phase A stub; full
-// `render_canonical` is T048 / PR 3c). The narrowest round-trip the renderer
-// can satisfy is on `Classification::effective_level()`.
+// today emits the classification level only. The narrowest round-trip the
+// renderer can satisfy is on `Classification::effective_level()`.
 //
 // This pins the contract on every banner / portion fixture in the strict-
 // path corpus. Failure means either:
@@ -222,10 +210,10 @@ fn render_and_reparse_classification(
     // The classification axis is the current renderer's coverage. We
     // compare `effective_level()` rather than the full
     // `MarkingClassification` because the renderer drops the originating
-    // system (US / NATO / FGI / JOINT) and emits the level only — that
-    // is the gap T048 closes. `effective_level()` collapses every system
-    // to its `Classification` rung, which is exactly the data the
-    // renderer-then-reparser pipeline preserves.
+    // system (US / NATO / FGI / JOINT) and emits the level only.
+    // `effective_level()` collapses every system to its `Classification`
+    // rung, which is exactly the data the renderer-then-reparser
+    // pipeline preserves.
     let level1 = attrs1
         .classification
         .as_ref()
@@ -251,9 +239,8 @@ fn render_and_reparse_classification(
 fn classification_round_trips_across_strict_corpus() {
     // Drive every fixture under `tests/corpus/valid/` through the
     // narrow round-trip. The strict-path corpus is the load-bearing
-    // input set: byte-identical pre/post-PR diagnostics is the SC-008
-    // parity gate; classification round-trip is the FR-019 / SC-010
-    // closure scoped to the renderer's current coverage.
+    // input set; classification round-trip is the parse-render-parse
+    // idempotence closure scoped to the renderer's current coverage.
     let scheme = CapcoScheme::new();
     let fixtures = valid_fixtures();
     assert!(
@@ -298,13 +285,12 @@ fn classification_round_trips_across_strict_corpus() {
 }
 
 // =============================================================================
-// Targeted round-trips at the FR-016 / FR-017 closure (PR 2 acceptance
-// surface). These are the cases the FR pinning is *for*: bare FGI, FGI
-// with a single trigraph, FGI with multiple trigraphs, and SAR program-
-// only / program-with-compartment forms. These are not corpus-driven —
-// they're synthetic inputs that exercise the FR-016/017 closure that PR 2
-// landed. The corpus-wide test above provides breadth; these provide
-// depth at the load-bearing FR-016 / FR-017 surface.
+// Targeted round-trips at the FGI/SAR closure. These are the cases the
+// pinning is *for*: bare FGI, FGI with a single trigraph, FGI with
+// multiple trigraphs, and SAR program-only / program-with-compartment
+// forms. They are synthetic inputs, not corpus-driven; the corpus-wide
+// test above provides breadth, these provide depth at the load-bearing
+// FGI/SAR closure surface.
 //
 // Each test verifies that re-parsing the rendered classification produces
 // the same level — the narrowest invariant the current renderer can
@@ -313,10 +299,10 @@ fn classification_round_trips_across_strict_corpus() {
 
 #[test]
 fn fr016_bare_fgi_classification_round_trips() {
-    // CAPCO-2016 §H.7 p122 lawful concealed form. PR 2's FR-016 closure
-    // pins this to `Some(SourceConcealed)` rather than the pre-FR-016
-    // degraded `Some(FgiMarker { countries: [] })`. The classification
-    // axis ("SECRET") round-trips through the renderer.
+    // CAPCO-2016 §H.7 p122 lawful concealed form. The FGI closure pins
+    // this to `Some(SourceConcealed)` rather than the degraded
+    // `Some(FgiMarker { countries: [] })`. The classification axis
+    // ("SECRET") round-trips through the renderer.
     let scheme = CapcoScheme::new();
     let attrs1 = parse_banner(&scheme, "SECRET//FGI//NOFORN");
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
@@ -418,14 +404,13 @@ fn fr015_sar_program_with_compartment_classification_round_trips() {
 }
 
 // =============================================================================
-// Full-attribute round-trip — IDEMPOTENCE form (PR 3c.B Commit 5).
+// Full-attribute round-trip — IDEMPOTENCE form.
 //
-// The renderer now has substantive per-axis bodies in
-// `crates/capco/src/render/`. Per
-// `specs/006-engine-rule-refactor/architecture.md` §3.0.a "form is not
-// shape": "Two markings that differ only in delimiter, sort order,
-// abbreviation, or inter-category position are lattice-equal on every
-// axis. The renderer chooses one canonical representative."
+// The renderer has substantive per-axis bodies in
+// `crates/capco/src/render/`. Per the "form is not shape" principle:
+// two markings that differ only in delimiter, sort order, abbreviation,
+// or inter-category position are lattice-equal on every axis, and the
+// renderer chooses one canonical representative.
 //
 // The strict-AST round-trip property `attrs1 == attrs2` therefore does
 // NOT hold for inputs that differ from canonical form (e.g.,
@@ -447,10 +432,8 @@ fn fr015_sar_program_with_compartment_classification_round_trips() {
 // same property across the strict-path corpus rather than hand-
 // curated pairs.
 //
-// History: T097 (PR 2 / US4) was `#[ignore]`'d pending T048 / PR 3c.B
-// Commit 5 with the strict `attrs1 == attrs2` assertion. The
-// `#[ignore]` is removed and the assertion shape switched to
-// idempotence per the architecture restatement (form is not shape).
+// The assertion shape is idempotence rather than strict
+// `attrs1 == attrs2` because form is not shape.
 // =============================================================================
 
 #[test]

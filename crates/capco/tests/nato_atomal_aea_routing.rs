@@ -2,12 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 9c.1 T134 — ATOMAL routes onto the AEA axis, not into a fused
+//! ATOMAL routes onto the AEA axis, not into a fused
 //! `NatoClassification` variant.
 //!
-//! The legacy two-axis fusion (`NatoClassification::*Atomal`) was retired
-//! in Commit 5 of PR 9c.1. The parser now lifts ATOMAL out of the
-//! classification text and writes it as an [`AeaMarking::Atomal`] on
+//! The legacy two-axis fusion (`NatoClassification::*Atomal`) is
+//! retired. The parser lifts ATOMAL out of the classification text and
+//! writes it as an [`AeaMarking::Atomal`] on
 //! `attrs.aea_markings`, leaving the classification axis carrying only
 //! `NatoClassification::CosmicTopSecret` / `NatoSecret` / `NatoConfidential`.
 //!
@@ -28,11 +28,6 @@
 //! - CAPCO-2016 §A.6 p15-17 (multi-block portion grammar; ATOMAL is its
 //!   own block separated by `//`).
 //!
-//! # Spec linkage
-//!
-//! Reviewer fix-up under PR 9c.1 R0 (Commit 10) — replaces the empty
-//! file fabricated in Commit 9 with substantive assertions.
-
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_core::Parser;
@@ -61,12 +56,8 @@ fn parse_with_kind(
     source: &[u8],
     kind: MarkingType,
 ) -> marque_ism::CanonicalAttrs {
-    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
-    // so each #[test] can reuse a single scheme rather than allocating
-    // one per parse. Per PM-B-3: "Where the test helper is module-level
-    // and called from multiple #[test] functions, the helper takes
-    // `&CapcoScheme` as a parameter; each #[test] constructs the scheme
-    // inline."
+    // The helper takes `&CapcoScheme` so each #[test] can reuse a single
+    // scheme rather than allocating one per parse.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -129,8 +120,8 @@ fn atomal_on_aea_axis_not_nato_classification() {
 // NSAT / NS-A / NCA / NC-A. Each test below pins a representative.
 // ---------------------------------------------------------------------------
 
-/// `(//CTSA)` — legacy fused portion form. After PR 9c.1 the parser
-/// emits CTS on the classification axis and ATOMAL on the AEA axis.
+/// `(//CTSA)` — legacy fused portion form. The parser emits CTS on the
+/// classification axis and ATOMAL on the AEA axis.
 /// The `//` prefix is mandatory for NATO portion forms per the
 /// portion grammar in CAPCO-2016 §A.6 p15-17.
 ///

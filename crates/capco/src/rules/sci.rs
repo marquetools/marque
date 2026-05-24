@@ -55,18 +55,15 @@ use crate::scheme::CapcoScheme;
 /// CI-blocking should configure `W034 = "info"` if they want
 /// audit-visibility only.)
 ///
-/// T035c-2 landed the `Severity::Info` variant and dropped the earlier
-/// `Severity::Off` workaround. Previously, the rule emitted `Diagnostic`
-/// values at `Severity::Off` — a state `Principle IV` declares
-/// unrepresentable — and relied on the test harness bypassing
-/// engine-level severity filtering to observe the diagnostics. That was
-/// a constitutional-invariant violation. Users who want informational
-/// (non-warn) treatment can configure `W034 = "info"` in `.marque.toml`;
-/// users who want it silent can configure `W034 = "off"`.
+/// The rule emits at `Severity::Warn` by default (never `Severity::Off`,
+/// which `Principle IV` declares unrepresentable for an emitted
+/// diagnostic). Users who want informational (non-warn) treatment can
+/// configure the rule to `"info"` in `.marque.toml`; users who want it
+/// silent can configure `"off"`.
 pub(super) struct SciCustomControlInfoRule;
 
-/// Citations W034 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// Citations this rule may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const SCI_CUSTOM_CONTROL_INFO_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 4, 61),
@@ -131,7 +128,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
                     .get(idx)
                     .map(|t| t.span)
                     .unwrap_or(Span::new(0, 0));
-                // G13: drop runtime byte text. Template names the
+                // Audit content-ignorance: drop runtime byte text. Template names the
                 // unpublished-control class.
                 let _ = s;
                 out.push(Diagnostic::new(
@@ -179,7 +176,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
 pub(super) struct HcsBareAtConfidentialLegacyRemarkRule;
 
 /// Citations E061 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const HCS_BARE_AT_CONFIDENTIAL_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
@@ -281,7 +278,7 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
 pub(super) struct HcsBareSuggestSubcompartmentRule;
 
 /// Citations E062 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const HCS_BARE_SUGGEST_SUB_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
 
@@ -356,7 +353,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
         let candidates: &[&str] = &["HCS-O", "HCS-P", "HCS-O-P"];
         let mut out = Vec::with_capacity(candidates.len());
         for candidate in candidates {
-            // G13: candidate replacement is on the audit permitted list
+            // Audit content-ignorance: candidate replacement is on the audit permitted list
             // (canonical token from a closed set); the typed `Message`
             // identifies the superseded-token class.
             out.push(Diagnostic::text_correction(
@@ -405,7 +402,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
 pub(super) struct RsvBareRequiresCompartmentRule;
 
 /// Citations E063 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const RSV_BARE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 70)];
 
@@ -498,7 +495,3 @@ pub(crate) fn render_sci_block(markings: &[SciMarking]) -> String {
     }
     parts.join("/")
 }
-
-// PR 9b (T133): the `page_expected_sci_markings` helper retired with
-// the migration of `evaluate_sci_banner_rollup` to read
-// `ProjectedMarking::sci_markings` directly. Banner-validation rules

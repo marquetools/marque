@@ -2,21 +2,18 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! S005 (`capco:page.dissem.rel-to-uncertain-reduction`) Constitution
-//! V Principle V (G13) audit-content-ignorance pin ported from
-//! `crates/capco/src/_disabled_tests.rs` per issue #722.
+//! S005 (`capco:page.dissem.rel-to-uncertain-reduction`)
+//! audit-content-ignorance pin (Constitution V Principle V).
 //!
 //! Pair file to `s004_audit_content_ignorance.rs` — same shape, same
 //! discipline, different rule.
 //!
-//! # Source test ported
+//! # What this pins
 //!
-//! - `s005_audit_content_ignorance_no_user_content_in_message` —
-//!   the legacy test asserted `!s005.message.contains("Operation
-//!   Confidential")` to verify the rule did not splice surrounding
-//!   document text into the diagnostic message.
+//! The rule must not splice surrounding document text into the
+//! diagnostic message.
 //!
-//! # PR 3c.2.C C5 reshape
+//! # Message reshape
 //!
 //! Under the closed-template `Message` shape and the typed `Citation`
 //! struct, the message- and citation-leak channels are now
@@ -115,9 +112,9 @@ fn s005_fires_on_audit_content_ignorance_fixture() {
     );
 }
 
-/// PR 3c.2.C C5: `Diagnostic.message` carries `MessageTemplate`
-/// (closed enum) + `MessageArgs` (closed struct of typed
-/// identifiers); raw bytes are unrepresentable. Verify the structural
+/// `Diagnostic.message` carries `MessageTemplate` (closed enum) +
+/// `MessageArgs` (closed struct of typed identifiers); raw bytes are
+/// unrepresentable. Verify the structural
 /// property: S005's template label is a fixed `&'static str` from
 /// the closed enum, and the rendered label contains no fixture
 /// prose. The compile-fail doctests in `crates/rules/src/message.rs`
@@ -160,8 +157,8 @@ fn s005_message_template_label_carries_no_document_content() {
     }
 }
 
-/// PR 3c.2.C C5: `Diagnostic.citation` is a typed `Citation` struct.
-/// The Display impl emits a fixed `§<L>.<sub> p<N>` shape for CAPCO
+/// `Diagnostic.citation` is a typed `Citation` struct. The Display
+/// impl emits a fixed `§<L>.<sub> p<N>` shape for CAPCO
 /// sources (no free-form prose) or a `[<source>]` sentinel for
 /// non-CAPCO sources. Verify the rendered form contains no fixture
 /// prose and starts with the canonical `§` lead-in.

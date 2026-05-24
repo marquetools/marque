@@ -17,7 +17,7 @@ use super::BannerCategoryRow;
 /// reciprocal classification ladder and the worked examples on
 /// pp126-129.
 ///
-/// Detection cases (Constitution V G13: no document values
+/// Detection cases (Constitution V audit content-ignorance: no document values
 /// interpolated into the message; the message describes the axis
 /// only, not the observed or projected values):
 ///
@@ -66,7 +66,7 @@ pub(super) fn evaluate_classification_banner_rollup(
         }
     }
 
-    // PR 3c.2.C C5 / G13: collapse the 4 string-literal reasons into
+    // Audit content-ignorance: collapse the 4 string-literal reasons into
     // the typed `MessageTemplate::BannerRollupMismatch` with
     // `category=CAT_CLASSIFICATION`. The narrative distinction
     // (missing / over-classified / level-disagrees / variant-disagrees)
@@ -86,7 +86,7 @@ pub(super) fn evaluate_classification_banner_rollup(
     }
 
     // Span: point at the first token of the banner candidate so the
-    // user can locate the offending line. Per Constitution V G13 the
+    // user can locate the offending line. Per Constitution V audit content-ignorance the
     // span is structural metadata, not document content.
     let span = attrs
         .token_spans

@@ -10,7 +10,7 @@
 //! `bitmask_companion_required`, and `bitmask_companion_forbidden` to every
 //! [`SciPerSystemRow`]:
 //!
-//!  * **Total rows**: 5 (unchanged since PR 3b.E / T026e)
+//!  * **Total rows**: 5
 //!  * **Rows with `bitmask_trigger: Some(_)`**: 5 (100% coverage)
 //!  * **Rows with `bitmask_trigger_exact: true`**: 4 (exact-hit rows;
 //!    only HCS-P-NOFORN uses the coarse SCI_PRESENT gate)

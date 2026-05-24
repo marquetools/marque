@@ -22,10 +22,10 @@ use marque_scheme::{
 /// `Unclassified < Restricted < Confidential < Secret < TopSecret`
 /// per CAPCO-2016 §H.1 pp47-54 (US-domestic levels) and §H.2 p55 /
 /// `NatoClassification::us_equivalent()` (NATO `NR` maps to
-/// `Restricted` in the foreign-interop tier between U and C). M-7
-/// (PR 4b-B follow-up): the chain is five elements, not four —
-/// `Restricted` survives as a foreign-interop tier for portions
-/// that carry NATO `NR` or an FGI source whose foreign system has
+/// `Restricted` in the foreign-interop tier between U and C). The
+/// chain is five elements, not four — `Restricted` survives as a
+/// foreign-interop tier for portions that carry NATO `NR` or an FGI
+/// source whose foreign system has
 /// a RESTRICTED level (`FgiClassification.level = Restricted`).
 /// Foreign classifications normalize to the US chain at portion-
 /// parse time via §H.7 pp123-125's reciprocal-classification rule
@@ -54,7 +54,7 @@ use marque_scheme::{
 /// matches the post-§H.7-reciprocal-normalization order rules
 /// downstream expect.
 ///
-/// **Same-variant payload tiebreak** (C-7 PR 4b-B follow-up). At
+/// **Same-variant payload tiebreak.** At
 /// same level + same variant, country-bearing payloads (`Fgi`,
 /// `Joint`) are **unioned** rather than picking one operand by
 /// pointer order — `Fgi(S, [GBR]).join(Fgi(S, [CAN])) =
@@ -69,10 +69,10 @@ use marque_scheme::{
 ///
 /// `BoundedLattice` is implemented: top = `Some(Us(TopSecret))`,
 /// bottom = `None`. The class chain is closed at five elements
-/// (`Unclassified < Restricted < Confidential < Secret < TopSecret`,
-/// M-7 PR 4b-B follow-up); no agency-extensibility concern.
+/// (`Unclassified < Restricted < Confidential < Secret < TopSecret`);
+/// no agency-extensibility concern.
 ///
-/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// §-authority (CAPCO-2016.md):
 /// - §H.1 pp47-54 (US class chain).
 /// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain
 ///   and to Manual Appendix A for FVEY equivalence).
@@ -89,16 +89,10 @@ use marque_scheme::{
 /// appendix is an out-of-tree cross-reference, parallel to ISOO
 /// section 3.3 in the `DeclassifyOnLattice` doc-comment.
 ///
-/// **CV-3 (PR 4b-B 8th-pass follow-up).** Pre-CV-3 wording listed
-/// `§A.4 p13 (IC Markings System Structure — classification hierarchy)`.
-/// Verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`:
-/// §A.4 p13 is a one-paragraph framing of "IC Markings System
-/// Structure"; the §A.4 Table 1 IC Markings System Artifacts (which
-/// names Appendix A as the FVEY equivalence reference) lands on
-/// p14, not p13. Neither sub-page enumerates the classification
-/// hierarchy itself. The §H.1 + §H.2 + Manual Appendix A citations
-/// above carry the hierarchy + reciprocal-mapping authority that
-/// the lattice actually relies on; §A.4 p13 was decorative.
+/// The hierarchy + reciprocal-mapping authority comes from the §H.1 +
+/// §H.2 + Manual Appendix A citations above — not from §A.4, which
+/// frames "IC Markings System Structure" but does not enumerate the
+/// classification hierarchy itself.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClassificationLattice(Option<MarkingClassification>);
 
@@ -168,10 +162,10 @@ fn classification_variant_rank(c: &MarkingClassification) -> u8 {
 /// Same-variant / same-level payload tiebreaker for
 /// `ClassificationLattice::join` (UNION semantic).
 ///
-/// C-7 (PR 4b-B follow-up): the variant-rank tiebreaker alone is not
-/// sufficient — two `Fgi` (or two `Joint`) values at the same level
-/// with different country payloads previously fell through `ra <= rb`
-/// returning the left operand, which broke commutativity. This helper
+/// The variant-rank tiebreaker alone is not sufficient — two `Fgi`
+/// (or two `Joint`) values at the same level with different country
+/// payloads would break commutativity if `ra <= rb` simply returned
+/// the left operand. This helper
 /// produces a join-result whose country payload is the **union** of
 /// both operands' country lists, matching the §H.7 p123 banner-rollup
 /// rule that the banner FGI list unions every observed foreign source
@@ -191,10 +185,9 @@ fn classification_variant_rank(c: &MarkingClassification) -> u8 {
 ///
 /// **Companion**: see [`classification_meet_same_variant`] for the
 /// dual-side semantic (INTERSECTION; bottom on disjoint payloads).
-/// C-9 (PR 4b-B follow-up) split the two operations because using
-/// union for both broke the absorption laws — `a ⊔ (a ⊓ b) = a` and
-/// `a ⊓ (a ⊔ b) = a` cannot hold if `meet` and `join` are the same
-/// op.
+/// Join and meet are split operations because using union for both
+/// would break the absorption laws — `a ⊔ (a ⊓ b) = a` and
+/// `a ⊓ (a ⊔ b) = a` cannot hold if `meet` and `join` are the same op.
 fn classification_join_same_variant(
     a: &MarkingClassification,
     b: &MarkingClassification,
@@ -210,7 +203,7 @@ fn classification_join_same_variant(
     match (a, b) {
         (MarkingClassification::Us(_), MarkingClassification::Us(_)) => a.clone(),
         (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
-            // P-1 (8th-pass): source-concealed-dominates — if either side
+            // Source-concealed-dominates — if either side
             // has an empty countries list (the `//FGI [level]` form per
             // CAPCO-2016 §H.7 p124), the joined result MUST also be
             // source-concealed (empty countries). Chaining two lists when
@@ -292,7 +285,7 @@ fn merge_foreign_classification(
     use std::collections::BTreeSet;
     match (a, b) {
         (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
-            // P-1 (8th-pass): source-concealed-dominates — same fix as
+            // Source-concealed-dominates — same rule as
             // `classification_join_same_variant`. Empty countries = the
             // source-concealed `//FGI [level]` form (§H.7 p124). If either
             // side is concealed, the joined result must be concealed.
@@ -352,7 +345,7 @@ fn merge_foreign_classification(
 /// Same-variant / same-level payload tiebreaker for
 /// `ClassificationLattice::meet` (INTERSECTION semantic).
 ///
-/// C-9 (PR 4b-B follow-up): the dual of [`classification_join_same_variant`].
+/// The dual of [`classification_join_same_variant`].
 /// `meet` is GLB on the country-list partial order:
 ///
 /// - Equal payloads → that value (idempotence).
@@ -383,9 +376,9 @@ fn classification_meet_same_variant(
     match (a, b) {
         (MarkingClassification::Us(_), MarkingClassification::Us(_)) => Some(a.clone()),
         (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
-            // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in the
-            // FGI source-disclosure dimension.  Meet with top returns the other
-            // operand; dual of the join's concealed-dominates rule (P-1, 8th-pass).
+            // Source-concealed (empty countries) is TOP in the
+            // FGI source-disclosure dimension. Meet with top returns the other
+            // operand; dual of the join's concealed-dominates rule.
             // Authority: §H.7 p124 (precedence rule for banner-line guidance —
             // "If any document contains portions of both source-concealed FGI
             // ... then only the 'FGI' marking without the source
@@ -480,20 +473,15 @@ fn classification_meet_same_variant(
 /// HIGHER-rank operand (the dominated, lower-≤ side; the GLB dual of
 /// the join's "lower variant rank wins" tiebreak).
 ///
-/// **C-9b (PR 4b-B 7th-pass follow-up).** Pre-fix, this function
-/// returned `None` on cross-variant inputs while
-/// `merge_foreign_classification` returned the lower-rank operand.
-/// That asymmetry broke the dual absorption law `a ⊓ (a ⊔ b) = a` for
-/// `Conflict` values whose inner foreign payloads had different
-/// variants — the join would settle on the lower-rank inner, but the
-/// meet would collapse the entire outer Conflict to bottom. C-9b
-/// aligns the cross-variant meet with the join's tiebreak (return the
-/// higher-rank operand, the GLB dual), mirroring how C-9 fixed the
-/// same asymmetry at the outer `ClassificationLattice::meet` level.
+/// The cross-variant meet returns the higher-rank operand (the GLB
+/// dual of the join's tiebreak). Returning `None` instead would break
+/// the dual absorption law `a ⊓ (a ⊔ b) = a` for `Conflict` values
+/// whose inner foreign payloads have different variants — the join
+/// settles on the lower-rank inner, so the meet must mirror it rather
+/// than collapse the outer Conflict to bottom.
 ///
 /// §-authority: §H.7 pp123-125 reciprocal-normalization grounds the
-/// variant-rank ordering (Fgi=1 < Nato=2 < Joint=3). Verified
-/// 2026-05-15 against CAPCO-2016.md.
+/// variant-rank ordering (Fgi=1 < Nato=2 < Joint=3).
 fn meet_foreign_classification(
     a: &marque_ism::ForeignClassification,
     b: &marque_ism::ForeignClassification,
@@ -502,9 +490,9 @@ fn meet_foreign_classification(
     use std::collections::BTreeSet;
     match (a, b) {
         (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
-            // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in
+            // Source-concealed (empty countries) is TOP in
             // the FGI source-disclosure dimension — dual of the join's
-            // concealed-dominates rule (P-1, 8th-pass). Meet(top, x) = x.
+            // concealed-dominates rule. Meet(top, x) = x.
             // Authority: §H.7 p124 (precedence rule for banner-line guidance —
             // mixed source-concealed + source-acknowledged FGI collapses to
             // the bare "FGI" form) + §H.7 p128 (worked-example restatement:
@@ -599,13 +587,12 @@ impl JoinSemilattice for ClassificationLattice {
                     // tiebreak. Lower rank wins, so the join is
                     // commutative (a.join(b) == b.join(a)).
                     //
-                    // C-7 (PR 4b-B follow-up): when both operands
-                    // share the same variant AND the same level, the
-                    // payloads may still differ — e.g.
-                    // `Fgi(S, [GBR]).join(Fgi(S, [CAN]))`. The
-                    // variant-rank tiebreak alone fell through
+                    // When both operands share the same variant AND
+                    // the same level, the payloads may still differ —
+                    // e.g. `Fgi(S, [GBR]).join(Fgi(S, [CAN]))`. The
+                    // variant-rank tiebreak alone would fall through
                     // `ra <= rb` returning the left operand, which
-                    // broke commutativity on same-variant payload
+                    // breaks commutativity on same-variant payload
                     // diffs. We union the country payloads per the
                     // §H.7 p123 / §D.2 p28 banner-rollup rule that
                     // the banner FGI list is the union of every
@@ -653,11 +640,10 @@ impl MeetSemilattice for ClassificationLattice {
                     //     INTERSECT (country-list GLB). Empty
                     //     intersection drops to the lattice bottom.
                     //
-                    // C-9 (PR 4b-B follow-up): pre-fix, meet mirrored
-                    // join's tiebreaker (lower rank wins) AND used
-                    // the UNION helper for same-variant payloads.
-                    // Both branches broke the absorption laws
-                    // `a ⊔ (a ⊓ b) = a` / `a ⊓ (a ⊔ b) = a`.
+                    // Meet must NOT mirror join's tiebreaker (lower
+                    // rank wins) nor use the UNION helper for
+                    // same-variant payloads — either would break the
+                    // absorption laws `a ⊔ (a ⊓ b) = a` / `a ⊓ (a ⊔ b) = a`.
                     let ra = classification_variant_rank(a);
                     let rb = classification_variant_rank(b);
                     if ra == rb {

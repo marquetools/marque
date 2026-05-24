@@ -5,8 +5,8 @@
 //! Tests for `CapcoScheme::message_by_name` — the engine-bridge
 //! message hook.
 //!
-//! PR 3c.2.C C5 reshape: `message_by_name` now returns a closed
-//! `Message` (template + args), not a free-form string. The bridge
+//! `message_by_name` returns a closed `Message` (template + args), not
+//! a free-form string. The bridge
 //! invariant that this file pins is structurally enforced by the
 //! closed-args / closed-template invariants in `crates/rules/src/
 //! message.rs`:
@@ -223,9 +223,9 @@ fn message_by_name_returns_none_for_unknown_name() {
     );
     // Custom-arm constraint names should also return None — they have
     // their own well-formed messages from the predicate body helpers.
-    // (PR 3c.2.C C7 carved out `class-floor/*` + `marking.sci.*` from
-    // this rule; those are now bridge-resolved via row lookup. E012 stays
-    // a predicate-body Custom row and returns None.)
+    // (`class-floor/*` + `marking.sci.*` rows are bridge-resolved via
+    // row lookup; E012 stays a predicate-body Custom row and returns
+    // None.)
     assert!(
         scheme
             .message_by_name(
@@ -239,7 +239,7 @@ fn message_by_name_returns_none_for_unknown_name() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 3c.2.C C7 (R-C1): class-floor + sci-per-system bridge coverage
+// Class-floor + sci-per-system bridge coverage
 // ---------------------------------------------------------------------------
 
 /// Class-floor catalog rows (27 rows; `class-floor/*` and `E058/*`
@@ -337,8 +337,8 @@ fn message_by_name_class_floor_unknown_label_returns_none() {
     );
 }
 
-/// PR 10.A.1: typed Citation now lives directly on `Constraint.label`
-/// (not in a `citation_by_name` bridge fallback). This test reads the
+/// The typed Citation lives directly on `Constraint.label` (not in a
+/// `citation_by_name` bridge fallback). This test reads the
 /// `Constraint::Custom { label }` field directly to confirm the per-row
 /// citation matches the documented anchor — `banner.classification.floor-hcs-comp-sub`
 /// at §H.4 p60 (SCI section start).
@@ -360,8 +360,8 @@ fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
     assert_eq!(cite.document, AuthoritativeSource::Capco2016);
 }
 
-/// PR 10.A.1: typed Citation now lives directly on `Constraint.label`.
-/// Mirror of the class-floor test for the SCI per-system catalog.
+/// The typed Citation lives directly on `Constraint.label`. Mirror of
+/// the class-floor test for the SCI per-system catalog.
 #[test]
 fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
@@ -380,7 +380,7 @@ fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
     assert_eq!(cite.document, AuthoritativeSource::Capco2016);
 }
 
-/// PR 10.A.1: passthrough class-floor rows route to
+/// Passthrough class-floor rows route to
 /// `AuthoritativeSource::EngineInternal` (they reference
 /// marque-applied.md, not CAPCO-2016). Read directly from the row's
 /// typed Citation `label`.

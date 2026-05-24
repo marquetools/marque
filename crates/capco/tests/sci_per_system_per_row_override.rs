@@ -2,25 +2,19 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-T044 per-row severity-override dispatch for the SCI per-system
-//! catalog (HIGH-1 reviewer finding, 2026-05-22).
+//! Per-row severity-override dispatch for the SCI per-system catalog.
 //!
-//! Pre-T044 the engine hoisted a single walker-level `"E059"` override
-//! out of `emitted_id_overrides` once per `lint()` call and passed it
-//! through to `bridge_sci_per_system_diagnostics`. Post-T044 the map
-//! is keyed by predicate ID and there is no `"E059"` key — the hoist
-//! always returned `None` and the `Severity::Off` walker-level
-//! suppression never fired.
+//! A walker-level hoist that looked up a single `"E059"` override key
+//! would always return `None` because the override map is keyed by
+//! predicate ID, so the `Severity::Off` suppression would never fire.
 //!
-//! Post-T044 each of the 5 catalog rows is independently severity-
-//! overridable via its own wire-string key
-//! (`capco:marking.sci.<row>`). This file pins the per-row dispatch
-//! shape so a regression to the walker-level hoist would fail at
-//! `cargo test`.
+//! Each of the 5 catalog rows is independently severity-overridable via
+//! its own wire-string key (`capco:marking.sci.<row>`). This file pins
+//! the per-row dispatch shape so a regression to a walker-level hoist
+//! would fail at `cargo test`.
 //!
-//! Authority: T044 OD-8.A (catalog row labels ARE predicate IDs);
-//! FR-008 (`Severity::Off` invariant); HIGH-1 reviewer audit
-//! addressing the stale "E059" key.
+//! Authority: catalog row labels ARE predicate IDs; the `Severity::Off`
+//! invariant.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
@@ -89,14 +83,13 @@ fn baseline_default_config_emits_hcs_o_companion_diagnostic() {
 }
 
 // ---------------------------------------------------------------------------
-// Per-row Severity::Off dispatch — HIGH-1 fix coverage
+// Per-row Severity::Off dispatch
 // ---------------------------------------------------------------------------
 
 /// `[rules] "capco:marking.sci.hcs-o-companions" = "off"` MUST
-/// suppress every diagnostic emitted by the HCS-O row. The pre-T044
-/// walker-level hoist (looking up `"E059"`) returned `None` post-T044
-/// so this override was inert; the per-row dispatch fix makes it
-/// honored.
+/// suppress every diagnostic emitted by the HCS-O row. A walker-level
+/// hoist looking up `"E059"` would return `None` and make this override
+/// inert; per-row dispatch honors it.
 #[test]
 fn off_severity_on_hcs_o_row_suppresses_hcs_o_diagnostics() {
     let engine = engine_with_overrides(&[("capco:marking.sci.hcs-o-companions", "off")]);
@@ -104,8 +97,8 @@ fn off_severity_on_hcs_o_row_suppresses_hcs_o_diagnostics() {
     let hcs_o = diags_with_predicate(&result, "marking.sci.hcs-o-companions");
     assert!(
         hcs_o.is_empty(),
-        "post-HIGH-1: `[rules] \"capco:marking.sci.hcs-o-companions\" = \"off\"` \
-         MUST suppress every HCS-O catalog diagnostic (FR-008); got: {hcs_o:?}",
+        "`[rules] \"capco:marking.sci.hcs-o-companions\" = \"off\"` \
+         MUST suppress every HCS-O catalog diagnostic; got: {hcs_o:?}",
     );
 }
 
@@ -123,7 +116,7 @@ fn off_severity_on_hcs_o_row_leaves_si_g_row_alone() {
     let si_g = diags_with_predicate(&result, "marking.sci.si-g-companions");
     assert!(
         !si_g.is_empty(),
-        "post-HIGH-1: an HCS-O row override MUST NOT suppress the SI-G row \
+        "an HCS-O row override MUST NOT suppress the SI-G row \
          (per-row dispatch); got: {:?}",
         result.diagnostics,
     );
@@ -147,8 +140,8 @@ fn off_severity_on_all_five_rows_suppresses_every_catalog_diagnostic() {
     let hits = all_sci_diags(&result);
     assert!(
         hits.is_empty(),
-        "post-HIGH-1: all 5 SCI per-system rows off MUST suppress every catalog \
-         diagnostic (FR-008); got: {hits:?}",
+        "all 5 SCI per-system rows off MUST suppress every catalog \
+         diagnostic; got: {hits:?}",
     );
 }
 
@@ -166,7 +159,7 @@ fn warn_severity_override_on_hcs_o_row_replaces_emitted_severity() {
     let hcs_o = diags_with_predicate(&result, "marking.sci.hcs-o-companions");
     assert!(
         !hcs_o.is_empty(),
-        "post-HIGH-1: `warn` override on HCS-O row MUST still emit diagnostics; \
+        "`warn` override on HCS-O row MUST still emit diagnostics; \
          got: {:?}",
         result.diagnostics,
     );
@@ -174,7 +167,7 @@ fn warn_severity_override_on_hcs_o_row_replaces_emitted_severity() {
         assert_eq!(
             d.severity,
             Severity::Warn,
-            "post-HIGH-1: every HCS-O diagnostic MUST carry the configured \
+            "every HCS-O diagnostic MUST carry the configured \
              `warn` severity; got: {d:?}",
         );
     }
@@ -190,7 +183,7 @@ fn warn_override_on_hcs_o_row_does_not_change_si_g_row_severity() {
     let si_g = diags_with_predicate(&result, "marking.sci.si-g-companions");
     assert!(
         !si_g.is_empty(),
-        "post-HIGH-1: SI-G row MUST still emit when HCS-O is overridden; got: {:?}",
+        "SI-G row MUST still emit when HCS-O is overridden; got: {:?}",
         result.diagnostics,
     );
     // SI-G's authoring severity for a missing-ORCON violation in the

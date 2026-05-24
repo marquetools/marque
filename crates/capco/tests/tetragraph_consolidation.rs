@@ -214,8 +214,7 @@ fn rel_to_intersection_d_table_3_rule_23_round_trip() {
     p2.classification = Some(MarkingClassification::Us(Classification::Secret));
     p2.rel_to = vec![cc("USA"), cc("GBR")].into_boxed_slice();
 
-    // PR 4b-E: migrated from `PageContext::expected_rel_to` (retired)
-    // to `RelToBlock::from_attrs_iter` (lattice-native). Same tetragraph
+    // Uses `RelToBlock::from_attrs_iter` (lattice-native) for tetragraph
     // expansion + intersection semantics — §D Table 3 rule 23 round-trip
     // pinned identically. §-authority unchanged.
     let rel = RelToBlock::from_attrs_iter(&[p1, p2]).into_boxed_slice();
