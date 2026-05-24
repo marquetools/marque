@@ -37,7 +37,7 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         | TOK_DISPLAY_ONLY
         | TOK_ORCON
         | TOK_ORCON_USGOV
-        // Stage D (T108c) additions — IC dissem controls needed for closure-rule
+        // IC dissem controls needed for closure-rule
         // triggers (IMCON, DSEN, RSEN, FOUO per §4.7.1 implicit-NOFORN / implicit-RELIDO):
         | TOK_IMCON
         | TOK_DSEN
@@ -60,7 +60,7 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // PR 3c.B Sub-PR 8.F.2 added `TOK_SBU_NF` and `TOK_LES_NF` so
         // the Pattern A `capco/sbu-nf-implies-noforn` / `capco/les-nf-implies-noforn`
         // PageRewrites can route through this category.
-        // Stage D (T108c) adds LIMDIS, LES, SBU, SSI as closure-rule trigger
+        // Adds LIMDIS, LES, SBU, SSI as closure-rule trigger
         // sentinels (§4.7.1 implicit-NOFORN list).
         // PR 4b-C Commit 1: TOK_NNPI lives in `attrs.non_ic_dissem`
         // (NonIcDissem::Nnpi). Closes issue #407. verified 2026-05-16.

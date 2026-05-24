@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Active NOFORN clears (three rows, declaration order):
-//!   1. `capco/noforn-clears-rel-to` (PR 4b-A, canonical worked
+//!   1. `capco/noforn-clears-rel-to` (canonical worked
 //!      example) — clears `attrs.rel_to`.
-//!   2. `capco/noforn-clears-fdr-family` (DISPLAY ONLY Phase 2) —
+//!   2. `capco/noforn-clears-fdr-family` —
 //!      strips RELIDO / DISPLAY ONLY / EYES tokens from `dissem_us`.
-//!   3. `capco/noforn-clears-display-only-to` (PR 4b-D.2 Copilot
-//!      R1 #2) — clears `attrs.display_only_to`, the country-list
-//!      sibling of `attrs.rel_to`.
+//!   3. `capco/noforn-clears-display-only-to` — clears
+//!      `attrs.display_only_to`, the country-list sibling of
+//!      `attrs.rel_to`.
 //!
 //! All three rows fire when NOFORN is present in `dissem_us` at
 //! the page-rewrite phase; together they maintain the §H.8 p145
@@ -66,11 +66,10 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
 
     // `capco/noforn-clears-display-only-to` reads CAT_DISSEM (to
     // find the NOFORN trigger) and writes CAT_DISPLAY_ONLY_TO (the
-    // country-list axis on `attrs.display_only_to`). PR 4b-D.2
-    // Copilot R1 #2 added `CAT_DISPLAY_ONLY_TO` so this rewrite
-    // could use the symmetric `Clear { CAT_DISPLAY_ONLY_TO }`
-    // shape — exactly parallel to `capco/noforn-clears-rel-to`'s
-    // `Clear { CAT_REL_TO }`.
+    // country-list axis on `attrs.display_only_to`).
+    // `CAT_DISPLAY_ONLY_TO` lets this rewrite use the symmetric
+    // `Clear { CAT_DISPLAY_ONLY_TO }` shape — exactly parallel to
+    // `capco/noforn-clears-rel-to`'s `Clear { CAT_REL_TO }`.
     //
     // The rewrite is needed as defense-in-depth — the load-bearing
     // production path is a Pattern-C UCNI strip + NOFORN promote
@@ -118,13 +117,13 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Roll-Up for guidance" in its Precedence Rules section.
         //
         // Declaration order note: this entry is placed AFTER the
-        // `*-implies-noforn` entries (PR 3c.B Sub-PR 8.F + 8.F.2)
+        // `*-implies-noforn` entries
         // which write CAT_DISSEM. The Kahn scheduler also enforces
         // this ordering via the `reads/writes` dataflow annotations;
         // matching the declaration order to the topological order
         // ensures both `scheme.project(Scope::Page, …)` (which
         // iterates declaration order) and the scheduler-driven
-        // execution path (Phase D/E) produce the same result.
+        // execution path produce the same result.
         PageRewrite::declarative(
             "capco/noforn-clears-rel-to",
             capco(SectionLetter::H, 8, 145),
@@ -231,10 +230,9 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //
         // Uses `CategoryAction::Clear { CAT_DISPLAY_ONLY_TO }`
         // symmetrically with the REL TO clearer above; the
-        // `CAT_DISPLAY_ONLY_TO` CategoryId was added in PR 4b-D.2
-        // Copilot R1 #2 (`crates/capco/src/scheme/mod.rs`) and
-        // routed through `capco_category_clear` /
-        // `capco_category_has_values`.
+        // `CAT_DISPLAY_ONLY_TO` CategoryId (in
+        // `crates/capco/src/scheme/mod.rs`) is routed through
+        // `capco_category_clear` / `capco_category_has_values`.
         PageRewrite::declarative(
             "capco/noforn-clears-display-only-to",
             capco(SectionLetter::H, 8, 145),
