@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 5 — SC-006: No classifier identity in committed test files (T055).
+//! No classifier identity in committed test files.
 //!
 //! Scans every file under `tests/corpus/`, `crates/*/tests/`, and
 //! `crates/*/examples/` for classifier-id-shaped strings. Fails if any
@@ -149,7 +149,7 @@ fn sc006_no_classifier_id_in_committed_test_files() {
 
     assert!(
         all_violations.is_empty(),
-        "SC-006: Found {} suspicious classifier ID(s) in committed files:\n{}",
+        "Found {} suspicious classifier ID(s) in committed files:\n{}",
         all_violations.len(),
         all_violations.join("\n")
     );

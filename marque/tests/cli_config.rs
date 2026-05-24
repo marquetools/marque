@@ -117,11 +117,10 @@ fn explain_config_mutually_exclusive_with_fix() {
 
 #[test]
 fn severity_override_downgrades_rule_to_warn() {
-    // T044: legacy `E002` TOML key → 2-tuple form. The config-key
-    // canonicalizer in `Engine::new` looks up overrides by predicate-id
-    // alone (`rule.id().predicate_id()`), so the active TOML key here
-    // is the descriptive form. Map: `("capco", "portion.dissem.rel-to-missing-usa")`
-    // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+    // The config-key canonicalizer in `Engine::new` looks up overrides
+    // by predicate-id alone (`rule.id().predicate_id()`), so the active
+    // TOML key here is the descriptive form
+    // `portion.dissem.rel-to-missing-usa`.
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
     std::fs::write(
@@ -132,8 +131,8 @@ fn severity_override_downgrades_rule_to_warn() {
     )
     .unwrap();
 
-    // SECRET//REL TO GBR triggers the rule formerly known as E002
-    // (REL TO missing USA). With the warn override, exit code is 2.
+    // SECRET//REL TO GBR triggers the rel-to-missing-usa rule. With
+    // the warn override, exit code is 2.
     let assert = marque()
         .args(["check", "--format", "json", "--config"])
         .arg(&config_path)
@@ -142,8 +141,7 @@ fn severity_override_downgrades_rule_to_warn() {
         .code(2); // Warnings exit code
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    // T044 PM OD-2: the `rule` field on the wire is the structured
-    // 2-tuple object.
+    // The `rule` field on the wire is the structured 2-tuple object.
     let expected_rule_fragment =
         r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
     assert!(
@@ -158,7 +156,7 @@ fn severity_override_downgrades_rule_to_warn() {
 
 #[test]
 fn severity_override_off_suppresses_rule() {
-    // T044: see canonical map row above for the predicate-id form.
+    // See the predicate-id form above.
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
     std::fs::write(
@@ -191,33 +189,31 @@ fn cli_confidence_threshold_overrides_config() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
     // Config sets threshold=0.5. CLI flag --confidence-threshold=0.99
-    // should override and select only the >=0.99 fixes. E002's fix
-    // has confidence 0.97 (below 0.99), so the fix should NOT be
-    // applied; the diagnostic still surfaces.
+    // should override and select only the >=0.99 fixes. The
+    // rel-to-missing-usa fix has confidence 0.97 (below 0.99), so the
+    // fix should NOT be applied; the diagnostic still surfaces.
     std::fs::write(
         &config_path,
         format!("confidence_threshold = 0.5\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
     )
     .unwrap();
 
-    // (Post-PR-3c.B-Commit-6: this test originally validated that
-    // E001's confidence=1.0 fix passed the 0.99 threshold and that
-    // E003's 0.6 fix did not. E001 and E003 are both retired; the
-    // channel now exercises E002 at confidence 0.97 — below 0.99 —
-    // so no fix is applied at the higher threshold. The audit
-    // stream remains empty.)
+    // The CLI-level sub-threshold gate: the rel-to-missing-usa rule
+    // fires at confidence 0.97 — below the 0.99 flag override — so no
+    // fix is applied at the higher threshold and the audit stream
+    // stays empty.
     let assert = marque()
         .args(["fix", "--confidence-threshold", "0.99", "--config"])
         .arg(&config_path)
         .write_stdin("SECRET//REL TO GBR\n")
         .assert()
-        .code(1); // E002 diagnostic remains; fix not applied at 0.99 threshold
+        .code(1); // diagnostic remains; fix not applied at 0.99 threshold
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert_eq!(
         stdout.as_ref(),
         "SECRET//REL TO GBR\n",
-        "with --confidence-threshold=0.99, no E002 fix (0.97) applies"
+        "with --confidence-threshold=0.99, the 0.97-confidence fix does not apply"
     );
 }
 
@@ -227,9 +223,8 @@ fn cli_confidence_threshold_overrides_config() {
 
 #[test]
 fn classifier_id_env_var_appears_in_audit_ndjson() {
-    // (Post-PR-3c.B-Commit-6 fixture: E001 used to drive this; with
-    // E001 retired we use E002, whose 0.97-confidence fix passes the
-    // default 0.85 threshold and produces an audit record.)
+    // The rel-to-missing-usa rule's 0.97-confidence fix passes the
+    // default threshold and produces an audit record.
     let assert = marque()
         .env("MARQUE_CLASSIFIER_ID", "CLI-TEST-ID-77")
         .args(["fix"])
@@ -267,7 +262,7 @@ fn absent_classifier_id_is_null_in_audit_ndjson() {
 fn corrections_map_fires_c001_in_fix() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
-    // Add a corrections entry: NF → NOFORN (same as E001, to test FR-009)
+    // Add a corrections entry: NF → NOFORN.
     std::fs::write(
         &config_path,
         format!("[corrections]\nNF = \"NOFORN\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
@@ -282,21 +277,17 @@ fn corrections_map_fires_c001_in_fix() {
         .success();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    // The audit record should contain the C001 corrections-map
-    // predicate as the winning rule (FR-009). T044 PM OD-2: the
-    // `rule` field is a structured 2-tuple object on the wire, not
-    // a flat string. Legacy `C001` →
-    // `("capco", "marking.correction.token-typo")` per
-    // `docs/refactor-006/legacy-rule-id-map.md` §1. The serializer
-    // emits the object's keys in alphabetical order — `predicate_id`
-    // before `scheme` — so the literal fragment below matches the
-    // shape the wire actually produces (verified against the failing
-    // test's pre-fix output).
+    // The audit record should contain the corrections-map predicate
+    // (`marking.correction.token-typo`) as the winning rule. The `rule`
+    // field is a structured 2-tuple object on the wire, not a flat
+    // string. The serializer emits the object's keys in alphabetical
+    // order — `predicate_id` before `scheme` — so the literal fragment
+    // below matches the shape the wire actually produces.
     let expected_rule_fragment =
         r#""rule":{"predicate_id":"marking.correction.token-typo","scheme":"capco"}"#;
     assert!(
         stderr.contains(expected_rule_fragment),
-        "corrections-map fix should produce the C001 predicate-id in its audit record, got: {stderr}"
+        "corrections-map fix should produce the token-typo predicate-id in its audit record, got: {stderr}"
     );
     assert!(
         stderr.contains("\"source\":\"CorrectionsMap\""),
