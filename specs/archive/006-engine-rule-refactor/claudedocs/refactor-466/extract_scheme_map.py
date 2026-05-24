@@ -27,9 +27,8 @@ from __future__ import annotations
 import json
 import re
 import sys
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -293,7 +292,6 @@ def parse_file(path: Path) -> dict:
 
         if depth == 0:
             # Gather a contiguous doc+attr cluster preceding any item.
-            cluster_start = i
             doc_lines: list[str] = []
             attr_lines: list[str] = []
 
@@ -370,19 +368,16 @@ def parse_file(path: Path) -> dict:
                 continue
 
             item_start = cluster_start
-            item_keyword_line = i
 
             # Decide block kind/name/end-line.
             if mac is not None:
                 # macro invocation block (e.g., lazy_static! { ... })
                 name = mac.group("name") + "!"
-                vis = "private"
                 kind = "macro_invoke"
                 end_line = consume_to_balanced(stripped, i, opener=None)
                 signature = raw_line.strip()
             else:
                 vis_raw = (mo.group("vis") or "").strip()
-                visibility = vis_raw if vis_raw else "private"
                 kw = mo.group("kw").strip()
 
                 if kw == "use":
