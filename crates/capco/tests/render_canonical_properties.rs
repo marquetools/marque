@@ -18,9 +18,8 @@
 //!
 //! # Authority
 //!
-//! - `specs/006-engine-rule-refactor/architecture.md` §3.0.a "form is
-//!   not shape" + "What this commits us to" (renderer is the single
-//!   source of canonical form).
+//! - The architecture's "form is not shape" property (the renderer
+//!   is the single source of canonical form).
 //! - CAPCO-2016 §H — per-axis canonical-form definitions cited in
 //!   each pair below.
 

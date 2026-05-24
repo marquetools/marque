@@ -367,7 +367,7 @@ impl CapcoMarking {
         //   ClassificationLattice wins, BUT any Joint(_) variants on
         //   per-portion classifications are flattened to their
         //   effective_level (Us) so the banner doesn't carry forward
-        //   JOINT shape per §H.3 p57. G-3: in this non-JOINT branch,
+        //   JOINT shape per §H.3 p57. In this non-JOINT branch,
         //   when the page is NOT solely-non-US, ALSO flatten
         //   Nato(_) / Fgi(_) variants to Us(effective_level) per the
         //   §H.7 pp123-125 reciprocal-raise — preserves PageContext
@@ -598,7 +598,7 @@ impl CapcoMarking {
         // boxed-slice form) so cross-axis NOFORN injection below can
         // route through `DissemSet::with_noforn_injected` and have
         // the supersession overlay strip dominated controls per
-        // §H.8 p145 (G-8 PR 4b-B follow-up).
+        // §H.8 p145.
         let dissem_set = DissemSet::from_attrs_iter(portions);
         out.dissem_nato = NatoDissemSet::from_attrs_iter(portions).into_boxed_slice();
 

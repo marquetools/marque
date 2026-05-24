@@ -294,7 +294,7 @@ fn e002_fix_output_is_idempotent() {
 // ---------------------------------------------------------------------------
 
 /// E002's fix output MUST dedup duplicate entries before canonicalizing
-/// (issue #234 PR-B Copilot-review regression). Input `GBR, USA, AUS,
+/// (issue #234 regression). Input `GBR, USA, AUS,
 /// USA` triggers E002 (USA not first) AND carries a duplicate USA
 /// that the canonicalize pass must dedup. Without the dedup the
 /// splice could emit `USA, USA, AUS, GBR` — still wrong.

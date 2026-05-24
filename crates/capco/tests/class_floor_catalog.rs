@@ -736,7 +736,7 @@ fn sar_span_anchors_at_sar_indicator_not_classification() {
 }
 
 // ===========================================================================
-// R1 C1 — NATO / FGI / JOINT class-floor regression tests
+// NATO / FGI / JOINT class-floor regression tests
 // ===========================================================================
 //
 // The pre-fix `class_floor_satisfied` and the diagnostic message helper

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T135a Commit 5 (issue #307) — E064 EYES / EYES ONLY → REL TO conversion.
+//! E064 EYES / EYES ONLY → REL TO conversion (issue #307).
 //!
 //! Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
 //!
@@ -141,7 +141,7 @@ fn fix_round_trip_idempotent() {
 }
 
 // =========================================================================
-// Country-code registry gate — PR 9a Copilot R3 Fix 2 (PR #416).
+// Country-code registry gate (PR #416).
 //
 // The shape gate alone (`[A-Z]{3}`) accepts arbitrary uppercase triples
 // like `AAA` or `XYZ`. Without registry validation, E064's canonical
@@ -239,7 +239,7 @@ fn regression_registered_trigraphs_still_recognized() {
     // Lock-in non-regression: `(S//USA/GBR EYES ONLY)` has two
     // registered Five Eyes trigraphs. E064 fires and produces the
     // canonical `(S//REL TO USA, GBR)` conversion exactly as before
-    // the R3 fix.
+    // the registry-gate fix.
     let source = b"(S//USA/GBR EYES ONLY)";
     let diags = lint_e064(source);
     assert_eq!(

@@ -4,7 +4,7 @@
 
 //! FGI (Foreign Government Information) helpers — foreign-source
 //! extraction and FGI-marker merge logic used by the lattice path's
-//! G-4c / G-5 FGI composition.
+//! FGI composition.
 
 use marque_ism::MarkingClassification;
 
@@ -29,7 +29,7 @@ use marque_ism::MarkingClassification;
 /// - `Fgi(f)`: contributes every country in `f.countries`.
 ///   Source-concealed FGI portions (`f.countries.is_empty()`) return
 ///   `None` — distinct from `Some(empty)` which would mean "no FGI".
-///   The `None` sentinel propagates up to the G-4c branch, which
+///   The `None` sentinel propagates up to the FGI-composition branch, which
 ///   then forces `FgiMarker::SourceConcealed` on the output
 ///   (§H.7 p128: "a document containing portions of both
 ///   source-concealed FGI and source-acknowledged FGI must have only
@@ -56,7 +56,7 @@ use marque_ism::MarkingClassification;
 /// Return type is `Option<Vec<CountryCode>>` rather than
 /// `Option<Vec<CountryCode>>` to propagate the concealed signal.
 /// Pre-fix, source-concealed FGI portions returned an empty `Vec`,
-/// indistinguishable from "no FGI at all" — the G-4c equality check
+/// indistinguishable from "no FGI at all" — the FGI-composition equality check
 /// then silently dropped the concealed signal and could build a
 /// synthetic acknowledged marker, contradicting §H.7 p128.
 pub(crate) fn extract_foreign_sources(
@@ -124,7 +124,7 @@ pub(crate) fn merge_fgi_markers(
         // Source-concealed dominates per §H.7 pp123-124 — bare `FGI`
         // (no LIST) is the most-restrictive marker. Either operand
         // carrying it produces SourceConcealed.
-        // pre-CV-4 cited `§H.7 p123`; verified 2026-05-16 against
+        // previously cited `§H.7 p123`; verified 2026-05-16 against
         // CAPCO-2016.md — the §H.7 block begins on p123 but the
         // load-bearing supersession sentence ("If any document
         // contains portions of both source-concealed FGI ... and

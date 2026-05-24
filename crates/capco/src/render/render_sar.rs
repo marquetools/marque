@@ -88,7 +88,7 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
     //
     // The three sorts below pass named `fn`-item comparators
     // (`super::cmp_sar_*` / `super::cmp_str_numeric_then_alpha`) for
-    // closure-axis monomorphization collapse — R1 WASM-cut per
+    // closure-axis monomorphization collapse — WASM-cut per
     // issue #689 and the PR #585 precedent at
     // `crate::lattice::helpers::sort_smolstrs_by_sar`.
     let mut programs: SmallVec<[_; 4]> = sar.programs.iter().collect();
@@ -125,6 +125,6 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
 
 // Shared named-fn-item comparators imported from `super` — see the
 // "Named-fn-item comparators" section of `crate::render::mod` for the
-// R1 mono-collapse rationale (issue #689; extends PR #585's
+// mono-collapse rationale (issue #689; extends PR #585's
 // `sort_smolstrs_by_sar`).
 use super::{cmp_sar_compartment_ident, cmp_sar_program_ident, cmp_str_numeric_then_alpha};

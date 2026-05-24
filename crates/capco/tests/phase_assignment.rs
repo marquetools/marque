@@ -120,7 +120,7 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
         "portion.dissem.nodis-supersedes-exdis-in-portion",
         Phase::WholeMarking,
     ), // E041
-    // PR 9a (issue #307): class-specific bare-HCS / bare-RSV rules per
+    // Class-specific bare-HCS / bare-RSV rules (issue #307) per
     // CAPCO-2016 §H.4. Phase::WholeMarking because each rule's trigger
     // is a cross-token condition (classification level + SCI marking
     // shape) — the diagnostic spans a single token but the predicate
@@ -137,16 +137,16 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
         "portion.sci.rsv-bare-requires-compartment",
         Phase::WholeMarking,
     ), // E063
-    // PR 9a Commit 5 (issue #307): EYES / EYES ONLY → REL TO
-    // conversion per §H.8 p157 + p158. Phase::Localized — the
+    // EYES / EYES ONLY → REL TO conversion (issue #307)
+    // per §H.8 p157 + p158. Phase::Localized — the
     // text_correction span covers a single TokenKind::DissemControl
     // block (the EYES compound token).
     (
         "portion.dissem.eyes-only-convert-to-rel-to",
         Phase::Localized,
     ), // E064
-    // PR 9a T135a (issue #307 Group D): deprecated SCI long-form
-    // canonicalization walker. Phase::Localized because every emitted
+    // Deprecated SCI long-form canonicalization walker (issue #307).
+    // Phase::Localized because every emitted
     // diagnostic carries a span that covers a single TokenSpan (the
     // deprecated long-form token); text-correction replacements are
     // byte-precise single-token splices.

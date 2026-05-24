@@ -75,14 +75,13 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // banner="NOFORN", portion="NF". banner != title → Some("NOFORN").
     (TOK_NOFORN, "NF", "NOFORN", Some("NOFORN")),
     // RD row: title="RESTRICTED DATA", banner="RD", portion="RD".
-    // banner != title → Some("RD") — the D1 flip.
+    // banner != title → Some("RD").
     (TOK_RD, "RD", "RD", Some("RD")),
     // FRD row: title="FORMERLY RESTRICTED DATA", banner="FRD",
-    // portion="FRD". banner != title → Some("FRD") — the D1 flip.
+    // portion="FRD". banner != title → Some("FRD").
     (TOK_FRD, "FRD", "FRD", Some("FRD")),
     // TFNI row: title="TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
-    // banner="TFNI", portion="TFNI". banner != title → Some("TFNI") —
-    // the D1 flip.
+    // banner="TFNI", portion="TFNI". banner != title → Some("TFNI").
     (TOK_TFNI, "TFNI", "TFNI", Some("TFNI")),
     // CNWDI sentinel's canonical is "RD-CNWDI" — no MARKING_FORMS
     // row matches (the bare CNWDI row exists at canonical "CNWDI",
@@ -216,7 +215,7 @@ fn forms_round_trips_for_every_active_sentinel() {
             "portion_form regression for {token:?}",
         );
 
-        // Default-method projection #2: banner_form per T058d's
+        // Default-method projection #2: banner_form per the
         // exact equation
         let projected_banner = form_set
             .banner_abbreviation
@@ -239,11 +238,11 @@ fn forms_round_trips_for_every_active_sentinel() {
         //       default-method projection) vs the EXPECTED_FORMS pin;
         //   (b) `form_set.banner_abbreviation` (the FormSet field) vs
         //       the EXPECTED_FORMS pin.
-        // Pre-3d code (and the post-3d.2 review found) did
+        // Earlier code did
         // `scheme.banner_abbreviation(token) == form_set.banner_abbreviation`,
-        // which both route through the same FormSet — the D1 flip on
-        // RD / FRD / TFNI was therefore unpinned. The EXPECTED_FORMS
-        // 4-tuple addition closes that gap.
+        // which both route through the same FormSet — the abbreviation
+        // flip on RD / FRD / TFNI was therefore unpinned. The
+        // EXPECTED_FORMS 4-tuple addition closes that gap.
         assert_eq!(
             scheme.banner_abbreviation(token),
             *expected_banner_abbreviation,

@@ -120,7 +120,7 @@ pub(super) fn supersession_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // survives and renders as `UNCLASSIFIED//LES NOFORN`.
         //
         // Asymmetry note: bare-SBU dispatch was already wired in
-        // PR 4b-C / #541. The TOK_LES dispatch arm was previously
+        // #541. The TOK_LES dispatch arm was previously
         // unwired (LesNf was treated as `UnknownToken` per the
         // pre-#552 doc-comment in
         // `actions/intent.rs::apply_fact_remove`); #552 adds the

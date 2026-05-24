@@ -293,7 +293,7 @@ fn corpus_covers_every_declared_authority() {
     // Assertion (a): declared ⊆ harvested ∪ whitelist.
     // Catches: declared citation has no fixture exercising it (the rule
     // exists but no corpus input triggers it). Sorted for deterministic
-    // failure output ordering — Copilot review on PR #662 caught the
+    // failure output ordering — #662 caught the
     // nondeterministic `HashSet` iteration order in the prior
     // implementation.
     let mut undocumented_gaps: Vec<Citation> = declared

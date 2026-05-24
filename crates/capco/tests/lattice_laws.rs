@@ -4,7 +4,7 @@
 
 #![allow(clippy::type_complexity)] // Nested test-fixture DSL; explicit shape is clearer than a newtype.
 
-//! Phase B lattice-law verification for CAPCO structural lattice types.
+//! Lattice-law verification for CAPCO structural lattice types.
 //!
 //! Each type (`SciSet`, `SarSet`, `FgiSet`) is expected to satisfy the
 //! lattice laws on its join:

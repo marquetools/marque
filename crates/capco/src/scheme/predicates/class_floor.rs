@@ -199,8 +199,8 @@ pub(crate) fn class_floor_catalog_eval(
 /// - **`AtLeast(floor)`** uses `MarkingClassification::effective_level`
 ///   so NATO / FGI / JOINT classifications get reciprocal-raised to
 ///   their US-equivalent level
-///   (CTS → TS, NS → S, NC → C, NR → R, NU → U). This is the C1 fix
-///   from PR #324 R1: before the fix, the NATO catalog rows
+///   (CTS → TS, NS → S, NC → C, NR → R, NU → U). This is the fix
+///   from #324: before the fix, the NATO catalog rows
 ///   (BALK / BOHEMIA / ATOMAL) queried `attrs.us_classification()`,
 ///   which returns `None` for non-US classification kinds, so the
 ///   reciprocal-raised NATO floors always failed and always emitted a
