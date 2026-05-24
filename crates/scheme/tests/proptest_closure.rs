@@ -138,10 +138,9 @@ fn bit_index(id: TokenId) -> Option<u8> {
 // Note on suppressor-based rules: A suppressor-bearing rule is monotone
 // only if the suppressor token is guaranteed to be present in closure(m2)
 // whenever it is present in m2 AND m1 ⊑ m2 — which requires a scheme-level
-// structural guarantee (the CAPCO "disjoint suppressor" invariant from
-// docs/plans/2026-05-01-lattice-design.md §4.7.3). The CAPCO design
-// ensures FD&R dominators are never in any cone, so they are stable under
-// the closure operator. Generic test catalogs cannot rely on this without
+// structural guarantee (the CAPCO "disjoint suppressor" invariant). The
+// CAPCO design ensures FD&R dominators are never in any cone, so they are
+// stable under the closure operator. Generic test catalogs cannot rely on this without
 // encoding the same structural guarantee, so the positive tests use
 // unconditional rules. The negative test in
 // proptest_closure_rejects_non_monotone.rs demonstrates the suppressor-
@@ -529,7 +528,7 @@ proptest! {
                 if substr.len() >= 3 {
                     prop_assert!(
                         !rendered.contains(substr),
-                        "G13 violation: closure output {:?} contains document bytes {:?}",
+                        "audit content-ignorance violation: closure output {:?} contains document bytes {:?}",
                         rendered,
                         substr
                     );

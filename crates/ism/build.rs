@@ -109,14 +109,14 @@ fn verify_schema_version() {
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| {
             panic!(
-                "FR-011: [package.metadata.marque] ism-schema-version not found in Cargo.toml. \
+                "[package.metadata.marque] ism-schema-version not found in Cargo.toml. \
                  Add: [package.metadata.marque]\nism-schema-version = \"{SCHEMA_VERSION}\""
             )
         });
 
     assert_eq!(
         pinned, SCHEMA_VERSION,
-        "FR-011: schema version mismatch — Cargo.toml says {pinned:?} but build.rs targets \
+        "schema version mismatch — Cargo.toml says {pinned:?} but build.rs targets \
          {SCHEMA_VERSION:?}. Update one to match the other."
     );
 }
@@ -202,10 +202,11 @@ fn parse_cve_xml(path: &Path) -> Vec<(String, String)> {
                 }
             }
             Ok(Event::Text(ref e)) => {
-                // M-10: do not silently truncate on unescape failure. A bad
+                // Do not silently truncate on unescape failure. A bad
                 // entity in a CVE file would otherwise feed an empty value
-                // into `to_rust_ident`, which would be caught by C-4 below
-                // but with a confusing error message — fail loudly here.
+                // into `to_rust_ident`, which would be caught by the
+                // `resolve_idents` empty-ident check below but with a
+                // confusing error message — fail loudly here.
                 let decoded = e.decode().unwrap_or_else(|err| {
                     panic!("XML entity unescape error in {}: {err}", path.display())
                 });
@@ -266,11 +267,11 @@ fn to_rust_ident(s: &str) -> String {
 /// Resolve every CVE entry to a `(value, ident, desc)` triple, asserting that
 /// no identifier is empty and that no two identifiers collide. Detects
 /// codegen-breaking CVE additions at build time rather than at consumer
-/// compile time. (C-4)
+/// compile time.
 fn resolve_idents(name: &str, entries: &[(String, String)]) -> Vec<(String, String, String)> {
     use std::collections::HashMap;
     // Map ident -> first CVE value that produced it, so a collision can name
-    // both offenders in its panic message. (M-2)
+    // both offenders in its panic message.
     let mut seen: HashMap<String, String> = HashMap::with_capacity(entries.len());
     let mut resolved = Vec::with_capacity(entries.len());
     for (value, desc) in entries {
@@ -372,7 +373,7 @@ fn emit_enum(out: &mut String, name: &str, entries: &[(String, String)], doc: &s
 }
 
 /// Emit a minimal enum for CVE types that have zero entries in the public spec.
-#[allow(dead_code)] // Retained for potential future empty-CVE categories; SAR removed per specs/002-sar-implementation.
+#[allow(dead_code)] // Retained for potential future empty-CVE categories; SAR is modeled structurally instead.
 fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
     use std::fmt::Write;
 
@@ -427,7 +428,7 @@ fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
 /// schema intentionally ships no entries). Every other enum must be
 /// non-empty — an empty `CVEnumISMDissem.xml` from a bad schema copy would
 /// silently produce a valid-but-empty Rust enum and make all dissem rules
-/// fire zero diagnostics. (M-1)
+/// fire zero diagnostics.
 fn assert_required(name: &str, entries: &[(String, String)], file: &str) {
     assert!(
         !entries.is_empty(),
@@ -579,8 +580,8 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // tool for a category whose membership is not enumerable.
     //
     // SAR is modeled structurally via `attrs::SarMarking` / `SarProgram` /
-    // `SarCompartment` and validated by syntactic rules (E026–E031) rather
-    // than membership checks. See `specs/002-sar-implementation/spec.md`.
+    // `SarCompartment` and validated by the hand-written SAR syntax rules
+    // rather than membership checks.
 
     // --- Declass Exemptions (25X codes) ---
     let declass_entries = parse_cve_xml(&cve_dir.join("CVEnumISM25X.xml"));
@@ -676,7 +677,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // rename to `COUNTRY_CODES` alongside the `is_trigraph`
     // rename.
     //
-    // M-3: sort and deduplicate into a BTreeSet before emission so
+    // Sort and deduplicate into a BTreeSet before emission so
     // `is_trigraph` in token_set.rs can use `binary_search` over a
     // guaranteed-sorted slice. The XSD emits entries in document order
     // (USA first, then alphabetical), so an unsorted emission would
@@ -746,7 +747,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
 
     // --- Emit a flat token list for the Aho-Corasick automaton ---
     //
-    // H-8: deduplicate. The CVE files already contain NOFORN/ORCON/PROPIN/
+    // Deduplicate. The CVE files already contain NOFORN/ORCON/PROPIN/
     // IMCON in the dissem block, so the previous hand-rolled additions
     // produced duplicate entries that bloated the slice and the
     // automaton. We now collect into a `BTreeSet` (sorted, deduped) and
@@ -938,7 +939,7 @@ pub fn banner_requires_full_classification(s: &str) -> bool {
 fn generate_migrations(out: &Path, _ism_root: &Path) {
     // Deterministic deprecated-marking migration table.
     // Derived from CVE XML deprecation annotations and IC policy changes.
-    // Confidence >= 0.95 per FR-004a.
+    // Confidence >= 0.95.
     let content = r#"
 // Generated by build.rs — DO NOT EDIT.
 //
@@ -970,7 +971,7 @@ pub struct MigrationEntry {
 /// Deprecated-marking migration table.
 ///
 /// Policy-driven replacements for markings that CAPCO has formally retired
-/// or renamed. All entries have confidence >= 0.95 per FR-004a, and every
+/// or renamed. All entries have confidence >= 0.95, and every
 /// `reference` cites a real passage in `crates/capco/docs/CAPCO-2016.md`
 /// per Constitution VIII.
 ///
@@ -989,19 +990,17 @@ pub struct MigrationEntry {
 ///
 /// - **FOUO → CUI**: FOUO remains a valid CAPCO dissem control per
 ///   CVEnumISMDissem.xml (still enumerated in the active CVE). CUI is a
-///   separate marking system under NARA jurisdiction. A prior entry was
-///   removed in Phase E of
-///   `docs/plans/2026-04-19-recursive-lattice-and-decoder.md` (§14 "What
-///   we dropped" — explicit `FOUO → CUI` bullet). Any "suggest CUI on
-///   non-IC documents" behavior belongs in a future CUI adapter, gated
-///   by `[agency] is_ic_member` / `[cui] migrate_fouo` config gates
-///   (Phase F), not as a blanket CAPCO-level migration.
+///   separate marking system under NARA jurisdiction, so no `FOUO → CUI`
+///   migration belongs here. Any "suggest CUI on non-IC documents"
+///   behavior belongs in a future CUI adapter, gated by
+///   `[agency] is_ic_member` / `[cui] migrate_fouo` config gates, not as
+///   a blanket CAPCO-level migration.
 ///
 /// - **LIMDIS → RELIDO**: LIMDIS is a current non-IC dissem control
 ///   per CAPCO-2016 §H.9 (p18 of the 2008 manual, §H.9 of 2016). A
 ///   prior entry was incorrect.
 pub static MIGRATIONS: &[MigrationEntry] = &[
-    // X-shorthand date marking patterns (FR-004a, research R-3).
+    // X-shorthand date marking patterns.
     //
     // CAPCO-2016 §E.6 "Retired or Invalid Declassify On Values"
     // (pp. 33-34) enumerates retired exemption forms. The substantive

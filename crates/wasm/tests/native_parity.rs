@@ -193,7 +193,7 @@ fn lint_parity_invalid_fixtures() {
 
     assert!(
         !txt_files.is_empty(),
-        "T070 requires corpus fixtures, found none"
+        "parity test requires corpus fixtures, found none"
     );
 
     for path in &txt_files {
@@ -208,7 +208,7 @@ fn lint_parity_invalid_fixtures() {
         assert_eq!(
             native_ndjson,
             wasm_ndjson,
-            "SC-008 lint parity failure on {}",
+            "NDJSON parity failure on {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -217,7 +217,7 @@ fn lint_parity_invalid_fixtures() {
 #[test]
 fn lint_parity_valid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("valid"));
-    assert!(!txt_files.is_empty(), "T070 requires valid corpus fixtures");
+    assert!(!txt_files.is_empty(), "parity test requires valid corpus fixtures");
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -231,7 +231,7 @@ fn lint_parity_valid_fixtures() {
         assert_eq!(
             native_ndjson,
             wasm_ndjson,
-            "SC-008 lint parity failure on {}",
+            "NDJSON parity failure on {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -246,7 +246,7 @@ fn fix_parity_invalid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("invalid"));
     assert!(
         !txt_files.is_empty(),
-        "T070 requires invalid corpus fixtures"
+        "parity test requires invalid corpus fixtures"
     );
     let default_threshold = Config::default().confidence_threshold();
 
@@ -274,7 +274,7 @@ fn fix_parity_invalid_fixtures() {
         assert_eq!(
             native_fixed,
             wasm_fixed,
-            "SC-008 fix parity failure on {}",
+            "fix parity failure on {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -289,10 +289,10 @@ fn lint_parity_prose_fixtures() {
     let prose_dir = corpus_dir().join("prose");
     assert!(
         prose_dir.is_dir(),
-        "tests/corpus/prose/ missing — required for SC-003a parity"
+        "tests/corpus/prose/ missing — required for prose parity"
     );
     let txt_files = txt_files_in(&prose_dir);
-    assert!(!txt_files.is_empty(), "T070 requires prose corpus fixtures");
+    assert!(!txt_files.is_empty(), "parity test requires prose corpus fixtures");
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -306,7 +306,7 @@ fn lint_parity_prose_fixtures() {
         assert_eq!(
             native_ndjson,
             wasm_ndjson,
-            "SC-008 lint parity failure on prose {}",
+            "lint parity failure on prose {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -315,7 +315,7 @@ fn lint_parity_prose_fixtures() {
 #[test]
 fn fix_parity_valid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("valid"));
-    assert!(!txt_files.is_empty(), "T070 requires valid corpus fixtures");
+    assert!(!txt_files.is_empty(), "parity test requires valid corpus fixtures");
     let default_threshold = Config::default().confidence_threshold();
 
     for path in &txt_files {
@@ -341,7 +341,7 @@ fn fix_parity_valid_fixtures() {
         assert_eq!(
             native_fixed,
             wasm_fixed,
-            "SC-008 fix parity failure on valid {}",
+            "fix parity failure on valid {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -376,7 +376,7 @@ fn fix_clean_input_unchanged() {
 }
 
 // ---------------------------------------------------------------------------
-// Config passthrough (M-5: test corrections, classifier_id, error cases)
+// Config passthrough (test corrections, classifier_id, error cases)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -869,8 +869,8 @@ fn generate_cab_both_custom_fields() {
 
 #[test]
 fn wasm_lint_recognized_canonical_byte_identical_to_cli() {
-    // `(TS//SAR-fk)` — drives R001 with a populated
-    // `recognized_canonical` field. The native parity projection and
+    // `(TS//SAR-fk)` — drives the decoder-recognition sentinel with a
+    // populated `recognized_canonical` field. The native parity projection and
     // the WASM `lint_native` projection MUST produce byte-identical
     // NDJSON — including the `recognized_canonical`
     // field. A regression that adds the field on one side and not
@@ -884,7 +884,7 @@ fn wasm_lint_recognized_canonical_byte_identical_to_cli() {
 
     assert_eq!(
         native_ndjson, wasm_ndjson,
-        "SC-008 NDJSON byte-identity must hold for R001 + recognized_canonical",
+        "NDJSON byte-identity must hold for the decoder-recognition sentinel + recognized_canonical",
     );
     assert!(
         native_ndjson.contains(r#""recognized_canonical":"(TS//SAR-FK)""#),

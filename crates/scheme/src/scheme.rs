@@ -6,9 +6,8 @@
 //!
 //! A scheme bundles the data that defines a marking system (categories,
 //! constraints, templates) with the parse/validate/project/render
-//! operations the engine invokes. See the crate-level docs and the
-//! design document `docs/plans/2026-04-17-marking-scheme-lattice-
-//! design.md` in the workspace root for the conceptual framing.
+//! operations the engine invokes. See the crate-level docs for the
+//! conceptual framing.
 
 use core::fmt;
 use core::fmt::Debug;
@@ -143,10 +142,9 @@ pub trait MarkingScheme {
     fn canonicalize<'src>(&self, _parsed: Self::Parsed<'src>) -> Self::Canonical {
         unimplemented!(
             "MarkingScheme::canonicalize not overridden by this scheme. \
-             PR 3c.2.B implements the CapcoScheme override; test stub \
-             schemes that never call canonicalize() inherit the default \
-             safely (the panic is unreachable from their code paths). \
-             See docs/plans/2026-05-19-pr3c2-a-pm-decisions.md PM-1."
+             Schemes that canonicalize (e.g. CapcoScheme) override it; test \
+             stub schemes that never call canonicalize() inherit the default \
+             safely (the panic is unreachable from their code paths)."
         )
     }
 
@@ -240,8 +238,6 @@ pub trait MarkingScheme {
     /// scheme's current marking, and asks the scheme to apply each
     /// intent atomically. The engine then renders the modified marking
     /// via [`Self::render_canonical`] to produce the final fix bytes.
-    /// See `specs/006-engine-rule-refactor/architecture.md` "What
-    /// fixes are" for the architectural rationale.
     ///
     /// # Slice argument
     ///
@@ -311,7 +307,7 @@ pub trait MarkingScheme {
         Self: Sized,
     {
         unimplemented!(
-            "apply_intent not supported by this scheme (PR 3c.B engine-prereq); \
+            "apply_intent not supported by this scheme; \
              a rule emitted a FixIntent but the scheme has no intent-application \
              routing — implement apply_intent for this scheme."
         )
@@ -468,10 +464,9 @@ pub trait MarkingScheme {
     /// layer; this method provides the same routing over the simpler
     /// `TokenId` key.
     ///
-    /// Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
-    /// §2 finding F1: this method was added specifically to resolve the
-    /// scheme-layer / rules-layer boundary constraint on the closure
-    /// operator's token routing.
+    /// This method exists specifically to resolve the scheme-layer /
+    /// rules-layer boundary constraint on the closure operator's token
+    /// routing.
     ///
     /// Returns `None` when the token is not known to this scheme. Schemes
     /// that do not implement closure rules do not need to override this
@@ -586,8 +581,7 @@ pub trait MarkingScheme {
     /// [`RenderContext`], writing the bytes through `out`.
     ///
     /// This is the **single source of truth for canonical form** in
-    /// the scheme. Per `specs/006-engine-rule-refactor/architecture.md`
-    /// "What this commits us to":
+    /// the scheme:
     ///
     /// > The renderer (`render_canonical`) is the single source of
     /// > canonical form. Form rules retire into it.

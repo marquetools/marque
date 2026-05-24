@@ -289,8 +289,8 @@ fn parse_fgi_marker_lowercase_trigraph_yields_no_marker() {
     let attrs = parse_banner_attrs("SECRET//FGI deu//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
-        "lowercase trigraph must yield None at the FGI admission gate \
-         (FR-016); got {:?}",
+        "lowercase trigraph must yield None at the FGI admission gate; \
+         got {:?}",
         attrs.fgi_marker,
     );
 }
@@ -477,7 +477,7 @@ fn parse_fgi_marker_5_letter_token_yields_no_marker() {
     assert!(
         attrs.fgi_marker.is_none(),
         "5-byte token must yield None at the country-token shape \
-         gate (FR-016); got {:?}",
+         gate; got {:?}",
         attrs.fgi_marker,
     );
 }
@@ -492,8 +492,8 @@ fn parse_fgi_marker_digit_token_yields_no_marker() {
     let attrs = parse_banner_attrs("SECRET//FGI U23//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
-        "digit-bearing list-token candidate must yield None \
-         (FR-016); got {:?}",
+        "digit-bearing list-token candidate must yield None; \
+         got {:?}",
         attrs.fgi_marker,
     );
 }
@@ -510,7 +510,7 @@ fn parse_fgi_marker_one_invalid_token_taints_whole_list() {
     let attrs = parse_banner_attrs("SECRET//FGI USA xyz//NOFORN");
     assert!(
         attrs.fgi_marker.is_none(),
-        "one shape-failing token must reject the entire marker (FR-016); \
+        "one shape-failing token must reject the entire marker; \
          got {:?}",
         attrs.fgi_marker,
     );
@@ -528,7 +528,7 @@ fn parse_fgi_marker_lowercase_tetragraph_yields_no_marker() {
     assert!(
         attrs.fgi_marker.is_none(),
         "lowercase tetragraph candidate must yield None at the \
-         country-token shape gate (FR-016); got {:?}",
+         country-token shape gate; got {:?}",
         attrs.fgi_marker,
     );
 }

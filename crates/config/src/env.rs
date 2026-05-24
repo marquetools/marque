@@ -17,7 +17,7 @@ pub(crate) fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
             config.user.classifier_id = Some(id);
         }
     }
-    // C-2: propagate parse failures. `MARQUE_CONFIDENCE_THRESHOLD=0.9o` must
+    // Propagate parse failures. `MARQUE_CONFIDENCE_THRESHOLD=0.9o` must
     // hard-fail, not silently apply the default.
     if let Ok(raw) = std::env::var("MARQUE_CONFIDENCE_THRESHOLD") {
         let threshold = raw.parse::<f32>().map_err(|_| ConfigError::InvalidEnvVar {
@@ -28,7 +28,7 @@ pub(crate) fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
         config.set_confidence_threshold(threshold)?;
     }
     // MARQUE_LOG is handled by the tracing subscriber, not by config loading.
-    // C-3: parse MARQUE_DEFAULT_TIMEZONE as an ISO 8601 UTC offset.
+    // Parse MARQUE_DEFAULT_TIMEZONE as an ISO 8601 UTC offset.
     if let Ok(raw) = std::env::var("MARQUE_DEFAULT_TIMEZONE") {
         if !raw.trim().is_empty() {
             config.capco.default_timezone =

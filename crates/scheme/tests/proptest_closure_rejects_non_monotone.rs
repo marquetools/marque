@@ -313,10 +313,9 @@ fn non_monotone_scenario_is_detectable() {
     // that are never added by any rule's cone. This is the "disjoint
     // suppressor" invariant that makes the CAPCO catalog monotone.
     //
-    // Per docs/plans/2026-05-01-lattice-design.md §4.7.3 table-design
-    // property: the FD&R dominators set is maintained as a closed set
-    // disjoint from all cone tokens, guaranteeing monotonicity by
-    // construction. This is what the proptest in proptest_closure.rs
+    // Table-design property: the FD&R dominators set is maintained as a
+    // closed set disjoint from all cone tokens, guaranteeing monotonicity
+    // by construction. This is what the proptest in proptest_closure.rs
     // verifies for the CAPCO closure catalog.
 
     // Assert the disjoint suppressor invariant for our test catalog:

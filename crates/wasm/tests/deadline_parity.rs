@@ -211,7 +211,7 @@ fn wasm_deadline_ms_generous_matches_native_full_lint() {
     );
     assert_eq!(
         baseline_native, wasm_with_deadline,
-        "WASM lint_native(deadline_ms=60000) must equal native engine.lint() byte-for-byte (SC-008)"
+        "WASM lint_native(deadline_ms=60000) must equal native engine.lint() byte-for-byte"
     );
 }
 

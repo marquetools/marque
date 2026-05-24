@@ -22,9 +22,6 @@
 //! `marque-ism` and `marque-capco` consume this primitive; neither
 //! defines it.
 //!
-//! See `docs/plans/2026-05-20-371-factbitmask-refactor.md` §2 for the
-//! placement rationale (PM disposition OQ-1, 2026-05-20).
-//!
 //! # Capacity
 //!
 //! [`WIDTH`] is 128 bits. CAPCO's atom inventory uses ~51 bits today;
