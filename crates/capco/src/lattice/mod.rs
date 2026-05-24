@@ -9,16 +9,14 @@
 //! and [`marque_ism::FgiMarker`] — newtype wrappers that implement the
 //! [`marque_scheme`] semilattice traits ([`marque_scheme::JoinSemilattice`]
 //! universally; [`marque_scheme::MeetSemilattice`] on the full-lattice
-//! types only — see the PR #502 / issue #456 split, which made join-only
-//! `DissemSet` / `JointSet` / `DisplayOnlyBlock` non-`Lattice`-satisfying
-//! by design) so CAPCO's structural categories compose through the
-//! generic engine machinery. Post-PR-4b-E (this module's
+//! types only — the `Lattice` trait split (issue #456 / PR #502) made
+//! join-only `DissemSet` / `JointSet` / `DisplayOnlyBlock`
+//! non-`Lattice`-satisfying by design) so CAPCO's structural categories
+//! compose through the generic engine machinery. This module's
 //! `*::from_attrs_iter` constructors + free helpers like
-//! [`sci_controls_from_markings`]) these helpers ARE the production
-//! page-roll-up path — the retired `PageContext::expected_*` accessor
-//! surface was the pre-PR-4b-E shape.
+//! [`sci_controls_from_markings`] ARE the production page-roll-up path.
 //!
-//! # Policy (§3.3a of the Phase B design doc)
+//! # Meet policy
 //!
 //! Tree intersection is not unique. For SCI, given `SI-G ABCD` on the
 //! left and plain `SI` on the right, the meet could reasonably be (a)
@@ -31,22 +29,21 @@
 //! `SI ⊓ SI-G ABCD = SI`, the interpretation closest to the plain
 //! lattice definition (`x ⊓ y ≤ x` and `x ⊓ y ≤ y`).
 //!
-//! Callers that need a different interpretation — primarily the Phase
-//! C constraint-evaluator asking "do these two portions share any SCI
+//! Callers that need a different interpretation — primarily the
+//! constraint-evaluator asking "do these two portions share any SCI
 //! compartment?" — use [`SciSet::overlaps`] and
 //! [`SciSet::common_compartments`] rather than
 //! [`marque_scheme::MeetSemilattice::meet`].
 //!
 //! # SCI storage canonicalization
 //!
-//! Post-Phase-B, [`SciSet`] is the **canonical** page-context storage
-//! for SCI. [`marque_ism::CanonicalAttrs::sci_controls`] (the flat CVE
-//! enum projection) stays populated for rules that currently read it
-//! but is a compatibility view scheduled for removal once no rule
-//! references it (Phase C or D). New rules read `sci_markings` /
-//! `SciSet`.
+//! [`SciSet`] is the **canonical** page-context storage for SCI.
+//! [`marque_ism::CanonicalAttrs::sci_controls`] (the flat CVE enum
+//! projection) stays populated for rules that currently read it but is
+//! a compatibility view scheduled for removal once no rule references
+//! it. New rules read `sci_markings` / `SciSet`.
 //!
-//! # Module layout (post-#565 split)
+//! # Module layout
 //!
 //! Each lattice type lives in its own submodule with its inherent
 //! impls, lattice-trait impls, and per-type `#[cfg(test)] mod tests`.

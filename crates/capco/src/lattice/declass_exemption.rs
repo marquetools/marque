@@ -12,17 +12,13 @@ use marque_ism::CanonicalAttrs;
 
 /// Last-observed accumulator for the declass-exemption axis.
 ///
-/// **Projection helper, NOT a lattice.** Earlier drafts of this type
-/// implemented `JoinSemilattice` with a "right-operand-wins" join body
-/// that was admittedly non-commutative. The trait contract at
-/// `crates/scheme/src/lattice.rs:55-64` requires commutativity, so the
-/// review chain (rust-reviewer H-1 + lattice-consultant L-1) called
-/// the impl what it was — a contract violation. The fix follows
-/// [`super::non_ic_dissem::NonIcDissemSet`]'s precedent: drop the
-/// `JoinSemilattice` impl, keep the type as a projection accumulator
-/// surfacing `from_attrs_iter` + `into_inner` / `as_inner`. The rename
-/// `DeclassExemptionLattice -> DeclassExemptionAccumulator` makes the
-/// non-lattice nature explicit at the type-name level.
+/// **Projection helper, NOT a lattice.** A `JoinSemilattice` impl
+/// would need a "right-operand-wins" join body that is non-commutative,
+/// violating the `JoinSemilattice` commutativity contract. Following
+/// [`super::non_ic_dissem::NonIcDissemSet`]'s precedent, the type has no
+/// `JoinSemilattice` impl — it is a projection accumulator surfacing
+/// `from_attrs_iter` + `into_inner` / `as_inner`, and the
+/// `Accumulator` name makes the non-lattice nature explicit.
 ///
 /// Conservative "last-observed" semantics: `from_attrs_iter` walks
 /// portions in document order and keeps the last portion's
@@ -30,13 +26,12 @@ use marque_ism::CanonicalAttrs;
 /// generator in `crates/wasm/src/lib.rs` uses the same shape via an
 /// inline accumulator (see `generate_cab_native`).
 ///
-/// **Phase 3 TODO** (carried over from
-/// `PageContext::expected_declass_exemption`): a correct implementation
-/// would return the exemption providing the longest period of protection
-/// per CAPCO-2016 §E.3 pp 32-33 (Multiple Sources hierarchy:
+/// **Known limitation**: a correct implementation would return the
+/// exemption providing the longest period of protection per
+/// CAPCO-2016 §E.3 pp 32-33 (Multiple Sources hierarchy:
 /// 50X1 - HUM > 50X2 - WMD > ... > 25X# > derived calculation). The
-/// current implementation is the conservative last-observed placeholder;
-/// Phase 3 should add a duration-aware comparator.
+/// current implementation is the conservative last-observed placeholder
+/// and needs a duration-aware comparator.
 ///
 /// §-authority (verified 2026-05-18 against
 /// `crates/capco/docs/CAPCO-2016.md`):
@@ -89,13 +84,10 @@ mod tests {
 
     // DeclassExemptionAccumulator — last-observed projection helper.
     //
-    // Renamed from `DeclassExemptionLattice` in PR 4b-E review fix-up
-    // (rust-reviewer H-1 + lattice-consultant L-1): the type is a
-    // projection accumulator, not a lattice — the prior
-    // `JoinSemilattice` impl was non-commutative by construction and
-    // violated the trait contract. The `idempotent_on_join` and
-    // `identity_with_bottom` tests retired with the impl; only the
-    // `from_attrs_iter` invariants remain.
+    // This is a projection accumulator, NOT a lattice: a `JoinSemilattice`
+    // impl would be non-commutative by construction (last-observed wins)
+    // and would violate the trait contract. Only the `from_attrs_iter`
+    // invariants are tested here.
 
     #[test]
     fn declass_exemption_accumulator_default_is_bottom() {
