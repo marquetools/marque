@@ -150,11 +150,13 @@ pub(super) fn evaluate_sci_banner_rollup(
 
     let fix_start = chunk_spans.first().unwrap().span.start;
     let fix_end = chunk_spans.last().unwrap().span.end;
-    let original: String = chunk_spans
-        .iter()
-        .map(|t| t.text.as_ref())
-        .collect::<Vec<_>>()
-        .join("/");
+    let mut original = String::new();
+    for (i, t) in chunk_spans.iter().enumerate() {
+        if i > 0 {
+            original.push('/');
+        }
+        original.push_str(t.text.as_ref());
+    }
     let fix_span = Span::new(fix_start, fix_end);
     let replacement = render_sci_block(&expected);
 
