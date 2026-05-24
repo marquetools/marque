@@ -293,7 +293,6 @@ def parse_file(path: Path) -> dict:
 
         if depth == 0:
             # Gather a contiguous doc+attr cluster preceding any item.
-            cluster_start = i
             doc_lines: list[str] = []
             attr_lines: list[str] = []
 
