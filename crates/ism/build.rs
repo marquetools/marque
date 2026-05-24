@@ -850,7 +850,7 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
                                 .normalized_value(XmlVersion::Implicit1_0)
                                 .unwrap_or_else(|err| {
                                     panic!(
-                                        "XSD attribute unescape error in {}: {err}",
+                                        "XSD attribute normalization/decoding error in {}: {err}",
                                         path.display()
                                     )
                                 });
@@ -1850,7 +1850,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                         .normalized_value(XmlVersion::Implicit1_0)
                                         .unwrap_or_else(|err| {
                                             panic!(
-                                                "{}: failed to unescape `deprecated`: {err}",
+                                                "{}: failed to normalize `deprecated`: {err}",
                                                 path.display()
                                             )
                                         });
