@@ -6,19 +6,13 @@
 //!
 //! Verifies the algebraic laws (associativity, commutativity,
 //! idempotency, identity-with-bottom) for each CAPCO category's
-//! lattice impl. Lands in PR 4b-A for the AEA category; subsequent
-//! PRs add coverage for the other six categories per
-//! `docs/plans/2026-05-01-lattice-design.md` §§2-8.
+//! lattice impl, across all seven CAPCO categories.
 //!
-//! # AEA category coverage (PR 4b-A)
+//! # AEA category coverage
 //!
-//! The AEA `Product` decomposes into five sub-axes (per §7.5 of the
-//! design doc); each axis carries its own algebraic shape and gets
-//! its own law-suite below. The composite `AeaSet` laws ride on top.
-//!
-//! Test names are referenced by the design doc §7.5 acceptance
-//! checklist — adding / renaming a test here MUST update the design
-//! doc reference for traceability.
+//! The AEA `Product` decomposes into five sub-axes; each axis carries
+//! its own algebraic shape and gets its own law-suite below. The
+//! composite `AeaSet` laws ride on top.
 
 use std::collections::BTreeSet;
 
@@ -368,9 +362,8 @@ fn aea_set_identity_with_default() {
 //
 // `Lattice` requires meet to be commutative, associative, idempotent, and to
 // absorb against join: `a.meet(a.join(&b)) == a` and `a.join(a.meet(&b)) == a`.
-// The PR 4b-A `AeaSet::meet` impl was not exercised by the original test
-// suite; Copilot review (PR #426) flagged the gap. These tests pin the meet
-// algebra component-wise per sub-axis + the Product-level laws.
+// These tests pin the `AeaSet::meet` algebra component-wise per sub-axis
+// plus the Product-level laws.
 
 /// `AeaSet::meet` is commutative and idempotent over the primary axis
 /// (SupersessionSet meet is the *min* under `Tfni ⊏ Frd ⊏ Rd`).
@@ -491,7 +484,7 @@ fn aea_set_meet_join_absorption() {
 }
 
 // ===========================================================================
-// PR 4b-B Commit 3 — ClassificationLattice
+// ClassificationLattice
 // ===========================================================================
 // CAPCO-2016 §H.1 pp47-54 (US class chain) + §H.7 pp123-125 (reciprocal-
 // classification rule). Verified 2026-05-15 against CAPCO-2016.md.
@@ -505,11 +498,9 @@ mod classification_lattice {
         ClassificationLattice::new(Some(MarkingClassification::Us(c)))
     }
 
-    // H-5 (PR 4b-B follow-up): include `Restricted` so the
-    // five-level chain (U < R < C < S < TS) is exercised end-to-end.
-    // `Restricted` is the US equivalent of NATO `NR` per
-    // `NatoClassification::us_equivalent()` and was previously
-    // omitted from the test sweep.
+    // The five-level chain (U < R < C < S < TS) is exercised
+    // end-to-end. `Restricted` is the US equivalent of NATO `NR` per
+    // `NatoClassification::us_equivalent()`.
     const ALL: [Classification; 5] = [
         Classification::Unclassified,
         Classification::Restricted,
@@ -586,11 +577,10 @@ mod classification_lattice {
     }
 
     // -----------------------------------------------------------------------
-    // PR 4b-B follow-up — C-1 commutativity tiebreak across equal-level
-    // variants. The original PR 4b-B impl always returned the left
-    // operand on equal level, breaking commutativity. This regression
-    // suite exhausts the cross-product of `{Us, Fgi, Nato, Joint}` at
-    // every level and asserts `a.join(b) == b.join(a)`.
+    // Commutativity tiebreak across equal-level variants. Returning the
+    // left operand on equal level would break commutativity. This suite
+    // exhausts the cross-product of `{Us, Fgi, Nato, Joint}` at every
+    // level and asserts `a.join(b) == b.join(a)`.
     // -----------------------------------------------------------------------
     fn arb_classification_variant(level: Classification) -> Vec<ClassificationLattice> {
         use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
@@ -601,14 +591,13 @@ mod classification_lattice {
         // Pair a few representative variants at the same effective
         // level. NATO uses `us_equivalent`; pick the variant whose
         // us_equivalent matches `level` for the five-level chain
-        // (U / R / C / S / TS — H-5 PR 4b-B follow-up adds R).
+        // (U / R / C / S / TS).
         //
-        // C-7 / H-7 (PR 4b-B follow-up): include multiple distinct
-        // payloads at the same variant-rank/same-level so commutativity
-        // is exercised on the payload tiebreaker as well as the
-        // variant tiebreaker. Pre-C-7 the join fell through `ra <= rb`
-        // returning the left operand on same-variant/same-level —
-        // non-commutative.
+        // Include multiple distinct payloads at the same
+        // variant-rank/same-level so commutativity is exercised on the
+        // payload tiebreaker as well as the variant tiebreaker — a join
+        // that fell through `ra <= rb` would return the left operand on
+        // same-variant/same-level, which is non-commutative.
         let nato = match level {
             Classification::TopSecret => Some(NatoClassification::CosmicTopSecret),
             Classification::Secret => Some(NatoClassification::NatoSecret),
@@ -620,7 +609,7 @@ mod classification_lattice {
             // Us — only one payload (the level itself).
             ClassificationLattice::new(Some(MarkingClassification::Us(level))),
             // Fgi — two payloads with different country lists at same
-            // level. Pre-C-7 these joined non-commutatively.
+            // level; these must join commutatively.
             ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level,
                 countries: Box::new([gbr]),
@@ -658,8 +647,8 @@ mod classification_lattice {
 
     #[test]
     fn classification_join_commutative_across_variants() {
-        // C-1 regression: at each effective level, every pair of
-        // distinct-variant classifications must commute under join.
+        // At each effective level, every pair of distinct-variant
+        // classifications must commute under join.
         for level in ALL {
             let variants = arb_classification_variant(level);
             for a in &variants {
@@ -667,7 +656,7 @@ mod classification_lattice {
                     assert_eq!(
                         a.join(b),
                         b.join(a),
-                        "C-1: join not commutative at level {level:?}: \
+                        "join not commutative at level {level:?}: \
                          {a:?} vs {b:?}"
                     );
                 }
@@ -686,7 +675,7 @@ mod classification_lattice {
                     assert_eq!(
                         a.meet(b),
                         b.meet(a),
-                        "C-1: meet not commutative at level {level:?}: \
+                        "meet not commutative at level {level:?}: \
                          {a:?} vs {b:?}"
                     );
                 }
@@ -696,7 +685,7 @@ mod classification_lattice {
 
     #[test]
     fn classification_us_wins_equal_level_tiebreak() {
-        // C-1: US is the canonical variant per §H.7 reciprocal
+        // US is the canonical variant per §H.7 reciprocal
         // normalization. At equal effective level, joining Us with
         // any other variant produces Us.
         use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
@@ -724,21 +713,14 @@ mod classification_lattice {
     }
 
     // -----------------------------------------------------------------------
-    // C-9 (PR 4b-B follow-up) — absorption laws across the cross-product
-    // of equal-level variants AND across the partial order on payloads.
+    // Absorption laws across the cross-product of equal-level variants
+    // AND across the partial order on payloads.
     //
     // Absorption pair: `a ⊔ (a ⊓ b) = a` and `a ⊓ (a ⊔ b) = a`.
     //
-    // **Background (pre-C-9 history; M-24 PR 4b-B 7th-pass — wording
-    // amended to remove the misleading "different variants are
-    // incomparable" framing).** The C-7 fix introduced a same-
-    // variant-payload union tiebreaker on both `join` and `meet`.
-    // That broke absorption at equal level on same-variant payload
-    // diffs: `meet` should NOT return the UNION — otherwise
-    // `a.join(a.meet(b)) = union(a, b) ≠ a` for the operand whose
-    // payload was a strict subset.
-    //
-    // The C-9 fix (verified against
+    // `meet` must NOT return the union of same-variant payloads —
+    // otherwise `a.join(a.meet(b)) = union(a, b) ≠ a` for the operand
+    // whose payload was a strict subset. The meet rule (in
     // `crates/capco/src/lattice/classification.rs::ClassificationLattice::meet`):
     // - Different variants at same level are NOT incomparable — they
     //   are linearly ordered by `classification_variant_rank`
@@ -757,10 +739,9 @@ mod classification_lattice {
     //   bottom (`Self(None)`; no common subset). This is the ONLY
     //   path that returns `empty()` from `meet` at same-level inputs.
     //
-    // **C-9b extension (PR 4b-B 7th-pass).** The same asymmetry
-    // existed inside `meet_foreign_classification` for `Conflict`-
-    // `Conflict` cross-variant inner foreign payloads — fixed to
-    // return the higher-rank inner. See the
+    // The same asymmetry inside `meet_foreign_classification` for
+    // `Conflict`-`Conflict` cross-variant inner foreign payloads
+    // likewise returns the higher-rank inner. See the
     // `classification_conflict_cross_variant_inner_*` tests below.
     //
     // §-authority (verified 2026-05-15 against CAPCO-2016.md):
@@ -825,8 +806,8 @@ mod classification_lattice {
                 level: Classification::Secret,
                 countries: Box::new([can, usa]),
             }))),
-            // C-9b: Conflict variants with cross-variant inner foreign
-            // payloads exercise the C-9b dual-absorption fix on
+            // Conflict variants with cross-variant inner foreign
+            // payloads exercise the dual-absorption behavior on
             // `meet_foreign_classification`.
             ClassificationLattice::new(Some(MarkingClassification::Conflict {
                 us: Classification::Secret,
@@ -854,24 +835,24 @@ mod classification_lattice {
                 assert_eq!(
                     a.join(&a_meet_b),
                     *a,
-                    "C-9: a ⊔ (a ⊓ b) ≠ a for a={a:?}, b={b:?}, \
+                    "a ⊔ (a ⊓ b) ≠ a for a={a:?}, b={b:?}, \
                      a⊓b={a_meet_b:?}"
                 );
                 assert_eq!(
                     a.meet(&a_join_b),
                     *a,
-                    "C-9: a ⊓ (a ⊔ b) ≠ a for a={a:?}, b={b:?}, \
+                    "a ⊓ (a ⊔ b) ≠ a for a={a:?}, b={b:?}, \
                      a⊔b={a_join_b:?}"
                 );
             }
         }
     }
 
-    // C-9 spot-checks: the user-cited counterexamples from the triage,
-    // pinned individually so a regression names them in test output.
+    // Spot-checks: counterexamples pinned individually so a regression
+    // names them in test output.
     //
-    // Analysis correction vs. the triage description: at same level,
-    // different variants are NOT incomparable — they are linearly
+    // At same level, different variants are NOT incomparable — they
+    // are linearly
     // ordered by the variant-rank join policy (Us < Fgi < Nato <
     // Joint < Conflict, where lower rank wins join → lower rank is
     // GREATER in the ≤ order). The meet of Fgi(S,[GBR]) and Us(S) is
@@ -894,7 +875,7 @@ mod classification_lattice {
         let meet = fgi_gbr.meet(&us_s);
         assert_eq!(
             meet, fgi_gbr,
-            "C-9: meet at cross-variant same-level returns dominated"
+            "meet at cross-variant same-level returns dominated"
         );
         // Symmetric: order shouldn't matter.
         assert_eq!(us_s.meet(&fgi_gbr), fgi_gbr);
@@ -924,7 +905,7 @@ mod classification_lattice {
         assert_eq!(
             meet,
             ClassificationLattice::empty(),
-            "C-9: meet of same-variant disjoint payloads must be bottom"
+            "meet of same-variant disjoint payloads must be bottom"
         );
         assert_eq!(fgi_gbr.join(&meet), fgi_gbr);
         assert_eq!(fgi_can.join(&meet), fgi_can);
@@ -948,7 +929,7 @@ mod classification_lattice {
                 countries: Box::new([gbr]),
             })));
         let meet = fgi_both.meet(&fgi_gbr);
-        assert_eq!(meet, fgi_gbr, "C-9: meet picks smaller payload on subset");
+        assert_eq!(meet, fgi_gbr, "meet picks smaller payload on subset");
         // Symmetric: order shouldn't matter.
         assert_eq!(fgi_gbr.meet(&fgi_both), fgi_gbr);
         // Absorption.
@@ -957,16 +938,15 @@ mod classification_lattice {
     }
 
     // -----------------------------------------------------------------------
-    // C-9b (PR 4b-B 7th-pass follow-up) — Conflict cross-variant inner
-    // foreign-classification absorption.
+    // Conflict cross-variant inner foreign-classification absorption.
     //
-    // Continuation of C-9. Two `Conflict` values at the same outer level
-    // with different `foreign` inner variants (e.g. one with
-    // `Nato(NS)` inner, another with `Fgi(S, [GBR])` inner) trigger the
-    // `Conflict-Conflict` arm of `classification_join_same_variant` /
+    // Two `Conflict` values at the same outer level with different
+    // `foreign` inner variants (e.g. one with `Nato(NS)` inner, another
+    // with `Fgi(S, [GBR])` inner) trigger the `Conflict-Conflict` arm of
+    // `classification_join_same_variant` /
     // `classification_meet_same_variant`. Those arms delegate to
     // `merge_foreign_classification` / `meet_foreign_classification`,
-    // which were ASYMMETRIC pre-C-9b:
+    // whose tiebreaks must align:
     //
     //   - `merge_foreign_classification` cross-variant: returns the
     //     lower-rank variant (Fgi=1 < Nato=2 < Joint=3).
@@ -974,22 +954,16 @@ mod classification_lattice {
     //     which the outer `classification_meet_same_variant` translated
     //     to the lattice bottom.
     //
-    // That asymmetry broke the dual absorption law `a ⊓ (a ⊔ b) = a` for
-    // the operand whose inner `foreign` was the LOWER-rank one (Fgi
-    // wins join → Fgi = `a ⊔ b`; then `a.meet(b) = bottom`; so the join
-    // direction gives `b`, but the meet direction gives bottom, which
-    // joined back with `a` gives `a` ✓ — but `a.meet(a.join(b))` =
-    // `a.meet(b)` (since `a ⊔ b = b` for the higher-rank operand),
-    // which = bottom, NOT `a`).
+    // A `None` return from `meet_foreign_classification` would break the
+    // dual absorption law `a ⊓ (a ⊔ b) = a` for the operand whose inner
+    // `foreign` was the LOWER-rank one. Instead,
+    // `meet_foreign_classification` cross-variant aligns with
+    // `merge_foreign_classification`'s tiebreak — returning the
+    // HIGHER-rank operand (the dominated, lower-≤ side; the GLB dual) —
+    // so the inner foreign axis is its own linear-ordered tiebreak that
+    // satisfies absorption, mirroring the outer classification level.
     //
-    // Fix: align `meet_foreign_classification` cross-variant with
-    // `merge_foreign_classification`'s tiebreak — return the HIGHER-rank
-    // operand (the dominated, lower-≤ side; the GLB dual). This makes
-    // the inner foreign axis its own linear-ordered tiebreak that
-    // satisfies absorption, mirroring the C-9 fix at the outer
-    // classification level.
-    //
-    // §-authority: §H.7 pp123-125 reciprocal-normalization (variant-rank
+    // Authority: §H.7 pp123-125 reciprocal-normalization (variant-rank
     // order). Verified 2026-05-15 against CAPCO-2016.md.
     // -----------------------------------------------------------------------
 
@@ -1012,13 +986,13 @@ mod classification_lattice {
         // - merge_foreign_classification(Nato, Fgi): rank(Nato)=2,
         //   rank(Fgi)=1; rank(a)<=rank(b) is `2<=1` = false → returns
         //   Fgi. So `a.join(b) = Conflict{foreign: Fgi}` = b.
-        // - meet_foreign_classification(Nato, Fgi) post-C-9b: returns
-        //   the higher-rank inner (the lower-≤ side; GLB dual) = Nato.
+        // - meet_foreign_classification(Nato, Fgi): returns the
+        //   higher-rank inner (the lower-≤ side; GLB dual) = Nato.
         //   So `a.meet(b) = Conflict{foreign: Nato}` = a.
         //
         // Absorption checks:
         //   - a ⊔ (a ⊓ b) = a ⊔ a = a ✓
-        //   - a ⊓ (a ⊔ b) = a ⊓ b = a ✓ (this is the C-9b fix)
+        //   - a ⊓ (a ⊔ b) = a ⊓ b = a ✓
         //   - b ⊔ (b ⊓ a) = b ⊔ a = b ✓
         //   - b ⊓ (b ⊔ a) = b ⊓ b = b ✓
         use marque_ism::{
@@ -1041,17 +1015,17 @@ mod classification_lattice {
         // same-level tiebreak path activates.
         let a_join_b = a.join(&b);
         let b_join_a = b.join(&a);
-        assert_eq!(a_join_b, b_join_a, "C-9b: join must be commutative");
+        assert_eq!(a_join_b, b_join_a, "join must be commutative");
 
         let a_meet_b = a.meet(&b);
         let b_meet_a = b.meet(&a);
-        assert_eq!(a_meet_b, b_meet_a, "C-9b: meet must be commutative");
+        assert_eq!(a_meet_b, b_meet_a, "meet must be commutative");
 
         // Absorption — both directions.
-        assert_eq!(a.join(&a_meet_b), a, "C-9b: a ⊔ (a ⊓ b) = a");
-        assert_eq!(a.meet(&a_join_b), a, "C-9b: a ⊓ (a ⊔ b) = a");
-        assert_eq!(b.join(&b_meet_a), b, "C-9b: b ⊔ (b ⊓ a) = b");
-        assert_eq!(b.meet(&b_join_a), b, "C-9b: b ⊓ (b ⊔ a) = b");
+        assert_eq!(a.join(&a_meet_b), a, "a ⊔ (a ⊓ b) = a");
+        assert_eq!(a.meet(&a_join_b), a, "a ⊓ (a ⊔ b) = a");
+        assert_eq!(b.join(&b_meet_a), b, "b ⊔ (b ⊓ a) = b");
+        assert_eq!(b.meet(&b_join_a), b, "b ⊓ (b ⊔ a) = b");
     }
 
     #[test]
@@ -1085,10 +1059,10 @@ mod classification_lattice {
         assert_eq!(b.join(&a), a_join_b, "comm join");
         assert_eq!(b.meet(&a), a_meet_b, "comm meet");
         // Absorption.
-        assert_eq!(a.join(&a_meet_b), a, "C-9b: a ⊔ (a ⊓ b) = a");
-        assert_eq!(a.meet(&a_join_b), a, "C-9b: a ⊓ (a ⊔ b) = a");
-        assert_eq!(b.join(&b.meet(&a)), b, "C-9b: b ⊔ (b ⊓ a) = b");
-        assert_eq!(b.meet(&b.join(&a)), b, "C-9b: b ⊓ (b ⊔ a) = b");
+        assert_eq!(a.join(&a_meet_b), a, "a ⊔ (a ⊓ b) = a");
+        assert_eq!(a.meet(&a_join_b), a, "a ⊓ (a ⊔ b) = a");
+        assert_eq!(b.join(&b.meet(&a)), b, "b ⊔ (b ⊓ a) = b");
+        assert_eq!(b.meet(&b.join(&a)), b, "b ⊓ (b ⊔ a) = b");
     }
 
     #[test]
@@ -1131,17 +1105,17 @@ mod classification_lattice {
         ];
         for a in &inputs {
             for b in &inputs {
-                assert_eq!(a.join(b), b.join(a), "C-9b: join commutativity");
-                assert_eq!(a.meet(b), b.meet(a), "C-9b: meet commutativity");
+                assert_eq!(a.join(b), b.join(a), "join commutativity");
+                assert_eq!(a.meet(b), b.meet(a), "meet commutativity");
                 assert_eq!(
                     a.join(&a.meet(b)),
                     *a,
-                    "C-9b: a ⊔ (a ⊓ b) ≠ a for a={a:?}, b={b:?}"
+                    "a ⊔ (a ⊓ b) ≠ a for a={a:?}, b={b:?}"
                 );
                 assert_eq!(
                     a.meet(&a.join(b)),
                     *a,
-                    "C-9b: a ⊓ (a ⊔ b) ≠ a for a={a:?}, b={b:?}"
+                    "a ⊓ (a ⊔ b) ≠ a for a={a:?}, b={b:?}"
                 );
             }
         }
@@ -1149,7 +1123,7 @@ mod classification_lattice {
 }
 
 // ===========================================================================
-// PR 4b-B Commit 3 — NatoClassLattice
+// NatoClassLattice
 // ===========================================================================
 // CAPCO-2016 §H.2 p55. Verified 2026-05-15.
 
@@ -1212,7 +1186,7 @@ mod nato_class_lattice {
 }
 
 // ===========================================================================
-// PR 4b-B Commit 3 — DeclassifyOnLattice
+// DeclassifyOnLattice
 // ===========================================================================
 // CAPCO-2016 §H.6 p104 (most-restrictive date wins). Verified 2026-05-15.
 
@@ -1284,7 +1258,7 @@ mod declassify_on_lattice {
 }
 
 // ===========================================================================
-// PR 4b-B Commit 4 — DissemSet
+// DissemSet
 // ===========================================================================
 // CAPCO-2016 §H.8 p136/p140 (OC-USGOV supersession), §H.8 pp155-156
 // (RELIDO unanimity), §D.2 Table 3 + §H.8 p145 (NOFORN dominates).
@@ -1444,86 +1418,84 @@ mod dissem_set {
         }
 
         // NOTE (`Lattice` trait split, issue #456 / PR #502): `DissemSet` is join-only
-        // (`JoinSemilattice` but NOT `MeetSemilattice`). The C-4 meet-
-        // side absorption test `a ⊔ (a ⊓ b) = a` is enforced at the
-        // type level — `DissemSet::meet` does not exist. The join-only
+        // (`JoinSemilattice` but NOT `MeetSemilattice`). The meet-side
+        // absorption test `a ⊔ (a ⊓ b) = a` is enforced at the type
+        // level — `DissemSet::meet` does not exist. The join-only
         // laws (commutativity, idempotency, associativity, identity)
         // are fully covered by `dissem_set_lattice_laws_idempotent_associative`.
     }
 
     #[test]
     fn dissem_set_all_empty_constructors_agree() {
-        // C-5 (PR 4b-B follow-up): `from_attrs_iter(&[])` must
-        // return the same value as `DissemSet::empty()`. Pre-fix,
-        // `from_attrs_iter(&[])` set `relido_observed_unanimous =
-        // false` (universal-over-empty short-circuit failure) while
-        // `empty()` documented the vacuous `true` value. The two
-        // bottom states were not `PartialEq`, and joining with the
-        // wrong bottom dropped RELIDO under the overlay.
+        // `from_attrs_iter(&[])` must return the same value as
+        // `DissemSet::empty()`. If `from_attrs_iter(&[])` set
+        // `relido_observed_unanimous = false` while `empty()` uses the
+        // vacuous `true`, the two bottom states would not be
+        // `PartialEq`, and joining with the wrong bottom would drop
+        // RELIDO under the overlay.
         let from_empty = DissemSet::from_attrs_iter(&[]);
         let empty = DissemSet::empty();
         assert_eq!(from_empty, empty);
         assert!(from_empty.relido_unanimous());
         assert!(from_empty.as_set().is_empty());
 
-        // C-8 (PR 4b-B follow-up): `DissemSet::default()` MUST also
-        // agree with `DissemSet::empty()`. Pre-fix, `#[derive(Default)]`
-        // produced `relido_observed_unanimous = false` (bool's Default)
-        // while `empty()` uses `true` (vacuous-truth over empty
-        // portion list). The two bottom states were `PartialEq`-
-        // different, and joining a `Default::default()` operand into
-        // a unanimous-RELIDO set dropped RELIDO under the
+        // `DissemSet::default()` MUST also agree with
+        // `DissemSet::empty()`. If `#[derive(Default)]` produced
+        // `relido_observed_unanimous = false` (bool's Default) while
+        // `empty()` uses `true` (vacuous-truth over empty portion
+        // list), the two bottom states would be `PartialEq`-different,
+        // and joining a `Default::default()` operand into a
+        // unanimous-RELIDO set would drop RELIDO under the
         // unanimity-AND-propagation rule.
         let default = DissemSet::default();
-        assert_eq!(default, empty, "C-8: Default == empty()");
+        assert_eq!(default, empty, "Default == empty()");
         assert!(
             default.relido_unanimous(),
-            "C-8: Default is vacuously unanimous"
+            "Default is vacuously unanimous"
         );
-        assert!(default.as_set().is_empty(), "C-8: Default is the empty bag");
+        assert!(default.as_set().is_empty(), "Default is the empty bag");
     }
 
     #[test]
     fn dissem_set_default_does_not_drop_relido_when_joined() {
-        // C-8 (PR 4b-B follow-up): concrete regression — joining a
-        // unanimous-RELIDO set with `DissemSet::default()` MUST
-        // preserve RELIDO. Pre-fix, the derived `Default` set
-        // `relido_observed_unanimous = false`, so the AND-propagation
-        // in `join` flipped the flag, and the overlay then dropped
-        // RELIDO from the set.
+        // Joining a unanimous-RELIDO set with `DissemSet::default()`
+        // MUST preserve RELIDO. A derived `Default` setting
+        // `relido_observed_unanimous = false` would let the
+        // AND-propagation in `join` flip the flag, and the overlay
+        // would then drop RELIDO from the set.
         let unanimous_relido = DissemSet::from_attrs_iter(&[portion(&[DissemControl::Relido])]);
         let default = DissemSet::default();
         let joined_left = unanimous_relido.join(&default);
         let joined_right = default.join(&unanimous_relido);
         assert!(
             joined_left.as_set().contains(&DissemControl::Relido),
-            "C-8: RELIDO preserved across join with Default (left)"
+            "RELIDO preserved across join with Default (left)"
         );
         assert!(
             joined_right.as_set().contains(&DissemControl::Relido),
-            "C-8: RELIDO preserved across join with Default (right)"
+            "RELIDO preserved across join with Default (right)"
         );
         assert!(
             joined_left.relido_unanimous(),
-            "C-8: unanimity preserved across join with Default (left)"
+            "unanimity preserved across join with Default (left)"
         );
         assert!(
             joined_right.relido_unanimous(),
-            "C-8: unanimity preserved across join with Default (right)"
+            "unanimity preserved across join with Default (right)"
         );
     }
 
     // NOTE (`Lattice` trait split, issue #456 / PR #502): `DissemSet::absorption_specific_relido_case`
     // was removed because `DissemSet` no longer implements `MeetSemilattice`.
-    // The C-4 correction (unanimous-RELIDO join-absorption) is now enforced
-    // structurally by the trait split: callers cannot call `.meet()` on
+    // Unanimous-RELIDO join-absorption is now enforced structurally by
+    // the trait split: callers cannot call `.meet()` on
     // `DissemSet`, eliminating the class of bugs the test was guarding.
     // The RELIDO-unanimity preservation regression is covered by
     // `dissem_set_default_does_not_drop_relido_when_joined` above.
 }
 
 // ===========================================================================
-// PR 4b-B Commit 4 — NatoDissemSet
+// NatoDissemSet
 // ===========================================================================
 // CAPCO-2016 p41 (NATO reciprocity table). Verified 2026-05-15.
 
@@ -1601,12 +1573,11 @@ mod nato_dissem_set {
 }
 
 // ===========================================================================
-// PR 4b-B Commit 5 — JointSet
+// JointSet
 // ===========================================================================
 // CAPCO-2016 §H.3 p56 (JOINT grammar) + §H.7 p123 (FGI source-acknowledged
 // form for disunity-collapse migration) + §H.3 p57 (mixed-US case
-// `Mixed`; M-23 PR 4b-B 7th-pass — pre-C-3 wording said `bottom` but
-// PR 4b-B follow-up C-3 split `Mixed` out of `Bottom` so the
+// `Mixed`; the `Mixed` variant is split out of `Bottom` so the
 // absorbing JOINT+non-JOINT state keeps `join` associative). Verified
 // 2026-05-15 against CAPCO-2016.md.
 
@@ -1688,12 +1659,11 @@ mod joint_set {
     #[test]
     fn joint_mixed_with_us_portions_returns_mixed_no_w004() {
         // §H.3 p57: JOINT does not roll up in US documents.
-        // PR 4b-B follow-up C-3: the constructor returns `Mixed`
-        // (a distinct, absorbing state) — pre-fix it returned
-        // `Bottom`, which `join` treats as the identity, breaking
-        // associativity under grouped folds. No W004 fires on
-        // `Mixed`; the JOINT non-US producers ride to FgiSet via
-        // the existing PageContext path.
+        // The constructor returns `Mixed` (a distinct, absorbing
+        // state), not `Bottom` — `join` treats `Bottom` as the
+        // identity, which would break associativity under grouped
+        // folds. No W004 fires on `Mixed`; the JOINT non-US producers
+        // ride to FgiSet.
         let portions = [
             joint_portion(Classification::Secret, &["USA", "GBR"]),
             us_portion(Classification::Secret),
@@ -1718,11 +1688,10 @@ mod joint_set {
     #[test]
     fn joint_set_lattice_laws_assoc_comm_idem() {
         // Four-variant state space exhausted as 4×4×4 over
-        // representatives that exercise each transition. C-3
-        // (PR 4b-B follow-up) added the `Mixed` variant; without
-        // it, `(Mixed + Bottom).join(Unanimous)` would have
-        // resurrected an `UnanimousProducers` value, breaking
-        // associativity.
+        // representatives that exercise each transition. The `Mixed`
+        // variant is distinct from `Bottom`; without it,
+        // `(Mixed + Bottom).join(Unanimous)` would resurrect an
+        // `UnanimousProducers` value, breaking associativity.
         let bottom = JointSet::Bottom;
         let mixed = JointSet::Mixed;
         let unanim =
@@ -1757,7 +1726,7 @@ mod joint_set {
     }
 
     // NOTE (`Lattice` trait split, issue #456 / PR #502): `JointSet` is join-only (`JoinSemilattice`
-    // but NOT `MeetSemilattice`). The C-6 meet-side absorption test and the
+    // but NOT `MeetSemilattice`). The meet-side absorption test and the
     // `meet_identical_producers` test are removed because `JointSet::meet`
     // no longer exists. The join-absorption law `a ⊔ (a ⊓ b) = a` is now
     // enforced at the type level — callers that would have called `.meet()`
@@ -1767,10 +1736,9 @@ mod joint_set {
 
     #[test]
     fn joint_set_mixed_absorbs_unanimous_under_grouped_join() {
-        // C-3 (PR 4b-B follow-up) regression case: with the pre-fix
-        // 3-variant state space, `Mixed` was conflated with `Bottom`.
-        // Grouped joins could resurrect `UnanimousProducers` from a
-        // page that should have collapsed to mixed JOINT+US:
+        // If `Mixed` were conflated with `Bottom`, grouped joins could
+        // resurrect `UnanimousProducers` from a page that should have
+        // collapsed to mixed JOINT+US:
         //
         //   [JOINT, US] becomes `Bottom` (under the pre-fix);
         //   `Bottom.join(JointSet::from([JOINT])) = JointSet::from([JOINT])`
@@ -1790,11 +1758,11 @@ mod joint_set {
     // -----------------------------------------------------------------------
     // The hand-written `joint_set_lattice_laws_assoc_comm_idem` test above
     // covers the 4-state representation (Bottom / UnanimousProducers /
-    // DisunityCollapse / Mixed) via FIXED-ORDERING fixtures. PR 4b-D
-    // activates the `JointSet` lattice on the production hot path; the
-    // 51 byte-identity parity fixtures in
-    // `page_context_lattice_parity.rs` also use fixed orderings by
-    // construction. Any associativity, commutativity, or
+    // DisunityCollapse / Mixed) via FIXED-ORDERING fixtures. The
+    // `JointSet` lattice runs on the production hot path; the
+    // byte-identity parity fixtures in `lattice_vs_scheme_parity.rs`
+    // also use fixed orderings by construction. Any associativity,
+    // commutativity, or
     // order-invariance defect that depends on the order of producers
     // within a portion OR the order of portions across the page would
     // therefore survive both the existing law test and the parity gate,
@@ -1864,9 +1832,9 @@ mod joint_set {
     proptest! {
         /// Issue #489 load-bearing test: shuffling the
         /// `[CanonicalAttrs]` slice fed to `from_attrs_iter` MUST NOT
-        /// change the resulting `JointSet`. PR 4b-D wires this into
-        /// the production hot path; an ordering-dependent constructor
-        /// would silently produce different banners depending on the
+        /// change the resulting `JointSet`. The constructor runs on the
+        /// production hot path; an ordering-dependent constructor would
+        /// silently produce different banners depending on the
         /// page-traversal order.
         ///
         /// We pair each generated page with a uniform sample from its
@@ -1920,7 +1888,7 @@ mod joint_set {
 }
 
 // ===========================================================================
-// PR 4b-B Commit 6 — RelToBlock
+// RelToBlock
 // ===========================================================================
 // CAPCO-2016 §H.8 pp150-151 (REL TO grammar) + §D.2 Table 3 rows 9-13
 // (REL TO supersession) + §H.9 p172 + p174 (NODIS/EXDIS clear REL TO).
@@ -2002,12 +1970,11 @@ mod rel_to_block {
         // produces `Empty` (a distinct state from `Bottom`); the
         // post-projection PageRewrite injects NF into DissemSet.
         //
-        // C-2 regression (PR 4b-B follow-up): before this fix,
-        // disjoint intersection returned `Bottom`, conflating the
-        // "no portions observed" identity with the "intersected
-        // to empty" absorbing state. That broke join associativity
-        // (see `rel_to_block_associative_under_empty_intersection`
-        // below).
+        // Disjoint intersection must NOT return `Bottom`: that would
+        // conflate the "no portions observed" identity with the
+        // "intersected to empty" absorbing state and break join
+        // associativity (see
+        // `rel_to_block_associative_under_empty_intersection` below).
         let portions = [rel_portion(&["USA", "GBR"]), rel_portion(&["USA", "FRA"])];
         let b = RelToBlock::from_attrs_iter(&portions);
         match b {
@@ -2090,10 +2057,9 @@ mod rel_to_block {
 
     #[test]
     fn rel_to_block_associative_under_empty_intersection() {
-        // C-2 (PR 4b-B follow-up) regression: pre-fix, disjoint
-        // intersection collapsed to `Bottom`, which `join` treats as
-        // the identity. The associativity check below would have
-        // failed:
+        // If disjoint intersection collapsed to `Bottom` (which `join`
+        // treats as the identity), the associativity check below would
+        // fail:
         //
         //   ({GBR} ⊔ {FRA}) ⊔ {FRA}  →  Bottom ⊔ {FRA}  =  {FRA}
         //   {GBR} ⊔ ({FRA} ⊔ {FRA})  →  {GBR} ⊔ {FRA}   =  Bottom
@@ -2170,7 +2136,7 @@ mod rel_to_block {
 }
 
 // ===========================================================================
-// P-9-1 (PR 4b-B 9th-pass) — FgiSet concealed-top meet absorption
+// FgiSet concealed-top meet absorption
 // ===========================================================================
 //
 // CAPCO-2016 §H.7 p128: "A document containing portions of both
@@ -2180,14 +2146,13 @@ mod rel_to_block {
 // source-concealed form is therefore the lattice TOP in the FGI
 // source-disclosure dimension.
 //
-// Pre-P-9-1, `FgiSet::meet` performed country-set intersection even when
-// one operand was concealed (empty countries). After P-1 (8th-pass) made
-// the join treat concealed as top, the dual absorption law
-// `a ⊓ (a ⊔ b) = a` broke: `acknowledged.meet(acknowledged.join(concealed))`
-// = `acknowledged.meet(concealed)` = intersect({GBR,CAN}, {}) = {} → None.
-//
-// P-9-1 fixes meet to treat concealed as top (meet with top = other operand).
-// These tests exercise the four cases in the fix.
+// `FgiSet::meet` must NOT intersect country sets when one operand is
+// concealed (empty countries). Since the join treats concealed as top,
+// intersecting would break the dual absorption law `a ⊓ (a ⊔ b) = a`:
+// `acknowledged.meet(acknowledged.join(concealed))` =
+// `acknowledged.meet(concealed)` = intersect({GBR,CAN}, {}) = {} → None.
+// Instead, meet treats concealed as top (meet with top = other operand).
+// These tests exercise the four cases.
 //
 // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
 
@@ -2236,8 +2201,8 @@ mod fgi_set_concealed_top {
     }
 
     // Core absorption: `acknowledged.meet(acknowledged.join(concealed)) = acknowledged`.
-    // Pre-P-9-1, join produced concealed (top), then meet intersected with empty
-    // countries → None. Post-P-9-1, meet(acknowledged, concealed-top) = acknowledged.
+    // Join produces concealed (top); meet with the concealed top must
+    // return the other operand (acknowledged), not intersect to None.
     #[test]
     fn absorption_acknowledged_meet_join_concealed() {
         let a = acknowledged([gbr(), can()]);
@@ -2249,11 +2214,11 @@ mod fgi_set_concealed_top {
             concealed(),
             "join with concealed must produce concealed"
         );
-        // a ⊓ (a ⊔ b) = a  (P-9-1 meet-over-join absorption)
+        // a ⊓ (a ⊔ b) = a  (meet-over-join absorption)
         assert_eq!(
             a.meet(&joined),
             a,
-            "P-9-1: a ⊓ (a ⊔ b) must equal a when b is concealed"
+            "a ⊓ (a ⊔ b) must equal a when b is concealed"
         );
     }
 
@@ -2262,11 +2227,11 @@ mod fgi_set_concealed_top {
     fn absorption_acknowledged_join_meet_concealed() {
         let a = acknowledged([gbr()]);
         let b = concealed();
-        // a ⊓ b = a (P-9-1: meet with top = other operand)
+        // a ⊓ b = a (meet with top = other operand)
         let met = a.meet(&b);
         assert_eq!(met, a, "acknowledged ⊓ concealed should equal acknowledged");
         // a ⊔ (a ⊓ b) = a ⊔ a = a
-        assert_eq!(a.join(&met), a, "P-9-1: a ⊔ (a ⊓ b) must equal a");
+        assert_eq!(a.join(&met), a, "a ⊔ (a ⊓ b) must equal a");
     }
 
     // Both acknowledged, disjoint countries → None (existing behavior, regression guard).
@@ -2295,7 +2260,7 @@ mod fgi_set_concealed_top {
     }
 
     // -----------------------------------------------------------------------
-    // PR-4 test closeout (006 T116) — FgiSet join-side extension.
+    // FgiSet join-side extension.
     //
     // The existing tests above pin meet-side dominance (concealed acts as
     // lattice TOP on the meet per §H.7 p128). The 3 tests below pin the
@@ -2354,7 +2319,7 @@ mod fgi_set_concealed_top {
 }
 
 // ===========================================================================
-// PR-4 test closeout (006 T116) — SciSet lattice laws (proptest)
+// SciSet lattice laws (proptest)
 //
 // SciSet's vocabulary spans three Published bare control systems (HCS,
 // SI, TK), two registered NATO SAPs (BOHEMIA, BALK per §G.2 p40), and
@@ -2366,23 +2331,22 @@ mod fgi_set_concealed_top {
 // is per-axis per PM doc D-2 to keep runtime <5s under default
 // `proptest::Config`).
 //
-// Note: `proptest_lattice.rs` (sci_join_* / sci_meet_* at L206-256)
-// carries parallel SciSet proptest coverage with similar Published-only
-// bounds. The duplication is deliberate per PM doc D-2 — consolidating
-// algebraic-law coverage in `category_lattice_laws.rs` makes that file
-// the canonical single-source-of-truth for per-category lattice laws,
-// with smaller proptest cycles and uniform §-citation discipline.
+// Note: `proptest_lattice.rs` (sci_join_* / sci_meet_*) carries
+// parallel SciSet proptest coverage with similar Published-only bounds.
+// The duplication is deliberate — consolidating algebraic-law coverage
+// in `category_lattice_laws.rs` makes that file the canonical
+// single-source-of-truth for per-category lattice laws, with smaller
+// proptest cycles and uniform §-citation discipline.
 //
-// **Pre-existing gap (both harnesses)**: `Custom(...)` and `NatoSap(...)`
-// variants are not exercised in either file. Closing the gap is a
-// straightforward additive follow-up (extend the `prop_oneof!` to sample
-// both variants); architecturally distinct from the bounded `Published`
+// Gap (both harnesses): `Custom(...)` and `NatoSap(...)` variants are
+// not exercised in either file. Closing the gap is a straightforward
+// additive follow-up (extend the `prop_oneof!` to sample both
+// variants); architecturally distinct from the bounded `Published`
 // strategy used here.
 //
 // Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
 // authorship 2026-05-19 (§A.6 p15 custom-control grammar; §G.2 p40
-// NATO SAP registration; §H.4 p61 SCI grammar;
-// `docs/plans/2026-05-01-lattice-design.md` §4).
+// NATO SAP registration; §H.4 p61 SCI grammar).
 // ===========================================================================
 
 mod sci_set {
@@ -2451,8 +2415,7 @@ mod sci_set {
     }
 
     proptest! {
-        /// §-authority: `docs/plans/2026-05-01-lattice-design.md` §4
-        /// (SciSet join is prefix-closed union).
+        /// SciSet join is a prefix-closed union.
         #[test]
         fn sci_set_assoc_comm_idem_proptest(
             a in arb_sci_set(),
@@ -2490,7 +2453,7 @@ mod sci_set {
 }
 
 // ===========================================================================
-// PR-4 test closeout (006 T116) — SarSet lattice laws (proptest)
+// SarSet lattice laws (proptest)
 //
 // SarSet's program identifiers are agency-assigned codewords with no
 // central registry (CVEnumISMSAR.xml is intentionally empty per ODNI
@@ -2499,13 +2462,10 @@ mod sci_set {
 // runtime parity.
 //
 // SarSet has no `from_attrs_iter` shortcut; constructors use
-// `SarMarking` literals via `SarSet::from_marking`. Per the
-// architect/rust-specialist preflight hazard #7 surfaced in the PM
-// doc.
+// `SarMarking` literals via `SarSet::from_marking`.
 //
 // Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
-// authorship 2026-05-19 (§H.5 p99 SAR grammar;
-// `docs/plans/2026-05-01-lattice-design.md` §5).
+// authorship 2026-05-19 (§H.5 p99 SAR grammar).
 // ===========================================================================
 
 mod sar_set {
@@ -2569,8 +2529,7 @@ mod sar_set {
     }
 
     proptest! {
-        /// §-authority: `docs/plans/2026-05-01-lattice-design.md` §5
-        /// (SarSet join is prefix-closed union over program hierarchy).
+        /// SarSet join is a prefix-closed union over the program hierarchy.
         #[test]
         fn sar_set_assoc_comm_idem_proptest(
             a in arb_sar_set(),
@@ -2604,7 +2563,7 @@ mod sar_set {
 }
 
 // ===========================================================================
-// PR-4 test closeout (006 T116) — NonIcDissemSet compositional invariance
+// NonIcDissemSet compositional invariance
 //
 // `NonIcDissemSet` does NOT implement `JoinSemilattice` — it is an
 // accumulator-style type constructed via
@@ -2622,8 +2581,7 @@ mod sar_set {
 //
 // Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
 // authorship 2026-05-19 (§H.9 pp169-191 non-IC dissem family;
-// §H.9 p178 SBU-NF + p185 LES-NF classified split;
-// `docs/plans/2026-05-01-lattice-design.md` §3 non-IC dissem axis).
+// §H.9 p178 SBU-NF + p185 LES-NF classified split).
 // ===========================================================================
 
 mod non_ic_dissem_set {
@@ -2739,7 +2697,7 @@ mod non_ic_dissem_set {
 }
 
 // ===========================================================================
-// PR-4 test closeout (006 T116) — DisplayOnlyBlock lattice laws
+// DisplayOnlyBlock lattice laws
 //
 // DisplayOnlyBlock implements `JoinSemilattice` with a 4-variant
 // absorbing-element pattern: `NofornSuperseded > Empty > Lattice{·} >
@@ -2756,8 +2714,7 @@ mod non_ic_dissem_set {
 //
 // Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
 // authorship 2026-05-19 (§H.8 pp149-150 DISPLAY ONLY template;
-// §D.2 Table 3 rows 25-27 DISPLAY ONLY roll-up;
-// `docs/plans/2026-05-01-lattice-design.md` §3 DISPLAY ONLY axis).
+// §D.2 Table 3 rows 25-27 DISPLAY ONLY roll-up).
 // ===========================================================================
 
 mod display_only_block {

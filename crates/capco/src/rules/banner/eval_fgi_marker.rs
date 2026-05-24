@@ -15,7 +15,7 @@ use super::BannerCategoryRow;
 /// E069 evaluator: banner FGI marker disagrees with the projected
 /// page state. Pure no-fix Error.
 ///
-/// Detection cases (Constitution V G13: no country code values
+/// Detection cases (Constitution V audit content-ignorance: no country code values
 /// interpolated into the message):
 ///
 /// 1. Banner has no FGI marker but page projects one
@@ -53,7 +53,7 @@ pub(super) fn evaluate_fgi_marker_banner_rollup(
     use marque_ism::FgiMarker;
 
     // Discriminator helper for FgiMarker variant comparison without
-    // touching the country lists (Constitution V G13).
+    // touching the country lists (Constitution V audit content-ignorance).
     fn fgi_variant_kind(m: &FgiMarker) -> u8 {
         match m {
             FgiMarker::SourceConcealed => 0,
@@ -61,7 +61,7 @@ pub(super) fn evaluate_fgi_marker_banner_rollup(
         }
     }
 
-    // PR 3c.2.C C5 / G13: 4 narrative reasons collapse to the typed
+    // Audit content-ignorance: 4 narrative reasons collapse to the typed
     // `MessageTemplate::BannerRollupMismatch` with category =
     // `CAT_FGI_MARKER`. The narrative distinction lives in the rule
     // doc comment.

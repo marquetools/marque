@@ -9,7 +9,7 @@
 //! PR-G tier-2 additions of `bitmask_trigger` and `bitmask_trigger_exact`
 //! to every [`ClassFloorRow`]:
 //!
-//!  * **Total rows**: 27 (unchanged since PR 3b.D / T026d)
+//!  * **Total rows**: 27
 //!  * **Rows with `bitmask_trigger: Some(_)`**: 23 (the closed-atom rows)
 //!  * **Rows with `bitmask_trigger_exact: true`**: 13 (exact-hit rows)
 //!  * **Floor-level histogram**: 5 rows TS / 8 rows S / 8 rows C /

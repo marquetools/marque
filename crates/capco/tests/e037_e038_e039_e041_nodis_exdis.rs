@@ -5,7 +5,7 @@
 //! NODIS / EXDIS rule-cluster ports from
 //! `crates/capco/src/_disabled_tests.rs` per issue #722.
 //!
-//! # Rules covered (post-T044 wire strings)
+//! # Rules covered (wire strings)
 //!
 //! - **E037** `capco:portion.dissem.nodis-conflicts-exdis` — banner-
 //!   line mutual exclusion. Bridge-emitted (retired as a registered
@@ -40,8 +40,7 @@
 //! E039 (no-fix + citation pin):
 //! - `e039_fires_on_banner_rel_to_with_nodis_portion` — fire +
 //!   no-fix invariant + citation pin.
-//! - `e039_still_fires_after_engine_gap_close` — PR 3c.B-8F regression
-//!   pin.
+//! - `e039_still_fires_after_engine_gap_close` — regression pin.
 //!
 //! E040 (priority-of-NODIS-over-EXDIS pin + no-fix-when-no-block pin):
 //! - `e040_nodis_has_priority_over_exdis_when_both_in_portions` —
@@ -110,8 +109,8 @@ fn diags_for(source: &str, predicate: &str) -> Vec<Diagnostic<CapcoScheme>> {
 ///
 /// Authority: CAPCO-2016 §H.9 p172 (EXDIS — "EXCLUSIVE DISTRIBUTION";
 /// the primary authority anchor; the cross-reference to p174 NODIS
-/// lives in the rule doc comment per PR 10.A.1 / D13 single-citation
-/// discipline). Re-verified against `crates/capco/docs/CAPCO-2016.md`
+/// lives in the rule doc comment under single-citation discipline).
+/// Re-verified against `crates/capco/docs/CAPCO-2016.md`
 /// per Constitution VIII.
 #[test]
 fn e037_fires_when_nodis_and_exdis_coexist_and_pins_h9_p172() {
@@ -132,7 +131,8 @@ fn e037_fires_when_nodis_and_exdis_coexist_and_pins_h9_p172() {
 /// E037 conscious-defer symmetry pin. The Stage-4 target is `Reject {
 /// suggest: None }` — error diagnostic with no auto-applied fix —
 /// because CAPCO-2016 §H.9 prescribes mutual exclusion at the banner
-/// without specifying which token to keep. The G13 closure walker
+/// without specifying which token to keep. The content-ignorance
+/// closure walker
 /// (`crates/capco/tests/g13_closure_fix_intent.rs`) only inspects
 /// rules whose fix path is populated; this symmetry pin is the only
 /// guard against asymmetric drift toward `fix.is_some()` /
@@ -163,8 +163,8 @@ fn e037_emits_neither_fix_nor_text_correction_pending_stage4_b_reject() {
 // ===========================================================================
 
 /// E038 fires on NODIS-without-NOFORN. The citation pins §H.9 p172
-/// (the EXDIS authority — single-citation discipline per D13; the
-/// p174 NODIS cross-reference lives in the rule doc comment).
+/// (the EXDIS authority — single-citation discipline; the p174 NODIS
+/// cross-reference lives in the rule doc comment).
 ///
 /// Authority: CAPCO-2016 §H.9 p172. Re-verified against
 /// `crates/capco/docs/CAPCO-2016.md` per Constitution VIII.
@@ -235,8 +235,8 @@ fn e039_fires_on_banner_rel_to_with_nodis_portion_no_fix() {
     );
 }
 
-/// PR 3c.B-8F-engine-gap regression pin. E039 must continue firing
-/// after the engine gap close — the rule's check path consumes
+/// Regression pin. E039 must continue firing after the engine gap
+/// close — the rule's check path consumes
 /// `attrs.rel_to` (literal banner REL TO list) AND the page-level
 /// NODIS/EXDIS projection; neither is affected by the gap close.
 ///
@@ -321,9 +321,8 @@ fn e040_emits_no_fix_when_banner_has_no_non_ic_dissem_block() {
 
 /// E041 fires on a portion carrying both NODIS and EXDIS. Severity
 /// is `Warn`; the rule emits an intent-only `FactRemove(EXDIS,
-/// Scope::Portion)` fix that the engine auto-applies via the
-/// synthesis path (PR 3c.B Sub-PR 8.E.2). The legacy `fix` field
-/// IS `Option<FixIntent<S>>` post-cutover — it's the intent slot.
+/// Scope::Portion)` fix that the engine auto-applies via the synthesis
+/// path. The `fix` field is `Option<FixIntent<S>>` — the intent slot.
 ///
 /// Authority: CAPCO-2016 §H.9 p174 (NODIS supersedes EXDIS) +
 /// §H.9 p172 (EXDIS authority). Re-verified against

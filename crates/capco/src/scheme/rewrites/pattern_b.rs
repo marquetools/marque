@@ -2,10 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-C Commit 4 — Pattern-B structural FOUO-eviction rows.
-//! Lifted from the monolithic `rewrites.rs` per the issue #466
-//! Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! Pattern-B structural FOUO-eviction page rewrites.
 
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
@@ -19,8 +16,6 @@ use super::super::*;
 /// `capco/classification-evicts-fouo` followed by
 /// `capco/non-fdr-control-evicts-fouo`.
 pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
-    // PR 4b-C Commit 4 — Pattern-B structural FOUO eviction.
-    //
     // classification-evicts-fouo: same axes as PATTERN_C_FOUO —
     // reads `[CAT_CLASSIFICATION]` only; writes `[CAT_DISSEM]`.
     // CAT_DISSEM is intentionally NOT in `reads` even though the
@@ -32,8 +27,8 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // scan lives in the `fouo_classified_trigger` Custom
     // predicate body. §H.8 p134 (FOUO-in-classified clause).
     //
-    // Plan §3.4 risk #4 resolution: predicate-scan-vs-dataflow
-    // convention, identical to the Pattern-C rows in Commit 3.
+    // Predicate-scan-vs-dataflow convention, identical to the
+    // Pattern-C rows.
     const PATTERN_B_CLASS_FOUO_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const PATTERN_B_CLASS_FOUO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
@@ -50,16 +45,15 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // but rejects a 2-row reads-DISSEM/writes-DISSEM cycle).
     // The DISSEM-presence scan lives in the
     // `fouo_with_non_fdr_other_control_trigger` Custom predicate
-    // body. Plan §3.4 risk #4 (same-axis self-reference)
-    // resolution: predicate-scan-vs-dataflow convention,
-    // identical to the Pattern-C rows in Commit 3.
+    // body. Predicate-scan-vs-dataflow convention (same-axis
+    // self-reference), identical to the Pattern-C rows.
     const PATTERN_B_NON_FDR_READS: &[marque_scheme::CategoryId] =
         &[CAT_NON_IC_DISSEM, CAT_AEA, CAT_SAR];
     const PATTERN_B_NON_FDR_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
     vec![
         // ===============================================================
-        // PR 4b-C Commit 4 — Pattern-B structural FOUO eviction (2 rows)
+        // Pattern-B structural FOUO eviction (2 rows)
         // ===============================================================
         //
         // Pattern B is the second half of the §H.8 p134 FOUO
@@ -69,10 +63,9 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //    is UNCLASSIFIED with FOUO and other dissemination
         //    control markings, excluding any FD&R markings."
         //
-        // PM Correction A (2026-05-16) replaced the original
-        // ~10-row per-trigger FOUO-eviction matrix with two
-        // structural rows. The "other dissemination control
-        // markings" set is the union of CAT_DISSEM (non-FD&R IC
+        // Two structural rows cover the matrix. The "other
+        // dissemination control markings" set is the union of
+        // CAT_DISSEM (non-FD&R IC
         // dissem tokens), CAT_NON_IC_DISSEM (LIMDIS / SBU / SSI /
         // LES / NODIS / EXDIS / NNPI / SbuNf / LesNf — every
         // non-IC dissem token), CAT_AEA (RD / FRD / TFNI / UCNI /
@@ -88,23 +81,21 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // `crates/capco/src/scheme/closure.rs` for the distinction.
         //
         // Row 1 `capco/classification-evicts-fouo` overlaps with
-        // Commit 3 row 7 (`capco/fouo-evicted-by-classified`) on
-        // their FactRemove target. The overlap is intentional:
-        // both rows produce the same FactRemove[TOK_FOUO] payload
-        // on a classified page carrying FOUO; the second
-        // invocation hits `apply_fact_remove`'s
-        // `IntentInapplicable` arm (token already absent) and is
-        // a per-intent no-op. Per Plan §3 the two rows have
-        // distinct citation threads: Commit 3 row 7 cites only
-        // §H.8 p134's "FOUO in a classified document" sub-clause;
-        // this row cites §H.8 p134's overall umbrella rule that
-        // combines both the classified-strip AND the
-        // unclassified-with-other-controls strip. Keeping the two
-        // rows separate preserves D13 single-§-citation
-        // discipline at the per-row level even though both rows
-        // ultimately quote the same §H.8 p134 passage.
+        // `capco/fouo-evicted-by-classified` (the Pattern-C
+        // dedicated row) on their FactRemove target. The overlap is
+        // intentional: both rows produce the same FactRemove[TOK_FOUO]
+        // payload on a classified page carrying FOUO; the second
+        // invocation hits `apply_fact_remove`'s `IntentInapplicable`
+        // arm (token already absent) and is a per-intent no-op. The
+        // two rows carry distinct citation threads: the Pattern-C row
+        // cites only §H.8 p134's "FOUO in a classified document"
+        // sub-clause; this row cites §H.8 p134's overall umbrella rule
+        // that combines both the classified-strip AND the
+        // unclassified-with-other-controls strip. Keeping them separate
+        // preserves single-§-citation discipline at the per-row level
+        // even though both quote the same §H.8 p134 passage.
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // Verified against `crates/capco/docs/CAPCO-2016.md`
         // §H.8 p134 (full FOUO Precedence Rules passage).
 
         // Pattern-B row 1: `capco/classification-evicts-fouo`.
@@ -115,19 +106,18 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // contains portions of FOUO information, the FOUO marking
         // is not used in the banner line."
         //
-        // Structurally identical to Commit 3 row 7
-        // (`capco/fouo-evicted-by-classified`); both rows produce
-        // the same FactRemove[TOK_FOUO] payload. Carried as a
-        // separate Pattern-B row so the §H.8 p134 umbrella rule
-        // — which contains BOTH the classified-strip clause AND
-        // the unclassified-with-other-controls strip clause — has
-        // a single Pattern-B citation thread distinct from the
-        // Pattern-C dedicated row's narrower citation. FactRemove
-        // is idempotent; the second invocation on a page where
-        // Commit 3 row 7 already fired is a per-intent no-op via
+        // Structurally identical to `capco/fouo-evicted-by-classified`
+        // (the Pattern-C dedicated row); both produce the same
+        // FactRemove[TOK_FOUO] payload. Carried as a separate Pattern-B
+        // row so the §H.8 p134 umbrella rule — which contains BOTH the
+        // classified-strip clause AND the unclassified-with-other-controls
+        // strip clause — has a single Pattern-B citation thread distinct
+        // from the Pattern-C dedicated row's narrower citation.
+        // FactRemove is idempotent; the second invocation on a page where
+        // the Pattern-C row already fired is a per-intent no-op via
         // `apply_fact_remove`'s `IntentInapplicable` arm.
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/classification-evicts-fouo",
             capco(SectionLetter::H, 8, 134),
@@ -168,7 +158,7 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //
         // No classification gate: the §H.8 p134 sub-clause
         // applies at any classification level — at classified
-        // levels, Pattern-B row 1 / Commit 3 row 7 also fires
+        // levels, Pattern-B row 1 / the Pattern-C row also fires
         // and the two are idempotent siblings.
         //
         // Axis annotations: reads `[CAT_NON_IC_DISSEM, CAT_AEA,
@@ -182,11 +172,10 @@ pub(super) fn pattern_b_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // row creates a 2-row cycle that Kahn's algorithm
         // rejects. The DISSEM-presence scan lives in
         // `fouo_with_non_fdr_other_control_trigger` (the Custom
-        // predicate body). Plan §3.4 risk #4 resolution:
-        // predicate-scan-vs-dataflow convention, identical to
-        // the Pattern-C rows in Commit 3.
+        // predicate body). Predicate-scan-vs-dataflow convention,
+        // identical to the Pattern-C rows.
         //
-        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+        // Verified against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/non-fdr-control-evicts-fouo",
             capco(SectionLetter::H, 8, 134),

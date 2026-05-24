@@ -2,14 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3b.D (T026d) — class-floor catalog walker (E058) behavior tests.
+//! Class-floor catalog walker behavior tests.
 //!
 //! Each catalog row in `crate::scheme::CLASS_FLOOR_CATALOG` is exercised
 //! by three observable-behavior tests:
 //!
 //! 1. **Fires below floor** — a marking present on a portion / banner
 //!    whose classification is below the row's `F(M)` floor produces
-//!    one diagnostic with `Diagnostic.rule == "E058"` and a
+//!    one class-floor diagnostic identified by its predicate ID and a
 //!    message-text identifier matching the row's marking label.
 //! 2. **Does not fire at-or-above floor** — the same marking on a
 //!    portion / banner whose classification meets the floor produces
@@ -23,12 +23,11 @@
 //!   8 C + 2 UCNI + 4 passthrough) under the §3.4.6 family-granularity
 //!   layout.
 //! - Each row has a verified `CAPCO-2016 §X.Y pNN` (or `§H.7 Appendix B`)
-//!   citation matching the implementation plan §2.
+//!   citation.
 //! - The walker emits at the per-row severity (`Error` for enumerated
-//!   rows; `Warn` for unknown-floor passthrough rows per §3.4.6
-//!   Q-3.4.6b).
-//! - Severity::Off override at `[rules] E058 = "off"` suppresses all
-//!   class-floor diagnostics (FR-008 invariant).
+//!   rows; `Warn` for unknown-floor passthrough rows).
+//! - A `Severity::Off` override on a class-floor predicate suppresses
+//!   that row's diagnostics: an `Off`-severity rule cannot fire.
 
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, capco_rules};
@@ -56,32 +55,26 @@ fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
-/// Filter the diagnostic stream to E058 emissions.
+/// Filter the diagnostic stream to class-floor emissions.
 ///
-/// PR 3c.2.C C5 reshape: under the closed-template `Message` shape,
-/// per-row identification via marker text (`"CNWDI"`, `"SI compartments"`,
-/// etc.) is no longer available — the runtime `marking_label` no longer
-/// flows into `Diagnostic.message`.
-///
-/// PR 3c.2.C C7 (R-C1) closed the bridge gap: `message_by_name` and
-/// `citation_by_name` in `crates/capco/src/scheme/adapter.rs` now cover
-/// the 27 `class-floor/*` + `E058/*` rows. Each E058 diagnostic carries
-/// its row-native `Citation` (verifiable per-row via `d.citation`) and
-/// a `MessageTemplate::ClassificationFloorViolated` template. Per-row
-/// identification is available at the audit boundary via
-/// `(d.rule, d.citation)` rather than via the retired `marker_text`
-/// substring scan.
+/// Under the closed-template `Message` shape, per-row identification via
+/// marker text is not available — the runtime `marking_label` does not
+/// flow into `Diagnostic.message`. Instead, each class-floor diagnostic
+/// carries its row-native `Citation` (verifiable per-row via
+/// `d.citation`) and a `MessageTemplate::ClassificationFloorViolated`
+/// template; per-row identification is available at the audit boundary
+/// via `(d.rule, d.citation)`.
 ///
 /// The `_marker_text` parameter is kept for call-site documentation
 /// (each test still names the row it intends to exercise) but is not
 /// consumed by the filter. Per-row assertions in this file use the
-/// typed `d.citation` field directly per the C7 strengthening.
+/// typed `d.citation` field directly.
 fn e058_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    // T044 OD-8.A: the bridge no longer collapses to a single `E058`
-    // rule_id; each catalog row emits its own predicate ID in the
+    // The bridge does not collapse to a single rule_id; each catalog row
+    // emits its own predicate ID in the
     // `banner.<axis>.<floor|ceiling>-<marking>` form. Filter on the
     // substring discriminator (mirrors `is_class_floor_catalog_name`).
     diags
@@ -119,31 +112,25 @@ fn catalog_declares_27_class_floor_rows() {
     );
 }
 
-/// PR 9c.1 T134 (architect D5): pin the citation anchors for the
-/// three NATO control-marking rows so a future edit can't silently
-/// drift them.
+/// Pin the citation anchors for the three NATO control-marking rows so
+/// a future edit can't silently drift them.
 ///
-/// BALK / BOHEMIA cite §G.2 p40 (their authoritative anchor — the
-/// ARH table where the manual identifies them as SAPs). ATOMAL
-/// cites §H.7 p122 (the worked example showing `SECRET//RD/ATOMAL//
-/// FGI NATO//NOFORN`).
+/// BALK / BOHEMIA cite §G.2 p40 (the ARH table where the manual
+/// identifies them as SAPs). ATOMAL cites §H.7 p122 (the worked example
+/// showing `SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
 ///
-/// The companion severity pin (BALK/BOHEMIA = Warn, ATOMAL = Error)
-/// is internal to the catalog row's `severity` field and verified
-/// at firing time via the engine's class-floor emit path. Severity
-/// drift would change exit codes for downstream audit consumers and
-/// would need to be an intentional, documented change.
-///
-/// Citations: CAPCO-2016 §G.2 p40 (BALK/BOHEMIA — ARH table only,
-/// soft); §H.7 p122 (ATOMAL — worked example in §H.7).
+/// The companion severity pin (BALK/BOHEMIA = Warn, ATOMAL = Error) is
+/// internal to the catalog row's `severity` field and verified at firing
+/// time via the engine's class-floor emit path. Severity drift would
+/// change exit codes for downstream audit consumers and must be an
+/// intentional, documented change.
 #[test]
 fn pr_9c_1_nato_rows_pin_citation_anchors() {
     use marque_scheme::{Citation, SectionLetter, capco};
     let scheme = CapcoScheme::new();
-    // PR 10.A.1: typed Citation pin — assertions compare structured
-    // §/page values directly. Constitution VIII propagation: every
-    // row's expected citation re-verified at PR 9c.1 authorship; this
-    // PR preserves the per-row anchor values verbatim.
+    // Typed Citation pin — assertions compare structured §/page values
+    // directly. Per Constitution VIII, each row's expected citation is
+    // verified against the source.
     let expected: &[(&str, Citation)] = &[
         (
             "banner.classification.floor-balk",
@@ -165,7 +152,7 @@ fn pr_9c_1_nato_rows_pin_citation_anchors() {
         assert_eq!(
             row.label(),
             *expected_cite,
-            "{row_name} citation drifted (PR 9c.1 D5 pin); \
+            "{row_name} citation drifted; \
              expected {expected_cite}, got {actual}",
             actual = row.label(),
         );
@@ -196,11 +183,10 @@ fn catalog_citations_reference_capco_or_passthrough() {
             continue;
         }
         let label = c.label();
-        // PR 10.A.1: typed Citation pin — row labels are either
-        // `AuthoritativeSource::Capco2016` (the 23 enumerated rows) or
-        // `AuthoritativeSource::EngineInternal` (the 4 passthrough rows
-        // that cite `marque-applied.md §3.7`, not a CAPCO passage).
-        // No other source variants are valid for this catalog.
+        // Row labels are either `AuthoritativeSource::Capco2016` (the 23
+        // enumerated rows) or `AuthoritativeSource::EngineInternal` (the
+        // 4 passthrough rows that cite an engine policy, not a CAPCO
+        // passage). No other source variants are valid for this catalog.
         let valid = matches!(
             label.document,
             AuthoritativeSource::Capco2016 | AuthoritativeSource::EngineInternal
@@ -217,49 +203,46 @@ fn catalog_citations_reference_capco_or_passthrough() {
 
 #[test]
 fn class_floor_diagnostics_flow_through_engine_bridge_at_e058() {
-    // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` retired from
-    // `CapcoRuleSet`. The 27 catalog rows still emit diagnostics —
-    // they flow through the engine's constraint-catalog bridge.
-    //
-    // T044 OD-8.A: the bridge no longer folds catalog row names to a
-    // walker-level `Diagnostic.rule = "E058"` — each row emits its own
-    // canonical predicate ID (`banner.<axis>.<floor|ceiling>-<marking>`).
-    // This test pins the post-deletion + post-T044 external surface:
-    //   1. No registered rule with the legacy E058/E022/E025/E027
-    //      predicate-IDs (those walkers are gone);
-    //   2. `engine.lint` still produces a class-floor diagnostic on
-    //      a known-firing fixture (CONFIDENTIAL//RD-CNWDI → CNWDI
-    //      floor row, §H.6 p104 §2.2 family) — now with predicate ID
+    // The class-floor walker is not a registered rule; the 27 catalog
+    // rows emit diagnostics through the engine's constraint-catalog
+    // bridge, each with its own canonical predicate ID
+    // (`banner.<axis>.<floor|ceiling>-<marking>`). This test pins the
+    // external surface:
+    //   1. No registered rule with the legacy class-floor walker
+    //      predicate IDs (those walkers are gone);
+    //   2. `engine.lint` still produces a class-floor diagnostic on a
+    //      known-firing fixture (CONFIDENTIAL//RD-CNWDI → CNWDI floor
+    //      row, §H.6 p104) — with predicate ID
     //      `capco:banner.aea.floor-cnwdi`.
     let set = capco_rules();
     let ids: Vec<&str> = set.rules().iter().map(|r| r.id().predicate_id()).collect();
     assert!(
         !ids.contains(&"E058"),
-        "post-7.3: `DeclarativeClassFloorRule` retired; no rule with id `E058` should be \
-         registered. The bridge emits E058 via name folding. Registered IDs: {ids:?}"
+        "the class-floor walker is not a registered rule; the bridge \
+         emits class-floor diagnostics by name. Registered IDs: {ids:?}"
     );
     assert!(
         !ids.contains(&"E022"),
-        "E022 retired in PR 3b.D; rule set must not register the legacy CNWDI wrapper"
+        "the legacy CNWDI wrapper rule must not be registered"
     );
     assert!(
         !ids.contains(&"E025"),
-        "E025 retired in PR 3b.D; rule set must not register the legacy UCNI wrapper"
+        "the legacy UCNI wrapper rule must not be registered"
     );
     assert!(
         !ids.contains(&"E027"),
-        "E027 retired in PR 3b.D; rule set must not register the legacy SAR-classification rule"
+        "the legacy SAR-classification rule must not be registered"
     );
 
-    // Bridge-emission anchor: confirm the deleted walker's external
-    // surface is preserved end-to-end through `engine.lint`.
+    // Bridge-emission anchor: confirm the class-floor external surface
+    // is preserved end-to-end through `engine.lint`.
     let diags = lint("CONFIDENTIAL//RD-CNWDI//NOFORN\n");
     let cnwdi_e058 = e058_diags_for(&diags, "CNWDI");
     assert_eq!(
         cnwdi_e058.len(),
         1,
-        "post-7.3: bridge must emit E058 for CONFIDENTIAL//RD-CNWDI \
-         (CNWDI floor §H.6 p104 §2.2): {diags:?}"
+        "bridge must emit a class-floor diagnostic for CONFIDENTIAL//RD-CNWDI \
+         (CNWDI floor §H.6 p104): {diags:?}"
     );
 }
 
@@ -279,9 +262,10 @@ fn hcs_p_subcompartment_fires_below_top_secret() {
         "HCS-P [SUB] floor (TS) must fire on SECRET banner: {diags:?}"
     );
     assert_eq!(hcs_sub[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge now reads per-row `citation_typed`
-    // from `CLASS_FLOOR_CATALOG`; class-floor row `banner.classification.floor-hcs-comp-sub`
-    // anchors at §H.4 p60 (SCI section General Information).
+    // The bridge reads each row's typed citation from
+    // `CLASS_FLOOR_CATALOG`; class-floor row
+    // `banner.classification.floor-hcs-comp-sub` anchors at §H.4 p60
+    // (SCI section General Information).
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
         hcs_sub[0].citation,
@@ -377,17 +361,13 @@ fn tk_blfh_does_not_fire_on_bare_tk() {
     );
 }
 
-// NATO BALK / BOHEMIA: per PR 9c.1 T134 the presence predicate fires
-// when `attrs.sci_markings` carries a `SciControlSystem::NatoSap`
-// variant. CAPCO-2016 §G.2 p40 identifies BALK/BOHEMIA as NATO SAPs in
-// the SCI category position (rendered standalone, no `SAR-` prefix).
-// The legacy fused variants `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`
-// were retired in PR 9c.1 Commit 5 — pre-PR-9c.1 those variants
-// conflated classification with SCI semantics on a single axis.
+// NATO BALK / BOHEMIA: the presence predicate fires when
+// `attrs.sci_markings` carries a `SciControlSystem::NatoSap` variant.
+// CAPCO-2016 §G.2 p40 identifies BALK/BOHEMIA as NATO SAPs in the SCI
+// category position (rendered standalone, no `SAR-` prefix).
 //
-// The row severity is `Warn` (downgrade from `Error` in PR 9c.1
-// Commit 4) because §G.2 p40's citation depth is too soft to drive
-// Error.  Well-formed NATO inputs `//COSMIC TOP SECRET-BALK` /
+// The row severity is `Warn` because §G.2 p40's citation depth is too
+// soft to drive Error. Well-formed NATO inputs `//COSMIC TOP SECRET-BALK` /
 // `//COSMIC TOP SECRET-BOHEMIA` parse to bare `CosmicTopSecret` class
 // + `NatoSap::{Balk,Bohemia}` SCI companion — effective level TS via
 // `us_equivalent`; the TS floor is satisfied → no diagnostic. The row
@@ -452,7 +432,7 @@ fn cnwdi_fires_below_secret() {
         1,
         "CNWDI floor must fire on CONFIDENTIAL: {diags:?}"
     );
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // CNWDI anchors at §H.6 p104.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -481,7 +461,7 @@ fn rd_sigma_fires_below_secret() {
         1,
         "RD-SIGMA floor must fire on C: {diags:?}"
     );
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // RD-SIGMA anchors at §H.6 p113.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -524,7 +504,7 @@ fn sar_fires_on_unclassified() {
     let diags = lint("UNCLASSIFIED//SAR-BP\n");
     let sar = e058_diags_for(&diags, "SAR requires");
     assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // SAR anchors at §H.5 p99 (SAR section start).
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -578,7 +558,7 @@ fn dod_ucni_fires_above_unclassified() {
     let diags = lint("SECRET//DOD UCNI\n");
     let ucni = e058_diags_for(&diags, "DOD UCNI may only");
     assert_eq!(ucni.len(), 1, "DOD UCNI ceiling must fire on S: {diags:?}");
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // DOD UCNI anchors at §H.6 p116.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -609,7 +589,7 @@ fn doe_ucni_fires_above_unclassified() {
     let diags = lint("SECRET//DOE UCNI\n");
     let ucni = e058_diags_for(&diags, "DOE UCNI may only");
     assert_eq!(ucni.len(), 1, "DOE UCNI ceiling must fire on S: {diags:?}");
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // DOE UCNI anchors at §H.6 p118.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -632,12 +612,12 @@ fn doe_ucni_does_not_fire_on_unclassified() {
 }
 
 // ===========================================================================
-// §2.6 Unknown-floor passthrough — Warn severity per §3.4.6 Q-3.4.6b
+// §2.6 Unknown-floor passthrough — Warn severity
 // ===========================================================================
 //
 // Passthrough fires when the marking is present AND classification is
 // below C (the conservative provisional floor). The diagnostic message
-// quotes the §3.7 passthrough-policy framing.
+// quotes the passthrough-policy framing.
 
 #[test]
 fn passthrough_bur_fires_at_warn_severity() {
@@ -647,17 +627,15 @@ fn passthrough_bur_fires_at_warn_severity() {
     assert_eq!(
         bur[0].severity,
         Severity::Warn,
-        "passthrough rows fire at Warn (§3.4.6 Q-3.4.6b); got {:?}",
+        "passthrough rows fire at Warn; got {:?}",
         bur[0].severity
     );
-    // PR 3c.2.C C5: passthrough §3.7 policy framing prose used to
-    // live in `Diagnostic.message` as a free-form sentence. The
-    // closed-template shape drops the prose; the passthrough-policy
-    // narrative is preserved on the source side in
+    // The closed-template shape drops free-form passthrough-policy
+    // prose from `Diagnostic.message`; the narrative is preserved on the
+    // source side in
     // `crates/capco/src/scheme/constraints/helpers.rs::class_floor_emit`
-    // and renders via the bridge's CLI-side renderer per PM-C-5
-    // ("renderer responsibility"). The test purpose strengthens to
-    // "E058 fired at Warn", which is the bridge-observable contract.
+    // and rendered by the bridge's CLI-side renderer. The observable
+    // contract here is "passthrough fired at Warn".
     let _ = bur[0].message.template();
 }
 
@@ -688,16 +666,14 @@ fn passthrough_mvl_fires_at_warn_severity() {
 }
 
 // ===========================================================================
-// FR-008: Severity::Off override suppresses all class-floor diagnostics
+// Severity::Off override suppresses all class-floor diagnostics
 // ===========================================================================
 
 #[test]
 fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
-    // T044 OD-8.A: the bridge no longer collapses to a single E058
-    // walker ID. The CNWDI floor is now targeted by its own
-    // predicate ID `capco:banner.aea.floor-cnwdi`; suppression
-    // requires setting that key (FR-008 invariant unchanged — an
-    // `Off`-severity rule cannot fire).
+    // The CNWDI floor is targeted by its own predicate ID
+    // `capco:banner.aea.floor-cnwdi`; suppression requires setting that
+    // key. An `Off`-severity rule cannot fire.
     let mut config = Config::default();
     config.rules.overrides.insert(
         "capco:banner.aea.floor-cnwdi".to_string(),
@@ -721,8 +697,7 @@ fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
     assert!(
         cnwdi.is_empty(),
         "with `[rules] \"capco:banner.aea.floor-cnwdi\" = \"off\"`, \
-         no banner.aea.floor-cnwdi diagnostics may emit \
-         (FR-008): {diags:?}"
+         no banner.aea.floor-cnwdi diagnostics may emit: {diags:?}"
     );
 }
 
@@ -790,7 +765,7 @@ fn sar_span_anchors_at_sar_indicator_not_classification() {
 
 #[test]
 fn balk_does_not_fire_on_well_formed_cts_balk_banner() {
-    // PR 9c.1 T134: `//COSMIC TOP SECRET-BALK` parses to bare
+    // `//COSMIC TOP SECRET-BALK` parses to bare
     // `Nato(CosmicTopSecret)` class + `NatoSap::Balk` SCI companion.
     // Effective level TS. BALK floor (TS) is satisfied → no diagnostic.
     let diags = lint("//COSMIC TOP SECRET-BALK\n");
@@ -1000,13 +975,13 @@ fn dod_ucni_fires_on_nato_classification_carrying_ucni() {
 }
 
 // ===========================================================================
-// R3.4 Path A — per-row catalog coverage (Copilot R3 C4)
+// Per-row catalog coverage
 // ===========================================================================
 //
 // The module docstring claims every catalog row carries the three
-// observable-behavior tests. Pre-R3 the suite covered a subset of
-// rows; R3.4 fills in the rows that were missing one or more of the
-// fires-below / silent-at-or-above / silent-when-absent triplet.
+// observable-behavior tests. This block fills in the rows that were
+// missing one or more of the fires-below / silent-at-or-above /
+// silent-when-absent triplet.
 //
 // Rows already fully covered by the §2.1 / §2.2 / §2.3 / §2.4 / §2.6
 // blocks above (HCS-comp-sub, SI-comp, TK-BLFH, BALK, BOHEMIA,
@@ -1021,18 +996,17 @@ fn dod_ucni_fires_on_nato_classification_carrying_ucni() {
 // pins so a future failure points at the exact row.
 
 // ---------------------------------------------------------------------------
-// Naming-prefix invariant (R3.2 build-time enforcement)
+// Naming-prefix invariant
 // ---------------------------------------------------------------------------
 
 #[test]
 fn class_floor_catalog_naming_convention() {
-    // T044: every catalog row's `name` MUST contain `.floor-` or
-    // `.ceiling-` (the new predicate-ID discriminator per
-    // legacy-rule-id-map §3). The `is_class_floor_catalog_name`
-    // dispatch in `evaluate_custom_by_attrs` is a substring check
-    // that depends on this invariant. Adding a row whose name doesn't
-    // follow the convention would break the dispatch routing for that
-    // row silently — this test fails the build instead.
+    // Every catalog row's `name` MUST contain `.floor-` or `.ceiling-`
+    // (the predicate-ID discriminator). The `is_class_floor_catalog_name`
+    // dispatch in `evaluate_custom_by_attrs` is a substring check that
+    // depends on this invariant. Adding a row whose name doesn't follow
+    // the convention would silently break dispatch routing for that row —
+    // this test fails the build instead.
     let scheme = CapcoScheme::new();
     let class_floor_rows: Vec<&str> = scheme
         .constraints()
@@ -1047,7 +1021,7 @@ fn class_floor_catalog_naming_convention() {
         class_floor_rows.len(),
         27,
         "expected 27 class-floor catalog rows under the .floor- / .ceiling- \
-         substring convention (T044 predicate-ID form); got {}: {:?}",
+         substring convention; got {}: {:?}",
         class_floor_rows.len(),
         class_floor_rows
     );
@@ -1076,8 +1050,8 @@ fn class_floor_catalog_naming_convention() {
 // §2.1 row #4 — class-floor/BALK: fires-below + absent
 // ---------------------------------------------------------------------------
 //
-// BALK presence is bound to SciControlSystem::NatoSap(NatoSap::Balk)
-// per PR 9c.1 T134. "BALK present at sub-CTS class" is reachable from
+// BALK presence is bound to SciControlSystem::NatoSap(NatoSap::Balk).
+// "BALK present at sub-CTS class" is reachable from
 // the engine path because the parser writes the SCI companion
 // independently of the bare NATO classification, so this absence test
 // pairs naturally with the well-formed engine-path silence covered by
@@ -1113,17 +1087,12 @@ fn bohemia_does_not_fire_when_marking_absent() {
 fn hcs_compartment_does_not_fire_when_no_hcs_marking() {
     // No HCS marking at all → row must not fire.
     //
-    // PR 3c.2.C C5: under the closed-template shape the bridge
-    // collapses every class-floor row to rule_id "E058". The
-    // original `e058_diags_for(.., "HCS-O / HCS-P")` marker filter
-    // is no longer functional. The input `SECRET//SI-G//ORCON/NOFORN`
-    // also triggers `class-floor/SI-comp` (SI compartments require
-    // TS), so a generic `is_empty()` check now fails. To preserve
-    // the test intent (HCS row doesn't fire when HCS marking
-    // absent), filter by span: the SI-comp row anchors at the SI
-    // SciSystem token; an HCS-row firing would anchor at an HCS
-    // token, which doesn't exist in this input. Asserting that the
-    // E058 count equals 1 (just SI-comp) verifies HCS didn't fire.
+    // The marker-text filter is no longer functional. The input
+    // `SECRET//SI-G//ORCON/NOFORN` also triggers `class-floor/SI-comp`
+    // (SI compartments require TS), so a generic `is_empty()` check
+    // fails. To preserve the test intent (HCS row doesn't fire when HCS
+    // marking absent), assert the class-floor count equals 1 (just
+    // SI-comp), which verifies HCS didn't fire.
     let diags = lint("SECRET//SI-G//ORCON/NOFORN\n");
     let e058 = e058_diags_for(&diags, "");
     assert_eq!(
@@ -1164,7 +1133,7 @@ fn tk_family_fires_below_secret_on_bare_tk() {
         "TK family floor must fire on CONFIDENTIAL//TK: {diags:?}"
     );
     assert_eq!(tk[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // TK family anchors at §H.4 p60.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1224,7 +1193,7 @@ fn frd_sigma_fires_below_secret() {
         "FRD-SIGMA floor must fire on CONFIDENTIAL: {diags:?}"
     );
     assert_eq!(frd_sg[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // FRD-SIGMA anchors at §H.6 p113.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1278,11 +1247,10 @@ fn cnwdi_does_not_fire_when_marking_absent() {
 fn rsen_fires_below_secret() {
     // RSEN portion form is `RS`; banner form is `RSEN`. RSEN floor S.
     //
-    // PR 3c.2.C C5: under the closed-template shape, both the
-    // `class-floor/RSEN` row and the `class-floor/TK` row fire on
-    // this input (TK at CONFIDENTIAL also violates its floor).
-    // Assert exactly 2 E058 diagnostics fire; the legacy marker
-    // filter is no longer available to isolate just the RSEN row.
+    // Both the `class-floor/RSEN` row and the `class-floor/TK` row fire
+    // on this input (TK at CONFIDENTIAL also violates its floor). Assert
+    // exactly 2 class-floor diagnostics fire; the marker filter cannot
+    // isolate just the RSEN row.
     let diags = lint("CONFIDENTIAL//TK//RSEN\n");
     let rsen = e058_diags_for(&diags, "RSEN");
     assert_eq!(
@@ -1292,7 +1260,7 @@ fn rsen_fires_below_secret() {
     );
     assert_eq!(rsen[0].severity, Severity::Error);
     assert_eq!(rsen[1].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`.
+    // The bridge reads each row's typed citation.
     // The fixture fires both `class-floor/RSEN` (§H.8 p149) AND
     // `class-floor/TK` (§H.4 p60) — assert the diagnostic-set
     // contains both citations rather than asserting a positional
@@ -1349,7 +1317,7 @@ fn imcon_fires_below_secret() {
         "IMCON floor must fire on CONFIDENTIAL: {diags:?}"
     );
     assert_eq!(imcon[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // IMCON anchors at §H.8 p144.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1401,7 +1369,7 @@ fn si_bare_fires_when_no_classification() {
         "SI bare floor (C) must fire on UNCLASSIFIED//SI: {diags:?}"
     );
     assert_eq!(si[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // SI bare anchors at §H.4 p60.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1425,10 +1393,9 @@ fn si_bare_does_not_fire_at_confidential() {
 
 #[test]
 fn si_bare_does_not_fire_when_marking_absent() {
-    // PR 3c.2.C C5: input `CONFIDENTIAL//TK//NOFORN` triggers the
-    // `class-floor/TK` row (TK at C, needs S). SI is absent so the
-    // SI-bare row does not fire; the legacy marker filter is no
-    // longer available, so assert E058 count == 1 instead.
+    // Input `CONFIDENTIAL//TK//NOFORN` triggers the `class-floor/TK` row
+    // (TK at C, needs S). SI is absent so the SI-bare row does not fire;
+    // assert the class-floor count == 1 instead.
     let diags = lint("CONFIDENTIAL//TK//NOFORN\n");
     let e058 = e058_diags_for(&diags, "");
     assert_eq!(
@@ -1467,7 +1434,7 @@ fn rd_bare_fires_when_no_classification_token() {
         "RD bare floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(rd[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // RD bare anchors at §H.6 p104.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1503,7 +1470,7 @@ fn frd_bare_fires_when_unclassified() {
         "FRD bare floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(frd[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // FRD bare anchors at §H.6 p104.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1549,7 +1516,7 @@ fn tfni_fires_when_unclassified() {
         "TFNI floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(tfni[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // TFNI anchors at §H.6 p107.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1609,7 +1576,7 @@ fn orcon_family_fires_when_unclassified() {
         "ORCON family floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(orcon[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // ORCON family anchors at §H.8 p136.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1638,9 +1605,8 @@ fn orcon_family_does_not_fire_when_marking_absent() {
 // EYES ONLY: the parser recognizes the CVE `EYES` form (per
 // `marque-ism::DissemControl::Eyes`). The compound banner-form
 // `USA/[LIST] EYES ONLY` syntax is supported via
-// `recognize_eyes_only_block` (PR 9a / T135a Commit 5); bare
-// `EYES ONLY` in a banner maps to `DissemControl::Eyes` via the
-// `MARKING_FORMS` entry added in the banner-lexer issue. The
+// `recognize_eyes_only_block`; bare `EYES ONLY` in a banner maps to
+// `DissemControl::Eyes` via the `MARKING_FORMS` entry. The
 // fires-below + at-floor + absent triplet below uses portion form
 // `(U//EYES)` / `(C//EYES)` since it is equivalent; banner-form
 // variants are exercised in `crates/capco/tests/eyes_to_rel_to.rs`.
@@ -1655,7 +1621,7 @@ fn eyes_only_fires_when_unclassified() {
         "EYES ONLY floor (C) must fire on (U//EYES): {diags:?}"
     );
     assert_eq!(eyes[0].severity, Severity::Error);
-    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // The bridge reads each row's typed citation;
     // EYES ONLY anchors at §H.8 p152.
     use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
@@ -1727,11 +1693,10 @@ fn passthrough_hcs_x_fires_at_warn_severity_on_unclassified() {
     assert_eq!(
         hcsx[0].severity,
         Severity::Warn,
-        "passthrough rows fire at Warn (§3.4.6 Q-3.4.6b)"
+        "passthrough rows fire at Warn"
     );
-    // PR 3c.2.C C5: passthrough §3.7 policy framing prose dropped
-    // per PM-C-5; see `passthrough_bur_fires_at_warn_severity_on_unclassified`
-    // for the same migration note.
+    // The closed-template shape drops free-form passthrough-policy prose;
+    // see `passthrough_bur_fires_at_warn_severity` for the same note.
     let _ = hcsx[0].message.template();
 }
 
@@ -1747,8 +1712,8 @@ fn passthrough_hcs_x_does_not_fire_at_confidential() {
 
 #[test]
 fn passthrough_hcs_x_does_not_fire_when_marking_absent() {
-    // PR 3c.2.C C5: same shape as the KLM / MVL absent variants;
-    // SI-bare fires on U, HCS-X is absent.
+    // Same shape as the KLM / MVL absent variants: SI-bare fires on U,
+    // HCS-X is absent.
     let diags = lint("UNCLASSIFIED//SI\n");
     let e058 = e058_diags_for(&diags, "");
     assert_eq!(
@@ -1774,8 +1739,8 @@ fn passthrough_klm_does_not_fire_at_confidential() {
 
 #[test]
 fn passthrough_klm_does_not_fire_when_marking_absent() {
-    // PR 3c.2.C C5: same shape as passthrough_mvl variant; SI-bare
-    // fires on U, KLM is absent.
+    // Same shape as the passthrough_mvl variant: SI-bare fires on U,
+    // KLM is absent.
     let diags = lint("UNCLASSIFIED//SI\n");
     let e058 = e058_diags_for(&diags, "");
     assert_eq!(
@@ -1797,10 +1762,10 @@ fn passthrough_mvl_does_not_fire_at_confidential() {
 
 #[test]
 fn passthrough_mvl_does_not_fire_when_marking_absent() {
-    // PR 3c.2.C C5: marker filter dropped; input `UNCLASSIFIED//SI`
-    // triggers `class-floor/SI-bare` (SI-bare floor at U). The MVL
-    // passthrough row would anchor at an MVL token, which is absent;
-    // assert exactly 1 E058 (the SI-bare row, not MVL).
+    // Input `UNCLASSIFIED//SI` triggers `class-floor/SI-bare` (SI-bare
+    // floor at U). The MVL passthrough row would anchor at an MVL token,
+    // which is absent; assert exactly 1 class-floor diagnostic (the
+    // SI-bare row, not MVL).
     let diags = lint("UNCLASSIFIED//SI\n");
     let e058 = e058_diags_for(&diags, "");
     assert_eq!(

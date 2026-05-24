@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! F.1 corpus-fidelity gate (PR 10.A.2, T100/T101).
+//! Corpus-fidelity gate.
 //!
 //! # Contract
 //!
-//! Per FR-019 every authoritative-source citation declared by
+//! Every authoritative-source citation declared by
 //! `marque-capco`'s rule + catalog surface MUST be exercised by at
 //! least one corpus fixture under `tests/corpus/`. The gate is
 //! bi-directional — declared ⊆ harvested ∪ whitelist, and the
@@ -144,18 +144,18 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
         capco(SectionLetter::H, 9, 185),
         "h9-p185-les-nf-supersession",
     ),
-    // T044 (post-reviewer pass): §H.8 p150 is declared by the Suggest-
-    // severity REL TO rules (S003 / S004 / S005 / S010) but no current
-    // corpus fixture exercises any of them. The latent gap was
-    // previously masked by E002 (Error-severity, exercised by the
-    // `missing_usa_trigraph` fixtures) emitting §H.8 p150 too;
-    // T044 moved E002 to the more precise §H.8 p151 (the verbatim
-    // USA-first rule lives in the Additional Marking Instructions
-    // block on p151, not the section anchor on p150). The Suggest-
+    // §H.8 p150 is declared by the Suggest-severity REL TO rules
+    // (S003 / S004 / S005 / S010) but no current corpus fixture
+    // exercises any of them. The latent gap was previously masked by
+    // E002 (Error-severity, exercised by the `missing_usa_trigraph`
+    // fixtures) emitting §H.8 p150 too; E002 now cites the more precise
+    // §H.8 p151 (the verbatim USA-first rule lives in the Additional
+    // Marking Instructions block on p151, not the section anchor on
+    // p150). The Suggest-
     // rule gap is structural — Suggest rules don't auto-apply and
     // the corpus does not yet carry trigraph-typo / uniform-REL-TO
-    // / uncertain-reduction fixtures. Tracked for a follow-up
-    // fixture-coverage PR; whitelisted per F.1 contract clause 1.
+    // / uncertain-reduction fixtures. Tracked for follow-up
+    // fixture-coverage; allowlisted by this gate's contract.
     (capco(SectionLetter::H, 8, 150), "h8-p150-suggest-rules-gap"),
     // #704 (post-review-cycle Fix 2): S008's authority slice gained
     // §B.3 Table 2 p21 as the primary trigger authority (the
@@ -185,8 +185,8 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
     // which removed that incidental coverage and exposed the FGI gap.
     // Same class as the §H.8 p150 and §B.3 Table 2 p21 entries above:
     // legitimate authority-set metadata the per-Diagnostic harvest
-    // cannot see. Tracked for a follow-up fixture-coverage PR;
-    // whitelisted per F.1 contract clause 1.
+    // cannot see. Tracked for follow-up fixture-coverage;
+    // allowlisted by this gate's contract.
     (
         capco(SectionLetter::A, 6, 16),
         "a6-p16-fgi-separator-grammar-not-emitted",
@@ -198,7 +198,7 @@ const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
 /// helper in `marque-scheme` today (CAPCO citations use `capco(...)`
 /// / `capco_section(...)`; non-CAPCO sentinels go through
 /// `Citation::new`); this helper mirrors the shape used by
-/// `output.rs::stub_citation` and `scheduler.rs` so the F.1 whitelist
+/// `output.rs::stub_citation` and `scheduler.rs` so the allowlist
 /// keeps the same canonical sentinel byte layout.
 const fn engine_internal_sentinel() -> Citation {
     use marque_scheme::SectionRef;
@@ -329,9 +329,8 @@ fn corpus_covers_every_declared_authority() {
     // appear in its `cited_authorities()` declaration (drift in the
     // OTHER direction — adding a new `capco(...)` literal to a
     // rule's `check()` body without updating `cited_authorities()`).
-    // Copilot review on PR #662 flagged this gap; without it, the
-    // F.1 gate is one-directional and lets undeclared emissions
-    // slip through silently.
+    // Without this, the fidelity gate is one-directional and lets
+    // undeclared emissions slip through silently.
     let mut undeclared_emissions: Vec<Citation> = harvested
         .iter()
         .filter(|c| !declared.contains(c) && !engine_emitted.contains(c))
@@ -348,7 +347,7 @@ fn corpus_covers_every_declared_authority() {
         || !now_covered_whitelist.is_empty()
         || !undeclared_emissions.is_empty()
     {
-        let mut msg = String::from("F.1 corpus-fidelity gate failed:\n\n");
+        let mut msg = String::from("corpus-fidelity gate failed:\n\n");
 
         if !undocumented_gaps.is_empty() {
             msg.push_str(
@@ -483,9 +482,8 @@ fn citation_coverage_probe() {
         }
     }
 
-    // Sort declared citations by native `Ord` (PR 10.A.2 review-fix
-    // Commit 8 added `Ord` + `PartialOrd` to `Citation` and its three
-    // component types). Lexicographic on
+    // Sort declared citations by native `Ord` (`Citation` and its three
+    // component types implement `Ord` + `PartialOrd`). Lexicographic on
     // `(AuthoritativeSource, SectionLetter, subsection, table, page)`
     // — close enough to the Display form for reviewer-readability,
     // and avoids the per-element `format!()` allocation of the prior
@@ -515,7 +513,7 @@ fn citation_coverage_probe() {
 
 #[test]
 fn corpus_directory_exists() {
-    // Cheap sanity: F.1 depends on the corpus tree being present.
+    // Cheap sanity: the gate depends on the corpus tree being present.
     // Without this, a missing tree would surface as "every citation
     // missing" — clearer to fail explicitly.
     let corpus_dir = workspace_root().join("tests").join("corpus");

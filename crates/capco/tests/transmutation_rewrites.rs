@@ -2,11 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3b.B (T026b) — declarative `PageRewrite` authoring contract.
+//! Declarative `PageRewrite` authoring contract.
 //!
-//! These tests pin the *authoring contract* of the eight transmutation
-//! `PageRewrite` rows added in PR 3b.B (`docs/plans/2026-05-07-pr3b-B-
-//! transmutations-plan.md`). For each row they assert:
+//! These tests pin the *authoring contract* of the transmutation
+//! `PageRewrite` rows. For each row they assert:
 //!
 //! 1. The `id` is the exact stable string downstream tooling will
 //!    match against.
@@ -16,24 +15,21 @@
 //!    Kahn scheduler will consume to build the topological order
 //!    (`crates/engine/src/scheduler.rs`).
 //! 4. The `trigger` is `CategoryPredicate::Custom(_)` and the
-//!    `action` is `CategoryAction::Custom(_)` — the Phase-3 stub
-//!    shape (per plan §3 + §8 Q5 PM resolution).
+//!    `action` is `CategoryAction::Custom(_)`.
 //!
 //! These are authoring-contract tests, not runtime-behavior tests.
-//! Phase 3 does not drive page roll-up through `scheme.project()` —
-//! the `Custom(never_fires)` triggers are inert until Phase D / E
-//! lands real predicate bodies. The contract under test here is what
-//! the scheduler, the catalog surface, and the citation-fidelity
-//! harness see.
+//! The `Custom(never_fires)` triggers are inert until real predicate
+//! bodies land. The contract under test here is what the scheduler, the
+//! catalog surface, and the citation-fidelity harness see.
 //!
 //! Two additional tests cover scheme-construction invariants:
 //! - `engine_construction_succeeds_with_full_rewrite_table` — the
 //!   topological scheduler accepts the nine-row table without
 //!   `RewriteCycle` or `UnannotatedCustomAxes` errors.
-//! - `retired_stubs_are_no_longer_in_rewrite_table` — the two stubs
-//!   retired in PR 3b.B (`capco/joint-promotion`,
-//!   `capco/fgi-absorption`) are absent from the declared table; the
-//!   retained `capco/noforn-clears-rel-to` is still present.
+//! - `retired_stubs_are_no_longer_in_rewrite_table` — the two retired
+//!   stubs (`capco/joint-promotion`, `capco/fgi-absorption`) are absent
+//!   from the declared table; the retained `capco/noforn-clears-rel-to`
+//!   is still present.
 
 use marque_capco::CapcoScheme;
 use marque_capco::scheme::{
@@ -213,9 +209,8 @@ fn entry_6a_sbu_nf_transmutes_is_correctly_authored() {
     let rw = lookup_rewrite(&scheme, "capco/sbu-nf-transmutes-on-classified-contact");
 
     // Assert — narrow-form reads (CLASS only); see Entry 5 note.
-    // Phase-3 axis-mapping pragmatic (§8 Q1 PM resolution):
-    // CAT_DISSEM stands in for the non-IC dissem axis until
-    // Phase D/E.
+    // Axis-mapping pragmatic: CAT_DISSEM stands in for the non-IC
+    // dissem axis until real predicate bodies land.
     assert_eq!(rw.id, "capco/sbu-nf-transmutes-on-classified-contact");
     assert_eq!(rw.citation, capco(SectionLetter::H, 9, 178));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
@@ -267,50 +262,15 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
 
     // Assert
     let engine = result.expect(
-        "Engine::new must succeed with the thirteen-row rewrite table (nine \
-         from PR 3b.B + two from PR 3c.B Sub-PR 8.F: nodis-implies-noforn \
-         and exdis-implies-noforn + two from PR 3c.B Sub-PR 8.F.2: \
-         sbu-nf-implies-noforn and les-nf-implies-noforn) — a failure here \
-         indicates either a `RewriteCycle` (a writer/reader dependency loop) \
-         or `UnannotatedCustomAxes` (a `Custom` rewrite declared with empty \
-         reads/writes). Both are scheme-authoring bugs.",
+        "Engine::new must succeed with the full rewrite table — a failure \
+         here indicates either a `RewriteCycle` (a writer/reader dependency \
+         loop) or `UnannotatedCustomAxes` (a `Custom` rewrite declared with \
+         empty reads/writes). Both are scheme-authoring bugs.",
     );
-    // Smoke-check the scheduler exposed the same twenty-three ids it
-    // was handed; this prevents a regression where construction
-    // silently drops a rewrite.
-    // PR 3c.B Sub-PR 8.F added capco/nodis-implies-noforn and
-    // capco/exdis-implies-noforn (9 → 11).
-    // PR 3c.B Sub-PR 8.F.2 added capco/sbu-nf-implies-noforn and
-    // capco/les-nf-implies-noforn (11 → 13).
-    // DISPLAY ONLY Phase 2 added capco/noforn-clears-fdr-family
-    // (§H.8 p154 + §D.2 Table 3 row 2; 13 → 14).
-    // PR 4b-C Commit 3 added 7 Pattern-C rows (limdis/sbu/dod-ucni-
-    // strip+promote/doe-ucni-strip+promote/fouo-evicted-by-classified;
-    // §H.6 p116-119 + §H.8 p134 + §H.9 p170 + §H.9 p176; 14 → 21).
-    // PR 4b-C Commit 4 added 2 Pattern-B structural FOUO-eviction
-    // rows (classification-evicts-fouo + non-fdr-control-evicts-fouo;
-    // §H.8 p134; 21 → 23).
-    // PR 4b-D.2 Copilot R1 #2 added capco/noforn-clears-display-only-to
-    // (§H.8 p145 + §D.2 Table 3 rows 1-2; 23 → 24) — companion to
-    // capco/noforn-clears-rel-to for the DISPLAY ONLY country-list axis.
-    // #541 added capco/sbu-nf-evicted-by-classified (§H.9 p178; 24 → 25)
-    // — Pattern-C strip row for the compound SbuNf variant on classified
-    // pages; companion to capco/sbu-evicted-by-classified for the
-    // bare-SBU case.
-    // #552 added capco/sbu-nf-supersedes-sbu (§H.9 p178) +
-    // capco/les-nf-supersedes-les (§H.9 p185); 25 → 27. Same-axis
-    // compound-supersedes-bare pair — declared as `Contains+Intent`
-    // declarative rows with empty `reads` (cycle-avoidance vs the
-    // sibling row per `rewrites/mod.rs` narrow-form rule).
-    // #559 close-out (2026-05-19) + #618 added 3 RELIDO-eviction rows
-    // in `rewrites/relido_clears.rs` (`capco/display-only-clears-relido`
-    // per §H.8 p154, `capco/orcon-clears-relido` per §H.8 p136,
-    // `capco/orcon-usgov-clears-relido` per §H.8 p140). Each fires at
-    // Scope::Page with a FactRemove(RELIDO) intent and uses empty
-    // `reads` (same cycle-avoidance discipline as #552's supersession
-    // rows). The DISPLAY ONLY row was deferred behind #618 until
-    // `satisfies(TOK_DISPLAY_ONLY)` was widened to recognize the
-    // canonical `display_only_to` parser axis. 27 → 30.
+    // Smoke-check the scheduler exposed the same set of ids it was
+    // handed; this prevents a regression where construction silently
+    // drops a rewrite. The count is pinned so adding or removing a
+    // PageRewrite is an intentional, reviewed change.
     assert_eq!(engine.scheduled_rewrites().len(), 30);
 }
 
@@ -323,23 +283,23 @@ fn retired_stubs_are_no_longer_in_rewrite_table() {
     // Act — no separate act phase; the assertions below inspect the
     // ids vector directly.
 
-    // Assert — both stubs removed in PR 3b.B (semantics subsumed by
-    // entries 1, 3, and 7).
+    // Assert — both stubs are removed (semantics subsumed by entries
+    // 1, 3, and 7).
     assert!(
         !ids.contains(&"capco/joint-promotion"),
-        "`capco/joint-promotion` was retired in PR 3b.B (replaced by \
-         entries 1, 3, 7); declared ids: {ids:?}"
+        "`capco/joint-promotion` was retired (replaced by entries 1, 3, \
+         7); declared ids: {ids:?}"
     );
     assert!(
         !ids.contains(&"capco/fgi-absorption"),
-        "`capco/fgi-absorption` was retired in PR 3b.B (replaced by \
-         entries 1, 7); declared ids: {ids:?}"
+        "`capco/fgi-absorption` was retired (replaced by entries 1, 7); \
+         declared ids: {ids:?}"
     );
 
     // The retained active rewrite is still present.
     assert!(
         ids.contains(&"capco/noforn-clears-rel-to"),
         "`capco/noforn-clears-rel-to` is the only currently-active \
-         rewrite and MUST be retained per PR 3b.B; declared ids: {ids:?}"
+         rewrite and MUST be retained; declared ids: {ids:?}"
     );
 }

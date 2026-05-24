@@ -8,7 +8,6 @@
 //! and [`collect_present_tokens`] (the `ConflictsWithFamily`
 //! emission helper). Lifted from the monolithic `predicates.rs` per
 //! the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::{Classification, CountryCode};
 use marque_scheme::TokenRef;
@@ -21,7 +20,7 @@ use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
 use super::joint_hcs::{hcs_system_constraints, joint_requires_usa};
 use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catalog_eval};
 // PR-E (#371): tier-1 mask-compiled predicates replace the structural
-// slice walks that lived in `constraints/helpers.rs` pre-PR-E. The
+// slice walks that lived in `constraints/helpers.rs`. The
 // helpers were retired in the same commit per project memory
 // `feedback_pre_users_no_deprecation_phasing.md` — marque is
 // pre-users; the alias surface and re-exports go with the helpers.
@@ -45,7 +44,7 @@ use super::tier1_mask::{
 
 /// Resolve a [`TokenRef`] against raw [`marque_ism::CanonicalAttrs`].
 ///
-/// **Token-presence semantics** (T035):
+/// **Token-presence semantics:**
 /// - [`TokenRef::Token(id)`] returns true when the marking carries
 ///   the named token *anywhere* relevant — `TOK_USA` ⇒ "USA in
 ///   REL TO" (the dissemination context), `TOK_RD` ⇒ "RD anywhere in
@@ -53,29 +52,27 @@ use super::tier1_mask::{
 /// - [`TokenRef::AnyInCategory(cat)`] returns true when the category
 ///   has at least one populated value. `CAT_DISSEM` intentionally
 ///   counts both the dissem axis (`dissem_us` and `dissem_nato`
-///   together, walked via `attrs.dissem_iter()` post PR 9b / FR-046
-///   split) AND `rel_to` as dissem-flavored presence, matching the
-///   historical E015 predicate.
+///   together, walked via `attrs.dissem_iter()`) AND `rel_to` as
+///   dissem-flavored presence ("non-US classification needs SOME
+///   dissem").
 ///
 /// `MarkingClassification::Conflict` is deliberately excluded from
 /// `TOK_NON_US_CLASSIFICATION` / `CAT_NON_US_CLASSIFICATION` — that
-/// state is E012's concern, not E015's.
+/// state is the dual-classification rule's concern, not the
+/// non-US-requires-dissem rule's.
 ///
 /// Sentinel `TokenId`s not used by the current catalog
 /// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM` — the *token* sentinels,
-/// distinct from the category form) fall through to `false`;
-/// they are declared for future T035b consumption. The
-/// `AnyInCategory(CAT_NON_IC_DISSEM)` arm WAS added as of Issue
-/// #524 Phase 3 to close a gap-fix where the category form
-/// silently fell through. Initial Phase 3 design wired it as a
-/// `CLOSURE_RELIDO_US_CLASS` suppressor; the final design moved
-/// the "no other dissem" gate from anti-monotone suppressors to
-/// composition-via-`CLOSURE_NOFORN_CAVEATED` (per #544 Copilot
-/// monotonicity review), so the resolver arm has no current
-/// consumer in `CapcoScheme`'s `closure_rules()`. It stays live
-/// for any future closure rule or constraint that needs to
-/// dispatch on category-level non-IC-dissem presence. The
-/// token-form `TOK_NON_IC_DISSEM` stays in the fall-through arm.
+/// distinct from the category form) fall through to `false`; they are
+/// declared for future consumption. The `AnyInCategory(CAT_NON_IC_DISSEM)`
+/// arm was added (issue #524) to close a gap where the category form
+/// silently fell through. The "no other dissem" gate composes via
+/// `CLOSURE_NOFORN_CAVEATED` rather than anti-monotone suppressors
+/// (issue #544 monotonicity review), so the resolver arm has no current
+/// consumer in `CapcoScheme`'s `closure_rules()`. It stays live for any
+/// future closure rule or constraint that needs to dispatch on
+/// category-level non-IC-dissem presence. The token-form
+/// `TOK_NON_IC_DISSEM` stays in the fall-through arm.
 pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> bool {
     use marque_ism::{
         AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
@@ -135,13 +132,13 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::DodUcni)),
-            // PR 9c.1 (T134): ATOMAL lives in the AEA axis per
+            // ATOMAL lives in the AEA axis per
             // CAPCO-2016 §H.7 p122 (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
             TOK_ATOMAL => attrs
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::Atomal(_))),
-            // PR 9c.1 (T134): BALK / BOHEMIA are NATO SAPs living in
+            // BALK / BOHEMIA are NATO SAPs living in
             // the SCI axis per CAPCO-2016 §G.2 p40 + §H.7 p127.
             TOK_BALK => attrs.sci_markings.iter().any(|m| {
                 matches!(
@@ -155,7 +152,7 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     SciControlSystem::NatoSap(marque_ism::NatoSap::Bohemia)
                 )
             }),
-            // Issue #524 (Phase 1): per-compartment SCI sentinels.
+            // Issue #524: per-compartment SCI sentinels.
             //
             // Each arm scans `attrs.sci_markings` for a marking whose
             // `system` anchors on the matching `SciControlBare` AND
@@ -183,7 +180,7 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 super::presence::anchors_on(m, SciControlBare::Hcs)
                     && super::presence::has_compartment(m, "P")
             }),
-            // Issue #524 (Phase 2): grammar-shape sentinel fires only
+            // Issue #524: grammar-shape sentinel fires only
             // when HCS-P additionally carries at least one sub-
             // compartment. §H.4 p66 (bare HCS-P) implies NOFORN only;
             // §H.4 p68 (HCS-P [SUB]) implies NOFORN + ORCON. See
@@ -230,40 +227,34 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 //   - `MarkingClassification::Fgi(_)` for foreign-classified
                 //     portions like `//GBR SECRET` (the FGI lives on the
                 //     classification axis, not the dissem-axis fgi_marker)
-                // Per Copilot PR 3.7 review pass 3: prior to this fix
-                // `satisfies_attrs(TOK_FGI_MARKER)` checked only
-                // `attrs.fgi_marker.is_some()`, missing the
-                // classification-axis case. The implicit-NOFORN closure
-                // row `capco/noforn-if-caveated` (which counts FGI as one
-                // of its triggers) would therefore not fire on foreign-
-                // classified portions even though the trigger list
-                // declares both `TOK_FGI_MARKER` and
+                // `satisfies_attrs(TOK_FGI_MARKER)` must check the
+                // classification-axis case as well as
+                // `attrs.fgi_marker.is_some()`. The implicit-NOFORN
+                // closure row `capco/noforn-if-caveated` (which counts
+                // FGI as one of its triggers) would otherwise not fire on
+                // foreign-classified portions even though the trigger
+                // list declares both `TOK_FGI_MARKER` and
                 // `AnyInCategory(CAT_FGI_MARKER)`.
                 attrs.fgi_marker.is_some()
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
             TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
-            // Issue #524 Phase 3: grammar-shape sentinel firing on
-            // US collateral classification (any of Restricted /
-            // Confidential / Secret / TopSecret). Used as the
-            // trigger for `CLOSURE_RELIDO_US_CLASS` to gate the
-            // implicit-RELIDO closure to collateral classified
-            // content (§H.8 p154 carves out unclassified). Fires
-            // on the Conflict variant whose US side is collateral
-            // classified — `us_classification()` returns the
-            // resolved US side for Conflict. Pinned by
-            // `phase3_closure_pin::us_class_fires_on_collateral_levels`
-            // and `phase3_closure_pin::us_class_excluded_for_unclassified`.
+            // Issue #524: grammar-shape sentinel firing on US collateral
+            // classification (any of Restricted / Confidential / Secret /
+            // TopSecret). Used as the trigger for
+            // `CLOSURE_RELIDO_US_CLASS` to gate the implicit-RELIDO
+            // closure to collateral classified content (§H.8 p154 carves
+            // out unclassified). Fires on the Conflict variant whose US
+            // side is collateral classified — `us_classification()`
+            // returns the resolved US side for Conflict.
             //
             // Why a trigger gate (vs. a suppressor): the trigger
             // predicate is upward-closed (adding more facts to a
             // collateral-classified marking doesn't make this stop
-            // firing), preserving closure-operator monotonicity
-            // per the `MarkingScheme::closure` contract. Encoding
-            // "Us is not Unclassified" as a suppressor would have
-            // been anti-monotone in the same way that the broader
-            // "no other dissem" qualifier was (Copilot HIGH on the
-            // Phase 3 PR review).
+            // firing), preserving closure-operator monotonicity per the
+            // `MarkingScheme::closure` contract. Encoding "Us is not
+            // Unclassified" as a suppressor would be anti-monotone, like
+            // the broader "no other dissem" qualifier.
             TOK_US_COLLATERAL_CLASSIFIED => attrs
                 .us_classification()
                 .is_some_and(|l| l != Classification::Unclassified),
@@ -277,16 +268,12 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 )
             ),
             // `TOK_IC_DISSEM` and `TOK_NON_IC_DISSEM` have no live
-            // consumers — the legacy E018/E019 constraints that
-            // would have used them were retired in T035b as
-            // over-restrictive. Kept as declared sentinels so any
-            // future narrowly-scoped IC/non-IC dissem invariant
-            // can dispatch against them without re-adding a
-            // `TokenId` constant.
+            // consumers. Kept as declared sentinels so any future
+            // narrowly-scoped IC/non-IC dissem invariant can dispatch
+            // against them without re-adding a `TokenId` constant.
             TOK_IC_DISSEM | TOK_NON_IC_DISSEM => false,
-            // T035c-21 PR-A: NODIS / EXDIS live in `non_ic_dissem`.
-            // Both are DoS non-IC dissem controls per §H.9 (NODIS p174;
-            // EXDIS p172).
+            // NODIS / EXDIS live in `non_ic_dissem`. Both are DoS non-IC
+            // dissem controls per §H.9 (NODIS p174; EXDIS p172).
             TOK_NODIS => attrs
                 .non_ic_dissem
                 .iter()
@@ -295,13 +282,11 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Exdis)),
-            // PR 3b.C (T026c): RELIDO incompatibility sentinels.
-            // Pattern mirrors TOK_NOFORN above — scan via
-            // `attrs.dissem_iter()` (namespace-agnostic walk over
-            // `dissem_us ++ dissem_nato` post PR 9b / FR-046 split) for
-            // the matching DissemControl variant. All four variants
-            // exist in the generated values.rs; no new marque-ism edits
-            // needed (Constitution VII compliance verified).
+            // RELIDO incompatibility sentinels. Pattern mirrors
+            // TOK_NOFORN above — scan via `attrs.dissem_iter()`
+            // (namespace-agnostic walk over `dissem_us ++ dissem_nato`)
+            // for the matching DissemControl variant. All four variants
+            // exist in the generated values.rs.
             TOK_RELIDO => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Relido)),
@@ -326,7 +311,7 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
             TOK_ORCON_USGOV => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::OcUsgov)),
-            // Stage D (T108c) — new IC dissem sentinels for closure-rule triggers:
+            // IC dissem sentinels for closure-rule triggers:
             TOK_IMCON => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Imc)),
             TOK_DSEN => attrs
                 .dissem_iter()
@@ -335,10 +320,10 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
             TOK_FOUO => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Fouo)),
-            // PR 4b-C Commit 1 — PROPIN / FISA / RAWFISA scan attrs.dissem_us
-            // (the DissemControl variants `Pr`, `Fisa`, `Rawfisa`).
+            // PROPIN / FISA / RAWFISA scan attrs.dissem_us (the
+            // DissemControl variants `Pr`, `Fisa`, `Rawfisa`).
             // §H.8 p148 (PROPIN) + §H.8 p161 (FISA / RAWFISA).
-            // verified 2026-05-16 against CAPCO-2016.md.
+            // Verified against CAPCO-2016.md.
             TOK_PROPIN => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Pr)),
             TOK_FISA => attrs
                 .dissem_iter()
@@ -346,7 +331,7 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
             TOK_RAWFISA => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Rawfisa)),
-            // Stage D (T108c) — non-IC dissem sentinels for closure-rule triggers:
+            // Non-IC dissem sentinels for closure-rule triggers:
             TOK_LIMDIS => attrs
                 .non_ic_dissem
                 .iter()
@@ -372,15 +357,14 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Nnpi)),
-            // EYES sentinel for FD&R-set coverage (§H.8 p157). Per
-            // Copilot PR 3.7 review pass 3: earlier comments claimed
-            // EYES was covered via `CAT_REL_TO` fallthrough, which is
-            // false — `CAT_REL_TO` only checks `attrs.rel_to`. EYES is
-            // a `DissemControl::Eyes` variant produced by the parser
-            // (deprecated 2017-10-01 per §H.8 p157 but still recognized
-            // for legacy-input compatibility); this arm provides the
-            // satisfies_attrs path that `FDR_DOMINATORS` membership
-            // and `is_fdr_dominator` rely on.
+            // EYES sentinel for FD&R-set coverage (§H.8 p157). EYES is
+            // NOT covered via `CAT_REL_TO` fallthrough — `CAT_REL_TO`
+            // only checks `attrs.rel_to`. EYES is a `DissemControl::Eyes`
+            // variant produced by the parser (deprecated 2017-10-01 per
+            // §H.8 p157 but still recognized for legacy-input
+            // compatibility); this arm provides the satisfies_attrs path
+            // that `FDR_DOMINATORS` membership and `is_fdr_dominator`
+            // rely on.
             TOK_EYES => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Eyes)),
@@ -411,19 +395,16 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
             CAT_DISSEM => attrs.dissem_iter().next().is_some() || !attrs.rel_to.is_empty(),
-            // Issue #524 Phase 3 gap fix: `CAT_NON_IC_DISSEM` was
-            // previously unreachable (fell through to `_ => false`),
-            // silently making `TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)`
-            // a dead reference for any closure / constraint that needed
+            // `CAT_NON_IC_DISSEM` must be reachable here (issue #524) so
+            // `TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)` is not a dead
+            // reference for any closure / constraint that needs
             // category-level non-IC-dissem dispatch. No current consumer
-            // in `CapcoScheme`'s `closure_rules()` — the Phase 3 design
-            // initially wired it into `CLOSURE_RELIDO_US_CLASS`'s
-            // suppressor list, then moved the "no other dissem" gate
-            // from anti-monotone suppressors to composition-via-Trio-1
-            // per the #544 monotonicity review. The arm remains live
-            // for future consumers (e.g., a `ConflictsWithFamily`
-            // constraint dispatching on category-level non-IC-dissem
-            // presence).
+            // in `CapcoScheme`'s `closure_rules()` — the "no other
+            // dissem" gate composes via `CLOSURE_NOFORN_CAVEATED` rather
+            // than anti-monotone suppressors (#544 monotonicity review).
+            // The arm remains live for future consumers (e.g., a
+            // `ConflictsWithFamily` constraint dispatching on
+            // category-level non-IC-dissem presence).
             CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
             CAT_REL_TO => !attrs.rel_to.is_empty(),
             CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
@@ -436,20 +417,11 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
 /// predicate helper. Returns an empty `Vec` for unknown names
 /// (forward-compat with future catalog entries).
 ///
-/// PR 3b.D (T026d): catalog-row names with the prefixes
-/// `class-floor/` or `E058/` are dispatched to
-/// [`class_floor_catalog_eval`] over the static
-/// [`CLASS_FLOOR_CATALOG`] table. The retired `e022_cnwdi_floor` /
-/// `e025_ucni_classification` helpers were absorbed into the
-/// catalog's static-table form; their replacement catalog rows
-/// (`E058/CNWDI-classification-floor`,
-/// `E058/DOD-UCNI-classification-ceiling`,
-/// `E058/DOE-UCNI-classification-ceiling`,
-/// `E058/SAR-classification-floor`) reuse the walker's `E058`
-/// prefix rather than the legacy E022/E025/E027 IDs. Per project
-/// memory `feedback_pre_users_no_deprecation_phasing.md`,
-/// severity-config back-compat for the legacy IDs is intentionally
-/// not preserved; `.marque.toml` keys must use `E058` (walker-level).
+/// Class-floor catalog-row names (recognized by
+/// [`is_class_floor_catalog_name`]) are dispatched to
+/// [`class_floor_catalog_eval`] over the static [`CLASS_FLOOR_CATALOG`]
+/// table. Each row carries its own predicate ID; `.marque.toml` keys
+/// configure rows individually by that ID.
 pub(crate) fn evaluate_custom_by_attrs(
     attrs: &marque_ism::CanonicalAttrs,
     bits: marque_scheme::FactBitmask,
@@ -505,14 +477,13 @@ pub(crate) fn evaluate_custom_by_attrs(
 /// `CapcoMarking` — so it cannot call the trait method that wraps
 /// `&marking.0`).
 ///
-/// Per Copilot PR review on PR 3.7 (the named-constraint dispatch — now
-/// `evaluate_custom_by_attrs` — was silently treating
-/// `ConflictsWithFamily` as a no-op): the fast-path
-/// dispatch must emit one violation per (LHS, present_token) pair
-/// where the family predicate holds — same algorithm as
-/// `marque_scheme::constraint::evaluate`'s `ConflictsWithFamily` arm.
+/// The fast-path dispatch must emit one violation per (LHS,
+/// present_token) pair where the family predicate holds — same
+/// algorithm as `marque_scheme::constraint::evaluate`'s
+/// `ConflictsWithFamily` arm — rather than treating
+/// `ConflictsWithFamily` as a no-op.
 ///
-/// ## Per-variant classification emission (post-#505)
+/// ## Per-variant classification emission (issue #505)
 ///
 /// Each `MarkingClassification` variant emits a distinct concrete
 /// sentinel, retiring the pre-#505 asymmetry where NATO was emitted as
@@ -567,9 +538,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
         }
     }
 
-    // IC dissemination controls. PR 9b (T132): iterate across both
-    // namespaces — the predicate emitter is namespace-agnostic; the
-    // `TOK_*` sentinel reflects token identity, not attribution.
+    // IC dissemination controls. Iterate across both namespaces — the
+    // predicate emitter is namespace-agnostic; the `TOK_*` sentinel
+    // reflects token identity, not attribution.
     for d in attrs.dissem_iter() {
         let tok = match d {
             DissemControl::Nf => Some(TOK_NOFORN),
@@ -626,7 +597,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             tokens.push(TokenRef::Token(id));
         }
     }
-    // Issue #524 Phase 3: emit `AnyInCategory(CAT_NON_IC_DISSEM)` when
+    // Issue #524: emit `AnyInCategory(CAT_NON_IC_DISSEM)` when
     // any non-IC dissem token is present. Mirrors the SCI / SAR /
     // REL TO category-level emission pattern. Closes a latent
     // asymmetry where the category form was unreachable via
@@ -668,7 +639,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
         tokens.push(TokenRef::AnyInCategory(CAT_SCI));
     }
 
-    // Issue #524 (Phase 1): per-compartment SCI sentinel emission.
+    // Issue #524: per-compartment SCI sentinel emission.
     //
     // Mirrors the FGI dual-emit pattern (`TOK_FGI_MARKER` +
     // `TOK_FGI_CLASS` at lines above): a marking with `SI-G` present
@@ -702,7 +673,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
                 _ => continue,
             };
             tokens.push(TokenRef::Token(sentinel));
-            // Issue #524 (Phase 2): HCS-P with at least one sub-
+            // Issue #524: HCS-P with at least one sub-
             // compartment emits the additional grammar-shape sentinel
             // `TOK_HCS_P_SUB`. §H.4 p68 implies NOFORN + ORCON for the
             // sub-compartmented form, distinct from the bare HCS-P
@@ -729,7 +700,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod sci_compartment_sentinels_pin {
-    //! Issue #524 (Phase 1) — per-compartment SCI sentinel pin.
+    //! Issue #524 — per-compartment SCI sentinel pin.
     //!
     //! Verifies the six new sentinels (`TOK_SI_G`, `TOK_HCS_O`,
     //! `TOK_HCS_P`, `TOK_TK_BLFH`, `TOK_TK_IDIT`, `TOK_TK_KAND`)
@@ -1046,7 +1017,7 @@ mod sci_compartment_sentinels_pin {
             (TOK_TK_BLFH, CAT_SCI),
             (TOK_TK_IDIT, CAT_SCI),
             (TOK_TK_KAND, CAT_SCI),
-            // Issue #524 Phase 2: grammar-shape sentinel for HCS-P
+            // Issue #524: grammar-shape sentinel for HCS-P
             // with at least one sub-compartment. Same category routing
             // as the rest of the SCI sentinels.
             (crate::scheme::TOK_HCS_P_SUB, CAT_SCI),
@@ -1060,7 +1031,7 @@ mod sci_compartment_sentinels_pin {
         }
     }
 
-    /// Phase 2: `TOK_HCS_P_SUB` discriminates bare HCS-P from
+    /// `TOK_HCS_P_SUB` discriminates bare HCS-P from
     /// HCS-P + at least one sub-compartment.
     ///
     /// - Bare HCS-P (no sub) emits TOK_HCS_P but NOT TOK_HCS_P_SUB.
@@ -1147,15 +1118,14 @@ mod sci_compartment_sentinels_pin {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod cat_non_ic_dissem_arm_pin {
-    //! Issue #524 Phase 3 — `AnyInCategory(CAT_NON_IC_DISSEM)`
-    //! reachability + emission pins.
+    //! Issue #524 — `AnyInCategory(CAT_NON_IC_DISSEM)` reachability +
+    //! emission pins.
     //!
-    //! Phase 3 added two new code paths that are not yet exercised
-    //! by any catalog row in production (the `RELIDO_US_CLASS_SUPPRESSORS`
-    //! slice contains only direct token / `CAT_REL_TO` entries, not
+    //! Two code paths are not exercised by any catalog row in
+    //! production (the `RELIDO_US_CLASS_SUPPRESSORS` slice contains only
+    //! direct token / `CAT_REL_TO` entries, not
     //! `AnyInCategory(CAT_NON_IC_DISSEM)`). Without these tests, the
-    //! two arms below land in the coverage report as uncovered diff
-    //! lines.
+    //! two arms below land in the coverage report as uncovered lines.
     //!
     //!   1. `satisfies_attrs`'s `CAT_NON_IC_DISSEM` arm — was
     //!      previously falling through to `_ => false` (the "gap fix"
@@ -1164,7 +1134,7 @@ mod cat_non_ic_dissem_arm_pin {
     //!      re-introduces the silent fall-through.
     //!   2. `collect_present_tokens`'s `AnyInCategory(CAT_NON_IC_DISSEM)`
     //!      emission — was silently asymmetric with the `satisfies_attrs`
-    //!      resolution prior to Phase 3.
+    //!      resolution.
     //!
     //! Authority: CAPCO-2016 §H.9 p169 (Non-IC Dissemination Control
     //! Markings) — LIMDIS / EXDIS / NODIS / SBU / SBU-NF / LES /
@@ -1258,7 +1228,7 @@ mod cat_non_ic_dissem_arm_pin {
     /// for each §H.9 p169 catalog entry plus NNPI. Mirrors the
     /// `cat_non_ic_dissem_resolves_true_on_each_variant` resolution
     /// pin so the two paths stay in lockstep (the same asymmetry
-    /// this Phase 3 emission closes).
+    /// this emission closes).
     #[test]
     fn collect_present_tokens_emits_non_ic_dissem_for_each_variant() {
         let variants: &[NonIcDissem] = &[
@@ -1287,9 +1257,9 @@ mod cat_non_ic_dissem_arm_pin {
     /// Emission + resolution round-trip: any token list emitted by
     /// `collect_present_tokens` for a non-empty `non_ic_dissem` axis
     /// must resolve true under `satisfies_attrs` on the same attrs.
-    /// This closes the symmetry contract that the Phase 3 diff
+    /// This closes the symmetry contract that the gap fix
     /// established (the emit-side mirrors the resolve-side; a future
-    /// PR that breaks one without the other gets caught here).
+    /// change that breaks one without the other gets caught here).
     #[test]
     fn cat_non_ic_dissem_emit_resolve_round_trip() {
         let mut a = CanonicalAttrs::default();
@@ -1308,7 +1278,7 @@ mod cat_non_ic_dissem_arm_pin {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod us_collateral_classified_arm_pin {
-    //! Issue #524 Phase 3 — `TOK_US_COLLATERAL_CLASSIFIED` resolution
+    //! Issue #524 — `TOK_US_COLLATERAL_CLASSIFIED` resolution
     //! edge cases (non-Us / non-Conflict classification systems and
     //! the Conflict-with-Unclassified-US carve-out).
     //!

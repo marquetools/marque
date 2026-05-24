@@ -2,9 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `CapcoScheme` in-module unit tests. Lifted from the monolithic
-//! `scheme.rs` per the issue #466 split plan
-//! (`claudedocs/refactor-466/split_proposal.md`).
+//! `CapcoScheme` in-module unit tests.
 //!
 //! The `#[doc(hidden)] pub` test constructors `with_rewrites` and
 //! `with_extra_rewrite_for_tests` (used by integration tests under
@@ -45,7 +43,7 @@ fn satisfies_tok_usa_reads_rel_to_for_country_code_usa() {
     // `CountryCode::USA` rename. No constraint in the current
     // catalog dispatches `TokenRef::Token(TOK_USA)` (USA-in-
     // REL-TO is read directly by the rule layer), but the
-    // `satisfies_attrs` arm exists for future T035b consumption
+    // `satisfies_attrs` arm exists for future consumption
     // and must read `rel_to` correctly.
     let scheme = CapcoScheme::new();
     let mut a = mk_attrs();
@@ -228,7 +226,7 @@ fn category_replace_non_ic_dissem_copies_from_source() {
 }
 
 // category_of — closed-CVE sentinel → CategoryId routing
-// (PR 3c.B engine-prereq Commit 3)
+// (engine-prereq)
 
 #[test]
 fn category_of_routes_dissem_tokens() {
@@ -272,7 +270,7 @@ fn category_of_routes_non_ic_dissem_tokens() {
 fn category_of_routes_rel_to_tokens() {
     let scheme = CapcoScheme::new();
     assert_eq!(scheme.category_of(&FactRef::Cve(TOK_USA)), Some(CAT_REL_TO));
-    // PR 3c.B Sub-PR 8.D.2: TOK_REL_TO is the whole-axis-clear
+    // TOK_REL_TO is the whole-axis-clear
     // sentinel for CAT_REL_TO (analog to TOK_EXDIS for
     // CAT_NON_IC_DISSEM). Pin its category routing alongside
     // TOK_USA so a future re-shuffle of capco_token_category
@@ -411,7 +409,7 @@ fn apply_intent_recanonicalize_returns_unchanged_marking() {
     );
 }
 
-/// PR 3c.B Sub-PR 8.D.1 — first consumer of FactAdd lands NOFORN
+/// First consumer of FactAdd lands NOFORN
 /// add semantics on `CAT_DISSEM`. Replaces the pre-migration
 /// "FactAdd is always inapplicable" pin; the three cases below
 /// (a/b/c) cover the wired-axis success path, the
@@ -420,9 +418,8 @@ fn apply_intent_recanonicalize_returns_unchanged_marking() {
 /// over-reach into axes whose migration is still queued.
 ///
 /// Case (a): bare classification marking → FactAdd(NOFORN, Portion)
-/// places NOFORN into `attrs.dissem_us` (post PR 9b / FR-046 split;
-/// see D9b-1 in decisions.md re the dissem_us-only write target).
-/// The lone Secret classification on `mk_attrs()` has an empty
+/// places NOFORN into `attrs.dissem_us` (the dissem_us-only write
+/// target). The lone Secret classification on `mk_attrs()` has an empty
 /// dissem axis pre-call; post-call `dissem_us` contains exactly
 /// `[Nf]`.
 ///
@@ -499,7 +496,7 @@ fn apply_fact_add_noforn_adds_to_dissem_us_idempotent() {
         scheme.apply_intent(&m_unwired, &unwired_intents),
         Err(ApplyIntentError::IntentInapplicable),
         "FactAdd against the unwired CAT_SCI axis must return \
-         IntentInapplicable (only CAT_DISSEM is wired in Sub-PR 8.D.1)"
+         IntentInapplicable (only CAT_DISSEM is wired for FactAdd)"
     );
 }
 
@@ -610,7 +607,7 @@ fn apply_intent_whole_batch_inapplicable_returns_err() {
     // applied.
 }
 
-// PR 3c.B Sub-PR 8.D.2 — CAT_REL_TO whole-axis-clear sentinel
+// CAT_REL_TO whole-axis-clear sentinel
 // (TOK_REL_TO) extends the FactRemove routing E053 uses to clear
 // REL TO when NOFORN is present per §H.8 p145. The three cases
 // below cover: (a) wired-axis success path on a populated REL TO
@@ -766,7 +763,7 @@ fn project_applies_declarative_empty_then_replace() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-D.2 Commit 6 — any_closure_trigger_fires predicate (in-crate
+// any_closure_trigger_fires predicate (in-crate
 // pub(crate) reach)
 // ---------------------------------------------------------------------------
 
@@ -1086,7 +1083,7 @@ fn axis_mask_fgi_marker_sets_bit() {
 // These tests verify that the HOT-1 per-rule axis guard never
 // incorrectly short-circuits a rule that should fire, and that the
 // pre-loop fast path correctly rejects markings with no triggerable
-// axis.  Semantics must be byte-identical to the pre-HOT-1 closure.
+// axis.  Semantics must be byte-identical to the structural closure.
 
 /// HOT-1: post-#704 `project()` semantics inject NOFORN on a marking
 /// carrying ORCON via the `default_fill::row0_should_fill` path.

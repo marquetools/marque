@@ -67,7 +67,7 @@ when ODNI publishes updates and the ism-data workspace is re-vendored.
 
 | Type | Purpose |
 |------|---------|
-| `ParsedAttrs<'src>` | Borrowed parser output. Each token retains a `&'src str` slice into the source buffer for FR-019 round-trip. |
+| `ParsedAttrs<'src>` | Borrowed parser output. Each token retains a `&'src str` slice into the source buffer so the canonicalizer can reconstruct the original text. |
 | `CanonicalAttrs` | Owned post-canonical pivot. What rules consume. Fields use `Box<[T]>` to avoid over-allocation. |
 | `Span` | Byte offset range into the original source buffer. Never copies. |
 | `MarkingCandidate`, `MarkingType` | Scanner output (Portion, Banner, CAB, PageBreak). |
@@ -103,17 +103,17 @@ assert!(attrs.classification.is_none());
 
 WASM-safe. No runtime I/O. All schema work runs in `build.rs` on the host.
 
+## Pivot-Type Triple
+
+The marking state is split across three types so each phase holds only what it needs:
+
+- `ParsedAttrs<'src>` (in `parsed.rs`) — borrowed parser output. Nine thin `Parsed*<'src>` wrappers (`ParsedClassification`, `ParsedSciMarking`, `ParsedSarMarking`, `ParsedFgiMarker`, `ParsedDissem`, `ParsedNonIcDissem`, `ParsedRelToEntry`, `ParsedDeclassifyOn`, `ParsedAea`) retain `&'src str` slices into the source buffer, so the canonicalizer can reconstruct the original text without re-borrowing.
+- `CanonicalAttrs` (in `canonical.rs`) — the owned post-canonical pivot type rules consume. Fields use `Box<[T]>` to avoid over-allocation.
+- `ProjectedMarking` (in `projected.rs`) — output of `MarkingScheme::project(scope, ...)`. Carries `scope: Scope` (from `marque-scheme`); this is the one edge from `marque-ism` to `marque-scheme`.
+
+`ParsedAttrs<'_>` becomes `CanonicalAttrs` only through `MarkingScheme::canonicalize` — the sole conversion path. The CAPCO override lives in `marque_capco::CapcoScheme::canonicalize`.
+
 ## Migration Notes
-
-### PR 3a: `IsmAttributes` → pivot-type triple
-
-Pre-PR-3a a single owned struct named `IsmAttributes` lived in `attrs.rs` and served both as the parser output and the rule-consumption form. PR 3a splits that role across three types:
-
-- `ParsedAttrs<'src>` (in `parsed.rs`) — borrowed parser output. Nine thin `Parsed*<'src>` wrappers (`ParsedClassification`, `ParsedSciMarking`, `ParsedSarMarking`, `ParsedFgiMarker`, `ParsedDissem`, `ParsedNonIcDissem`, `ParsedRelToEntry`, `ParsedDeclassifyOn`, `ParsedAea`) retain `&'src str` slices into the source buffer so the canonicalizer (PR 3c) can compute round-trip properties (FR-019) without re-borrowing.
-- `CanonicalAttrs` (in `canonical.rs`) — owned post-canonical pivot type rules consume. Field shape mirrors the prior `IsmAttributes` exactly.
-- `ProjectedMarking` (in `projected.rs`) — output of `MarkingScheme::project(scope, ...)`. Defined at PR 3a; PR 6 wires the engine to consume it. The type carries `scope: Scope` (from `marque-scheme`); the `marque-ism → marque-scheme` edge this introduces is anticipated by the consolidated plan's Appendix D and Constitution VII v1.4.0.
-
-Conversion from `ParsedAttrs<'_>` to `CanonicalAttrs` flows through `MarkingScheme::canonicalize` (FR-043 sole production path; the CAPCO override lives in `marque_capco::CapcoScheme::canonicalize`). PR 3a → PR 3c carried a transitional `marque_ism::from_parsed_unchecked` free-function adapter; PR 3c.2.E retired both the adapter and the path-based promote-callsite-lint carve-out, lifting the structural rename body into the trait override where it belongs.
 
 ### 0.3.0: `SarIdentifier` → `SarMarking`
 

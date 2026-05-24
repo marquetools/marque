@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Defense-in-depth runtime verification of vendored authoritative-
-//! source integrity pins (PR 10.A.2 T103).
+//! source integrity pins.
 //!
 //! `build.rs::verify_capco_2016_md` runs at compile time and panics
 //! the build if `docs/CAPCO-2016.md` has drifted from the pinned

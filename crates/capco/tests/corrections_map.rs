@@ -2,12 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7b — C001 dual-path idempotency lock.
+//! C001 dual-path idempotency lock.
 //!
-//! Closes the L-1 forward obligation from `docs/refactor-006/pr-7a-rust-review.md`:
-//! C001 is declared `Phase::Localized` (T074), and the engine's
-//! pass-1 dispatch loop (PR 7b) would naively re-run every Localized
-//! rule against the post-pass-0 buffer. The risk: a double-application
+//! C001 is declared `Phase::Localized`, and the engine's pass-1
+//! dispatch loop would naively re-run every Localized rule against the
+//! post-pass-0 buffer. The risk: a double-application
 //! of C001 (once as pass-0 text-correction, once as pass-1 FixIntent)
 //! would either splice the same bytes twice (corrupting the audit
 //! log) or split a successful pass-0 correction into two audit
@@ -62,8 +61,8 @@ fn c001_pass1_dispatch_noop_after_pass0() {
     let source = b"(TS//SERCET//NF)";
     let result = engine.fix(source, FixMode::Apply);
 
-    // PR 3c.2.D fixup F-3: `applied_text_corrections()` is `impl Iterator`;
-    // collect once for filter + Debug-render in the assertion message.
+    // `applied_text_corrections()` is `impl Iterator`; collect once for
+    // filter + Debug-render in the assertion message.
     let text_corrections: Vec<_> = result.applied_text_corrections().collect();
     let c001_count = text_corrections
         .iter()

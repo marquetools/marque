@@ -15,14 +15,12 @@ use crate::scheme::CapcoScheme;
 
 use super::BannerCategoryRow;
 
-/// SAR banner roll-up evaluator. Verbatim move of the body of
-/// `SarBannerRollupRule::check`, parameterized over the page projection
+/// SAR banner roll-up evaluator, parameterized over the page projection
 /// and the catalog row (so the row supplies the rule ID + severity).
 ///
-/// PR 9b (T133): reads `&ProjectedMarking` — the field
-/// `sar_markings` carries the union of portion-contributed SAR
-/// programs in the same shape `PageContext::expected_sar_marking`
-/// used to compute.
+/// Reads `&ProjectedMarking` — the field `sar_markings` carries the
+/// union of portion-contributed SAR programs in the same shape
+/// `PageContext::expected_sar_marking` used to compute.
 ///
 /// Authority: CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion
 /// marks must always appear in the banner line; hierarchy depiction
@@ -63,7 +61,7 @@ pub(super) fn evaluate_sar_banner_rollup(
 
     match attrs.sar_markings.as_ref() {
         Some(_observed) => {
-            // PR 3c.2.C C4 / G13: drop the runtime program list from
+            // Audit content-ignorance: the runtime program list is not in
             // the typed `Message`. `MessageArgs.category =
             // Some(CAT_SAR)` identifies the axis. The canonical
             // replacement still rides on `Diagnostic.text_correction.replacement`.
@@ -75,36 +73,31 @@ pub(super) fn evaluate_sar_banner_rollup(
                 },
             );
             // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
-            // fix at the end of the block so it does not overlap
-            // with E028 (program-order, whole-block span) or E029
-            // (compartment-order, last program's span) when they
+            // fix at the end of the block so it does not overlap with
+            // the SAR program-order rule (whole-block span) or
+            // compartment-order rule (last program's span) when they
             // fire on the same marking.
             //
-            // Why insertion and not a whole-block rewrite: the
-            // engine's C-1 overlap guard (FR-016 + `span.end <=
-            // boundary`) drops overlapping fixes. If E031's fix
-            // were a whole-block rewrite covering the same
-            // `sar_block_span` as E028, the lexicographic rule-id
-            // tiebreaker would favor E028, silently dropping the
-            // missing-program addition. A zero-width span at the
-            // block's end byte has `span.start == block_end`, so
-            // it sorts FIRST under FR-016 (`span.start DESC`) and
-            // its `span.start` becomes the boundary; E028's
-            // subsequent `span.end == block_end` still satisfies
-            // `<= boundary` and is kept. Both fixes apply.
+            // Why insertion and not a whole-block rewrite: the engine's
+            // overlap guard (`span.end <= boundary`) drops overlapping
+            // fixes. A whole-block rewrite covering the same
+            // `sar_block_span` as the program-order rule would lose the
+            // lexicographic rule-id tiebreaker, silently dropping the
+            // missing-program addition. A zero-width span at the block's
+            // end byte has `span.start == block_end`, so it sorts FIRST
+            // (`span.start DESC`) and its `span.start` becomes the
+            // boundary; the program-order rule's subsequent
+            // `span.end == block_end` still satisfies `<= boundary` and
+            // is kept. Both fixes apply.
             //
-            // Single-apply convergence: when E028 and E031 both
-            // fire, the first apply pass produces
-            // `<observed-sorted>/<missing-sorted>` which may not
-            // be fully canonical (the inserted missing programs
+            // Single-apply convergence: when both fire, the first apply
+            // pass produces `<observed-sorted>/<missing-sorted>` which
+            // may not be fully canonical (the inserted missing programs
             // are suffix-appended, not merge-sorted). A second
-            // `marque fix` pass will detect and repair that via
-            // E028 alone. Net: never loses missing programs,
-            // never overflows into E028/E029 territory, and
-            // converges in ≤2 passes. The prior whole-block
-            // fix dropped silently in the overlap case and
-            // required 2 passes anyway — this is strictly
-            // better.
+            // `marque fix` pass repairs that via the program-order rule
+            // alone. Net: never loses missing programs, never overflows
+            // into the other rules' territory, and converges in ≤2
+            // passes.
             let Some(block) = sar_block_span(attrs) else {
                 return vec![];
             };
@@ -136,10 +129,10 @@ pub(super) fn evaluate_sar_banner_rollup(
             // unsafe — report at Error severity with no fix and let a
             // human place the block.
             //
-            // G13: the typed `Message` identifies the banner-rollup
-            // mismatch class with category=CAT_SAR. Per-program detail
-            // would require coordinated `MARQUE_AUDIT_SCHEMA` bump
-            // (out of C scope per PM-C-6).
+            // Audit content-ignorance: the typed `Message` identifies
+            // the banner-rollup mismatch class with category=CAT_SAR.
+            // Per-program detail would require a coordinated
+            // `MARQUE_AUDIT_SCHEMA` bump.
             let _ = sorted_missing;
             let span = attrs
                 .token_spans

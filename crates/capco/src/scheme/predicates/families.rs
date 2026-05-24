@@ -5,17 +5,14 @@
 //! RELIDO family predicates ([`is_fdr_dominator`] /
 //! [`is_orcon_family`]) used by `Constraint::ConflictsWithFamily`
 //! rows. These are the two genuinely-`pub` names re-exported from
-//! `crate::scheme::is_fdr_dominator` / `is_orcon_family` for the
-//! PR 4 rule-wrapper dispatch. Lifted from the monolithic
-//! `predicates.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! `crate::scheme::is_fdr_dominator` / `is_orcon_family`.
 
 use marque_scheme::TokenRef;
 
 use super::super::*;
 
 // ---------------------------------------------------------------------------
-// Stage D (PR 3.7 T108b) — RELIDO family predicates
+// RELIDO family predicates
 // ---------------------------------------------------------------------------
 //
 // Family predicates for `Constraint::ConflictsWithFamily` rows. These
@@ -32,7 +29,7 @@ use super::super::*;
 /// SFDRA-deferred-release semantic conflicts with the manifest FD&R
 /// authority of the dominator.
 ///
-/// Per the family-predicate framing in `marque-applied.md` (RELIDO
+/// Per the family-predicate framing (RELIDO
 /// incompatibility roster) + CAPCO-2016 §H.8 p154 (RELIDO
 /// Relationship(s) to Other Markings: "Cannot be used with NOFORN or
 /// DISPLAY ONLY") + §D.2 Table 3 p28.
@@ -45,8 +42,8 @@ pub fn is_fdr_dominator(t: &TokenRef) -> bool {
         TokenRef::Token(id) => {
             // NOFORN, DISPLAY_ONLY, and EYES are FD&R dominators over
             // RELIDO per §D.2 Table 3 p28. RELIDO-vs-RELIDO is a
-            // tautology and is omitted. EYES added in PR 3.7 rev 3
-            // per Copilot review pass 3: the parser produces
+            // tautology and is omitted. EYES is included because the
+            // parser produces
             // `DissemControl::Eyes` for legacy `(U//EYES)` inputs
             // (deprecated 2017-10-01 per §H.8 p157 but still
             // recognized), so `is_fdr_dominator` must match it for

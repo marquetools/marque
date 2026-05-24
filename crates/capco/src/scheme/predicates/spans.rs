@@ -5,10 +5,7 @@
 //! Span lookups + companion-form inference used by SCI per-system
 //! emit helpers and the action layer ([`first_sci_span`],
 //! [`dissem_token_span`], [`us_level`], [`infer_companion_form`],
-//! [`dissem_token_id_for_form`]). Lifted
-//! from the monolithic `predicates.rs` per the issue #466 Stage 2
-//! PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! [`dissem_token_id_for_form`]).
 
 use marque_ism::{Classification, TokenKind};
 use marque_scheme::{TokenId, TokenRef};
@@ -159,7 +156,7 @@ pub(crate) fn us_level(attrs: &marque_ism::CanonicalAttrs) -> Option<Classificat
 /// Find the span (and current text) of a specific `DissemControl` token —
 /// used when a rule needs to replace e.g. `OC-USGOV` with `OC`.
 ///
-/// PR 9b (T132): walks the unified [`dissem_iter`](marque_ism::CanonicalAttrs::dissem_iter)
+/// walks the unified [`dissem_iter`](marque_ism::CanonicalAttrs::dissem_iter)
 /// — which visits `dissem_us` first, then `dissem_nato` — and
 /// correlates against the `token_spans` `DissemControl`-kind sequence
 /// in document order. The parser emits dissem tokens to

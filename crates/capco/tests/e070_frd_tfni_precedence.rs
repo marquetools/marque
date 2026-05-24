@@ -34,9 +34,8 @@ use marque_scheme::MarkingScheme;
 /// parser path — same shape used by the other CAPCO integration
 /// tests (e.g., `dissem_nato_pure_nato_portion.rs`).
 fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
-    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
-    // so each #[test] can reuse the scheme it already constructs for
-    // `fires_e070(&scheme, ...)`.
+    // The helper takes `&CapcoScheme` so each #[test] can reuse the
+    // scheme it already constructs for `fires_e070(&scheme, ...)`.
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {
@@ -51,7 +50,7 @@ fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
 
 /// Did `scheme.validate(marking)` produce a `ConstraintViolation`
 /// whose `constraint_label` matches the FRD/TFNI precedence
-/// predicate (post-T044: `portion.aea.frd-tfni-precedence`)?
+/// predicate (`portion.aea.frd-tfni-precedence`)?
 fn fires_e070(scheme: &CapcoScheme, attrs: CanonicalAttrs) -> bool {
     let marking = CapcoMarking::new(attrs);
     scheme

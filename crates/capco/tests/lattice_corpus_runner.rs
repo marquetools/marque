@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4 (006 T118) — lattice corpus regression runner.
+//! Lattice corpus regression runner.
 //!
 //! Drives the 5 worked-example fixtures under `tests/corpus/lattice/`
 //! through `CapcoScheme::project(Scope::Page, ...)` and asserts byte-
@@ -10,15 +10,14 @@
 //! structural shape (CAB-commingling vs portions+banner) per the
 //! `tests/corpus/lattice/README.md` contract.
 //!
-//! Also hosts the T119 manual probe (`probe_documents_lint_clean`)
-//! as an `#[ignore]`-gated diagnostic for the 40 CIA CREST documents
-//! under `tests/corpus/documents/marked/`. Probe stays in-tree
-//! post-merge as a regression replay surface.
+//! Also hosts the manual probe (`probe_documents_lint_clean`) as an
+//! `#[ignore]`-gated diagnostic for the 40 CIA CREST documents under
+//! `tests/corpus/documents/marked/`, a regression replay surface.
 //!
 //! # Sidecar shape (parallel to `marque_test_utils::ExpectedFixture`)
 //!
-//! Per PM doc D-3 (2026-05-19): rather than extending the canonical
-//! `ExpectedFixture` (which would force every existing sidecar under
+//! Rather than extending the canonical `ExpectedFixture` (which would
+//! force every existing sidecar under
 //! `valid/`/`invalid/`/`foreign/` to carry or default an
 //! `expected_banner` field), the runner defines a parallel
 //! `LatticeExpectedFixture` type local to this module. The
@@ -56,9 +55,9 @@ use serde::Deserialize;
 // Sidecar type
 // ===========================================================================
 
-/// Lattice-corpus sidecar — parallel to `marque_test_utils::ExpectedFixture`
-/// per PM doc D-3. `_note` carries the `§X.Y pNN` citation re-verified at
-/// authorship against `crates/capco/docs/CAPCO-2016.md` (Constitution VIII).
+/// Lattice-corpus sidecar — parallel to `marque_test_utils::ExpectedFixture`.
+/// `_note` carries the `§X.Y pNN` citation re-verified at authorship
+/// against `crates/capco/docs/CAPCO-2016.md` (Constitution VIII).
 #[derive(Debug, Clone, Deserialize)]
 struct LatticeExpectedFixture {
     #[serde(rename = "_note", default)]
@@ -94,7 +93,7 @@ enum FixtureShape {
     PortionsBanner,
 }
 
-/// Classify a fixture's structural shape per PM doc D-5.
+/// Classify a fixture's structural shape.
 ///
 /// Walks the fixture line-by-line: skip blank + `#`-comment lines,
 /// case-insensitively prefix-match on the first content line.
@@ -132,10 +131,9 @@ fn engine() -> Engine {
 
 /// Parse a single `(...)` portion line into a `CanonicalAttrs`.
 ///
-/// PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
-/// so callers (`discover`, `lattice_corpus_fixtures_match_expected`)
-/// that already construct a scheme for `scheme.project(Scope::Page,
-/// ...)` can reuse it.
+/// The helper takes `&CapcoScheme` so callers (`discover`,
+/// `lattice_corpus_fixtures_match_expected`) that already construct a
+/// scheme for `scheme.project(Scope::Page, ...)` can reuse it.
 fn parse_portion_line(scheme: &CapcoScheme, line: &str) -> CanonicalAttrs {
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
@@ -217,7 +215,7 @@ fn discover() {
 }
 
 // ===========================================================================
-// T118 — lattice corpus fixtures byte-identity gate
+// Lattice corpus fixtures byte-identity gate
 // ===========================================================================
 
 /// Load the lattice sidecar `<stem>.expected.json` for a fixture path.
@@ -235,7 +233,7 @@ fn load_lattice_expected(fixture_path: &Path) -> LatticeExpectedFixture {
         .unwrap_or_else(|e| panic!("failed to parse {}: {e}", json_path.display()))
 }
 
-/// PR 4 (006 T118) load-bearing test: every fixture under
+/// Load-bearing test: every fixture under
 /// `tests/corpus/lattice/` MUST round-trip through
 /// `CapcoScheme::project(Scope::Page, ...)` + `scheme.render_banner(...)`,
 /// with the rendered banner asserted **byte-identical** to the sidecar's
@@ -248,9 +246,9 @@ fn load_lattice_expected(fixture_path: &Path) -> LatticeExpectedFixture {
 /// diagnostic counts are robust to incidental span shifts as the rule
 /// catalog evolves.
 ///
-/// Dispatches on fixture shape per PM doc D-5: portion-line/banner
-/// fixtures get both projection + lint coverage; CAB-only fixtures
-/// get lint coverage only (no portions to project).
+/// Dispatches on fixture shape: portion-line/banner fixtures get both
+/// projection + lint coverage; CAB-only fixtures get lint coverage only
+/// (no portions to project).
 #[test]
 fn lattice_corpus_fixtures_match_expected() {
     let scheme = CapcoScheme::new();
@@ -315,9 +313,9 @@ fn lattice_corpus_fixtures_match_expected() {
                 .entry(d.rule.predicate_id().to_string())
                 .or_insert(0) += 1;
         }
-        // T044: `ExpectedRuleId` is the 2-tuple struct; key the counts
-        // map on `predicate_id` to match the `actual_counts` shape
-        // built from `RuleId::predicate_id()` above.
+        // `ExpectedRuleId` is the 2-tuple struct; key the counts map on
+        // `predicate_id` to match the `actual_counts` shape built from
+        // `RuleId::predicate_id()` above.
         let mut expected_counts: BTreeMap<String, usize> = BTreeMap::new();
         for e in &expected.diagnostics {
             *expected_counts
@@ -350,19 +348,18 @@ fn lattice_corpus_fixtures_match_expected() {
 }
 
 // ===========================================================================
-// T119 — documents-corpus precision probe (manual diagnostic)
+// Documents-corpus precision probe (manual diagnostic)
 // ===========================================================================
 
-/// PR 4 (006 T119) manual probe: lint every rendered CIA CREST document
-/// under `tests/corpus/documents/marked/*.md` and print per-document
+/// Manual probe: lint every rendered CIA CREST document under
+/// `tests/corpus/documents/marked/*.md` and print per-document
 /// diagnostic counts to stdout, sorted by descending count.
 ///
-/// **Probe-first ordering (PM doc D-6).** The 40 marked-document
-/// fixtures have ground-truth sidecars claiming `"diagnostics": []`,
-/// but they have never been run through `Engine::lint` — only
-/// `Scanner::scan` via `crates/engine/tests/document_corpus.rs::
-/// scanner_counts_match_ground_truth`. Three failure modes are
-/// possible (per PM doc D-6):
+/// The 40 marked-document fixtures have ground-truth sidecars claiming
+/// `"diagnostics": []`, but they are exercised only by `Scanner::scan`
+/// via `crates/engine/tests/document_corpus.rs::
+/// scanner_counts_match_ground_truth`, not by `Engine::lint`. Three
+/// failure modes are possible:
 ///
 /// 1. Unexpected diagnostics emit → real engine bugs OR stale
 ///    ground-truth claims (Constitution VIII — neither tolerated
@@ -380,15 +377,14 @@ fn lattice_corpus_fixtures_match_expected() {
 /// `precision_prose_zero_diagnostics`. If drift is found, the gate
 /// is deferred to a follow-up issue with per-document triage.
 ///
-/// # Content-ignorance (Constitution V Principle V / G13)
+/// # Content-ignorance (Constitution V Principle V)
 ///
 /// Probe output contains ONLY: file stem, diagnostic count, rule ID,
 /// and span byte offsets. The `Diagnostic.message` field is
-/// intentionally **excluded** because some rule messages interpolate
-/// the offending source token text (e.g.,
-/// `crates/capco/src/rules.rs` ~L879 `format!("...{:?}", token_text)`),
-/// which would leak document body bytes into stdout — violating the
-/// G13 invariant that no document content appears in engine output
+/// intentionally **excluded** because some rule messages could
+/// interpolate offending source token text, which would leak document
+/// body bytes into stdout — violating the audit content-ignorance
+/// invariant that no document content appears in engine output
 /// streams. For full triage of a specific document, run the engine
 /// directly on the file (e.g.,
 /// `cargo run -p marque -- check tests/corpus/documents/marked/<file>`)
@@ -417,7 +413,7 @@ fn probe_documents_lint_clean() {
         let fname = path.file_name().unwrap().to_string_lossy().into_owned();
         // Content-ignorance: rule ID + span only; the `Diagnostic.message`
         // field can interpolate input tokens, so it is intentionally
-        // excluded from probe output per Constitution V Principle V / G13.
+        // excluded from probe output (Constitution V Principle V).
         let detail: Vec<String> = result
             .diagnostics
             .iter()
@@ -441,7 +437,7 @@ fn probe_documents_lint_clean() {
     let clean: usize = counts.iter().filter(|(_, n, _)| *n == 0).count();
     let total_docs = counts.len();
 
-    println!("=== T119 probe — documents corpus lint diagnostics ===");
+    println!("=== documents corpus lint diagnostics ===");
     println!(
         "  {clean}/{total_docs} documents emit zero diagnostics ({total} total diagnostics emitted)"
     );
@@ -456,11 +452,11 @@ fn probe_documents_lint_clean() {
         }
     }
     if clean == total_docs {
-        println!("  All documents clean. T119 assertion gate may land.");
+        println!("  All documents clean. An assertion gate may land.");
     } else {
         println!(
             "  {} document(s) emit diagnostics. Triage per fixture before \
-             landing T119 assertion gate.",
+             landing an assertion gate.",
             total_docs - clean
         );
     }

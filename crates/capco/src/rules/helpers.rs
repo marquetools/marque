@@ -57,13 +57,10 @@ pub(crate) fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
 /// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
 /// positional helper signature so call sites read top-down by name.
 ///
-/// PR 3c.2.C C4 migrated `message: String` → `message: Message`
-/// (closed-template, closed-args). PR 3c.2.C C5 migrated `citation:
-/// &'static str` → `citation: Citation` per the atomic
-/// `Diagnostic.citation` field-type flip. The `original` field is
-/// retained on the struct so existing call sites stay byte-identical,
-/// but the `make_fix_diagnostic` helper discards it per the existing
-/// G13 invariant.
+/// The `message` field is a closed-template, closed-args `Message` and
+/// `citation` is a typed `Citation`. The `original` field is retained on
+/// the struct so existing call sites stay byte-identical, but the
+/// `make_fix_diagnostic` helper discards it (audit content-ignorance).
 pub(crate) struct FixDiagnosticParams {
     pub rule: RuleId,
     pub severity: Severity,
@@ -79,17 +76,16 @@ pub(crate) struct FixDiagnosticParams {
 
 /// Build a text-correction diagnostic from [`FixDiagnosticParams`].
 ///
-/// Post PR 3c.B Commit 10 the engine's `apply_text_corrections`
-/// reads `Diagnostic.text_correction` for the replacement bytes +
-/// provenance. The helper preserves the legacy call shape and
-/// faithfully threads `source`, `confidence`, and `migration_ref`
-/// through to the `TextCorrection` payload — every rule that emits
-/// a byte-substitution fix (C001 corrections-map, E006 deprecation
-/// migration, and other [`make_fix_diagnostic`] callers) gets the
-/// correct provenance on its audit record. The `original` field
-/// is discarded (G13 closure on the legacy emission channel).
+/// The engine's `apply_text_corrections` reads
+/// `Diagnostic.text_correction` for the replacement bytes + provenance.
+/// The helper threads `source`, `confidence`, and `migration_ref`
+/// through to the `TextCorrection` payload — every rule that emits a
+/// byte-substitution fix (corrections-map, deprecation migration, and
+/// other [`make_fix_diagnostic`] callers) gets the correct provenance
+/// on its audit record. The `original` field is discarded
+/// (audit content-ignorance).
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
-    let _ = p.original; // G13: never copy document bytes into audit
+    let _ = p.original; // never copy document bytes into audit
     Diagnostic::text_correction(
         p.rule,
         p.severity,
@@ -158,11 +154,10 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
 /// derive the buckets from the CVE schema groups in
 /// `CVEnumISMCATRelTo.xsd`.
 //
-// Dead-code allow: S003 (`JointUsaFirstRule`) was the last live caller
-// and dropped its pre-fix canonicalization when the JOINT fix became a
-// `Recanonicalize` intent the renderer resolves (PR 3c.B Commit 6). The
-// renderer's REL TO / JOINT axes (`render_rel_to.rs`) are now the live
-// source of truth for the §H.8 p151 / §H.3 p56 ordering. This helper is
+// Dead-code allow: the JOINT fix became a `Recanonicalize` intent the
+// renderer resolves, so `JointUsaFirstRule` no longer calls this helper.
+// The renderer's REL TO / JOINT axes (`render_rel_to.rs`) are now the
+// live source of truth for the §H.8 p151 / §H.3 p56 ordering. This helper is
 // retained — under the same rationale as `dedup_country_codes` below —
 // as the single-source-of-truth a future REL TO rule emission can reuse
 // without re-deriving the invariant; a dedicated dead-code sweep may

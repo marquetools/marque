@@ -28,17 +28,13 @@ use crate::scheme::CapcoScheme;
 // Issue #677 — banner.metadata.uses-portion-form / portion.metadata.uses-banner-form
 // ===========================================================================
 //
-// Restores detection that was retired in PR 3c.B Commit 6.
+// `MarkingScheme::render_canonical` owns the portion↔banner form-fix
+// path, but the renderer only runs once a rule emits the
+// `Recanonicalize` `FixIntent` that triggers it. Without these two
+// rules, `SECRET//NF`, `(S//NOFORN)`, `SECRET//OC`, and parallel cases
+// produce zero diagnostics. The two rules emit that intent.
 //
-// Commit 6 retired the historical E001 (`PortionMarkInBannerRule`) and E009
-// (banner→portion form normalization) on the premise that
-// `MarkingScheme::render_canonical` would absorb both fix paths. The
-// renderer's fix path IS in place — but no rule emits the `Recanonicalize`
-// `FixIntent` that would trigger it. Result: `SECRET//NF`, `(S//NOFORN)`,
-// `SECRET//OC`, and parallel cases produced zero diagnostics on the
-// pre-fix tree. Two new rules close the gap.
-//
-// ## Scope decision (BROAD — synthesis-brief §"Scope")
+// ## Scope decision (BROAD)
 //
 // Both rules walk every token in `attrs.token_spans` and dispatch through
 // the `MARKING_FORMS` helpers `portion_to_banner` / `banner_to_portion`.
@@ -121,7 +117,7 @@ use crate::scheme::CapcoScheme;
 pub(super) struct PortionFormInBannerRule;
 
 /// Citations `PortionFormInBannerRule` may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const PORTION_FORM_IN_BANNER_AUTHORITIES: &[Citation] = &[capco(SectionLetter::D, 1, 27)];
 
@@ -187,7 +183,7 @@ impl Rule<CapcoScheme> for PortionFormInBannerRule {
 pub(super) struct BannerFormInPortionRule;
 
 /// Citations `BannerFormInPortionRule` may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const BANNER_FORM_IN_PORTION_AUTHORITIES: &[Citation] = &[capco(SectionLetter::C, 1, 25)];
 
@@ -377,7 +373,7 @@ fn find_banner_form_in_portion(attrs: &CanonicalAttrs) -> Option<Span> {
 /// closed-token set is too varied to bind every form-pair to a
 /// `TokenId`, and the per-rule predicate ID plus the diagnostic span
 /// already identify the violation kind and location for audit
-/// consumers (Constitution V Principle V G13 — no document bytes flow
+/// consumers (Constitution V — no document bytes flow
 /// through the typed message).
 fn emit_form_mismatch(
     rule: RuleId,

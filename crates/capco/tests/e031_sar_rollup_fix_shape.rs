@@ -24,17 +24,12 @@
 //! - `e031_fires_when_banner_has_no_sar_block_but_portion_does` —
 //!   no-fix invariant when the entire SAR block is missing.
 //! - `e031_fix_preserves_observed_hierarchy_when_adding_missing_program`
-//!   — T035c-19 PR-C hierarchy-preservation invariant.
-//! - `e031_cites_h5_p101` — citation lockdown pin (renamed from the
-//!   legacy `e031_cites_line_2458_*` name per
-//!   `feedback_avoid_line_number_anchoring` + `feedback_citations_use_page_numbers`).
+//!   — hierarchy-preservation invariant.
+//! - `e031_cites_h5_p101` — citation lockdown pin.
 //!
-//! # Architecture note (PR 3c.B Commit 10 cutover)
+//! # Architecture note
 //!
-//! Pre-cutover the fire-and-fix tests asserted on legacy `FixProposal`
-//! fields (`fix.span.start == fix.span.end`, `fix.original.as_ref()
-//! == ""`, `fix.replacement.as_ref() == "/CD"`, `fix.confidence.
-//! combined() == 0.9`). Post-cutover the walker emits a structural
+//! The walker emits a structural
 //! `FixIntent` (`FactAdd` for missing-program insertion or a
 //! `Recanonicalize` per the row dispatch); the engine synthesizes
 //! the byte-precise zero-width-insert at promotion time. The load-
@@ -148,8 +143,8 @@ fn e031_fires_and_emits_canonical_text_correction() {
 // Hierarchy-optional carve-outs (§H.5 p101)
 // ---------------------------------------------------------------------------
 
-/// T035c-19 PR-C narrowed predicate: §H.5 p101 makes banner
-/// hierarchy depth (below the program identifier) optional. A
+/// Narrowed predicate: §H.5 p101 makes banner hierarchy depth (below
+/// the program identifier) optional. A
 /// portion with `SAR-BP-J12` rolling up to a banner with `SAR-BP`
 /// (no compartment shown) is compliant — the author deliberately
 /// omitted hierarchy. The prior behavior treated this as an E031
@@ -226,8 +221,8 @@ fn e031_fires_error_no_fix_when_banner_has_no_sar_block() {
 // Hierarchy preservation in fix output
 // ---------------------------------------------------------------------------
 
-/// T035c-19 PR-C — the zero-width insertion at end-of-block must
-/// preserve the observed banner's hierarchy verbatim and add only
+/// The zero-width insertion at end-of-block must preserve the observed
+/// banner's hierarchy verbatim and add only
 /// the missing programs as bare identifiers. §H.5 p101 makes
 /// hierarchy depiction the author's choice; the fix honors that by
 /// construction.
@@ -261,11 +256,10 @@ fn e031_fix_appends_bare_program_id_no_invented_hierarchy() {
 // Citation lockdown (renamed from legacy line-NNNN form)
 // ---------------------------------------------------------------------------
 
-/// T035c-19 PR-C citation lockdown. E031's authority is §H.5 p101 —
-/// both the SAR roll-up rule AND the hierarchy-optional carve-out
-/// live at the same passage. PR 10.A.1: typed `Citation` pins the
-/// passage; the cross-reference text framing lives in the rule doc
-/// comment per D13 single-citation discipline.
+/// Citation lockdown. E031's authority is §H.5 p101 — both the SAR
+/// roll-up rule AND the hierarchy-optional carve-out live at the same
+/// passage. The typed `Citation` pins the passage; the cross-reference
+/// text framing lives in the rule doc comment.
 ///
 /// Test fn name renamed from `e031_cites_line_2458_and_hierarchy_optional_note`
 /// per `feedback_avoid_line_number_anchoring` +

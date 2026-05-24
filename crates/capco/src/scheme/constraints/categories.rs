@@ -2,9 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `CapcoScheme` category table. Lifted from the monolithic
-//! `constraints.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! `CapcoScheme` category table.
 
 use marque_scheme::{AggregationOp, Cardinality, Category, IntraOrdering};
 
@@ -165,7 +163,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // `Constraint::Conflicts(NOFORN, REL_TO)` check below.
             // Pre-PR-4b-E the cross-category supersession was
             // enforced by the retired `PageContext::expected_rel_to`
-            // accessor. Phase C will model cross-category supersession
+            // accessor. A future change may model cross-category supersession
             // explicitly (e.g. as a new `Constraint::Supersedes`
             // variant that spans categories).
             aggregation: AggregationOp::Union,
@@ -186,7 +184,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
                 first: TOK_USA,
                 rest: Box::new(IntraOrdering::Alphabetical),
             },
-            // Phase A leaves the expansion table empty; Phase B
+            // The expansion table is empty today; a future change
             // wires the FVEY/NATO/ACGU → {USA, GBR, ...} map in.
             expansion: None,
         },

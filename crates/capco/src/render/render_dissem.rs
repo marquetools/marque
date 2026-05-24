@@ -58,20 +58,18 @@ pub(crate) fn render_dissem(
     // CVE `DissemControl` enum already declares variants in roughly
     // this order; we re-sort defensively to honor the precedent.
     //
-    // PR 9b (T132): render walks the unified `dissem_iter` (US-then-
-    // NATO) and lets the Register-order sort below merge them. The
-    // canonical wire form is namespace-indistinguishable — CAPCO-2016
-    // §G.2 Table 5 pp 40-45 directs NATO ORCON / REL TO to "See US X
-    // ARH requirements," i.e. they render to the same canonical token
-    // regardless of attribution. A page rollup carrying the same
-    // control in both `dissem_us` and `dissem_nato` (e.g., a US
-    // portion with OC plus a pure-NATO portion with OC) MUST emit
-    // one `ORCON`, not `ORCON/ORCON`. Sort places identical controls
-    // adjacent; `dedup` collapses them.
-    //
-    // PR 9b R2 (Copilot inline review): the prior pass collected
-    // through `SmallVec` and sorted but did not dedup, which produced
-    // invalid repeated tokens on the cross-namespace rollup path.
+    // Render walks the unified `dissem_iter` (US-then-NATO) and lets
+    // the Register-order sort below merge them. The canonical wire form
+    // is namespace-indistinguishable — CAPCO-2016 §G.2 Table 5 pp 40-45
+    // directs NATO ORCON / REL TO to "See US X ARH requirements," i.e.
+    // they render to the same canonical token regardless of
+    // attribution. A page rollup carrying the same control in both
+    // `dissem_us` and `dissem_nato` (e.g., a US portion with OC plus a
+    // pure-NATO portion with OC) MUST emit one `ORCON`, not
+    // `ORCON/ORCON`. Sort places identical controls adjacent; `dedup`
+    // collapses them. Collecting and sorting without the dedup would
+    // produce invalid repeated tokens on the cross-namespace rollup
+    // path.
     //
     // `Vec::dedup` collapses CONSECUTIVE equal elements, which is
     // exactly what we get post-sort. `DissemControl: PartialEq` (from
@@ -80,8 +78,8 @@ pub(crate) fn render_dissem(
     //
     // Inline-8 covers the typical dissem set (RS/FOUO/OC/OCUSGOV/IMC/
     // NF/PR/REL + RELIDO = 9 variants in extremis; 8 is the typical-
-    // case ceiling; prior inline-4 was insufficient for the common
-    // `NF/PR/OC/REL/IMCON/RS` shape, which is 6 items — LA-4 fix).
+    // case ceiling, enough for the common `NF/PR/OC/REL/IMCON/RS`
+    // 6-item shape).
     let mut sorted: SmallVec<[&DissemControl; 8]> =
         m.0.dissem_iter()
             .filter(|d| !(drop_bare_rel && **d == DissemControl::Rel))

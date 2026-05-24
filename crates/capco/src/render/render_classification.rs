@@ -175,11 +175,11 @@ fn render_joint(j: &JointClassification, scope: Scope, out: &mut dyn fmt::Write)
     // "USA is always a co-owner/producer". This is a CONSTRAINT on
     // valid JOINT inputs, not a render-time canonicalization. The
     // renderer renders whatever countries are present in the input
-    // model; a future Constraint::Requires entry on CapcoScheme
-    // (Commit 7+ catalog work) will fire `FactAdd { token: USA, scope:
-    // joint }` when JOINT inputs are missing USA. Until that constraint
-    // lands, malformed JOINT inputs lacking USA will render without
-    // USA — a follow-up gap, not a render-correctness defect.
+    // model; a `Constraint::Requires` entry on CapcoScheme would fire
+    // `FactAdd { token: USA, scope: joint }` when JOINT inputs are
+    // missing USA. Absent that constraint, malformed JOINT inputs
+    // lacking USA render without USA — a gap, not a render-correctness
+    // defect.
     //
     // USA does NOT have a USA-first ordering rule in the JOINT [LIST] —
     // the canonical examples on §H.3 p56 / p58 / p59
@@ -189,13 +189,11 @@ fn render_joint(j: &JointClassification, scope: Scope, out: &mut dyn fmt::Write)
     //
     // The USA-first rule belongs to the REL TO [USA, LIST] axis only
     // (§H.8 p150-151) — that is a different list with a different
-    // ordering rule. Conflating the two was a Constitution VIII defect
-    // caught in pre-flight review.
+    // ordering rule. The two must not be conflated.
     //
-    // The S003 convention (JOINT-USA-first, gated by config) is layered
-    // above the renderer in a future commit's Recanonicalize emit — it
-    // is NOT the canonical form per the manual. See the consolidated
-    // PR 3c.B plan, Commit 6.
+    // The JOINT-USA-first convention (gated by config) is layered above
+    // the renderer in a Recanonicalize emit — it is NOT the canonical
+    // form per the manual.
     out.write_str("//JOINT ")?;
     let level = match scope {
         Scope::Portion => j.level.portion_str(),

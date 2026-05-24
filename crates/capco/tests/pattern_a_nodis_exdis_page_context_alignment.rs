@@ -2,15 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Sub-PR 8.F-engine-gap — Pattern A NODIS/EXDIS REL-TO clear.
+//! Pattern A NODIS/EXDIS REL-TO clear.
 //!
-//! Originally this file pinned a dual-route alignment invariant between
-//! `PageContext::expected_rel_to()` (engine-side read API) and the
-//! `scheme.project(Scope::Page, ...)` (PageRewrite-driven) route. PR 4b-E
-//! retired the engine-side accessor surface entirely; the dual-route
-//! claim collapses to a single-route assertion against
-//! `scheme.project(Scope::Page, ...)`, which is now the production path
-//! the architect plan §6 names.
+//! Asserts the NODIS/EXDIS REL-TO clear behavior against
+//! `scheme.project(Scope::Page, ...)` (the PageRewrite-driven
+//! production path).
 //!
 //! # What this file pins post-PR-4b-E
 //!

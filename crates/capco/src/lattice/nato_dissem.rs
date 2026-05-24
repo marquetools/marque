@@ -28,13 +28,11 @@ use std::collections::BTreeSet;
 /// dissem vocabulary is closed at two elements today, but the
 /// underlying `DissemControl` enum is shared with US dissem so the
 /// namespace bound is loose; bottom = empty set, top is unsafe to
-/// claim. The SciSet/SarSet/AeaSet precedent for open-vocab applies
-/// (M-25 PR 4b-B 7th-pass — `FgiSet` was previously listed in this
-/// precedent; B-1 PR 4b-B 8th-pass retired `FgiSet`'s
-/// `BoundedLattice` impl — `FgiSet` does NOT implement
-/// `BoundedLattice`. See [`super::dissem::DissemSet`] for rationale.)
+/// claim. The SciSet/SarSet/AeaSet precedent for open-vocab applies;
+/// `FgiSet` is NOT part of it (it does not implement `BoundedLattice`).
+/// See [`super::dissem::DissemSet`] for rationale.
 ///
-/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// §-authority (CAPCO-2016.md):
 /// - p41 (NATO reciprocity table — NATO dissem set is the
 ///   intersection of NATO-permitted-and-IC-compatible markings).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

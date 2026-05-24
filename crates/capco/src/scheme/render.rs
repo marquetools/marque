@@ -5,11 +5,9 @@
 //! Per-axis renderer dispatch table — `DissemFamilyMembership` +
 //! `AxisRenderRow` + `RENDER_TABLE`.
 //!
-//! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
-//! (issue #466). Module contents are byte-identical to the pre-split
-//! source — imports adjusted to pick up the `CAT_*` constants and the
-//! `CapcoMarking` type from the parent module via `use super::*;` and
-//! the `CategoryId` / `Scope` types directly from `marque_scheme`.
+//! Imports the `CAT_*` constants and the `CapcoMarking` type from the
+//! parent module via `use super::*;` and the `CategoryId` / `Scope`
+//! types directly from `marque_scheme`.
 
 use marque_scheme::{CategoryId, Scope};
 

@@ -1,15 +1,14 @@
 #![cfg(any())]
-// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+// Legacy FixProposal-shape test disabled pending rewrite.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Trait-level tests for `impl Vocabulary<CapcoScheme> for CapcoScheme`
-//! (Phase 5 PR-2, tasks T071 / T072 / T073 / T074 / T076 / T077).
+//! Trait-level tests for `impl Vocabulary<CapcoScheme> for CapcoScheme`.
 //!
-//! `marque-ism` ships the raw per-token tables (Phase 5 PR-1, tested
-//! in `crates/ism/tests/vocabulary_tables.rs`); this file exercises
+//! `marque-ism` ships the raw per-token tables (tested in
+//! `crates/ism/tests/vocabulary_tables.rs`); this file exercises
 //! the `marque-scheme::Vocabulary<S>` adapter that composes them
 //! into the trait surface.
 //!
@@ -58,7 +57,7 @@ fn active_sentinels() -> &'static [TokenId] {
 }
 
 // ---------------------------------------------------------------------------
-// T071 — every active token has authority + owner/producer + POC + forms.
+// Every active token has authority + owner/producer + POC + forms.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -111,7 +110,7 @@ fn every_active_token_has_authority() {
 }
 
 // ---------------------------------------------------------------------------
-// T072 — authority traces back to ODNI for every ISM token.
+// Authority traces back to ODNI for every ISM token.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -132,14 +131,14 @@ fn authority_points_to_odni_for_ism_tokens() {
 }
 
 // ---------------------------------------------------------------------------
-// T073 — active tokens have no deprecation metadata.
+// Active tokens have no deprecation metadata.
 // ---------------------------------------------------------------------------
 
 /// No active sentinel today is a deprecated marking — every entry in
 /// `active_sentinels()` is a current, valid CAPCO token. This test
 /// asserts the *negative* case: an active token returns `None` from
-/// `deprecation()`. The complementary positive case (T074) lives
-/// below; both arms of the `Option` are exercised between the two.
+/// `deprecation()`. The complementary positive case lives below; both
+/// arms of the `Option` are exercised between the two.
 ///
 /// When Phase C extends the sentinel set to include deprecated tokens
 /// (e.g., adding a sentinel for `25X1-` from the `MIGRATIONS` table),
@@ -158,16 +157,16 @@ fn active_tokens_have_no_deprecation_metadata() {
 }
 
 // ---------------------------------------------------------------------------
-// T074 — replacement is populated when a deprecation maps to a known token.
+// Replacement is populated when a deprecation maps to a known token.
 // ---------------------------------------------------------------------------
 
 /// Pin-down test for the deprecation-replacement contract.
 ///
 /// `Deprecation { since, replacement: Option<S::Token> }` carries
 /// `replacement = Some(_)` when the deprecated token has a known
-/// canonical successor in the active vocabulary, and `None` when
-/// "no known replacement" (FR-017 — silence is informative; do not
-/// rewrite into a token that does not exist).
+/// canonical successor in the active vocabulary, and `None` when there
+/// is no known replacement (silence is informative; do not rewrite into
+/// a token that does not exist).
 ///
 /// The `MIGRATIONS` table in `marque-ism::generated::migrations`
 /// today has two entries (`25X1-` → `25X1`, `50X1-` → `50X1-HUM`),
@@ -197,7 +196,7 @@ fn deprecation_replacement_when_known() {
 }
 
 // ---------------------------------------------------------------------------
-// T076 — FOUO remains an active dissem control after the FOUO→CUI removal.
+// FOUO remains an active dissem control after the FOUO→CUI removal.
 // ---------------------------------------------------------------------------
 
 /// Constructs a FOUO-bearing document and runs it through `Engine::lint`,
@@ -206,7 +205,7 @@ fn deprecation_replacement_when_known() {
 /// (`crates/ism/build.rs` doc-comment under `MIGRATIONS`); FOUO remains
 /// enumerated in `CVEnumISMDissem.json` and is a current, valid CAPCO
 /// dissem control. Any rule that proposes a CUI replacement on FOUO is
-/// a regression of FR-020.
+/// a regression.
 ///
 /// The test phrases "no CUI suggestion" structurally rather than by
 /// counting all diagnostics: a stylistic E001/E009-style fix may still
@@ -242,7 +241,7 @@ fn fouo_remains_active_dissem_control() {
     }
 }
 
-// T077 (zero-allocation regression gate) lives in its own integration
+// The zero-allocation regression gate lives in its own integration
 // file `tests/vocabulary_zero_alloc.rs`, gated at the FILE level on
 // `#![cfg(feature = "count-allocs")]`. Isolating it to its own binary
 // keeps the global counting allocator's measurements free of noise
@@ -251,38 +250,29 @@ fn fouo_remains_active_dissem_control() {
 // shared counter even with a `MEASURE_LOCK`).
 
 // ---------------------------------------------------------------------------
-// T077a — expanded trait coverage: panic paths, banner-abbreviation
-//         arms, and metadata round-trip equivalence.
+// Expanded trait coverage: panic paths, banner-abbreviation arms, and
+// metadata round-trip equivalence.
 // ---------------------------------------------------------------------------
 //
-// The original T071–T077 tests cover the happy-path active-sentinel
-// loop. Codecov flagged ~37 uncovered lines in
-// `crates/capco/src/vocabulary.rs` — primarily the panic branches in
-// `canonical_for` / `entry_for` / `derived_for_token` /
-// `token_derived` (none of the active sentinels ever hit them) and
-// the `Some` arm of `derive_banner_abbreviation`. T077a closes that
-// gap so the production code paths CI exercises match the production
-// code paths real callers will hit.
+// The happy-path active-sentinel-loop tests above leave uncovered the
+// panic branches in `canonical_for` / `entry_for` / `derived_for_token`
+// / `token_derived` (none of the active sentinels ever hit them) and
+// the `Some` arm of `derive_banner_abbreviation`. These tests close
+// that gap so the production code paths CI exercises match the
+// production code paths real callers will hit.
 
 /// Sentinels whose `MARKING_FORMS` row has a distinct title and
-/// banner-line abbreviation. Per the PR 3d FR-053 corrected semantic
-/// (`banner_abbreviation = Some iff banner != title`), these must
+/// banner-line abbreviation. Under the semantic
+/// `banner_abbreviation = Some iff banner != title`, these must
 /// surface their banner abbreviation as `Some(banner)`. Each tuple
 /// is `(token, canonical/portion, expected banner abbreviation)`.
 ///
-/// **Note vs pre-3d.** The pre-3d operational test was
-/// `banner != portion`, which suppressed the abbreviation for rows
-/// whose banner column matches the portion column even when the
-/// title is distinct (RD / FRD / TFNI today). PR 3d aligns the
-/// semantic with CAPCO §G.1 Table 4 col 2 emptiness: the
-/// abbreviation column is non-empty exactly when the row has a
-/// distinct title, regardless of whether the abbreviation collapses
-/// to the portion form. The expected banner is then the row's
-/// banner-line abbreviation — `"RD"`, `"FRD"`, `"TFNI"` — which also
-/// equals the portion form for those three rows. The downstream
-/// effect on `banner_form()` is byte-identical: pre-3d returned the
-/// portion form via the canonical-collapse fallback, the new
-/// projection returns the same string via
+/// The abbreviation column is non-empty exactly when the row has a
+/// distinct title (CAPCO §G.1 Table 4 col 2), regardless of whether the
+/// abbreviation collapses to the portion form. For RD / FRD / TFNI the
+/// expected banner is the row's banner-line abbreviation — `"RD"`,
+/// `"FRD"`, `"TFNI"` — which also equals the portion form for those
+/// three rows; `banner_form()` returns the same string via
 /// `banner_abbreviation.unwrap_or(banner_title)`.
 fn distinct_banner_form_sentinels() -> &'static [(TokenId, &'static str, &'static str)] {
     &[
@@ -310,9 +300,8 @@ fn distinct_banner_form_sentinels() -> &'static [(TokenId, &'static str, &'stati
 /// HCS (canonical `"HCS"`, no row), TOK_CNWDI (canonical `"RD-CNWDI"`,
 /// no row — the `"CNWDI"` row is a different token surface), and
 /// TOK_RESTRICTED (canonical `"R"`, deliberately routed through the
-/// canonical-collapse path per PR 3d's byte-identity preservation —
-/// see `classification_form_set` doc-comment in
-/// `crates/capco/src/vocabulary.rs`).
+/// canonical-collapse path — see the `classification_form_set`
+/// doc-comment in `crates/capco/src/vocabulary.rs`).
 fn same_form_sentinels() -> &'static [TokenId] {
     &[TOK_CNWDI, TOK_HCS, TOK_RESTRICTED]
 }

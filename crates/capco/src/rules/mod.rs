@@ -6,19 +6,14 @@
 //!
 //! Each rule uses Layer 1 schema predicates (from generated/validators.rs) to
 //! detect violations, then produces enriched diagnostics with fixes and
-//! confidence. Phase 3 lands the full set of MVP rules with byte-precise
-//! spans threaded through `CanonicalAttrs::token_spans`.
+//! confidence, with byte-precise spans threaded through
+//! `CanonicalAttrs::token_spans`.
 //!
-//! Rule IDs follow the post-T044 (2026-05-22) 2-tuple wire-string form
+//! Rule IDs follow the 2-tuple wire-string form
 //! `<scheme>:<surface>.<category>.<predicate>`. The current registered
 //! set is enumerated in `crates/capco/README.md` and pinned at
-//! `crates/capco/tests/post_3b_registration_pin.rs`.
-//!
-//! Retirement provenance for the historical `E### / W### / S###`
-//! flat-string IDs lives at `crates/capco/docs/archaeology/`
-//! (`retirement-history.md` for the per-rule retirement record,
-//! `rule-id-cross-refs.md` for inline cross-refs grouped by live rule).
-//! The T044 legacy-ID ↔ wire-string translation table lives at
+//! `crates/capco/tests/post_3b_registration_pin.rs`. The legacy-ID ↔
+//! wire-string translation table lives at
 //! `docs/refactor-006/legacy-rule-id-map.md`.
 
 mod banner;

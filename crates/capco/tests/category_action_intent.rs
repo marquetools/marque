@@ -2,11 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Sub-PR 8.F engine-prereq — `CategoryAction::Intent`
-//! executor + `Engine::new` validation tests.
+//! `CategoryAction::Intent` executor + `Engine::new` validation tests.
 //!
-//! These tests exercise the new `CategoryAction::Intent(ReplacementIntent<S>)`
-//! variant introduced in this PR:
+//! These tests exercise the `CategoryAction::Intent(ReplacementIntent<S>)`
+//! variant:
 //!
 //! - **FactAdd round-trip**: a synthetic rewrite whose action is
 //!   `Intent(FactAdd { Cve(TOK_NOFORN), Page })` adds NOFORN to a
@@ -25,14 +24,13 @@
 //!   intent with an unroutable `TokenId` causes `Engine::new` to
 //!   return `Err(InvalidIntentInPageRewrite { .. })` rather than
 //!   silently no-opping at projection time.
-//! - **G13 closure**: a rewrite carrying an `OpenVocab` `FactRef`
+//! - **Content-ignorance**: a rewrite carrying an `OpenVocab` `FactRef`
 //!   does not leak source-derived strings into the projected
 //!   marking's debug output.
 //!
 //! Constitution VIII note: these tests do not embed CAPCO-2016
 //! citations because the rewrites are synthetic test fixtures, not
-//! real CAPCO rules. The actual NOFORN-supremacy and FOUO-eviction
-//! `PageRewrite` entries land in Sub-PR 8.F with their citations.
+//! real CAPCO rules.
 
 use marque_capco::scheme::{CAT_DISSEM, CAT_REL_TO, TOK_NOFORN, TOK_RELIDO};
 use marque_capco::{CapcoMarking, CapcoOpenVocabRef, CapcoRuleSet, CapcoScheme};
@@ -328,10 +326,10 @@ fn engine_new_rejects_intent_with_unroutable_cve_token() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. G13: OpenVocab FactRef does not leak source bytes.
+// 6. Content-ignorance: OpenVocab FactRef does not leak source bytes.
 // ---------------------------------------------------------------------------
 
-/// Constitution V Principle V G13 regression guard: a rewrite whose
+/// Audit content-ignorance (Constitution V Principle V): a rewrite whose
 /// intent carries an `OpenVocab` `FactRef` does not leak any
 /// source-derived strings into the projected marking's debug
 /// output. The `CapcoOpenVocabRef::CountryCode` payload is a typed
@@ -388,29 +386,29 @@ fn g13_open_vocab_factref_does_not_leak_source_bytes() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-D.2 Copilot R2 #1 — `apply_fact_add` self-sufficiency for the
-// §H.8 p145 NOFORN supersession invariant
+// `apply_fact_add` self-sufficiency for the §H.8 p145 NOFORN
+// supersession invariant
 // ---------------------------------------------------------------------------
 //
-// The PR 4b-D.2 D22 fix routed NOFORN FactAdd through
-// `DissemSet::with_noforn_injected` to apply the token-axis
-// supersession overlay (strip REL TO / RELIDO / DISPLAY ONLY / EYES
-// tokens from `dissem_us`). Copilot R2 surfaced two remaining gaps:
+// NOFORN FactAdd routes through `DissemSet::with_noforn_injected` to
+// apply the token-axis supersession overlay (strip REL TO / RELIDO /
+// DISPLAY ONLY / EYES tokens from `dissem_us`). Two gaps it must close:
 //
 // 1. Direct `apply_intent` callers (E021 AEA → NOFORN, E038
 //    NODIS/EXDIS → NOFORN) bypass `scheme.project` and the
 //    `capco/noforn-clears-rel-to` / `capco/noforn-clears-display-only-to`
-//    PageRewrites. Those callers got `dissem_us = [Nf]` plus
-//    `attrs.rel_to = [USA, GBR]` and `attrs.display_only_to = [...]`
-//    populated — a §H.8 p145 violation on the country-list axes.
+//    PageRewrites. Without the self-sufficient overlay those callers
+//    would get `dissem_us = [Nf]` plus `attrs.rel_to = [USA, GBR]` and
+//    `attrs.display_only_to = [...]` populated — a §H.8 p145 violation
+//    on the country-list axes.
 //
 // 2. The inverse case: FactAdd of RELIDO / DISPLAY ONLY / EYES onto a
-//    marking that already has NOFORN was appending the dominated
-//    token instead of rejecting with `IntentInapplicable`. Same
+//    marking that already has NOFORN must reject with
+//    `IntentInapplicable` rather than append the dominated token. Same
 //    §H.8 p145 violation on the token axis.
 //
-// PR 4b-D.2 Copilot R2 commit 13 makes `apply_fact_add` self-sufficient
-// for both directions. These tests pin the contract.
+// `apply_fact_add` is self-sufficient for both directions. These tests
+// pin the contract.
 
 fn run_apply_intent(
     attrs: CanonicalAttrs,

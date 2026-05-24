@@ -90,9 +90,9 @@ The loader (or engine constructor) refuses to produce a `Config` / `Engine`
 (exit code in parens) when:
 
 - `.marque.toml` contains a `[user]` section — identity must live only in
-  `.marque.local.toml` or env vars (FR-010, exit `65`).
+  `.marque.local.toml` or env vars (exit `65`).
 - `[capco] version` does not match the compiled `marque_ism::SCHEMA_VERSION`
-  (FR-011, exit `65`).
+  (exit `65`).
 - `confidence_threshold` is outside `[0.0, 1.0]` (exit `65`).
 - A rule severity string is not one of `off`, `info`, `warn`, `error`, `fix`
   (exit `65`).
