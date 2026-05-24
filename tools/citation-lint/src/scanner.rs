@@ -4,8 +4,8 @@
 //! AST-based scanner that extracts every citation occurrence from a
 //! Rust source file.
 //!
-//! The scanner walks `crates/*/src/**/*.rs` workspace-wide (FR-018
-//! scope: every domain rule crate, current and future) and feeds the
+//! The scanner walks `crates/*/src/**/*.rs` workspace-wide (every
+//! domain rule crate, current and future) and feeds the
 //! contents through `syn` for an AST parse. Three classes of
 //! occurrence are extracted:
 //!
@@ -254,14 +254,14 @@ impl CitationVisitor {
     /// CAPCO-context filtering: a citation found inside a generic
     /// string literal or doc comment is only treated as a CAPCO
     /// citation if the surrounding context indicates CAPCO. Without
-    /// this, `§3 of the Phase B design doc` and `Spec 005 §R3` would
-    /// be misclassified as CAPCO-citation defects (FR-018 scope is
+    /// this, `§3 of an internal design doc` and `Spec 005 §R3` would
+    /// be misclassified as CAPCO-citation defects (the lint's scope is
     /// "cited authority", which means CAPCO-2016 references in this
     /// codebase, not arbitrary `§`-prefixed cross-references).
     ///
     /// `citation:`, `message:`, and `constraint_label:` field values
-    /// are always treated as CAPCO context — the FR-018 wording
-    /// explicitly enumerates these as the CAPCO-citation surfaces.
+    /// are always treated as CAPCO context — these are the
+    /// CAPCO-citation surfaces.
     /// Other surfaces require an explicit CAPCO anchor:
     ///
     /// - The literal `CAPCO-2016` token in `text`, OR
@@ -279,7 +279,7 @@ impl CitationVisitor {
         for find in finds {
             // Skip non-CAPCO bare-section finds in non-CAPCO contexts.
             // A `§3` in a doc comment without CAPCO anchor is almost
-            // certainly an internal-plan reference, not an FR-018
+            // certainly an internal-plan reference, not a citation
             // defect. Resolved citations (i.e., `§X.Y` form) are
             // still recorded so the resolver gets a chance — a
             // `§Z.5` in a doc-comment is plausibly a real defect
@@ -309,8 +309,8 @@ impl CitationVisitor {
         }
         // Also detect doubled page-anchor form here. The pattern is
         // `p<digits>(-|–)<digits> p<digits>` where the trailing page
-        // matches the second page in the range — the FR-020 known
-        // defect (`p150–151 p151`). We detect it textually because
+        // matches the second page in the range — the doubled
+        // page-anchor defect (`p150–151 p151`). We detect it textually because
         // it's a textual artifact rather than a structural
         // mis-resolution. The `pp NN-MM pMM` form is NOT currently in
         // scope; if it appears in a future catalog, extend
@@ -501,7 +501,7 @@ fn find_doubled_page_anchor(text: &str) -> Option<(usize, String)> {
     // We look for: `p` <digits>+ <dash> <digits>+ <whitespace>+ `p`
     // <digits>+, where the trailing page is identical to the second
     // page in the range OR is otherwise redundant. The narrow form
-    // matches FR-020's specific pattern (`p150–151 p151`). The
+    // matches the doubled page-anchor pattern (`p150–151 p151`). The
     // `pp NN-MM pMM` form is NOT in scope.
     let bytes = text.as_bytes();
     if bytes.len() < 8 {

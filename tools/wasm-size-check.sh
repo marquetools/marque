@@ -3,14 +3,14 @@
 #
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 #
-# PR 3d (FR-053 / FR-054) WASM-binary-size regression gate.
+# WASM-binary-size regression gate.
 #
 # Builds `crates/wasm` with `wasm-pack build --target web --profile
 # release-web`, captures the resulting `pkg/marque_wasm_bg.wasm` byte
 # count, compares to the baseline in `tools/wasm-size-baseline.txt`,
 # and emits a regression line. Fails (exit 1) if the post-build size
-# exceeds the baseline by more than 5% (Constitution III + T058i
-# quality gate).
+# exceeds the baseline by more than 5% (Constitution III quality
+# gate).
 #
 # ## What this gate measures vs what CI ships
 #
@@ -29,7 +29,7 @@
 # `wasm-pack`'s integrated `wasm-opt` pass fails on the current
 # repo because the `wasm-opt` build the dev environment ships does
 # not enable the `bulk-memory-opt` / `simd` features the produced
-# `.wasm` requires. This is unrelated to PR 3d. The pre-opt
+# `.wasm` requires. This is unrelated to the size gate. The pre-opt
 # `marque_wasm_bg.wasm` file IS produced before the failing
 # `wasm-opt` step runs, so we measure that. When the dev-env
 # `wasm-opt` is upgraded, the post-opt size will be smaller than
@@ -140,10 +140,9 @@ echo "[wasm-size-check] baseline size: ${BASELINE_SIZE} bytes (${BASELINE_FILE})
 # `scripts/bench-check.sh`). The build-failed-for-non-wasm-opt-reason
 # branch above and the artifact-not-produced branch above STILL fail
 # the gate — only the drift comparison is skipped. Set this env var
-# only on branches that have explicit PM authorization to ship a
-# WASM-size regression (e.g., the `refactor-006-pr-4b-perf-closeout`
-# diagnosis branch, which surfaces the regression as the deliverable
-# rather than masking it).
+# only on branches that have explicit authorization to ship a
+# WASM-size regression (e.g., a diagnosis branch that surfaces the
+# regression as the deliverable rather than masking it).
 if [[ "${MARQUE_WASM_SKIP_REGRESSION:-0}" == "1" ]]; then
     DELTA=$((CURRENT_SIZE - BASELINE_SIZE))
     echo "[wasm-size-check] delta: ${DELTA} bytes (drift gate skipped via MARQUE_WASM_SKIP_REGRESSION=1)"
@@ -152,7 +151,7 @@ if [[ "${MARQUE_WASM_SKIP_REGRESSION:-0}" == "1" ]]; then
 fi
 
 DELTA=$((CURRENT_SIZE - BASELINE_SIZE))
-# 5% regression threshold per T058i quality gate. Bash arithmetic
+# 5% regression threshold per the quality gate. Bash arithmetic
 # is integer-only, so we compute the percentage at 1000x (i.e.,
 # PERCENT_X1000 = round-down(percentage * 1000)) and compare against
 # 5000 (= 5.0% × 1000).

@@ -35,7 +35,7 @@ Schema identifier: **`marque-masking-pin-cache-1.1`**.
 | `issue_number` | `u32` | The starting issue (from the pin marker), not the terminal issue if the chain redirects. |
 | `state` | `string` | Coarse-grained `"open"` or `"closed"` — kept for quick checks; new readers should prefer `terminal_state`. |
 | `terminal_state` | `string` | Structured terminal classification: `"Open"`, `"ClosedAsCompleted"`, `"ClosedNotDuplicate"`, or `"Cycle"`. **Required field**; on cache fallback the lint matches against this so a duplicate-chain cycle and an ordinary closed issue produce different diagnostics. **Schema-1.1 addition.** |
-| `meta_issue_warning` | `bool` | True if any issue traversed in the `closed_as_duplicate_of` chain looked like a `[meta]` / "tracking" issue. FR-039 rule 4 surfaces this as a warning. **Schema-1.1 addition.** |
+| `meta_issue_warning` | `bool` | True if any issue traversed in the `closed_as_duplicate_of` chain looked like a `[meta]` / "tracking" issue. The cascade-close check surfaces this as a warning. **Schema-1.1 addition.** |
 | `closed_at` | `RFC-3339 / null` | Terminal close timestamp; `null` if open. |
 | `closed_as_duplicate_of` | `u32 / null` | Issue the terminal entry duplicates, if any. Authoritative path is `chain`. |
 | `refreshed_at` | `RFC-3339` | Time of the last fresh API write. Drives the 24h staleness check. |
@@ -43,19 +43,19 @@ Schema identifier: **`marque-masking-pin-cache-1.1`**.
 
 ## Schema migration notes
 
-**1.0 → 1.1** (round-9): added `terminal_state` + `meta_issue_warning`.
+**1.0 → 1.1**: added `terminal_state` + `meta_issue_warning`.
 The pre-1.1 schema collapsed every non-open terminal classification
 into the string `"closed"`, so the cache-fallback path could not
 distinguish a duplicate-chain cycle from an ordinary closed issue
-and lost the chain-meta-issue warning state that FR-039 rule 4
-surfaces. Schema 1.1 preserves the full `TerminalState` enum value
+and lost the chain-meta-issue warning state that the cascade-close
+check surfaces. Schema 1.1 preserves the full `TerminalState` enum value
 plus the meta-issue flag so the API-unavailable fallback evaluation
 in `evaluate_cached_state` produces byte-identical diagnostics to
 the API-available path. The cache reader strict-validates the
 schema string; pre-1.1 cache files fail the strict check and the
 caller is expected to run `--mode refresh-cache` to re-bootstrap.
 
-## Cache lifecycle (per D11 / R-10)
+## Cache lifecycle
 
 1. **PR-time**: lint attempts API call (5s timeout). On success, this file is
    atomically rewritten.

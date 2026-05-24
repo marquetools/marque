@@ -2,25 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.2.C C6 — round-trip: format!("{citation}") through
+//! Round-trip: format!("{citation}") through
 //! citation-lint's real scanner ([`citation_lint::find_in_fragment`]).
 //!
 //! Proves the typed [`marque_scheme::Citation`] `Display` output is
-//! parseable by the citation-lint tool's real parser. Closes
-//! C-FOLLOWUP-1 from the deferred-findings register at
-//! `specs/006-engine-rule-refactor/followups/2026-05-19-pr-3c2-a-deferred-findings.md`.
-//! PR 10.A.1 Commit 4 retargeted the `marque-rules` dev-dep to
-//! `marque-scheme` to match the new home of the `Citation` type
-//! (`marque-rules` no longer re-exports it).
+//! parseable by the citation-lint tool's real parser. The
+//! `Citation` type lives in `marque-scheme`, which is the dev-dep
+//! retargeted here (`marque-rules` no longer re-exports it).
 //!
 //! # Why this test lives here (not in `crates/rules/tests/`)
 //!
-//! Per the PR 3c.2.C rust-preflight §4.2 (Dependency concern): adding
-//! `citation_lint` as a dev-dep to `marque-rules` creates a reverse
-//! dep from a workspace crate to an out-of-workspace tool crate. The
-//! cleaner placement — and the one PM-C-9 selected — is here in
+//! Adding `citation_lint` as a dev-dep to `marque-rules` would create
+//! a reverse dep from a workspace crate to an out-of-workspace tool
+//! crate. The cleaner placement is here in
 //! `tools/citation-lint/tests/`, where the dependency direction is
-//! natural: `citation-lint` depends on `marque-rules` (as a dev-dep)
+//! natural: `citation-lint` depends on `marque-scheme` (as a dev-dep)
 //! to consume the structured [`Citation`] type.
 //!
 //! The existing in-crate test at
@@ -32,8 +28,8 @@
 //! # CAPCO §-citation verification
 //!
 //! Every literal §-reference below was re-verified against
-//! `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.C C6 authorship per
-//! Constitution Principle VIII propagation rule:
+//! `crates/capco/docs/CAPCO-2016.md` per Constitution Principle VIII
+//! propagation rule:
 //!
 //! - §H.4 p61 — SCI grammar reminder per CAPCO-2016 §H.4 p61
 //!   (project memory `project_capco_p20_caveated_definition`).
@@ -112,9 +108,7 @@ fn b3_table_2_p21_caveated_fdr_roundtrips_partially() {
     // range).
     //
     // Follow-up: extend citation-lint's grammar to accept the
-    // `§<L>.<sub> Table <N> p<page>` form. Tracked as a follow-up
-    // item alongside C-FOLLOWUP-1; see PR description and
-    // `specs/006-engine-rule-refactor/followups/2026-05-19-pr-3c2-a-deferred-findings.md`.
+    // `§<L>.<sub> Table <N> p<page>` form.
     let c: SchemeCitation = capco_table(SectionLetter::B, 3, 2, 21);
     let rendered = format!("{c}");
     assert_eq!(rendered, "§B.3 Table 2 p21");
@@ -193,8 +187,8 @@ fn non_capco_sentinel_emits_no_citation() {
     // sentinel citations render as `[config]` / `[engine-internal]`
     // tags WITHOUT a `§` prefix. The citation-lint scanner is anchored
     // on the `§` UTF-8 sequence — so sentinel citations are
-    // citation-lint-invisible by design. This is the PR 3c.2.C PM-C-4
-    // shape: non-CAPCO sentinels are not citation-lint-resolvable.
+    // citation-lint-invisible by design: non-CAPCO sentinels are not
+    // citation-lint-resolvable.
     let config = SchemeCitation::new(
         AuthoritativeSource::Config,
         SectionRef::new(SectionLetter::A),

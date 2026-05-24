@@ -322,11 +322,11 @@ fn determinism_across_runs() {
 
 #[test]
 fn fr020_known_defect_classes_all_detected() {
-    // Smoke test that all four FR-020 known defect classes are
+    // Smoke test that all four known defect classes are
     // surfaced by a single source containing all four. (Class (d)
     // — the HCS-P two-sided predicate — is a *predicate* defect
-    // that this lint doesn't claim to detect; F.1 corpus-fidelity
-    // covers it.)
+    // that this lint doesn't claim to detect; corpus-fidelity
+    // checks cover it.)
     let body = r#"
         // (a) `§4` fabrication for HCS — should be `§H.4`.
         // CAPCO-2016 §4 p64 — wrong section letter.
@@ -455,7 +455,7 @@ fn column_accuracy_explicit_doc_attr() {
 
 #[test]
 fn scan_workspace_includes_top_level_marque_crate() {
-    // Regression guard for Copilot PR-0.5 round-3 finding: previously
+    // Regression guard: previously
     // `scan_workspace` only walked `crates/*/src/**`, which silently
     // missed citations in the top-level `marque/` CLI binary crate
     // (and any future top-level workspace member). Verify the

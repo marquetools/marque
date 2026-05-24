@@ -4,9 +4,8 @@
 """Render `docs/refactor-006/sc-completion.toml` into a human-readable
 markdown report at `docs/refactor-006/sc-completion-report.md`.
 
-Closes the data-driven half of T123 + T136 + T137 in
-`specs/006-engine-rule-refactor/tasks.md`. The TOML is the source of
-truth; this script renders the cold-storage markdown form that
+Renders the success-criteria completion report. The TOML is the source
+of truth; this script renders the cold-storage markdown form that
 reviewers see without running the script.
 
 Python (stdlib only) over Rust because:
@@ -65,13 +64,13 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Success-criteria completion report — `006-engine-rule-refactor`
+# Success-criteria completion report
 
 **Generated from `sc-completion.toml`. Do not hand-edit. Re-render via
 `python3 tools/sc-completion-report/render.py` after editing the TOML.**
 
-This report closes the documentation half of T123 + T136 + T137 in
-`specs/006-engine-rule-refactor/tasks.md`. Each row's `status` value
+This report documents the success-criteria completion state. Each
+row's `status` value
 derives from a real artifact (corpus regression, Criterion bench,
 AST lint, compile-fail test); the `evidence` column names the artifact
 so a future reviewer can re-run the check without re-deriving where
@@ -79,7 +78,7 @@ to look.
 
 The discipline:
 
-- `verified` — the CI gate exercising this SC is green at PR 10.B HEAD.
+- `verified` — the CI gate exercising this SC is green at HEAD.
 - `verified-recent` — green on the most recent merged commit; the verifier
   did not re-run locally.
 - `regressed` — known regression carried forward; the `notes` column

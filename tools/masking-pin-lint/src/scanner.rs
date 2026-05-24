@@ -8,8 +8,8 @@
 //! The scanner walks `<workspace>/tests/` and the `tests/` directory of
 //! every workspace member that ships one — including the top-level
 //! `marque/` binary crate and any future top-level workspace member,
-//! not just `crates/*/tests/`. Per FR-039 the scanner intentionally
-//! does NOT walk `crates/*/benches/`; benchmark pins are out of FR-039
+//! not just `crates/*/tests/`. The scanner intentionally
+//! does NOT walk `crates/*/benches/`; benchmark pins are out of
 //! scope.
 
 use std::fs;
@@ -79,8 +79,8 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Pin>> {
 /// enumerating "test-utility crates gated as dev-dependencies"
 /// alongside `tests/` files and `#[cfg(test)]` modules). A shared
 /// helper there that constructs `Engine::with_recognizer(...
-/// StrictRecognizer...)` is logically a test pin and must carry an
-/// FR-039 marker comment, just like a pin under
+/// StrictRecognizer...)` is logically a test pin and must carry a
+/// marker comment, just like a pin under
 /// `crates/<crate>/tests/`. Without this scope, a contributor
 /// could move a strict-recognizer helper from `crates/foo/tests/`
 /// into `crates/test-utils/src/` and silently lose the marker
@@ -192,7 +192,7 @@ impl<'a> CallSiteVisitor<'a> {
         // The `MASKING-PIN` regex requires a non-empty rationale after
         // the issue number — `// MASKING-PIN: tracks #123` with no
         // reason is rejected as `BadFormat`, not silently accepted.
-        // FR-039 documents the marker shape as
+        // The marker shape is
         // `// MASKING-PIN: tracks #NNN — <reason>` and the rationale
         // is the load-bearing audit-trail content; allowing pins
         // without a reason defeats the lint's purpose.
@@ -389,7 +389,7 @@ fn path_ends_with_strict_recognizer(path: &syn::Path) -> bool {
 /// Without this, a bare `line.contains("MASKING-PIN")` check would
 /// false-positive on a string literal or other non-comment code that
 /// happens to include the marker phrase — that's the bypass
-/// surface Copilot R7 #1/#3 identified. Scanning state covers plain
+/// surface this guards against. Scanning state covers plain
 /// `"..."` strings (with `\"` escapes), raw `r"..."` / `r#"..."#`
 /// strings, and char/lifetime `'...'` (with the same lifetime-vs-char
 /// disambiguation used in the callsite lint's parallel helper).

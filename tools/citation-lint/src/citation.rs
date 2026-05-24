@@ -42,8 +42,8 @@ use std::fmt;
 /// anchor (e.g., `§K.2`, `§G.1 Table 4`). When present, `pages` is
 /// `(start, end)` where `end == start` for single-page form `pNN`.
 ///
-/// The parser does NOT enforce FR-018 here: `subsection: None` is a
-/// shape this struct can hold, and the resolver decides whether
+/// The parser does NOT enforce the citation rules here: `subsection:
+/// None` is a shape this struct can hold, and the resolver decides whether
 /// it's lawful for the cited section. The bare-numeric-section
 /// rejection (`§NN` without letter) is enforced as a separate
 /// `CitationFind::BareSection` variant — that case never produces a
@@ -152,8 +152,8 @@ pub enum CitationFind {
         offset: usize,
     },
     /// A `§` followed by a bare number (no subsection letter). This is
-    /// FR-018-rejected: line-anchor instability would make a bare
-    /// section without a letter ambiguous as the document evolves.
+    /// rejected: a bare section without a letter is ambiguous because
+    /// the document evolves and the same number recurs across sections.
     BareSection { offset: usize, raw: String },
 }
 

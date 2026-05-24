@@ -1,7 +1,6 @@
 # masking-pin-lint
 
-AST-based CI lint that enforces **FR-039 masking-pin discipline** for the
-marque engine refactor (`specs/006-engine-rule-refactor/`).
+AST-based CI lint that enforces **masking-pin discipline** for marque.
 
 ## What this lint enforces
 
@@ -12,14 +11,13 @@ marker within five lines of the call. Two markers are valid:
 
 - `// MASKING-PIN: tracks #NNN — <reason>` — the pin masks a known
   open issue. The lint queries the GitHub API to verify the issue is
-  open (mandatory, not optional, per FR-039 rule 4) and follows
+  open (mandatory, not optional, per rule 4) and follows
   `closed_as_duplicate_of` chains until terminal close.
 - `// INTENTIONAL-STRICT: <reason>` — the pin is by design (e.g.,
   the test asserts strict-path behavior in contrast to the default
   dispatcher). No GitHub-API check is performed.
 
-Source-plan §6 discipline rules (verbatim from
-`docs/plans/2026-05-02-engine-refactor-consolidated.md` §6):
+Discipline rules:
 
 1. Every masking pin: `// MASKING-PIN: tracks #NNN — remove when issue closes.` within five lines.
 2. Every intentional pin: `// INTENTIONAL-STRICT: <reason>` within five lines.
@@ -29,7 +27,7 @@ Source-plan §6 discipline rules (verbatim from
    cascade-close-via-meta-issue is flagged.
 
 **Rules 1–4 are mechanically enforced by this lint**. The rules
-below are part of the same source-plan discipline but are
+below are part of the same discipline but are
 **reviewer-enforced manual checks**, NOT something this lint
 verifies — CI cannot tell from the diff alone whether a pin-removal
 PR carries a fix-demonstrating regression test, nor whether team-
@@ -94,7 +92,7 @@ Optional flags:
 - `--repo <owner/name>` — override repo (default
   `marquetools/marque`).
 
-## Cache-with-fallback design (per decision D11)
+## Cache-with-fallback design
 
 The lint follows the **API-first / cache-fallback** pattern:
 
@@ -118,7 +116,7 @@ at the next fresh API call.
 
 ### `closed_as_duplicate_of` chain following
 
-Per FR-039 rule 4, when an issue is closed the lint follows
+Per rule 4, when an issue is closed the lint follows
 `closed_as_duplicate_of` cross-references until it hits a terminal
 close. The chain is recorded in the cache for audit and to detect
 cycles.
@@ -127,7 +125,7 @@ If the terminal-close chain visits a "meta" or "tracking" issue
 (title prefixed `[meta]` or contains the word `tracking`), the lint
 emits a CI **warning** so a reviewer can assess whether the
 cascade-close is appropriate. This implements the
-"cascade-close-via-meta-issue" flag from FR-039 rule 4.
+"cascade-close-via-meta-issue" flag from rule 4.
 
 A cycle in the chain (a duplicate-of pointer that revisits a
 previously-seen issue) is an **error** — manual review required.
@@ -187,10 +185,5 @@ in `--mode ci`.
 
 ## References
 
-- `specs/006-engine-rule-refactor/spec.md` — FR-039
-- `specs/006-engine-rule-refactor/research.md` — R-1, R-10
-- `specs/006-engine-rule-refactor/decisions.md` — D11
-- `docs/plans/2026-05-02-engine-refactor-consolidated.md` — §6
-  (masking-pin discipline rules)
 - `.specify/memory/constitution.md` — Principle III (WASM safety;
   rationale for out-of-workspace placement)

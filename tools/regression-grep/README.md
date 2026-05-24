@@ -64,10 +64,10 @@ to test the negative case is risky).
 
 ## Active guards
 
-| # | Pattern | File scope | FR / CHK mandates | Migration target |
-|---|---------|------------|-------------------|------------------|
-| 1 | `is_ascii_alphanumeric` | `crates/core/src/parser.rs` | `FR-015 / CHK030` | `Vocabulary<CapcoScheme>::shape_admits` or the lifted predicates in `marque-ism` (`CountryCode::admits_fgi_trigraph`, `SarProgram::admits_program_id_*`, `SarCompartment::admits_identifier`) |
-| 2 | `MarkingClassification::Us[[:space:]]*[({]` | `crates/capco/src/scheme/marking_scheme_impl.rs` | `PR-5 / #276 / CHK068` | route construction through the per-portion classification parser path; foreign-page projections must preserve `Fgi` / `Nato` / `Joint` variants per CAPCO-2016 §H.7 pp123-125 |
+| # | Pattern | File scope | Authority | Migration target |
+|---|---------|------------|-----------|------------------|
+| 1 | `is_ascii_alphanumeric` | `crates/core/src/parser.rs` | shape admission must go through the vocabulary surface | `Vocabulary<CapcoScheme>::shape_admits` or the lifted predicates in `marque-ism` (`CountryCode::admits_fgi_trigraph`, `SarProgram::admits_program_id_*`, `SarCompartment::admits_identifier`) |
+| 2 | `MarkingClassification::Us[[:space:]]*[({]` | `crates/capco/src/scheme/marking_scheme_impl.rs` | foreign pages must not silently project as US (#276) | route construction through the per-portion classification parser path; foreign-page projections must preserve `Fgi` / `Nato` / `Joint` variants per CAPCO-2016 §H.7 pp123-125 |
 
 ## Removing a guard
 

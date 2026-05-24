@@ -3,17 +3,15 @@
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 """
-T044 corpus fixture rewrite — one-shot mechanical migration.
+Rule-ID 2-tuple corpus fixture rewrite — one-shot mechanical migration.
 
 Walks `tests/corpus/**/*.expected.json` (and `*.expected_fix.json`) and
 rewrites every flat-string `"rule": "E007"`-style entry into the
-structured 2-tuple shape per PM decision OD-2:
+structured 2-tuple shape:
 
     {"rule": {"scheme": "capco", "predicate_id": "portion.metadata.x-shorthand-date-pattern"}, ...}
 
 Authority:
-- `docs/refactor-006/2026-05-22-T044-rule-id-tuple-plan.md` §2.10
-- `docs/refactor-006/2026-05-22-T044-pm-decisions.md` OD-2
 - `docs/refactor-006/legacy-rule-id-map.md` (the lookup table)
 
 Constitution III: out-of-workspace tooling — this script lives in `tools/`,
@@ -43,9 +41,9 @@ treats already-migrated entries (object form) as a successful no-op.
 
 # Special cases — E058 / E059
 
-Bare `E058` / `E059` in fixtures encode the registered walker ID. Post-
-T044, the engine's constraint-catalog bridge becomes a no-op pass-
-through and the catalog row's name surfaces as the predicate ID. Each
+Bare `E058` / `E059` in fixtures encode the registered walker ID. After
+the migration, the engine's constraint-catalog bridge becomes a no-op
+pass-through and the catalog row's name surfaces as the predicate ID. Each
 fixture's specific per-row predicate is encoded in PER_FIXTURE_OVERRIDES
 (hand-derived from the fixture's `_note` field, cross-checked against
 §3 (class-floor) and §4 (sci-per-system) of the legacy-rule-id-map).
@@ -133,9 +131,9 @@ LEGACY_TO_PREDICATE: dict[str, tuple[str, str]] = {
     "R001": ("engine", "recognition.decoder-recognized"),
     "R002": ("engine", "fix.reparse-failed"),
 
-    # Retired pre-T044 rules referenced by stale fixtures / docs.
-    # E001 (PR 3c.B Commit 6 retirement) + E003 (MisorderedBlocksRule
-    # retirement) — both absorbed into MarkingScheme::render_canonical.
+    # Retired rules referenced by stale fixtures / docs.
+    # E001 + E003 (MisorderedBlocksRule retirement) — both absorbed
+    # into MarkingScheme::render_canonical.
     # The rename targets keep the audit shape valid for any historical
     # fixture that still carries the legacy ID.
     "E001": ("capco", "banner.classification.portion-mark-in-banner"),

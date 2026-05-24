@@ -19,12 +19,12 @@ use serde::{Deserialize, Serialize};
 
 /// Pinned schema identifier. Future schema bumps require coordinated CI rollout.
 ///
-/// **1.0 → 1.1 migration** (round-9 amendment): added `terminal_state` and
+/// **1.0 → 1.1 migration**: added `terminal_state` and
 /// `meta_issue_warning` fields. The previous 1.0 schema collapsed every
 /// non-open terminal classification into the string `"closed"`, so the
 /// cache-fallback path could not distinguish a duplicate-chain cycle from
 /// an ordinary closed issue, and lost the per-pin meta-issue warning that
-/// FR-039 rule 4 surfaces. Schema 1.1 preserves the full `TerminalState`
+/// the cascade-close check surfaces. Schema 1.1 preserves the full `TerminalState`
 /// enum value plus the `meta_issue_warning` bool so the API-unavailable
 /// fallback evaluation produces byte-identical diagnostics to the
 /// API-available path.
@@ -52,9 +52,9 @@ pub struct CachedIssueState {
     /// reject it before this field is examined.
     pub terminal_state: String,
     /// True if any issue traversed in the `closed_as_duplicate_of`
-    /// chain looked like a `[meta]` / "tracking" issue. FR-039 rule 4
-    /// surfaces this as a warning at the diagnostic stage. Schema-1.1
-    /// addition.
+    /// chain looked like a `[meta]` / "tracking" issue. The
+    /// cascade-close check surfaces this as a warning at the diagnostic
+    /// stage. Schema-1.1 addition.
     pub meta_issue_warning: bool,
     /// ISO-8601 timestamp of terminal close, or `None` if open.
     pub closed_at: Option<DateTime<Utc>>,
@@ -126,8 +126,7 @@ pub fn write_cache(cache_dir: &Path, entry: &CachedIssueState) -> Result<()> {
     Ok(())
 }
 
-/// Cache staleness threshold. Per decision D11
-/// (`specs/006-engine-rule-refactor/decisions.md`), CI emits a
+/// Cache staleness threshold. CI emits a
 /// stale-cache warning when a fallback read returns an entry older
 /// than this threshold; the daily refresh job is expected to keep
 /// cache files well under it.

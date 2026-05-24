@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Integration tests for the D12 / R-11 signature-shape lint.
+//! Integration tests for the signature-shape lint.
 //!
 //! Each test materializes a synthetic workspace under a
 //! `tempfile::TempDir`, drops one source file at a path that
@@ -144,7 +144,7 @@ pub unsafe fn rough_cast(p: ParsedAttrs) -> CanonicalAttrs {
 
 #[test]
 fn retired_transitional_path_no_longer_special_cased() {
-    // PR 3c.2.E retired the path-based whitelist 3 along with the
+    // The path-based whitelist 3 was retired along with the
     // `from_parsed_unchecked` adapter. A function with that exact
     // name and location now denies like any other site — the
     // signature shape is what the lint targets, the historical
@@ -272,8 +272,8 @@ pub fn just_parses(p: ParsedAttrs) -> u32 {
 
 #[test]
 fn from_parsed_unchecked_outside_canonicalize_impl_is_denied() {
-    // Function name alone does not unlock the lint; PR 3c.2.E
-    // retired the path-based carve-out so EVERY occurrence of the
+    // Function name alone does not unlock the lint; the
+    // path-based carve-out was retired so EVERY occurrence of the
     // prohibited signature shape outside `MarkingScheme::canonicalize`
     // or `unsafe fn` is flagged.
     let tmp = TempDir::new().unwrap();
@@ -318,7 +318,7 @@ pub fn canonicalize(p: ParsedAttrs) -> CanonicalAttrs {
 
 #[test]
 fn top_level_workspace_member_src_is_walked_and_flagged() {
-    // Regression test for Copilot R5 #2 / R8 #3: the signature pass
+    // Regression test: the signature pass
     // previously only walked `crates/**`, missing top-level workspace
     // members like `marque/`. A future
     // `ParsedAttrs -> CanonicalAttrs` adapter added in `marque/src/`
@@ -397,13 +397,13 @@ pub fn naughty(p: ParsedAttrs) -> CanonicalAttrs {
 
 #[test]
 fn whitelist_marking_scheme_canonicalize_bare_path_with_use_import_is_allowed() {
-    // Regression test for Copilot R9 #2: the codebase's established
+    // Regression test: the codebase's established
     // adapter convention is `use marque_scheme::{...};
     // impl MarkingScheme for X { ... }` (see
-    // `crates/capco/src/scheme.rs:26 + :1267` for the canonical
+    // `crates/capco/src/scheme.rs` for the canonical
     // example). The PRC100 carve-out must accept this bare form
     // when the file imports `MarkingScheme` from `marque_scheme`,
-    // OR PR 3a–3c's adapter rewrite would falsely flag the
+    // or the adapter would falsely flag the
     // legitimate `canonicalize` impl. Imports-aware matching closes
     // both the false-positive (legitimate adapter) and the
     // shadow-trait bypass (a crate-local `trait MarkingScheme`

@@ -162,12 +162,12 @@ fn visit_mod(item_mod: &ItemMod, ctx: &Context, sink: &mut Vec<FnRecord>) {
 }
 
 fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
-    // Trait-name resolution for the D12 signature-shape lint runs
+    // Trait-name resolution for the signature-shape lint runs
     // directly off `ItemImpl` in `signature.rs`; we DO thread the
     // self-type's last path segment so the callsite lint can verify
     // a method named e.g. `fix_inner` is actually `Engine::fix_inner`
     // and not some unrelated type's method that happens to share the
-    // name (FR-040 production allow-list integrity).
+    // name (production allow-list integrity).
     let self_ty_last = self_type_last_segment(&item_impl.self_ty);
     // `#[cfg(test)]` on the impl block itself propagates to every
     // method in it — that's the pattern in

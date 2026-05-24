@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.85"
 publish = false
 license = "LicenseRef-MarqueLicense-1.0"
-description = "AST-based CI lint enforcing FR-018 citation fidelity for marque (engine-refactor-006)."
+description = "AST-based CI lint enforcing citation fidelity for marque."
 
 [lib]
 path = "src/lib.rs"
@@ -31,15 +31,12 @@ clap = { version = "4.5", features = ["derive"] }
 tempfile = "3.10"
 # Round-trip dev-dep: pulls in marque-scheme so the citation-lint scanner
 # can be exercised against `marque_scheme::Citation::Display` output.
-# PR 10.A.1 Commit 4 retargeted the import path from `marque-rules`
-# (where `Citation` was first defined) to `marque-scheme` (where it
-# lives now, so scheme-level catalog rows can carry typed citations
-# without inverting the crate dependency graph). Dev-deps only — never
-# ships in the citation-lint binary, so the Constitution III WASM-safe-
-# closure rationale for keeping citation-lint out-of-workspace is
-# preserved (dev-deps don't propagate to consumers, and citation-lint
-# has no consumers — it's a CI lint binary). PR 3c.2.C C6
-# (C-FOLLOWUP-1).
+# `Citation` lives in marque-scheme so scheme-level catalog rows can
+# carry typed citations without inverting the crate dependency graph.
+# Dev-deps only — never ships in the citation-lint binary, so the
+# Constitution III WASM-safe-closure rationale for keeping citation-lint
+# out-of-workspace is preserved (dev-deps don't propagate to consumers,
+# and citation-lint has no consumers — it's a CI lint binary).
 marque-scheme = { path = "../../crates/scheme" }
 
 [profile.release]
