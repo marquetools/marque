@@ -29,14 +29,14 @@
 //!   banner is still classified.
 //! - `w003_does_not_fire_on_portion` — banner-only-scope guard.
 //!
-//! # G13 / Message reshape note (PR 3c.2.C C5)
+//! # Message reshape note
 //!
-//! Pre-cutover the tests asserted `w003[0].message.contains("SBU")`
-//! to identify which non-IC token triggered the diagnostic. Post-
-//! cutover `Diagnostic.message: Message` is a closed-template +
+//! Earlier the tests asserted `w003[0].message.contains("SBU")`
+//! to identify which non-IC token triggered the diagnostic. Now
+//! `Diagnostic.message: Message` is a closed-template +
 //! closed-args carrier — `.contains(...)` is not a method on `Message`,
-//! and the per-token text was deliberately removed from the message
-//! body by the G13 closure in
+//! and the per-token text is deliberately absent from the message body
+//! (audit content-ignorance) in
 //! `NonIcInClassifiedBannerRule::check` (`crates/capco/src/rules/
 //! dissem.rs`): the rule drops the `nic` token text after using it
 //! for emit-class dispatch (`let _ = nic;`) because the emit class
@@ -95,7 +95,7 @@ fn assert_template(diag: &Diagnostic<CapcoScheme>) {
 
 /// Assert the diagnostic's span points at the given expected token
 /// text in the source. Replaces the legacy `message.contains(token)`
-/// per-token identification that pre-G13-closure used.
+/// per-token identification.
 fn assert_span_token(diag: &Diagnostic<CapcoScheme>, source: &str, expected: &str) {
     let span_text = diag
         .span

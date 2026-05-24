@@ -227,8 +227,8 @@ fn e067_applies_in_fix_pass() {
 
     // E067 promotes through the text-correction channel (canonical
     // hardcoded replacement `RD-CNWDI`).
-    // PR 3c.2.D fixup F-3: `applied_text_corrections()` is `impl Iterator`;
-    // collect once for filter + Debug-render.
+    // `applied_text_corrections()` is `impl Iterator`; collect once for
+    // filter + Debug-render.
     let text_corrections: Vec<_> = result.applied_text_corrections().collect();
     let e067_text: Vec<_> = text_corrections
         .iter()
