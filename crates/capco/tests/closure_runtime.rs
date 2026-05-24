@@ -1019,10 +1019,9 @@ fn project_is_idempotent_on_orcon_marking() {
 /// Note: `project()` is NOT idempotent across multiple invocations
 /// on bare-NATO because `RelToBlock::from_attrs_iter` expands
 /// tetragraphs (NATO → 30 constituent country trigraphs) on every
-/// join_via_lattice pass. The project() non-idempotence predates
-/// #704 and is documented in `crates/capco/src/scheme/marking.rs`'s
-/// "PR 4b-D.2 Copilot R1 / decisions.md D24" block; it's why
-/// `CapcoMarking` does NOT implement `JoinSemilattice`.
+/// join_via_lattice pass. The project() non-idempotence is documented
+/// in `crates/capco/src/scheme/marking.rs`; it's why `CapcoMarking`
+/// does NOT implement `JoinSemilattice`.
 #[test]
 fn closure_is_idempotent_on_bare_nato() {
     let scheme = CapcoScheme::new();
@@ -1155,7 +1154,7 @@ fn closure_adds_relido_but_not_noforn_on_uncaveated_classified() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-D.2 Commit 6 — cone-trigger short-circuit (behavioral)
+// Cone-trigger short-circuit (behavioral)
 // ---------------------------------------------------------------------------
 //
 // These tests assert the *observable* behavior of the short-circuit

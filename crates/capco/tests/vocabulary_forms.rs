@@ -2,14 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3d (FR-053) — `Vocabulary<CapcoScheme>::forms()` round-trip
-//! byte-identity test.
+//! `Vocabulary<CapcoScheme>::forms()` round-trip byte-identity test.
 //!
-//! Asserts that the new aggregated `FormSet` accessor and the
-//! per-form default-method projections (`portion_form`,
-//! `banner_form`, `banner_abbreviation`) agree, and that the
-//! projections preserve the pre-3d output for every active sentinel
-//! TokenId.
+//! Asserts that the aggregated `FormSet` accessor and the per-form
+//! default-method projections (`portion_form`, `banner_form`,
+//! `banner_abbreviation`) agree for every active sentinel TokenId.
 //!
 //! ## What this pins
 //!
@@ -17,24 +14,20 @@
 //!   active sentinel.
 //! - `scheme.banner_form(t) ==
 //!   scheme.forms(t).banner_abbreviation.unwrap_or(scheme.forms(t).banner_title)`
-//!   — the FR-053 projection equation specified by T058d.
+//!   — the banner-form projection equation.
 //! - `scheme.banner_abbreviation(t) == scheme.forms(t).banner_abbreviation`
 //!   AND the explicit expected `Option<&str>` recorded in
-//!   `EXPECTED_FORMS`. PR 3d.3 widened the table from a 3-tuple to a
-//!   4-tuple specifically so the D1 banner_abbreviation flip on
-//!   `RD` / `FRD` / `TFNI` (was `None` pre-3d, becomes
-//!   `Some("RD")` / `Some("FRD")` / `Some("TFNI")` per FR-053) is
-//!   pinned by an explicit `Option` — not via a tautological
+//!   `EXPECTED_FORMS`. The table pins `banner_abbreviation` for
+//!   `RD` / `FRD` / `TFNI` (`Some("RD")` / `Some("FRD")` /
+//!   `Some("TFNI")`) via an explicit `Option` — not via a tautological
 //!   `form_set.banner_abbreviation == form_set.banner_abbreviation`
 //!   comparison.
 //!
-//! The expected projection outputs are captured inline as a hand-
-//! rolled
+//! The expected projection outputs are captured inline as a hand-rolled
 //! `&'static [(TokenId, &'static str, &'static str, Option<&'static str>)]`
-//! table seeded from the FR-053-corrected behavior. Any future
-//! refactor that changes the projection for an active sentinel must
-//! update the expected table here in lock-step — the regression is
-//! loud.
+//! table. Any future refactor that changes the projection for an active
+//! sentinel must update the expected table here in lock-step — the
+//! regression is loud.
 //!
 //! ## What this does NOT pin
 //!
@@ -58,16 +51,16 @@ use marque_scheme::{FormKind, TokenId, Vocabulary};
 ///
 /// `banner_form` is derived per-row in the test loop from
 /// `banner_abbreviation.unwrap_or(banner_title)`. `banner_abbreviation`
-/// is pinned explicitly as the third element so the D1 / FR-053
-/// semantic shift (RD / FRD / TFNI from `None` → `Some(banner)`) is
-/// regression-checked against an explicit `Option`, not against
-/// `form_set.banner_abbreviation` (which would be tautological).
+/// is pinned explicitly as the third element so the RD / FRD / TFNI
+/// `Some(banner)` case is regression-checked against an explicit
+/// `Option`, not against `form_set.banner_abbreviation` (which would be
+/// tautological).
 ///
-/// ## D1 / FR-053 semantic recap
+/// ## banner_abbreviation semantic
 ///
-/// Pre-3d code derived `banner_abbreviation` from `banner != portion`.
-/// PR 3d's corrected D1 semantic uses `banner != title` (CAPCO §G.1
-/// Table 4 col 2 emptiness). The two predicates agree for rows where
+/// `banner_abbreviation` is `Some` iff `banner != title` (CAPCO §G.1
+/// Table 4 col 2 emptiness) — distinct from `banner != portion`. The
+/// two predicates agree for rows where
 /// the banner differs from both portion and title (NOFORN, NODIS,
 /// EXDIS, UCNI) and for rows with no MARKING_FORMS entry
 /// (canonical-collapse: HCS, RESTRICTED, CNWDI). They DISAGREE for
@@ -352,8 +345,7 @@ const EXPECTED_ALIASES: &[(TokenId, &[(FormKind, &str)])] = &[
 
 #[test]
 fn recognized_aliases_consistency_with_marking_forms_description_title() {
-    // PR 3d.3 wiring-consistency invariant. For every active
-    // sentinel `t`:
+    // Wiring-consistency invariant. For every active sentinel `t`:
     //   - If `MARKING_FORMS` has a row matching `canonical_for(t)`
     //     AND that row carries `description_title: Some(ism_title)`,
     //     then `forms(t).recognized_aliases` MUST contain a
@@ -421,18 +413,11 @@ fn recognized_aliases_consistency_with_marking_forms_description_title() {
 
 #[test]
 fn recognized_aliases_pin_ism_description_divergences() {
-    // PR 3d.3 closes the T058h spec checkpoint
-    // (`tasks.md:188`): "the divergent ISM title surfaces in
-    // `recognized_aliases` with `FormKind::IsmDescriptionTitle`".
-    //
-    // For every active sentinel:
+    // A divergent ISM title surfaces in `recognized_aliases` with
+    // `FormKind::IsmDescriptionTitle`. For every active sentinel:
     //   - If the sentinel is in EXPECTED_ALIASES, assert byte-identity
     //     against the pinned `(FormKind, &str)` pair list.
     //   - Otherwise, assert `recognized_aliases` is empty.
-    //
-    // The previous PR 3d.2 test `recognized_aliases_empty_at_pr_3d`
-    // asserted the OPPOSITE of T058h (universal emptiness); it is
-    // retired in favor of this round-trip test.
     let scheme = CapcoScheme::new();
     for (token, _, _, _) in EXPECTED_FORMS {
         let form_set = scheme.forms(token);

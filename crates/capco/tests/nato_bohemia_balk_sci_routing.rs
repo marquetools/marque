@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 9c.1 T134 — BOHEMIA / BALK route onto the SCI axis as
+//! BOHEMIA / BALK route onto the SCI axis as
 //! [`SciControlSystem::NatoSap`], not into a fused
 //! `NatoClassification::CosmicTopSecretBohemia` / `CosmicTopSecretBalk`
 //! variant.
 //!
 //! The legacy two-axis fusion (`NatoClassification::CosmicTopSecretBohemia`,
-//! `NatoClassification::CosmicTopSecretBalk`) was retired in Commit 5
-//! of PR 9c.1. The parser's `parse_nato_classification` (in
-//! `crates/core/src/parser.rs`) now lifts BOHEMIA / BALK out of the
+//! `NatoClassification::CosmicTopSecretBalk`) is retired. The parser's
+//! `parse_nato_classification` (in `crates/core/src/parser.rs`) lifts
+//! BOHEMIA / BALK out of the
 //! legacy fused classification text (`CTS-B` / `CTS-BALK`) and writes
 //! them as `SciControlSystem::NatoSap(NatoSap::Bohemia)` /
 //! `SciControlSystem::NatoSap(NatoSap::Balk)` entries on
@@ -24,7 +24,7 @@
 //!
 //! # Coverage scope
 //!
-//! The post-PR-9c.1 invariants this file pins are:
+//! The invariants this file pins are:
 //!
 //! - The legacy compound text forms (`CTS-B`, `CTS-BALK`) canonicalize
 //!   to bare CTS on the classification axis with `NatoSap::Bohemia` /
@@ -33,9 +33,8 @@
 //!   `(//CTS//BALK)`) route BOHEMIA / BALK onto `sci_markings` as
 //!   `SciControlSystem::NatoSap` — closing the round-trip so the
 //!   renderer's canonical output re-parses to the same structural
-//!   state (PR 9c.1 R1, extending `parse_sci_block` with a per-chunk
-//!   NATO-SAP recognizer that runs BEFORE the bare-CVE /
-//!   custom-control path).
+//!   state (`parse_sci_block` runs a per-chunk NATO-SAP recognizer
+//!   BEFORE the bare-CVE / custom-control path).
 //! - The §H.7 p127 worked example
 //!   `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` round-trips
 //!   end-to-end (parses with BOHEMIA on `sci_markings`; engine does
@@ -61,12 +60,8 @@
 //! - CAPCO-2016 §A.6 p15-17 (multi-block portion grammar; BOHEMIA/BALK
 //!   travel in the SCI block separated by `//`).
 //!
-//! # Spec linkage
-//!
-//! Reviewer fix-up under PR 9c.1 R1 (Commit 11) — closes the canonical-
-//! form round-trip parse gap flagged in the R0 fix-up. Activates the
-//! three previously-`#[ignore]`d tests and adds round-trip + combined-
-//! form coverage.
+//! Closes the canonical-form round-trip parse gap and adds round-trip +
+//! combined-form coverage.
 
 use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::CapcoScheme;
@@ -97,9 +92,8 @@ fn parse_with_kind(
     source: &[u8],
     kind: MarkingType,
 ) -> marque_ism::CanonicalAttrs {
-    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
-    // so each #[test] can reuse a single scheme rather than allocating
-    // one per parse.
+    // The helper takes `&CapcoScheme` so each #[test] can reuse a single
+    // scheme rather than allocating one per parse.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -136,14 +130,14 @@ fn has_nato_sap(attrs: &marque_ism::CanonicalAttrs, expected: NatoSap) -> bool {
 
 // ---------------------------------------------------------------------------
 // Legacy portion forms canonicalize to bare class + SCI-axis NatoSap.
-// These are the LOAD-BEARING post-PR-9c.1 invariants — the parser's
-// `parse_nato_classification` was extended in Commit 3 to route
-// CTS-B / CTS-BALK through `NatoCompanion::Sci(NatoSap)`.
+// These are LOAD-BEARING invariants — the parser's
+// `parse_nato_classification` routes CTS-B / CTS-BALK through
+// `NatoCompanion::Sci(NatoSap)`.
 // ---------------------------------------------------------------------------
 
 /// `(//CTS-B)` — legacy fused portion form for COSMIC TOP SECRET
-/// BOHEMIA. After PR 9c.1 the parser emits CTS on the classification
-/// axis and `NatoSap::Bohemia` on the SCI axis.
+/// BOHEMIA. The parser emits CTS on the classification axis and
+/// `NatoSap::Bohemia` on the SCI axis.
 ///
 /// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// COSMIC TOP SECRET BOHEMIA); §G.2 p40 (Table 5 registers BOHEMIA);
@@ -168,8 +162,8 @@ fn legacy_cts_b_canonicalizes_to_cts_plus_bohemia() {
 }
 
 /// `(//CTS-BALK)` — legacy fused portion form for COSMIC TOP SECRET
-/// BALK. After PR 9c.1 the parser emits CTS on the classification
-/// axis and `NatoSap::Balk` on the SCI axis.
+/// BALK. The parser emits CTS on the classification axis and
+/// `NatoSap::Balk` on the SCI axis.
 ///
 /// Authority: CAPCO-2016 §G.1 Table 4 p37 (portion-form column for
 /// COSMIC TOP SECRET BALK); §G.2 p40 (Table 5 registers BALK).
@@ -367,10 +361,10 @@ fn e066_does_not_fire_on_bare_cts_portion() {
 // ---------------------------------------------------------------------------
 // Canonical multi-block forms — `(//CTS//BOHEMIA)`, `(//CTS//BALK)`,
 // and the §H.7 p127 worked example route BOHEMIA / BALK onto
-// `sci_markings` as `SciControlSystem::NatoSap`. PR 9c.1 R1 extended
-// `parse_sci_block` with a per-chunk NATO-SAP recognizer that runs
-// BEFORE the bare-CVE / custom-control path so canonical-form
-// renderer output re-parses to the same structural state.
+// `sci_markings` as `SciControlSystem::NatoSap`. `parse_sci_block`
+// runs a per-chunk NATO-SAP recognizer BEFORE the bare-CVE /
+// custom-control path so canonical-form renderer output re-parses to
+// the same structural state.
 // ---------------------------------------------------------------------------
 
 /// `(//CTS//BOHEMIA)` routes BOHEMIA onto `sci_markings` as

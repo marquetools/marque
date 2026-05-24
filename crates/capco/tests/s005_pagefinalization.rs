@@ -31,9 +31,9 @@
 //! 6. The Banner candidate's main-loop dispatch does NOT double-fire
 //!    S005 on pages that close with a banner (the engine's
 //!    `pass_finalization_rule_indices` skip in the main loop covers
-//!    S005 the same way it covers W004 — Copilot-HIGH regression guard
-//!    from PR #487).
-//! 7. Constitution V Principle V G13: diagnostic messages embed only
+//!    S005 the same way it covers W004).
+//! 7. Audit content-ignorance (Constitution V Principle V): diagnostic
+//!    messages embed only
 //!    canonical CAPCO REL TO codes + ODNI taxonomy `<Description>`
 //!    text — never document bytes.
 //! 8. The boundary-anchor span is zero-length and lands at a
@@ -394,7 +394,7 @@ fn s005_severity_config_off_silences_rule() {
     //
     // Arrange.
     let mut overrides = HashMap::new();
-    // T044: rule-override key uses the wire-string form per OD-7.
+    // Rule-override key uses the wire-string form.
     overrides.insert(
         "capco:page.dissem.rel-to-uncertain-reduction".to_owned(),
         "off".to_owned(),
@@ -440,19 +440,15 @@ fn s005_severity_config_off_silences_rule() {
 #[test]
 fn s005_fires_exactly_once_per_page_when_banner_closes_page() {
     // Page closes with a Banner candidate AND has a triggering REL
-    // TO disjunction. Pre-Copilot-fix (PR #487) the engine main
-    // loop's Banner-candidate dispatch ran every registered rule
-    // including PageFinalization rules; with S005 now in the
-    // PageFinalization bucket, that pre-fix engine would emit
-    // S005 twice (once at the Banner candidate via the main loop,
-    // once via `dispatch_page_finalization` at the next PageBreak
-    // / EOD). The post-fix engine skips PageFinalization rules in
-    // the main loop via `pass_finalization_rule_indices` — exactly
-    // one S005 per page.
+    // TO disjunction. If the engine main loop's Banner-candidate
+    // dispatch ran every registered rule including PageFinalization
+    // rules, S005 (a PageFinalization rule) would emit twice (once at
+    // the Banner candidate via the main loop, once via
+    // `dispatch_page_finalization` at the next PageBreak / EOD). The
+    // engine skips PageFinalization rules in the main loop via
+    // `pass_finalization_rule_indices` — exactly one S005 per page.
     //
     // Mirrors `w004_fires_exactly_once_per_page_when_banner_closes_page`.
-    // This is the load-bearing Copilot-HIGH regression guard for
-    // the S005 migration.
     //
     // Arrange.
     let engine = engine_with_fixed_clock();
@@ -480,8 +476,7 @@ fn s005_fires_exactly_once_per_page_when_banner_closes_page() {
          each page has a closing banner (one per page, not four). \
          A count of 4 indicates the main-loop phase filter regressed \
          and S005 dispatched on both Banner candidates AND both \
-         PageFinalization synthesis points. Copilot-HIGH regression \
-         guard for PR #488. diagnostics: {:?}",
+         PageFinalization synthesis points. diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.predicate_id())
@@ -490,15 +485,13 @@ fn s005_fires_exactly_once_per_page_when_banner_closes_page() {
 }
 
 // ---------------------------------------------------------------------------
-// (g) Audit-content-ignorance (Constitution V Principle V G13).
+// (g) Audit content-ignorance (Constitution V Principle V).
 // ---------------------------------------------------------------------------
 
 #[test]
 fn s005_diagnostic_carries_no_document_text() {
-    // Constitution V Principle V G13: no document text in any audit
-    // surface.
-    //
-    // PR 3c.2.C C5 reshape: G13 is now STRUCTURALLY enforced by the
+    // Audit content-ignorance (Constitution V Principle V): no document
+    // text in any audit surface. This is STRUCTURALLY enforced by the
     // closed-template / closed-args invariants. `Diagnostic.message`
     // is a `Message` (template + args); the args are constrained to
     // `Option<TokenId>` / `Option<CategoryId>` / `Option<Span>` and a
@@ -558,12 +551,12 @@ fn s005_diagnostic_carries_no_document_text() {
     let template_label = s005.message.template().as_str();
     assert!(
         !template_label.contains(prose_sentinel),
-        "G13 violation: template label {template_label:?} leaked prose sentinel"
+        "content-ignorance violation: template label {template_label:?} leaked prose sentinel"
     );
     let citation_render = format!("{}", s005.citation);
     assert!(
         !citation_render.contains(prose_sentinel),
-        "G13 violation: citation render {citation_render:?} leaked prose sentinel"
+        "content-ignorance violation: citation render {citation_render:?} leaked prose sentinel"
     );
 }
 
@@ -697,5 +690,5 @@ fn s005_does_not_fire_on_pure_trigraph_portions() {
 // (`s005_pagefinalization_ports_722.rs`) to keep this file under
 // the 800-line coding-style gate. The sibling carries the
 // not-ported / structurally-subsumed dispositions in its header
-// for the message-content-assertion group obsoleted by the PR
-// 3c.2.C C5 G13 closure.
+// for the message-content-assertion group obsoleted by the
+// audit content-ignorance closure.

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! End-to-end insurance fixture for PR 9b (T132 / FR-046).
+//! End-to-end insurance fixture for pure-NATO dissem attribution.
 //!
 //! Pins the pure-NATO portion → `dissem_nato` attribution from
 //! parser → canonical → page projection, so that a future regression
@@ -10,9 +10,8 @@
 //! violation of the CAPCO-2016 §G.2 Table 5 NATO-dissem ARH rule)
 //! trips the test suite before it reaches users.
 //!
-//! ATOMAL recognition lands in PR 9c, so the fixture below uses a
-//! plain `COSMIC TOP SECRET` classification with `OC/REL TO USA,
-//! NATO` dissems — no ATOMAL token required.
+//! The fixture below uses a plain `COSMIC TOP SECRET` classification
+//! with `OC/REL TO USA, NATO` dissems — no ATOMAL token required.
 //!
 //! Authority: CAPCO-2016 §H.7 p122 (FGI / NATO grammar) and §G.2
 //! Table 5 (pp 40-45), which enumerates the two NATO dissemination
@@ -33,9 +32,8 @@ use marque_scheme::{MarkingScheme, Scope};
 /// portion via the marque-core parser, exercising the post-parse
 /// `attribute_dissems` pass.
 ///
-/// PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
-/// so the page-rollup test that already constructs a scheme for
-/// `scheme.project(...)` can reuse it.
+/// The helper takes `&CapcoScheme` so the page-rollup test that already
+/// constructs a scheme for `scheme.project(...)` can reuse it.
 fn parse_pure_nato_portion(scheme: &CapcoScheme) -> CanonicalAttrs {
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
@@ -65,16 +63,15 @@ fn pure_nato_portion_attributes_dissem_to_dissem_nato() {
     // This is an *insurance* fixture: its entire purpose is to fail
     // loud if the pure-NATO attribution path breaks. Soft-skipping
     // when the parser doesn't recognize CTS as NATO would forfeit
-    // that purpose. The CTS classification is pinned at
-    // crates/core/src/parser.rs:1681; if this assertion fires the
-    // pin has drifted and the load-bearing FR-046 path needs review.
+    // that purpose. The CTS classification is pinned in
+    // crates/core/src/parser.rs; if this assertion fires the pin has
+    // drifted and the load-bearing pure-NATO path needs review.
     if !is_nato_only {
         panic!(
-            "PR 9b insurance fixture: parser did NOT produce \
+            "insurance fixture: parser did NOT produce \
              MarkingClassification::Nato for portion `(//CTS//OC/REL TO USA, NATO)`. \
-             Got: {:?}. This is a load-bearing test of the FR-046 pure-NATO \
-             attribution path; soft-failing forfeits its purpose. CTS \
-             classification is pinned at parser.rs:1681.",
+             Got: {:?}. This is a load-bearing test of the pure-NATO \
+             attribution path; soft-failing forfeits its purpose.",
             attrs.classification,
         );
     }
@@ -103,11 +100,11 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
         Some(marque_ism::MarkingClassification::Nato(_))
     ) {
         panic!(
-            "PR 9b insurance fixture: parser did NOT produce \
+            "insurance fixture: parser did NOT produce \
              MarkingClassification::Nato for portion `(//CTS//OC/REL TO USA, NATO)`. \
-             Got: {:?}. This rollup test is load-bearing for the FR-046 \
+             Got: {:?}. This rollup test is load-bearing for the \
              pure-NATO page-projection path; soft-failing forfeits its \
-             purpose. CTS classification is pinned at parser.rs:1681.",
+             purpose.",
             attrs.classification,
         );
     }
@@ -163,8 +160,7 @@ fn dissem_iter_yields_both_namespaces_in_order() {
     assert_eq!(collected[1], &DissemControl::Oc, "dissem_nato comes second");
 }
 
-/// PR 9b R2 (Copilot inline review at `render_dissem.rs:74`): dissem
-/// render path MUST dedup across namespaces.
+/// The dissem render path MUST dedup across namespaces.
 ///
 /// `dissem_iter()` chains `dissem_us` and `dissem_nato`, so a page
 /// rollup that contributes the same control from both namespaces

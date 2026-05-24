@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 9c.1 T134 — E066 (legacy NATO compound text re-marking) end-to-end
-//! firing + rewrite-text coverage.
+//! E066 (legacy NATO compound text re-marking) end-to-end firing +
+//! rewrite-text coverage.
 //!
-//! E066 is the autofix rule introduced in Commit 6 of PR 9c.1. It
-//! fires whenever the parser canonicalized a legacy NATO compound text
+//! E066 is the autofix rule that fires whenever the parser canonicalizes
+//! a legacy NATO compound text
 //! (eight portion forms + five banner forms) into bare class + AEA/SCI
 //! companion, and emits a `ReplacementIntent::Recanonicalize` fix at
 //! `Confidence::strict(1.0)` so the engine auto-applies it.
@@ -23,9 +23,8 @@
 //!    multi-block form as a byte-identical output.
 //!
 //! The rewrite outputs were verified against the live engine before
-//! being pinned here (PR 9c.1 R0 probe). Any future change to the
-//! renderer that breaks one of the canonical forms surfaces here
-//! immediately.
+//! being pinned here. Any future change to the renderer that breaks one
+//! of the canonical forms surfaces here immediately.
 //!
 //! # Authority
 //!
@@ -37,11 +36,6 @@
 //! - CAPCO-2016 §H.7 p127 (BOHEMIA worked example, SCI-block placement).
 //! - CAPCO-2016 §A.6 p15-17 (multi-block portion / banner grammar — the
 //!   canonical target shape).
-//!
-//! # Spec linkage
-//!
-//! Reviewer fix-up under PR 9c.1 R0 (Commit 10) — replaces the empty
-//! file fabricated in Commit 9 with substantive assertions.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;

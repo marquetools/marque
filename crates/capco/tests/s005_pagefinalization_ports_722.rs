@@ -20,7 +20,7 @@
 //! 2. **Message-content assertions** (`s005_quotes_verbatim_taxonomy_*`,
 //!    `s005_handles_empty_atom_intersection`, parts of
 //!    `s005_multi_portion_uses_intersection_*`) — obsoleted by the
-//!    PR 3c.2.C C5 G13 closure. S005 now emits
+//!    audit content-ignorance closure. S005 now emits
 //!    `MessageTemplate::NonCanonicalOrder` with
 //!    `category=Some(CAT_REL_TO)` and no runtime values; the
 //!    per-message taxonomy / per-token prose those tests asserted

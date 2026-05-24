@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3d (FR-054) — `Deprecation::valid_from <= since` temporal
-//! invariant test, observed at the `CapcoScheme.deprecation()`
-//! surface.
+//! `Deprecation::valid_from <= since` temporal invariant test, observed
+//! at the `CapcoScheme.deprecation()` surface.
 //!
 //! ## Why this lives in `crates/capco/tests/` and not
 //! `crates/ism/tests/`
@@ -105,12 +104,12 @@ fn deprecation_valid_from_lte_since_for_every_sentinel() {
     for token in ACTIVE_SENTINELS {
         let Some(deprecation) = scheme.deprecation(token) else {
             // Active (non-deprecated) sentinel — nothing to check
-            // here; FR-017 silence is correct.
+            // here; the silent `None` is correct.
             continue;
         };
 
-        // FR-054 temporal invariant: a token cannot be deprecated
-        // before it was published. Today every `valid_from` is
+        // Temporal invariant: a token cannot be deprecated before it
+        // was published. Today every `valid_from` is
         // `None`, so this inner branch is unreachable on real data;
         // the assertion stays in place so a future ODNI revision
         // that populates `valid_from` lands a temporal-ordering
@@ -135,7 +134,7 @@ fn deprecation_valid_from_lte_since_for_every_sentinel() {
 
             assert!(
                 valid_from <= since,
-                "Deprecation for {token:?} violates FR-054 temporal invariant: \
+                "Deprecation for {token:?} violates the temporal invariant: \
                  valid_from={valid_from_label:?} > since={:?}. A token cannot be \
                  deprecated before it was published.",
                 deprecation.since,

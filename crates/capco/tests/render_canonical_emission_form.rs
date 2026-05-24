@@ -2,20 +2,17 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T048c — `render_canonical` `EmissionForm` fixtures.
+//! `render_canonical` `EmissionForm` fixtures.
 //!
-//! Ships in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-//! PM-10 with two patterns of tests:
+//! Two patterns of tests:
 //!
 //! 1. **Enabled** — `EmissionForm::Auto` + `Scope::{Page, Portion}`
 //!    assertions for NOFORN / SECRET / FOUO. These pin byte-identity
-//!    with the pre-3c.2 `render_banner` / `render_portion` outputs;
-//!    they are the load-bearing byte-identity gate for PR 3c.2.A.
+//!    with the `render_banner` / `render_portion` outputs.
 //!
 //! 2. **`#[ignore]`-gated** — `EmissionForm::Portion` /
 //!    `EmissionForm::BannerTitle` / `EmissionForm::BannerAbbreviation`
-//!    assertions for the same three tokens. These carry the FR-052
-//!    acceptance criteria for PR 3c.2.B: when the §G.1 Table 4
+//!    assertions for the same three tokens. When the §G.1 Table 4
 //!    dispatch body lands in `CapcoScheme::render_canonical`, the
 //!    `#[ignore]` removal flips each to enabled and the assertion
 //!    holds.
@@ -40,8 +37,7 @@
 //!
 //! - NOFORN per CAPCO-2016 §H.8 p145 (Banner Title `NOT RELEASABLE TO
 //!   FOREIGN NATIONALS`, Banner Abbreviation `NOFORN`, Portion `NF`).
-//!   Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.A
-//!   authorship.
+//!   Re-verified against `crates/capco/docs/CAPCO-2016.md`.
 //! - SECRET per CAPCO-2016 §H.1 p48 (US Classification SECRET, Portion
 //!   `S`).
 //! - FOUO per CAPCO-2016 §H.8 p134 (Banner Title `FOR OFFICIAL USE
@@ -101,9 +97,8 @@ fn render(scheme: &CapcoScheme, marking: &CapcoMarking, ctx: &RenderContext) -> 
 // ENABLED — `EmissionForm::Auto + Scope::Page` byte-identity
 // ===========================================================================
 //
-// These tests are the load-bearing byte-identity gate for PR 3c.2.A:
-// `Auto + Page` MUST produce the same bytes as `render_banner`, which
-// is what the pre-3c.2 engine emitted.
+// These tests are the load-bearing byte-identity gate:
+// `Auto + Page` MUST produce the same bytes as `render_banner`.
 
 #[test]
 fn auto_page_secret_matches_render_banner() {
@@ -191,14 +186,13 @@ fn auto_portion_fouo_matches_render_portion() {
 // `#[ignore]`-gated — `EmissionForm::Portion` (force portion form)
 // ===========================================================================
 //
-// FR-052 acceptance criteria for PR 3c.2.B: when the §G.1 Table 4
-// dispatch body lands in `CapcoScheme::render_canonical`, force-Portion
-// emits the portion-mark form regardless of `Scope`. The `#[ignore]`
-// flips to enabled at 3c.2.B; the assertion shape pins the contract
-// today so the migration is mechanical (just remove the attribute).
+// When the §G.1 Table 4 dispatch body lands in
+// `CapcoScheme::render_canonical`, force-Portion emits the portion-mark
+// form regardless of `Scope`. The assertion shape pins the contract so
+// enabling these tests is mechanical (just remove the `#[ignore]`).
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_portion_secret_returns_portion_mark() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
@@ -210,7 +204,7 @@ fn explicit_portion_secret_returns_portion_mark() {
 }
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_portion_noforn_returns_portion_mark() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
@@ -221,7 +215,7 @@ fn explicit_portion_noforn_returns_portion_mark() {
 }
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_portion_fouo_returns_portion_mark() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();
@@ -236,7 +230,7 @@ fn explicit_portion_fouo_returns_portion_mark() {
 // ===========================================================================
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_title_secret_returns_title() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
@@ -251,7 +245,7 @@ fn explicit_banner_title_secret_returns_title() {
 }
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_title_noforn_returns_title() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
@@ -266,7 +260,7 @@ fn explicit_banner_title_noforn_returns_title() {
 }
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_title_fouo_returns_title() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();
@@ -285,7 +279,7 @@ fn explicit_banner_title_fouo_returns_title() {
 // ===========================================================================
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_abbreviation_secret_falls_back_to_title() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
@@ -303,7 +297,7 @@ fn explicit_banner_abbreviation_secret_falls_back_to_title() {
 }
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_abbreviation_noforn_returns_abbreviation() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
@@ -318,7 +312,7 @@ fn explicit_banner_abbreviation_noforn_returns_abbreviation() {
 }
 
 #[test]
-#[ignore = "blocked on T048b: forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
+#[ignore = "forced-mode EmissionForm dispatch awaits engine-side RenderContext construction at the fix-emit boundary"]
 fn explicit_banner_abbreviation_fouo_returns_abbreviation() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();

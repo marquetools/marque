@@ -20,14 +20,11 @@ fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
-/// PR 3c.2.C C5 reshape: under the closed-template `Message` shape,
-/// per-row identification via marker text (`"HCS-O"`, `"SI-G"`, etc.)
-/// is no longer available — the runtime `marking_label` /
-/// `token_name` strings no longer flow into `Diagnostic.message`.
-/// The bridge layer collapses every SCI-per-system row to a single
-/// rule_id `"E059"` and (today) the
-/// `MessageTemplate::RequiredByPresence` template per PM-C-5 /
-/// PM-C-6 detail-loss acceptance.
+/// Under the closed-template `Message` shape, per-row identification
+/// via marker text (`"HCS-O"`, `"SI-G"`, etc.) is not available — the
+/// runtime `marking_label` / `token_name` strings do not flow into
+/// `Diagnostic.message`. The diagnostics carry the
+/// `MessageTemplate::RequiredByPresence` template.
 ///
 /// The `marker_text` parameter is kept for call-site documentation;
 /// the filter only matches on `rule_id`.
@@ -35,10 +32,10 @@ fn e059_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    // T044 OD-8.A: the bridge no longer collapses to a single `E059`
-    // rule_id; each catalog row emits its own predicate ID in the
-    // `marking.sci.<predicate>` form. Filter on the substring prefix
-    // (mirrors `is_sci_per_system_catalog_name`).
+    // The bridge does not collapse to a single rule_id; each catalog row
+    // emits its own predicate ID in the `marking.sci.<predicate>` form.
+    // Filter on the substring prefix (mirrors
+    // `is_sci_per_system_catalog_name`).
     diags
         .iter()
         .filter(|d| d.rule.predicate_id().starts_with("marking.sci."))

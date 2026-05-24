@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 9a — bare HCS / bare RSV class-specific rules (E061 / E062 / E063).
+//! Bare HCS / bare RSV class-specific rules (E061 / E062 / E063).
 //!
 //! Authority: CAPCO-2016 §H.4 pp 62, 70.
 //!
@@ -71,12 +71,11 @@ fn e061_fires_on_bare_hcs_at_confidential() {
         "citation must cite §H.4 p62; got {:?}",
         diags[0].citation
     );
-    // PR 3c.2.C C5: closed `Message` shape — the "contact the
-    // originator" prose that previously lived in the message body is
-    // dropped per Constitution V Principle V (G13) / PM-C-5. The
-    // SupersededToken template captures the deprecation class; the
-    // §H.4 p62 citation pins the authority. The user-facing prose
-    // is renderer responsibility per PM-C-5.
+    // Closed `Message` shape — free-form "contact the originator" prose
+    // is absent from the message body (Constitution V Principle V). The
+    // SupersededToken template captures the deprecation class; the §H.4
+    // p62 citation pins the authority. The user-facing prose is renderer
+    // responsibility.
     use marque_rules::MessageTemplate;
     assert_eq!(
         diags[0].message.template(),
@@ -203,10 +202,10 @@ fn e063_fires_on_bare_rsv() {
         "citation must cite §H.4 p70; got {:?}",
         diags[0].citation
     );
-    // PR 3c.2.C C5: closed `Message` shape — the "may not be used
-    // alone" prose dropped per Constitution V Principle V (G13) /
-    // PM-C-5. The RequiredByPresence template captures the missing-
-    // companion class; the §H.4 p70 citation pins the authority.
+    // Closed `Message` shape — free-form "may not be used alone" prose
+    // is absent (Constitution V Principle V). The RequiredByPresence
+    // template captures the missing-companion class; the §H.4 p70
+    // citation pins the authority.
     use marque_rules::MessageTemplate;
     assert_eq!(
         diags[0].message.template(),
@@ -237,8 +236,7 @@ fn e063_does_not_fire_on_non_rsv_sci() {
 }
 
 // =========================================================================
-// PR 9a Copilot R2 Fix 3 — span anchoring through the deprecated SCI
-// long-form parser path.
+// Span anchoring through the deprecated SCI long-form parser path.
 //
 // E062 (and E061 / E063) locate byte anchors by filtering
 // `attrs.token_spans` for `TokenKind::SciSystem` and indexing by

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 5 (006 T059a) — per-evaluator unit tests for E068 + E069.
+//! Per-evaluator unit tests for E068 + E069.
 //!
 //! Drives small synthetic page shapes through `Engine::lint` and
 //! asserts the rule-emission behavior of the two new banner-rollup

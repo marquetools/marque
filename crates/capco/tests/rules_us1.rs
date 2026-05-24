@@ -1,19 +1,16 @@
-// PR 3c.2.C C5 (PM-C-3): cfg-gate lifted. The test body extracts
-// `(rule_id, span.start, span.end)` tuples and never inspected
-// `Diagnostic.message` / `Diagnostic.citation` content, so the
-// closed-template / typed-Citation reshape is structurally a no-op
-// for this fixture. The PR 3c.B Commit 10 gate was applied as a
-// blanket carry; PR 3c.2.B B4 already migrated the body to
-// `scheme.canonicalize(parsed.attrs)` (line 78 inline comment).
+// The test body extracts `(rule_id, span.start, span.end)` tuples and
+// never inspects `Diagnostic.message` / `Diagnostic.citation` content,
+// so the closed-template / typed-Citation shape is a no-op for this
+// fixture. The body canonicalizes via `scheme.canonicalize(parsed.attrs)`.
 
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 — User Story 1 corpus integration test.
+//! Corpus integration test.
 //!
 //! Drives every fixture under `tests/corpus/{invalid,valid}/` through the
-//! parser + Phase 3 rule set and asserts that the produced diagnostics
+//! parser + rule set and asserts that the produced diagnostics
 //! exactly match the sibling `.expected.json` file.
 //!
 //! Span and rule-ID drift is a CI failure.
@@ -50,8 +47,8 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     // Mirror the engine's per-page accumulator so banner-rollup rules
     // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets
     // at scanner-emitted PageBreak candidates per the engine's invariant.
-    // PR 6c (T069): inline Vec<CanonicalAttrs> + Arc<Box<[_]>> snapshot
-    // mirrors the post-retirement engine accumulator shape.
+    // The inline Vec<CanonicalAttrs> + Arc<Box<[_]>> snapshot mirrors the
+    // engine accumulator shape.
     let mut page_portions: Vec<CanonicalAttrs> = Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
     let mut page_portions_arc: Option<Arc<Box<[CanonicalAttrs]>>> = None;
     for candidate in &candidates {
@@ -72,9 +69,8 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
-        // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-        // override; reuse the already-constructed `scheme` at line 43
-        // for zero new allocation cost.
+        // Canonicalize via the trait override; reuse the
+        // already-constructed `scheme` for zero new allocation cost.
         let attrs = scheme.canonicalize(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
             page_portions.push(attrs.clone());
@@ -89,27 +85,26 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         } else {
             None
         };
-        // PR 4b-B 9th-pass follow-up: `RuleContext` is
-        // `#[non_exhaustive]`; cross-crate construction goes through
-        // `RuleContext::new` + `with_*` setters.
+        // `RuleContext` is `#[non_exhaustive]`; cross-crate
+        // construction goes through `RuleContext::new` + `with_*`
+        // setters.
         //
-        // **Re-enablement gap (Copilot R2 / PR 6c):** this fixture
-        // currently attaches only `page_portions`. If the
-        // `#[cfg(any())]` gate is lifted, the banner-rollup walker
-        // (`BannerMatchesProjectedRule::check`) will return early
-        // because it guards on `ctx.page_marking.as_ref()` (PR 9b
-        // T133), silently disabling E031 / E035 / E040 coverage. Any
-        // re-enablement MUST additionally project `page_portions` ->
-        // `ProjectedMarking` (via `CapcoScheme::project_from_attrs_slice`
-        // or equivalent) and attach via `with_page_marking`.
+        // Re-enablement gap: this fixture attaches only `page_portions`.
+        // If the `#[cfg(any())]` gate is lifted, the banner-rollup
+        // walker (`BannerMatchesProjectedRule::check`) returns early
+        // because it guards on `ctx.page_marking.as_ref()`, silently
+        // disabling E031 / E035 / E040 coverage. Any re-enablement MUST
+        // additionally project `page_portions` -> `ProjectedMarking`
+        // (via `CapcoScheme::project_from_attrs_slice` or equivalent)
+        // and attach via `with_page_marking`.
         let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_portions(ctx_page);
         for rule in rule_set.rules() {
             // Issue #672 — mirror the engine's `Severity::Off` gate.
-            // Without this filter, opt-in rules (S009/S010 from
-            // PR #670; any future Severity::Off Suggest rule) fire
-            // here even though the production engine skips them by
-            // default, producing diagnostic-count mismatches against
-            // fixtures authored before the opt-in rule landed.
+            // Without this filter, opt-in rules (S009/S010; any future
+            // Severity::Off Suggest rule) fire here even though the
+            // production engine skips them by default, producing
+            // diagnostic-count mismatches against fixtures authored
+            // before the opt-in rule landed.
             // Constitution V Principle V — `Severity::Off` is a
             // non-firing state, NOT a suppression; the engine skips
             // the rule loop body entirely, and this test must match.
@@ -120,19 +115,17 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 out.push((d.rule.predicate_id().to_owned(), d.span.start, d.span.end));
             }
         }
-        // PR 3c.B Commit 7.3 + 7.4: emulate the engine's constraint-
-        // catalog bridge here so fixtures that rely on bridge-emitted
-        // diagnostics (E058 class-floor, E059 SCI per-system) match.
-        // Mirrors the dispatch in `crates/engine/src/engine.rs` lint
-        // loop:
+        // Emulate the engine's constraint-catalog bridge here so
+        // fixtures that rely on bridge-emitted diagnostics (class-floor,
+        // SCI per-system) match. Mirrors the dispatch in the engine's
+        // lint loop:
         //
         //   1. `scheme.validate(...)` for the ConstraintViolation
-        //      envelope path (class-floor; E058). Gate on
+        //      envelope path (class-floor). Gate on
         //      `has_diagnostic_constraints()`, filter populated
-        //      span/severity, fold the row name to the bridge-level
-        //      rule ID.
+        //      span/severity.
         //   2. `scheme.bridge_sci_per_system_diagnostics(...)` for the
-        //      direct path (SCI per-system; E059) — bypasses the
+        //      direct path (SCI per-system) — bypasses the
         //      ConstraintViolation envelope so `FixProposal` can ride
         //      along with each diagnostic. This test only matches on
         //      `(rule_id, span)` tuples, so the fix is informational
@@ -140,22 +133,22 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         //      engine's bridge.
         //
         // This module-level test deliberately avoids depending on
-        // `marque-engine` (line 13 docstring) so the bridge logic is
-        // re-implemented locally here.
+        // `marque-engine` so the bridge logic is re-implemented locally
+        // here.
         if scheme.has_diagnostic_constraints() {
             let marking = CapcoMarking::from(attrs.clone());
             for v in scheme.validate(&marking) {
                 let (Some(span), Some(_severity)) = (v.span, v.severity) else {
                     continue;
                 };
-                // T044 OD-8.A: the engine bridge is now a no-op
-                // pass-through — the constraint_label IS the canonical
-                // predicate_id (no prefix folding to a collapsed
-                // walker ID). This test mirrors that shape.
+                // The engine bridge is a no-op pass-through — the
+                // constraint_label IS the canonical predicate_id (no
+                // prefix folding to a collapsed walker ID). This test
+                // mirrors that shape.
                 let rule_id: String = v.constraint_label.to_owned();
                 out.push((rule_id, span.start, span.end));
             }
-            // PR 3c.2.C C5 + T044: bridge signature now requires
+            // The bridge signature requires
             // `(attrs, candidate_span, fix_scope, &emitted_id_overrides)`.
             // The candidate's outer span and a per-portion fix scope
             // mirror what the engine's lint loop passes. Empty overrides
@@ -169,10 +162,10 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 &empty_overrides,
             ) {
                 out.push((
-                    // T044: match the predicate-id-without-scheme
-                    // shape the rest of this test uses (line 120
-                    // collects `predicate_id().to_owned()`; the
-                    // bridge emulator also passes raw constraint_label).
+                    // Match the predicate-id-without-scheme shape the
+                    // rest of this test uses (it collects
+                    // `predicate_id().to_owned()`; the bridge emulator
+                    // also passes the raw constraint_label).
                     diag.rule.predicate_id().to_owned(),
                     diag.span.start,
                     diag.span.end,
@@ -190,9 +183,9 @@ fn assert_matches(
     expected: &ExpectedFixture,
     actual: &[(String, usize, usize)],
 ) {
-    // T044: `ExpectedRuleId` is a 2-tuple struct; the actual side
-    // (above) collects predicate_id strings WITHOUT the scheme prefix
-    // (from `d.rule.predicate_id().to_owned()` and from the bridge's
+    // `ExpectedRuleId` is a 2-tuple struct; the actual side (above)
+    // collects predicate_id strings WITHOUT the scheme prefix (from
+    // `d.rule.predicate_id().to_owned()` and from the bridge's
     // `v.constraint_label.to_owned()`). Match that shape on the want
     // side by reading the predicate_id field directly.
     let mut want: Vec<(String, usize, usize)> = expected
@@ -244,17 +237,12 @@ fn invalid_corpus_matches_expected_diagnostics() {
         // accuracy is validated by marque-engine's decoder_dispatch
         // and corpus_accuracy integration tests.
         //
-        // PR 3c.2.C C5 (PM-C-3): exposed after cfg-gate lift. The
-        // pre-PR-3c.B test body never reached these fixtures because
-        // it was `#![cfg(any())]`-disabled. The skip preserves test
-        // intent while acknowledging the pipeline scope.
-        //
         // Iterate the expected diagnostics: skip any fixture whose
         // first expected diagnostic is R001 (decoder-only). This
         // catches the full `nato_longhand_*` family + any future
         // R001-expecting fixture without per-name listing.
         let expected_peek = load_expected(&path);
-        // T044: legacy `R001` is `("engine", "recognition.decoder-recognized")`;
+        // R001 is `("engine", "recognition.decoder-recognized")`;
         // expected.json carries the 2-tuple struct form.
         if expected_peek.diagnostics.iter().any(|d| {
             d.rule.scheme == "engine" && d.rule.predicate_id == "recognition.decoder-recognized"
@@ -262,19 +250,16 @@ fn invalid_corpus_matches_expected_diagnostics() {
             continue;
         }
         // Banner-rollup / page-context walker (E031/E035/E039/E040)
-        // requires `ctx.page_marking` to be populated; this test
-        // wires only `ctx.page_portions` (the pre-PR-9b shape). The
-        // walker returns early per the Copilot R2 / PR 6c
-        // re-enablement gap noted at the lint helper's docstring.
-        // Skip fixtures that expect any page-context-dependent
-        // diagnostic until the test wires a projected-marking via
-        // `CapcoScheme::project`. Out of scope for PR 3c.2.C — this
-        // is the same pipeline-scope gap as R001.
-        // T044: post-rename, the banner-rollup walker rules emit per-row
-        // predicate IDs (see legacy-rule-id-map §5); E031/E035/E040 are
-        // each their own predicate, plus the standalone E039
-        // (`page.dissem.nodis-exdis-clears-banner-rel-to`) and W004
-        // (`page.fgi.joint-disunity-collapses-to-fgi`).
+        // requires `ctx.page_marking` to be populated; this test wires
+        // only `ctx.page_portions`. The walker returns early per the
+        // re-enablement gap noted at the lint helper's docstring. Skip
+        // fixtures that expect any page-context-dependent diagnostic
+        // until the test wires a projected-marking via
+        // `CapcoScheme::project` — the same pipeline-scope gap as R001.
+        // The banner-rollup walker rules emit per-row predicate IDs;
+        // E031/E035/E040 are each their own predicate, plus the
+        // standalone E039 (`page.dissem.nodis-exdis-clears-banner-rel-to`)
+        // and W004 (`page.fgi.joint-disunity-collapses-to-fgi`).
         if expected_peek.diagnostics.iter().any(|d| {
             matches!(
                 d.rule.predicate_id.as_str(),
@@ -298,16 +283,14 @@ fn invalid_corpus_matches_expected_diagnostics() {
 fn valid_corpus_produces_no_diagnostics() {
     for path in valid_fixtures() {
         let fname = path.file_name().unwrap().to_string_lossy();
-        // PR 3c.2.C C5 (PM-C-3): exposed after cfg-gate lift. S008
-        // (`relido-implied-by-closure`, landed post-cfg-gate per
-        // PR #559) emits a Suggest-channel diagnostic on caveated
-        // SCI portions like `(TS//SI)` and `(TS//SI/TK)` because
-        // caveated SCI implies NOFORN under §B.3 Table 2 p21.
-        // Several pre-S008 corpus fixtures predate this rule; the
-        // .expected.json files are stale w.r.t. the current engine
-        // behavior. Skip the affected fixtures until they're
-        // refreshed (out of scope for PR 3c.2.C — this is an
-        // engine-semantic issue, not a Diagnostic-shape issue).
+        // S008 (`relido-implied-by-closure`, issue #559) emits a
+        // Suggest-channel diagnostic on caveated SCI portions like
+        // `(TS//SI)` and `(TS//SI/TK)` because caveated SCI implies
+        // NOFORN under §B.3 Table 2 p21. Several corpus fixtures predate
+        // this rule; their .expected.json files are stale w.r.t. the
+        // current engine behavior. Skip the affected fixtures until
+        // they're refreshed (an engine-semantic issue, not a
+        // Diagnostic-shape issue).
         if fname.starts_with("clean_portion_si_only") || fname.starts_with("clean_portion_ts_si_tk")
         {
             continue;

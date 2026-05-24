@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Commit 4 — `MarkingScheme::render_canonical` default chain
-//! acceptance test.
+//! `MarkingScheme::render_canonical` default-chain acceptance test.
 //!
 //! Pins the byte-identity property of the trait-default delegation
 //! between `render_canonical(_, Scope::Portion, _)` and
@@ -11,19 +10,10 @@
 //! `render_canonical(_, Scope::Page|Document, _)` and
 //! `render_banner(_)`. Plus the `Scope::Diff -> Err(fmt::Error)` contract.
 //!
-//! # Why this test is load-bearing
-//!
-//! Commit 4 is the trait-surface introduction step in PR 3c.B. The
-//! commitment is **purely additive**: existing call paths that go
-//! through `render_portion` / `render_banner` produce byte-identical
-//! output to the pre-commit baseline, and `render_canonical` exists
-//! as a new trait method that (today) delegates back to those
-//! existing methods. Commit 5 inverts this dependency — populating
-//! [`marque_capco::scheme::RENDER_TABLE`] and making `render_canonical`
-//! the substantive body — at which point the byte-identity property
-//! flips direction: `render_portion` / `render_banner` will use the
-//! trait defaults that call back into `render_canonical`. Either way,
-//! the property this test pins is the invariant.
+//! The byte-identity property is the invariant regardless of which
+//! direction the delegation runs: whether `render_canonical` delegates
+//! to `render_portion` / `render_banner` or vice versa, the rendered
+//! bytes must match.
 //!
 //! # Scope: `Scope::Diff`
 //!
@@ -38,8 +28,8 @@ use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
 use marque_scheme::{EmissionForm, MarkingScheme, RenderContext, SchemaVersionId, Scope};
 
 /// Helper: build a default-mode RenderContext (Auto + MarqueMvp3) at
-/// the given scope. PR 3c.2.A: every render_canonical call site
-/// constructs explicitly per PM-6 (no `Default` impl on RenderContext).
+/// the given scope. Every render_canonical call site constructs the
+/// context explicitly (no `Default` impl on RenderContext).
 fn ctx(scope: Scope) -> RenderContext {
     RenderContext::new(scope, EmissionForm::Auto, SchemaVersionId::MarqueMvp3)
 }
@@ -50,10 +40,9 @@ fn ctx(scope: Scope) -> RenderContext {
 
 /// Build a minimal `CapcoMarking` carrying just a US `SECRET`
 /// classification. The trait-impl render path on `CapcoScheme` reads
-/// `m.0.classification` and ignores the other fields; the Phase A
-/// renderer covers only the classification axis. Commit 5's full
-/// renderer body extends coverage to all axes; this test will continue
-/// to pin the classification axis verbatim because that axis is
+/// `m.0.classification` and ignores the other fields; this renderer
+/// covers only the classification axis, which this test pins verbatim
+/// because that axis is
 /// authoritative under both renderer generations.
 fn make_secret() -> CapcoMarking {
     let mut attrs = CanonicalAttrs::default();

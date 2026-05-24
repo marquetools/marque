@@ -2,31 +2,31 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 5 (006 T062/T063/T063a/T059b) — foreign-banner correctness corpus.
+//! Foreign-banner correctness corpus.
 //!
 //! Loads `tests/corpus/foreign/*.txt` fixtures and asserts the
 //! engine-level behavioral invariants tracked under #276:
 //!
-//! - **`pure_foreign_banner.txt`** (T062): #276 Case 1 — pure-foreign
+//! - **`pure_foreign_banner.txt`**: #276 Case 1 — pure-foreign
 //!   page with `(//DEU C//REL TO USA, DEU)` portions (FGI
 //!   classification system, no US axis); banner
 //!   `//DEU CONFIDENTIAL//REL TO USA, DEU` matches the projected
 //!   `Fgi(Confidential, [DEU])` state per §H.7 p126. Zero
 //!   diagnostics expected.
-//! - **`joint_us_uk.txt`** (T063): JOINT US+GBR page per CAPCO-2016
+//! - **`joint_us_uk.txt`**: JOINT US+GBR page per CAPCO-2016
 //!   §H.3 p56; banner matches projected page state. Zero diagnostics.
-//! - **`nato_only_page.txt`** (T063): solely-NATO page per §H.7
+//! - **`nato_only_page.txt`**: solely-NATO page per §H.7
 //!   pp123-125; banner preserves the NATO classification variant.
 //!   Zero diagnostics.
-//! - **`mixed_us_foreign_rollup.txt`** (T063a + T059b): the
-//!   load-bearing #276 fixture. `(S//NF) + (//DEU TS//REL TO USA, DEU)`
-//!   with observed banner `SECRET//NOFORN`. Per §H.7 p129 line 3168 the
-//!   correct banner is `TOP SECRET//FGI DEU//NOFORN`. E068 + E069 fire
-//!   (classification mismatch + missing FGI marker). T059b's
-//!   NOFORN-supremacy composition assertion: NOFORN survives, REL TO is
-//!   cleared via the §H.8 p145 `capco/noforn-clears-rel-to` PageRewrite,
-//!   and the FGI marker propagates through the cross-axis composition.
-//! - **`fgi_concealed.txt`** (T063): §H.7 p128 line 3153 worked
+//! - **`mixed_us_foreign_rollup.txt`**: the load-bearing #276 fixture.
+//!   `(S//NF) + (//DEU TS//REL TO USA, DEU)` with observed banner
+//!   `SECRET//NOFORN`. Per §H.7 p129 the correct banner is
+//!   `TOP SECRET//FGI DEU//NOFORN`. E068 + E069 fire (classification
+//!   mismatch + missing FGI marker). NOFORN-supremacy composition:
+//!   NOFORN survives, REL TO is cleared via the §H.8 p145
+//!   `capco/noforn-clears-rel-to` PageRewrite, and the FGI marker
+//!   propagates through the cross-axis composition.
+//! - **`fgi_concealed.txt`**: §H.7 p128 worked
 //!   example. `(S//RELIDO) + (//DEU S//NF) + (//FGI S//NF)` projects to
 //!   bare `FGI` (no trigraph) per the source-concealed-dominates rule
 //!   on §H.7 p124. Banner observes `SECRET//FGI//NOFORN`; matches.
@@ -48,7 +48,7 @@
 //! fixture has two banner candidates (top + bottom). The
 //! presence-only check is robust to that variation while still
 //! catching the load-bearing #276 regression (no E068/E069 firing
-//! at all = the bug PR 5 closes).
+//! at all is the bug).
 
 use marque_capco::{CapcoRuleSet, scheme::CapcoScheme};
 use marque_config::Config;
@@ -88,7 +88,7 @@ fn observed_rule_ids(fixture_name: &str) -> HashSet<String> {
 }
 
 // ---------------------------------------------------------------------------
-// T062 — pure-foreign banner: zero diagnostics expected.
+// Pure-foreign banner: zero diagnostics expected.
 // ---------------------------------------------------------------------------
 
 /// #276 Case 1 — pure-foreign banner page. Portions
@@ -140,7 +140,7 @@ fn t062_pure_foreign_banner_zero_diagnostics() {
 }
 
 // ---------------------------------------------------------------------------
-// T063 — JOINT US+GBR: zero diagnostics expected.
+// JOINT US+GBR: zero diagnostics expected.
 // ---------------------------------------------------------------------------
 
 /// JOINT US+GBR page per CAPCO-2016 §H.3 p56. Banner matches the
@@ -173,7 +173,7 @@ fn t063_joint_us_uk_zero_diagnostics() {
 }
 
 // ---------------------------------------------------------------------------
-// T063 — pure-NATO page: zero diagnostics expected.
+// Pure-NATO page: zero diagnostics expected.
 // ---------------------------------------------------------------------------
 
 /// Pure-NATO page per CAPCO-2016 §H.7 pp123-125 (solely-NATO
@@ -204,7 +204,7 @@ fn t063_nato_only_page_zero_diagnostics() {
 }
 
 // ---------------------------------------------------------------------------
-// T063a + T059b — mixed US+foreign roll-up: E068 + E069 fire.
+// Mixed US+foreign roll-up: E068 + E069 fire.
 // ---------------------------------------------------------------------------
 
 /// The load-bearing #276 fixture. `(S//NF) + (//DEU TS//REL TO USA,
@@ -220,7 +220,7 @@ fn t063_nato_only_page_zero_diagnostics() {
 /// unions per-portion `fgi_marker` with classification-derived
 /// producers).
 ///
-/// **T059b composition assertion** — NOFORN supremacy preserves FGI
+/// **Composition assertion** — NOFORN supremacy preserves the FGI
 /// marker through the `capco/noforn-clears-rel-to` PageRewrite
 /// (§H.8 p145). The portion-level `REL TO USA, DEU` is cleared at
 /// the banner; NOFORN survives; the FGI marker is carried through
@@ -232,10 +232,9 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
     // Arrange: the fixture documents that E068 + E069 are the
     // expected diagnostics.
     let expected = load_expected(&foreign_fixture("mixed_us_foreign_rollup.txt"));
-    // T044: `ExpectedRuleId` is a struct of (scheme, predicate_id)
-    // String fields, not a `RuleId`. The expected.json fixture
-    // serializes the 2-tuple form per the corpus migration; the test
-    // checks predicate-ID strings directly.
+    // `ExpectedRuleId` is a struct of (scheme, predicate_id) String
+    // fields, not a `RuleId`. The expected.json fixture serializes the
+    // 2-tuple form; the test checks predicate-ID strings directly.
     let expected_rules: HashSet<&str> = expected
         .diagnostics
         .iter()
@@ -246,8 +245,7 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
             && expected_rules.contains("banner.fgi.marker-mismatch-vs-projected"),
         "mixed_us_foreign_rollup.expected.json must list \
          banner.classification.mismatch-vs-projected + \
-         banner.fgi.marker-mismatch-vs-projected per PR 5 PM Addendum \
-         I.4 (post-T044 predicate IDs); got {expected_rules:?}"
+         banner.fgi.marker-mismatch-vs-projected; got {expected_rules:?}"
     );
 
     // Act: lint with the default engine.
@@ -273,7 +271,7 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
 }
 
 // ---------------------------------------------------------------------------
-// T063 — source-concealed + source-acknowledged FGI: zero diagnostics.
+// Source-concealed + source-acknowledged FGI: zero diagnostics.
 // ---------------------------------------------------------------------------
 
 /// CAPCO-2016 §H.7 p128 line 3153 Notional Example Page 3:
