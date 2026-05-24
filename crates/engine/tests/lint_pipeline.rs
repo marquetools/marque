@@ -134,13 +134,12 @@ fn missing_usa_in_rel_to_fires_e002() {
 // was factually incorrect — FOUO remains valid in CAPCO ISM (see
 // DissemControl::Fouo) and CUI is a separate marking system under NARA
 // jurisdiction. FOUO also does not propagate to classified markings
-// The migration was removed per Phase E of the recursive-lattice plan
-// (docs/plans/2026-04-19-recursive-lattice-and-decoder.md §14).
+// The migration was removed.
 //
 // The "FOUO in a classified banner is a policy violation" case is real
 // and is handled today at the rollup layer (PageContext drops FOUO from
 // classified banners). A dedicated validation rule for direct author
-// input like `SECRET//FOUO` lands in Phase C as a declarative
+// input like `SECRET//FOUO` is handled as a declarative
 // `Constraint::Conflicts(FOUO, Classified)` entry.
 //
 // The following test replaces that test with the proper behavior.
@@ -185,7 +184,7 @@ fn diagnostic_carries_citation() {
     assert_eq!(
         e002.citation.document,
         marque_scheme::AuthoritativeSource::Capco2016,
-        "FR-003: E002 diagnostic must cite CAPCO-2016; got: {:?}",
+        "diagnostic must cite CAPCO-2016; got: {:?}",
         e002.citation,
     );
 }
@@ -211,7 +210,7 @@ fn diagnostic_span_is_byte_precise() {
     assert_eq!(
         e002.span.as_str(src).unwrap(),
         "GBR",
-        "FR-002: E002's span must point at the REL-TO trigraph bytes"
+        "the diagnostic span must point at the REL-TO trigraph bytes"
     );
 }
 

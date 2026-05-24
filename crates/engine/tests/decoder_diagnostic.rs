@@ -113,7 +113,7 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
             // Attempts come from `generate_candidate_bytes` →
             // `String::into_bytes()`, so they are valid UTF-8 by
             // construction. Asserting the invariant via `expect`
-            // surfaces a Phase D contract break loudly instead of
+            // surfaces a decoder contract break loudly instead of
             // silently substituting a placeholder string and feeding
             // it to the strict parser later.
             let attempt_str = std::str::from_utf8(attempt)

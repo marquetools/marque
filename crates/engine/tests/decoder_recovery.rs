@@ -94,7 +94,7 @@ fn fuzzy_ambiguity_yields_zero_candidate() {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
             "decoder must not fabricate partial candidates when any \
-             token is fuzzy-ambiguous (FR-015 honesty invariant); \
+             token is fuzzy-ambiguous (honesty invariant); \
              got {} candidate(s)",
             candidates.len(),
         ),
@@ -197,7 +197,7 @@ fn unclassified_candidate_rejected_below_secret_floor() {
             candidates.len()
         ),
         Parsed::Unambiguous(m) => panic!(
-            "expected zero-candidate (FR-011), got {:?}",
+            "expected zero-candidate, got {:?}",
             effective_level(&m)
         ),
     }
@@ -412,8 +412,8 @@ fn missing_delimiter_secret_noforn_exdis_resolves() {
         rx.recognize(b"SECRET//NOFORN EXDIS", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "SECRET//NOFORN EXDIS must resolve unambiguously after issue #133 \
-             PR 3 missing-delimiter insertion lands"
+            "SECRET//NOFORN EXDIS must resolve unambiguously with \
+             missing-delimiter insertion (issue #133)"
         );
     };
     assert_eq!(
@@ -430,7 +430,7 @@ fn missing_delimiter_secret_noforn_exdis_resolves() {
     assert!(
         marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis),
         "EXDIS must land in non_ic_dissem after `//` is inserted before \
-         it (issue #133 PR 3 missing-delimiter insertion); attrs = {:?}",
+         it (issue #133 missing-delimiter insertion); attrs = {:?}",
         marking.0,
     );
 }
@@ -590,7 +590,7 @@ fn missing_delimiter_does_not_split_sbu_noforn() {
 #[test]
 fn missing_delimiter_sar_block_with_trailing_noforn_resolves() {
     // `SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB NOFORN`
-    // (issue #133 PR 5). The SAR grammar accepts any alphanumeric
+    // (issue #133). The SAR grammar accepts any alphanumeric
     // identifier, so the strict parser cleanly absorbs `NOFORN` as
     // the trailing sub-compartment of the `XR-XRA` compartment when
     // no `//` separator precedes it. The competing delim-inserted
@@ -809,7 +809,7 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #133 PR 7: stray-character `/X/` recovery
+// Issue #133: stray-character `/X/` recovery
 // ---------------------------------------------------------------------------
 //
 // The `try_collapse_stray_char_slash` pass walks the fuzzy-corrected
@@ -1078,7 +1078,7 @@ fn typo_tops_ecret_resolves_via_top_vocab_token_boundary() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #133 PR 9: REL TO structural repair (preprocessing)
+// Issue #133: REL TO structural repair (preprocessing)
 // ---------------------------------------------------------------------------
 //
 // Four structural patterns recovered as preprocessing in
@@ -1360,7 +1360,7 @@ fn recovers_ad2bcfe3ac0b0765_short_first_entry_resolves_to_usa() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #133 PR 2: position-aware short-token classification heuristic
+// Issue #133: position-aware short-token classification heuristic
 // ---------------------------------------------------------------------------
 //
 // The keyboard-proximity heuristic resolves 1- and 2-character typos
@@ -1508,7 +1508,7 @@ fn heuristic_does_not_fire_on_canonical_classification() {
 }
 
 // ---------------------------------------------------------------------------
-// SCI delimiter recovery (issue #198 — #133 PR 10)
+// SCI delimiter recovery (issue #198 — #133)
 // ---------------------------------------------------------------------------
 //
 // End-to-end verification that the preprocessing in
@@ -1659,8 +1659,8 @@ fn nato_u_portion_folds_to_nu() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO U)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO U)` must fold to `(//NU)` and decode \
-             to NatoUnclassified (T129 — decoder NATO longhand fold)"
+            "`(NATO U)` must fold to `(//NU)` and decode \
+             to NatoUnclassified (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1678,8 +1678,8 @@ fn nato_r_portion_folds_to_nr() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO R)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO R)` must fold to `(//NR)` and decode \
-             to NatoRestricted (T129 — decoder NATO longhand fold)"
+            "`(NATO R)` must fold to `(//NR)` and decode \
+             to NatoRestricted (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1697,8 +1697,8 @@ fn nato_c_portion_folds_to_nc() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO C)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO C)` must fold to `(//NC)` and decode \
-             to NatoConfidential (T129 — decoder NATO longhand fold)"
+            "`(NATO C)` must fold to `(//NC)` and decode \
+             to NatoConfidential (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1716,8 +1716,8 @@ fn nato_s_portion_folds_to_ns() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO S)` must fold to `(//NS)` and decode \
-             to NatoSecret (T129 — decoder NATO longhand fold)"
+            "`(NATO S)` must fold to `(//NS)` and decode \
+             to NatoSecret (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1736,8 +1736,8 @@ fn nato_ts_portion_folds_to_cts() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TS)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO TS)` must fold to `(//CTS)` and decode \
-             to CosmicTopSecret (T129 — decoder NATO longhand fold)"
+            "`(NATO TS)` must fold to `(//CTS)` and decode \
+             to CosmicTopSecret (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1756,8 +1756,8 @@ fn nato_secret_long_form_folds_to_ns() {
         rx.recognize(b"(NATO SECRET//NF)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO SECRET//NF)` must fold to `(//NS//NF)` \
-             and decode to NatoSecret (T129 — decoder NATO longhand fold)"
+            "`(NATO SECRET//NF)` must fold to `(//NS//NF)` \
+             and decode to NatoSecret (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1783,8 +1783,8 @@ fn nato_top_secret_long_form_folds_to_cts() {
         rx.recognize(b"(NATO TOP SECRET//NF)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO TOP SECRET//NF)` must fold to `(//CTS//NF)` \
-             and decode to CosmicTopSecret (T129 — decoder NATO longhand fold)"
+            "`(NATO TOP SECRET//NF)` must fold to `(//CTS//NF)` \
+             and decode to CosmicTopSecret (decoder NATO longhand fold)"
         );
     };
     assert_eq!(
@@ -1923,8 +1923,8 @@ fn nato_fold_emits_superseded_token_feature() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "T129 regression: `(NATO S)` must decode unambiguously after T129 fold \
-             (T130 audit-feature check)"
+            "`(NATO S)` must decode unambiguously after the NATO longhand fold \
+             (audit-feature check)"
         );
     };
     let provenance = marking
@@ -1971,7 +1971,7 @@ fn nato_in_second_segment_yields_decode_miss() {
         Parsed::Ambiguous { ref candidates } => {
             // Non-zero candidates: decoder manufactured a partial or Conflict result.
             panic!(
-                "FIX-2 regression: `(S//NATO C)` must return zero-candidate decode-miss \
+                "`(S//NATO C)` must return zero-candidate decode-miss \
                  (§H.7 FGI transmutation domain); got {} candidate(s): {:?}",
                 candidates.len(),
                 candidates,
@@ -1981,7 +1981,7 @@ fn nato_in_second_segment_yields_decode_miss() {
             // Any Unambiguous result means the fold or decoder fabricated a
             // marking from a cross-segment NATO input — wrong.
             panic!(
-                "FIX-2 regression: `(S//NATO C)` must not produce an Unambiguous result; \
+                "`(S//NATO C)` must not produce an Unambiguous result; \
                  got marking = {:?}",
                 marking.0,
             );
@@ -2027,7 +2027,7 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
                     // Expected canonical bare-class outcome.
                 }
                 other => panic!(
-                    "T129 regression: `(//nato secret atomal//nf)` must recover with \
+                    "`(//nato secret atomal//nf)` must recover with \
                      canonical bare class NatoSecret, got {other:?}"
                 ),
             }
@@ -2038,26 +2038,26 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
                 .any(|a| matches!(a, marque_ism::AeaMarking::Atomal(_)));
             assert!(
                 has_atomal,
-                "T129 regression: ATOMAL companion must be written into the AEA \
+                "ATOMAL companion must be written into the AEA \
                  axis when the legacy `NATO SECRET ATOMAL` form is recovered \
                  (CAPCO-2016 §H.7 p122)"
             );
         }
         other => panic!(
-            "T129 regression: `(//nato secret atomal//nf)` must decode unambiguously, \
+            "`(//nato secret atomal//nf)` must decode unambiguously, \
              got {other:?}"
         ),
     }
 }
 
 // ---------------------------------------------------------------------------
-// FIX-1 (T130 banner half): banner-form NATO fold (#260 unimplemented half)
+// Banner-form NATO fold (#260)
 // ---------------------------------------------------------------------------
 //
-// Before FIX-1, `try_nato_fold` returned None for Banner kind, so inputs
+// Previously `try_nato_fold` returned None for Banner kind, so inputs
 // like `NATO S//NOFORN` (banner abbreviation) failed because the strict parser
 // only accepts the full banner forms (`NATO SECRET`, `COSMIC TOP SECRET`).
-// FIX-1 extends the fold to handle Banner kind, expanding abbreviations to
+// The fold now handles Banner kind, expanding abbreviations to
 // their canonical banner long forms.
 //
 // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register); §A.6 p15.
@@ -2072,7 +2072,7 @@ fn nato_u_banner_folds_to_nato_unclassified() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"NATO U//NF\n", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "FIX-1 regression: `NATO U//NF` must fold to `//NATO UNCLASSIFIED//NF` \
+            "`NATO U//NF` must fold to `//NATO UNCLASSIFIED//NF` \
              and decode to NatoUnclassified (banner NATO fold, #260)"
         );
     };
@@ -2096,7 +2096,7 @@ fn nato_r_banner_folds_to_nato_restricted() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"NATO R//NF", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "FIX-1 regression: `NATO R//NF` must fold to `//NATO RESTRICTED//NF` \
+            "`NATO R//NF` must fold to `//NATO RESTRICTED//NF` \
              and decode to NatoRestricted (banner NATO fold, #260)"
         );
     };
@@ -2120,7 +2120,7 @@ fn nato_c_banner_folds_to_nato_confidential() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"NATO C//NF", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "FIX-1 regression: `NATO C//NF` must fold to `//NATO CONFIDENTIAL//NF` \
+            "`NATO C//NF` must fold to `//NATO CONFIDENTIAL//NF` \
              and decode to NatoConfidential (banner NATO fold, #260)"
         );
     };
@@ -2144,7 +2144,7 @@ fn nato_s_banner_folds_to_nato_secret() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"NATO S//NF", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "FIX-1 regression: `NATO S//NF` must fold to `//NATO SECRET//NF` \
+            "`NATO S//NF` must fold to `//NATO SECRET//NF` \
              and decode to NatoSecret (banner NATO fold, #260)"
         );
     };
@@ -2169,7 +2169,7 @@ fn nato_ts_banner_folds_to_cosmic_top_secret() {
     let Parsed::Unambiguous(marking) = rx.recognize(b"NATO TS//NF", 0, &*TEST_SCHEME, &deep_cx())
     else {
         panic!(
-            "FIX-1 regression: `NATO TS//NF` must fold to `//COSMIC TOP SECRET//NF` \
+            "`NATO TS//NF` must fold to `//COSMIC TOP SECRET//NF` \
              and decode to CosmicTopSecret (banner NATO fold, #260)"
         );
     };

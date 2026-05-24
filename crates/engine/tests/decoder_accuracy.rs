@@ -392,7 +392,7 @@ fn unambiguous_recognition_score(m: &CapcoMarking) -> f32 {
     m.1.as_ref()
         .expect(
             "DecoderRecognizer must populate DecoderProvenance on \
-             every Parsed::Unambiguous output (Phase D contract)",
+             every Parsed::Unambiguous output (decoder contract)",
         )
         .recognition_score()
 }
@@ -408,7 +408,7 @@ fn run_sweep() -> AccuracyReport {
     assert!(
         cases.len() >= MIN_FIXTURE_COUNT,
         "decoder accuracy harness requires ≥{MIN_FIXTURE_COUNT} fixtures \
-         (SC-004 floor); got {} — regenerate the fixture tree with the \
+         (decoder-accuracy floor); got {} — regenerate the fixture tree with the \
          `--min-cases` flag",
         cases.len(),
     );
@@ -523,14 +523,14 @@ fn run_sweep() -> AccuracyReport {
 /// always-on and catches any real accuracy regression against the
 /// 4,746-fixture measured baseline (62% floor).
 #[test]
-#[ignore = "SC-004 not met on 4,746-fixture corpus (63.2%) — \
+#[ignore = "decoder-accuracy target not met on 4,746-fixture corpus (63.2%) — \
             remaining gaps tracked in #246, #247, #180; \
             re-enable when those close"]
 fn resolution_rate_at_0_85() {
     let report = run_sweep();
     assert!(
         report.aggregate_rate >= AGGREGATE_FLOOR_TARGET,
-        "SC-004 target NOT YET MET: decoder resolved {}/{} fixtures \
+        "decoder-accuracy target NOT YET MET: decoder resolved {}/{} fixtures \
          ({:.1}%) at recognition ≥{} — below the {:.0}% target.\n\n\
          Per-class breakdown:\n{}\n\n\
          First {} unresolved sample(s):\n{}",
@@ -627,7 +627,7 @@ fn resolution_rate_per_class_does_not_regress_inner(report: &AccuracyReport) {
 
     assert!(
         violations.is_empty() && !structural_problems,
-        "T057 per-class gate failed (accuracy regression and/or \
+        "per-class gate failed (accuracy regression and/or \
          fixture/floor class-list mismatch).\n\n\
          To resolve:\n\
            - If a class regressed below its floor: restore the \
@@ -745,7 +745,7 @@ fn expected_form_parses_strictly() {
     assert!(
         unparseable.is_empty(),
         "{} fixture(s) have an `expected` form that fails strict parse — \
-         the SC-004 resolution check is vacuously unsatisfiable for \
+         the decoder-accuracy resolution check is vacuously unsatisfiable for \
          these. Either the fixture is genuinely outside the strict \
          recognizer's coverage (regenerate it) or the strict recognizer \
          has lost coverage of a form it used to handle (regression \
