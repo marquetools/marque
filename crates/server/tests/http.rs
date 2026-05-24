@@ -82,9 +82,30 @@ async fn baseline_lint_without_override_is_ok() {
     assert_eq!(
         resp.headers()
             .get(axum::http::header::X_FRAME_OPTIONS)
-            .map(|v| v.to_str().unwrap()),
+            .and_then(|v| v.to_str().ok()),
         Some("DENY"),
         "200 response must contain X-Frame-Options: DENY"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::X_CONTENT_TYPE_OPTIONS)
+            .and_then(|v| v.to_str().ok()),
+        Some("nosniff"),
+        "200 response must contain X-Content-Type-Options: nosniff"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::CONTENT_SECURITY_POLICY)
+            .and_then(|v| v.to_str().ok()),
+        Some("default-src 'none'; frame-ancestors 'none';"),
+        "200 response must contain Content-Security-Policy"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::STRICT_TRANSPORT_SECURITY)
+            .and_then(|v| v.to_str().ok()),
+        Some("max-age=63072000; includeSubDomains"),
+        "200 response must contain Strict-Transport-Security"
     );
 }
 
@@ -388,9 +409,30 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
             .get(axum::http::header::HeaderName::from_static(
                 "x-frame-options"
             ))
-            .map(|v| v.to_str().unwrap()),
+            .and_then(|v| v.to_str().ok()),
         Some("DENY"),
         "413 response must contain X-Frame-Options: DENY"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::X_CONTENT_TYPE_OPTIONS)
+            .and_then(|v| v.to_str().ok()),
+        Some("nosniff"),
+        "413 response must contain X-Content-Type-Options: nosniff"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::CONTENT_SECURITY_POLICY)
+            .and_then(|v| v.to_str().ok()),
+        Some("default-src 'none'; frame-ancestors 'none';"),
+        "413 response must contain Content-Security-Policy"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::STRICT_TRANSPORT_SECURITY)
+            .and_then(|v| v.to_str().ok()),
+        Some("max-age=63072000; includeSubDomains"),
+        "413 response must contain Strict-Transport-Security"
     );
 }
 
