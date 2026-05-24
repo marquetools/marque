@@ -2,16 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Table-level smoke tests for the build.rs JSON codepath
-//! (Phase 5 PR-1, tasks T080 / T081 / T082).
+//! Table-level smoke tests for the build.rs JSON codepath.
 //!
 //! These tests run against the raw `marque-ism::generated::vocabulary`
 //! tables, *not* the `marque-scheme::Vocabulary<S>` trait surface —
-//! the trait impl lives in `marque-capco` (Phase 5 PR-2 task T084),
-//! and `marque-ism` cannot reference scheme types per Constitution VII.
+//! the trait impl lives in `marque-capco`, and `marque-ism` cannot
+//! reference scheme types per Constitution VII.
 //!
-//! The trait-level tests (T071 / T072 / T073 / T074 / T077) land in
-//! `crates/capco/tests/vocabulary.rs` once the impl is in place.
+//! The trait-level tests live in `crates/capco/tests/vocabulary.rs`.
 
 use marque_ism::generated::vocabulary::{
     CVE_ATOMIC_ENERGY_MARKINGS, CVE_CLASSIFICATION_ALL, CVE_DISSEM, CVE_FILES, CVE_SCI_CONTROLS,

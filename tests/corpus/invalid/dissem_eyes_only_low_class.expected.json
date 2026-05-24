@@ -1,0 +1,7 @@
+{
+  "_note": "CAPCO-2016 §H.8 p152 (class-floor/EYES-ONLY) + §H.8 p157 (E064 EYES→REL TO conversion). Fires E064 + E058 together.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "portion.dissem.eyes-only-convert-to-rel-to"}, "span": {"start": 14, "end": 27}},
+    {"rule": {"scheme": "capco", "predicate_id": "banner.dissem.floor-eyes-only"}, "span": {"start": 14, "end": 27}}
+  ]
+}

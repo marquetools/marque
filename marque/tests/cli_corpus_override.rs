@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! CLI integration tests for `--corpus-override` (Phase 4 PR-5, T065).
+//! CLI integration tests for `--corpus-override`.
 //!
 //! `assert_cmd` builds the `marque` binary at test runtime against the
 //! features active in the workspace. This file is gated on

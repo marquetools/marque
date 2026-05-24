@@ -25,7 +25,7 @@
 //! Reference baseline: x86_64 ≥ 3.0 GHz single-thread, warm cache,
 //! `--release` build, no tracing subscriber. Same shape as
 //! `lint_latency.rs` so a regression gate against it composes cleanly
-//! with the existing SC-001 / SC-002 gates.
+//! with the existing interactive- and decoder-path latency gates.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
@@ -33,8 +33,8 @@ use marque_engine::{Engine, LintOptions};
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-/// Build the same 10 KB representative input the SC-001 bench uses,
-/// so the deadline-overhead measurement composes against the same
+/// Build the same 10 KB representative input the interactive-latency
+/// bench uses, so the deadline-overhead measurement composes against the same
 /// input shape (mixed valid markings + prose). Sharing the fixture
 /// definition between benches would create a cross-bench dependency;
 /// duplicating ~30 lines is cheaper than the build-graph entanglement.

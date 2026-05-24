@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T088 — sync gate for the WASM parity corpus artifact.
+//! Sync gate for the WASM parity corpus artifact.
 //!
 //! Runs natively (host target) and verifies that
 //! `tests/parity_corpus.json` is in sync with what `Engine::lint`
@@ -31,7 +31,7 @@
 
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_rules::Diagnostic;
+use marque_rules::{Diagnostic, RuleId};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -41,7 +41,7 @@ use std::sync::OnceLock;
 // that the artifact format does not silently change when the WASM crate's
 // internals refactor. The native parity test (`native_parity.rs`) already
 // asserts that `marque_wasm::lint_native` produces the same NDJSON shape
-// as this projection on the same corpus, so the SC-008 chain is:
+// as this projection on the same corpus, so the parity chain is:
 //
 //   Engine::lint  ==  marque_wasm::lint_native (native)  ==  parity_corpus.json
 //                 ==  marque_wasm::lint_native (wasm32, via parity.rs)
@@ -52,12 +52,38 @@ use std::sync::OnceLock;
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for byte-identical NDJSON.
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
-    message: &'a str,
-    citation: &'a str,
+    message: MessageJson<'a>,
+    citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors the
+    /// CLI and WASM emitters' `recognized_canonical` field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MessageJson<'a> {
+    template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -69,7 +95,8 @@ struct SpanJson {
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     source: &'static str,
-    replacement: &'a str,
+    intent_kind: &'static str,
+    replacement: Option<&'a str>,
     confidence: f32,
     migration_ref: Option<&'a str>,
 }
@@ -84,22 +111,46 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — parity-corpus mirror (issue #699).
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: fix_source_str(f.source),
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: match &f.replacement {
+                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    _ => "Unknown",
+                },
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
+                intent_kind: "TextCorrection",
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
+            }),
+            (None, None) => None,
+        },
+        recognized_canonical,
     }
 }
 
@@ -139,7 +190,7 @@ struct ParityEntry {
     /// Corpus subdir: `invalid` or `valid`. Prose corpus is intentionally
     /// excluded — it exists at 125KB which would dominate the artifact
     /// size, and `native_parity.rs::lint_parity_prose_fixtures` already
-    /// exercises it natively. SC-008 still holds because the algorithmic
+    /// exercises it natively. Parity still holds because the algorithmic
     /// equivalence between `Engine::lint` and `marque_wasm::lint_native`
     /// is what the prose native parity catches; the WASM-target parity
     /// gate runs on the smaller corpus and catches WASM-vs-native

@@ -90,10 +90,10 @@ If `CVEnumISMDissem.xml` were ever empty (bad schema copy, partial ODNI update),
 
 On a duplicate-ident collision the message is `"CVE values produce duplicate identifier {ident:?} (one of them is {value:?}). to_rust_ident needs disambiguation."` — but it only names one of the two colliding values, so a future maintainer can't see which pair collided. Suggested fix: change `seen` from `HashSet<String>` to `HashMap<String, String>` mapping `ident → first_value`, and include both values in the panic message.
 
-**M-3 — `TRIGRAPHS` slice is unsorted so `is_trigraph` uses linear scan**
+**M-3 — `TRIGRAPHS` slice is unsorted so `is_country_code` uses linear scan**
 `crates/ism/build.rs` (`parse_xsd_trigraphs`) + `token_set.rs:44`
 
-The sister `ALL_CVE_TOKENS` went through a `BTreeSet` so `canonicalize` could use `binary_search`. `TRIGRAPHS` was left in XSD document order and `is_trigraph` still calls `.contains()` (~340-entry linear scan per token in parsed marking). The fix is symmetrical to H-8 from the first-pass review: sort at emit time, use `binary_search`. Low hot-path impact today but opportunistic cleanup.
+The sister `ALL_CVE_TOKENS` went through a `BTreeSet` so `canonicalize` could use `binary_search`. `TRIGRAPHS` was left in XSD document order and `is_country_code` still calls `.contains()` (~340-entry linear scan per token in parsed marking). The fix is symmetrical to H-8 from the first-pass review: sort at emit time, use `binary_search`. Low hot-path impact today but opportunistic cleanup.
 
 **M-4 — Threshold filter path has no test coverage at the threshold boundary**
 `crates/engine/src/engine.rs` (tests)

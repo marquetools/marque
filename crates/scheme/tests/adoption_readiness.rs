@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase-F readiness compile test (Phase 5 PR-3, task T089b).
+//! Scheme-adoption readiness compile test.
 //!
-//! Defines a minimal `StubScheme` that exercises every Phase-E trait
-//! the scheme-adapter contract publishes:
+//! Defines a minimal `StubScheme` that exercises every trait the
+//! scheme-adapter contract publishes:
 //!
 //! - [`MarkingScheme`] — the central scheme trait.
 //! - [`Vocabulary<S>`] — per-token metadata accessors.
@@ -17,19 +17,19 @@
 //!
 //! ## What this test asserts
 //!
-//! 1. The trait surface is **closed** — every Phase-E trait can be
-//!    implemented against a fresh scheme without any engine-side
-//!    dependency, no compile-error escapes, no missing default impls.
+//! 1. The trait surface is **closed** — every trait can be implemented
+//!    against a fresh scheme without any engine-side dependency, no
+//!    compile-error escapes, no missing default impls.
 //! 2. The scheme crate is **self-contained** — this file imports only
 //!    from `marque_scheme` (and `std`). Constitution VII forbids
 //!    `marque-engine` / `marque-core` / `marque-rules` /
 //!    `marque-ism` / `marque-capco` from this side of the dependency
 //!    graph; an accidental import of any of those would compile-fail.
-//! 3. SC-010 pre-verification — Phase F (a second scheme like CUI,
-//!    NATO, or a partner-national framework) lands without engine
-//!    edits. If a future trait change inadvertently requires adapter
-//!    crates to reach into engine internals, this file stops compiling
-//!    and the regression is caught before Phase F starts.
+//! 3. Adoption-readiness pre-verification — a future second scheme (CUI,
+//!    NATO, or a partner-national framework) can land without engine
+//!    edits. If a trait change inadvertently requires adapter crates to
+//!    reach into engine internals, this file stops compiling and the
+//!    regression is caught early.
 //!
 //! ## What this test does NOT assert
 //!
@@ -42,17 +42,20 @@
 
 use marque_scheme::ambiguity::{Candidate, Parsed};
 use marque_scheme::category::{Category, CategoryId, TokenId};
+use marque_scheme::citation::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 use marque_scheme::codec::{Codec, CodecError};
 use marque_scheme::constraint::{Constraint, TokenRef};
-use marque_scheme::lattice::{BoundedLattice, Lattice};
+use marque_scheme::lattice::{
+    BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+};
 use marque_scheme::page_rewrite::{CategoryAction, CategoryPredicate, PageRewrite};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::scheme::MarkingScheme;
 use marque_scheme::scope::Scope;
 use marque_scheme::template::Template;
 use marque_scheme::vocabulary::{
-    Authority, Deprecation, OwnerProducer, OwnerProducerKind, PointOfContact, TokenMetadataFull,
-    Vocabulary,
+    Authority, Deprecation, FormSet, OwnerProducer, OwnerProducerKind, PointOfContact,
+    TokenMetadataFull, Vocabulary,
 };
 
 // ---------------------------------------------------------------------------
@@ -65,12 +68,15 @@ struct StubMarking {
     has_token: bool,
 }
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, other: &Self) -> Self {
         Self {
             has_token: self.has_token || other.has_token,
         }
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, other: &Self) -> Self {
         Self {
             has_token: self.has_token && other.has_token,
@@ -78,10 +84,13 @@ impl Lattice for StubMarking {
     }
 }
 
-impl BoundedLattice for StubMarking {
+impl BoundedJoinSemilattice for StubMarking {
     fn bottom() -> Self {
         Self { has_token: false }
     }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
     fn top() -> Self {
         Self { has_token: true }
     }
@@ -119,6 +128,18 @@ struct StubScheme {
     page_rewrites: [PageRewrite<StubScheme>; 1],
 }
 
+// Sentinel test citation for the readiness fixture. Routes through
+// `AuthoritativeSource::EngineInternal` so Display renders
+// `[engine-internal]` and the value carries no false CAPCO §-claim.
+const STUB_CITATION: Citation = Citation::new(
+    AuthoritativeSource::EngineInternal,
+    SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+
 impl StubScheme {
     fn new() -> Self {
         Self {
@@ -126,14 +147,15 @@ impl StubScheme {
                 left: TokenRef::Token(STUB_TOKEN),
                 right: TokenRef::Token(OTHER_TOKEN),
                 // `name` is the stable identifier (rule-style id);
-                // `label` is the authoritative-source citation
-                // (e.g. "CAPCO-2016 §H.4"). Keeping them
-                // semantically distinct in the readiness fixture
-                // mirrors what every real scheme does — Phase F
-                // adapters that copy this stub get the right shape
-                // by default rather than collapsing the two fields.
+                // `label` is the typed authoritative-source citation.
+                // Keeping them semantically distinct in the readiness
+                // fixture mirrors what every real scheme does — a future
+                // scheme adapter that copies this stub gets the right
+                // shape by default rather than collapsing the two fields.
                 name: "stub/conflicts",
-                label: "StubScheme readiness fixture (no real citation)",
+                label: STUB_CITATION,
+                severity: None,
+                span_anchor: None,
             }],
             // `PageRewrite::declarative` is the const-friendly
             // constructor. The trigger / action arms here are the
@@ -143,7 +165,7 @@ impl StubScheme {
             // check.
             page_rewrites: [PageRewrite::declarative(
                 "stub/noop-rewrite",
-                "StubScheme readiness fixture",
+                STUB_CITATION,
                 CategoryPredicate::Contains {
                     category: STUB_CATEGORY,
                     token: STUB_TOKEN,
@@ -168,6 +190,9 @@ impl MarkingScheme for StubScheme {
     type Token = TokenId;
     type Marking = StubMarking;
     type ParseError = StubParseError;
+    type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "stub"
@@ -212,6 +237,21 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, m: &Self::Marking) -> String {
         if m.has_token { "STUB" } else { "" }.to_string()
     }
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        ctx: &marque_scheme::RenderContext,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        // Degenerate delegation — preserves byte-identity with the
+        // existing `render_portion` / `render_banner` overrides
+        // above. `Scope::Diff` rejects per the trait contract.
+        match ctx.scope {
+            Scope::Portion => out.write_str(&self.render_portion(m)),
+            Scope::Page | Scope::Document => out.write_str(&self.render_banner(m)),
+            Scope::Diff => Err(core::fmt::Error),
+        }
+    }
 
     // `evaluate_custom` is intentionally NOT overridden. The trait
     // default (returning `Vec::new()`) is sufficient for any scheme
@@ -219,8 +259,8 @@ impl MarkingScheme for StubScheme {
     // declarative set (`Forbids`, `Requires`, `Conflicts`, `Implies`,
     // `Supersedes`, `OneOf`). `StubScheme` declares one
     // `Constraint::Conflicts` (above) and nothing custom, so the
-    // default holds. Phase F adopters whose schemes need bespoke
-    // constraint shapes (e.g., a NATO scheme that needs to express
+    // default holds. A scheme that needs bespoke constraint shapes
+    // (e.g., a NATO scheme that needs to express
     // "this marking forbids a non-token property of the document
     // body") override `evaluate_custom` — see
     // `crates/scheme/tests/codec_surface.rs::MockScheme` for the
@@ -267,6 +307,17 @@ static STUB_METADATA: TokenMetadataFull<TokenId> = TokenMetadataFull {
     banner_abbreviation: None,
 };
 
+// The StubScheme's single sentinel token returns a `FormSet` whose
+// three canonical fields are all `"STUB"`. The default projections in
+// the `Vocabulary` trait handle `portion_form` / `banner_form` /
+// `banner_abbreviation` automatically.
+static STUB_FORM_SET: FormSet = FormSet {
+    portion: "STUB",
+    banner_title: "STUB",
+    banner_abbreviation: None,
+    recognized_aliases: &[],
+};
+
 impl Vocabulary<StubScheme> for StubScheme {
     fn authority(&self, _token: &TokenId) -> &'static Authority {
         &STUB_AUTHORITY
@@ -280,17 +331,18 @@ impl Vocabulary<StubScheme> for StubScheme {
     fn deprecation(&self, _token: &TokenId) -> Option<&'static Deprecation<TokenId>> {
         None
     }
-    fn portion_form(&self, _token: &TokenId) -> &'static str {
-        STUB_METADATA.portion_form
-    }
-    fn banner_form(&self, _token: &TokenId) -> &'static str {
-        STUB_METADATA.banner_form
-    }
-    fn banner_abbreviation(&self, _token: &TokenId) -> Option<&'static str> {
-        STUB_METADATA.banner_abbreviation
+    fn forms(&self, _token: &TokenId) -> &'static FormSet {
+        &STUB_FORM_SET
     }
     fn metadata(&self, _token: &TokenId) -> &'static TokenMetadataFull<TokenId> {
         &STUB_METADATA
+    }
+    fn shape_admits(&self, _category: CategoryId, _bytes: &[u8]) -> bool {
+        // Stub scheme has no admissible bytes — returning `false`
+        // unconditionally satisfies the totality contract and
+        // demonstrates the trait surface compiles for a second
+        // scheme without dragging in CAPCO-specific machinery.
+        false
     }
 }
 
@@ -301,7 +353,13 @@ impl Vocabulary<StubScheme> for StubScheme {
 struct StubRecognizer;
 
 impl Recognizer<StubScheme> for StubRecognizer {
-    fn recognize(&self, _bytes: &[u8], _cx: &ParseContext) -> Parsed<StubMarking> {
+    fn recognize(
+        &self,
+        _bytes: &[u8],
+        _offset: usize,
+        _scheme: &StubScheme,
+        _cx: &ParseContext,
+    ) -> Parsed<StubMarking> {
         Parsed::Ambiguous {
             candidates: Vec::<Candidate<StubMarking>>::new(),
         }
@@ -332,8 +390,9 @@ impl Codec<StubScheme> for StubCodec {
             // exercising it here keeps the readiness compile test
             // honest about the full surface.
             //
-            // **G13 (per `CodecError` type-level docs):** `observed`
-            // MUST NOT contain any substring of the input. A real
+            // **Audit content-ignorance (per `CodecError` type-level
+            // docs):** `observed` MUST NOT contain any substring of the
+            // input. A real
             // codec reads the schema-version identifier from a
             // known-safe location in the decoded structure (a
             // `version=` attribute, a `<schema>` element, etc.) and
@@ -341,7 +400,7 @@ impl Codec<StubScheme> for StubCodec {
             // bytes via `String::from_utf8_lossy(bytes)`. The stub
             // has no such structure to read from, so the placeholder
             // `"<unknown>"` stands in for "couldn't determine which
-            // schema the input claimed". Phase F adopters who copy
+            // schema the input claimed". A scheme adapter that copies
             // this stub MUST replace this branch with a real
             // schema-version extractor before shipping.
             Err(CodecError::SchemaMismatch {
@@ -422,7 +481,7 @@ fn second_scheme_builds_without_engine_edits() {
     // Recognizer surface — through a `dyn` boxed object so the
     // dynamic-dispatch path is exercised too.
     let r: Box<dyn Recognizer<StubScheme>> = Box::new(recognizer);
-    let parsed = r.recognize(b"anything", &ParseContext::default());
+    let parsed = r.recognize(b"anything", 0, &scheme, &ParseContext::default());
     assert!(matches!(parsed, Parsed::Ambiguous { ref candidates } if candidates.is_empty()));
 
     // Codec surface — encode + decode + every CodecError variant.

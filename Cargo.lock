@@ -102,9 +102,9 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "assert_cmd"
-version = "2.2.2"
+version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2aa3a22042e45de04255c7bf3626e239f450200fd0493c1e382263544b20aea6"
+checksum = "39bae1d3fa576f7c6519514180a72559268dd7d1fe104070956cb687bc6673bd"
 dependencies = [
  "anstyle",
  "bstr",
@@ -496,6 +496,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "enumflags2"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
+dependencies = [
+ "enumflags2_derive",
+]
+
+[[package]]
+name = "enumflags2_derive"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -911,6 +931,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "landlock"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
+dependencies = [
+ "enumflags2",
+ "libc",
+ "thiserror",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -961,6 +992,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "blake3",
  "clap",
  "humantime",
  "is-terminal",
@@ -970,6 +1002,8 @@ dependencies = [
  "marque-extract",
  "marque-ism",
  "marque-rules",
+ "marque-scheme",
+ "secrecy",
  "serde",
  "serde_json",
  "tempfile",
@@ -983,6 +1017,7 @@ name = "marque-capco"
 version = "0.2.1"
 dependencies = [
  "aho-corasick",
+ "blake3",
  "insta",
  "marque-config",
  "marque-core",
@@ -993,8 +1028,14 @@ dependencies = [
  "marque-test-utils",
  "phf",
  "proptest",
+ "secrecy",
+ "serde",
  "serde_json",
+ "smallvec",
+ "smol_str",
+ "static_assertions",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1016,8 +1057,11 @@ version = "0.2.1"
 dependencies = [
  "aho-corasick",
  "marque-ism",
+ "marque-scheme",
  "memchr",
  "serde",
+ "smallvec",
+ "smol_str",
  "thiserror",
 ]
 
@@ -1026,6 +1070,7 @@ name = "marque-engine"
 version = "0.2.1"
 dependencies = [
  "aho-corasick",
+ "blake3",
  "criterion",
  "futures",
  "futures-core",
@@ -1040,12 +1085,17 @@ dependencies = [
  "marque-test-utils",
  "proptest",
  "recoco-utils",
+ "secrecy",
  "serde",
  "serde_json",
+ "smallvec",
+ "smol_str",
+ "static_assertions",
  "thiserror",
  "tokio",
  "tracing",
  "web-time",
+ "zeroize",
 ]
 
 [[package]]
@@ -1069,11 +1119,15 @@ dependencies = [
  "ism",
  "ism-ismcat",
  "jiff",
+ "marque-scheme",
  "memchr",
  "proptest",
  "quick-xml",
  "serde",
  "serde_json",
+ "smallvec",
+ "smol_str",
+ "static_assertions",
  "toml",
  "xmloxide",
 ]
@@ -1082,8 +1136,14 @@ dependencies = [
 name = "marque-rules"
 version = "0.2.1"
 dependencies = [
+ "blake3",
  "marque-ism",
+ "marque-scheme",
+ "proptest",
+ "secrecy",
  "serde",
+ "smallvec",
+ "smol_str",
  "static_assertions",
  "thiserror",
 ]
@@ -1092,7 +1152,10 @@ dependencies = [
 name = "marque-scheme"
 version = "0.2.1"
 dependencies = [
+ "proptest",
  "serde",
+ "smallvec",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1101,10 +1164,15 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "form_urlencoded",
+ "landlock",
  "marque-capco",
  "marque-config",
  "marque-engine",
  "marque-extract",
+ "marque-ism",
+ "marque-rules",
+ "marque-scheme",
+ "secrecy",
  "serde",
  "serde_json",
  "thiserror",
@@ -1127,6 +1195,7 @@ dependencies = [
 name = "marque-wasm"
 version = "0.2.0"
 dependencies = [
+ "blake3",
  "console_error_panic_hook",
  "humantime",
  "marque-capco",
@@ -1135,6 +1204,8 @@ dependencies = [
  "marque-engine",
  "marque-ism",
  "marque-rules",
+ "marque-scheme",
+ "secrecy",
  "serde",
  "serde_json",
  "spinning_top",
@@ -1431,9 +1502,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.40.0"
+version = "0.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b7315c86b26aaef0321fba33c9dcc160da659c6a9d278f0f6a5656d6561c03b"
+checksum = "958f21e8e7ceb5a1aa7fa87fab28e7c75976e0bfe7e23ff069e0a260f894067d"
 dependencies = [
  "memchr",
 ]
@@ -1615,6 +1686,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1754,6 +1834,12 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "smol_str"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9676b89cd56310a87b93dec47b11af744f34d5fc9f367b829474eec0a891350d"
 
 [[package]]
 name = "socket2"
@@ -1957,9 +2043,9 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.6.10"
+version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68d6fdd9f81c2819c9a8b0e0cd91660e7746a8e6ea2ba7c6b2b057985f6bcb51"
+checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "bitflags",
  "bytes",
@@ -2440,6 +2526,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "zeroize"
+version = "1.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
 
 [[package]]
 name = "zmij"

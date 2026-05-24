@@ -1,6 +1,6 @@
 {
   "diagnostics": [
-    {"rule": "E031", "span": {"start": 30, "end": 30}}
+    {"rule": {"scheme": "capco", "predicate_id": "banner.banner-rollup.sar-portions-roll-up"}, "span": {"start": 30, "end": 30}}
   ],
   "_note": "E031 banner roll-up: portion on line 1 carries SAR-CD; banner on line 2 has only SAR-BP. Expect E031 at the end of the banner's SAR block (zero-width insertion span, start == end == byte after the last SAR token). T035c-19 PR-C follow-up changed E031's fix shape from whole-block-rewrite to end-insertion so it coexists with E028/E029 fixes under the engine's overlap guard."
 }

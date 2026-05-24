@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: cargo
     steps:
-      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -62,7 +62,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: Install release tooling
         run: cargo install cargo-smart-release git-cliff --locked
@@ -71,7 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: rust-lang/crates-io-auth-action@1d2b8f3552d69b407d7790fa3ec7c39041305a61
+      - uses: rust-lang/crates-io-auth-action@4c854e89b5a69306bb9a1abf09660d9cdb3a1e16
         id: auth
       - name: Publish crates
         env:
@@ -232,7 +232,7 @@ jobs:
 
       - name: Create GitHub release
         if: inputs.dry-run == false
-        uses: softprops/action-gh-release@403a5240f3837fa857f642062e05aad6bb3391ca
+        uses: softprops/action-gh-release@2bc819c87a4e63a4ac4e581a02085318bd49975a
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}

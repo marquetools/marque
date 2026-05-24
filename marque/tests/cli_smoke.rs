@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 — CLI smoke tests for `marque check`.
+//! CLI smoke tests for `marque check`.
 //!
 //! Spawns the compiled binary against the canonical corpus fixtures and
-//! asserts stdout, stderr, and exit code match `contracts/cli.md`.
+//! asserts stdout, stderr, and exit code match the documented contract.
 
 use assert_cmd::Command;
 use std::path::PathBuf;
@@ -34,15 +34,23 @@ fn check_clean_banner_exits_zero() {
 }
 
 #[test]
-fn check_invalid_banner_exits_one_with_e001() {
+fn check_invalid_banner_exits_one_with_e002() {
+    // `missing_usa_trigraph.txt` makes the rel-to-missing-usa rule fire
+    // (REL TO missing USA, §H.8 p150–151) and the check exits 1.
     let assert = marque()
         .args(["check", "--format", "json"])
-        .arg(fixture("invalid/banner_abbrev.txt"))
+        .arg(fixture("invalid/missing_usa_trigraph.txt"))
         .assert()
         .code(1);
     let output = assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"rule\":\"E001\""), "got: {stdout}");
+    // The `rule` field is a structured 2-tuple object on the wire. The
+    // diagnostic NDJSON path (`diagnostic_to_json` → direct serde
+    // serialization) emits fields in struct-definition order: `scheme`
+    // first, `predicate_id` second.
+    let e002_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
+    assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
     assert!(stdout.contains("\"span\""), "got: {stdout}");
 }
 
@@ -54,29 +62,37 @@ fn check_unknown_token_fixture_fires_e008() {
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E008\""));
+    // The unrecognized-token rule:
+    // `("capco", "marking.metadata.unrecognized-token")`.
+    let e008_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"marking.metadata.unrecognized-token"}"#;
+    assert!(stdout.contains(e008_rule_fragment), "got: {stdout}");
 }
 
 #[test]
 fn check_stdin_dash_sentinel_works() {
     let assert = marque()
         .args(["check", "--format", "json", "-"])
-        .write_stdin("TOP SECRET//SI//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E001\""));
+    let e002_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
+    assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
 }
 
 #[test]
 fn check_stdin_default_when_no_paths() {
     let assert = marque()
         .args(["check", "--format", "json"])
-        .write_stdin("TOP SECRET//SI//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E001\""));
+    let e002_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
+    assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
 }
 
 #[test]
@@ -158,7 +174,7 @@ fn no_color_env_var_suppresses_ansi() {
     // With NO_COLOR set, the human format must not contain ANSI escapes.
     let assert = marque()
         .args(["check", "--format", "human"])
-        .arg(fixture("invalid/banner_abbrev.txt"))
+        .arg(fixture("invalid/missing_usa_trigraph.txt"))
         .env("NO_COLOR", "1")
         .assert()
         .code(1);

@@ -1,0 +1,6 @@
+{
+  "_note": "Issue #677: DEA SENSITIVE (banner title) appears in a portion mark; canonical portion form is DSEN. CAPCO-2016 §C.1 p25 line 503 + §G.1 Table 4 p36.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "portion.metadata.uses-banner-form"}, "span": {"start": 4, "end": 17}}
+  ]
+}

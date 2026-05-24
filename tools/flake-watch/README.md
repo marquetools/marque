@@ -5,19 +5,15 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # flake-watch — quarantine queue for non-deterministic tests
 
-**FR**: FR-051
-**Decision**: D16 in `specs/006-engine-rule-refactor/decisions.md`
-**Lands**: PR 0
-**Owner**: rotating triage owner (named in PR 0 description)
+**Owner**: rotating triage owner
 
 ---
 
 ## What this is
 
 `flake-watch` is the bookkeeping mechanism for tests that exhibit
-non-deterministic failure under unchanged code (i.e., **flakes**). Per
-**FR-051** / **decision D16**, marque has **no documented flake
-percentage budget**. Instead:
+non-deterministic failure under unchanged code (i.e., **flakes**).
+marque has **no documented flake percentage budget**. Instead:
 
 1. Flaky tests get tagged `#[ignore = "FLAKE-WATCH"]` (or equivalent for
    non-`#[test]` harnesses — see "Tagging" below).
@@ -115,20 +111,9 @@ flake-watch entry.
 
 ---
 
-## PR 0 acceptance
+## CI cap check
 
-PR 0 absorbs decision D16 in two stages:
-
-**Decision-locking PR (this scaffold)** — already landed:
-- `tools/flake-watch/README.md` (this file).
-- `tools/flake-watch/issues.md` (empty queue with entry template).
-
-**PR 0 implementation commits** — to land:
-- CI workflow / job that reads `issues.md`, counts headings via
-  `grep -c '^## flake-' tools/flake-watch/issues.md`, and **fails the
-  workflow if count > 10**. Implementation is shell-only — no Rust
-  crate is required for the cap check.
-
-The decision-locking PR establishes the queue's existence, schema, and
-cap; the CI workflow giving the cap teeth lands alongside the other
-PR 0 lint / static-assertion commits.
+A CI workflow / job reads `issues.md`, counts headings via
+`grep -c '^## flake-' tools/flake-watch/issues.md`, and **fails the
+workflow if count > 10**. The implementation is shell-only — no Rust
+crate is required for the cap check.

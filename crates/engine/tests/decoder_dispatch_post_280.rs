@@ -1,0 +1,747 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Issue #493 — engine-level dispatch pin for the strict-parse
+//! rejection paths introduced in #280.
+//!
+//! #280 tightened two predicates in `marque-ism` so the strict
+//! parser stops silently accepting case-permissive input in
+//! open-vocabulary categories:
+//!
+//! - `SarProgram::admits_program_id_abbrev` /
+//!   `SarCompartment::admits_identifier` reject lowercase shapes
+//!   (`fk`, `j12`).
+//! - `CountryCode::admits_fgi_ownership_token` admits only 2- or
+//!   3-byte registered country codes (sovereign trigraphs + `EU`) and
+//!   the literal `NATO`. FVEY, CFIUS, and other coalition tetragraphs
+//!   are rejected (right shape, wrong semantic category).
+//!
+//! The #280 issue body claimed *"Both changes route lowercase through
+//! the existing R001 decoder path, which already produces correct
+//! canonical uppercase fixes — no new rule needed."* That claim was
+//! asserted but never tested end-to-end at the engine. Tests in
+//! `crates/core/tests/fgi_silent_skip_guard.rs` confirm strict-parse
+//! rejection (parser returns `None` / empty attrs); they do NOT
+//! confirm engine-level decoder dispatch fires and produces the
+//! expected diagnostic.
+//!
+//! This test family pins the **actual** engine-level behavior across
+//! the migration trail:
+//!
+//! 1. SAR lowercase inputs DO reach the decoder and DO emit R001
+//!    with `FixSource::DecoderPosterior`.
+//!
+//!    // pre-#472 — decoder posterior on SAR-shape recovery fell below
+//!    // `confidence_threshold = 0.95`, demoting R001 to
+//!    // `Severity::Suggest`. `engine.fix(...)` returned the original
+//!    // bytes; no `AppliedFix` landed.
+//!    // post-#472 — null hypothesis sums over **observed** bytes
+//!    // (`TS`, `SAR`, `FK`) instead of the canonical token set. The
+//!    // observed-bytes null is materially more negative, runner-up
+//!    // drops, recognition_score clears 0.95, and R001 emits at
+//!    // `Severity::Fix`. `engine.fix(...)` auto-applies and writes
+//!    // the canonical uppercase bytes. The #280 "auto-fix via R001"
+//!    // claim is now structurally accurate.
+//!
+//! 2. FGI category-mismatch tetragraphs (`FVEY`, `DEUX`) do NOT reach
+//!    the decoder under the default dispatcher — the strict parser
+//!    surfaces enough partial structure (the literal `FGI` marker)
+//!    that the dispatcher treats the strict result as non-trivial and
+//!    skips the decoder fallback.
+//!
+//!    // pre-#501 — user-visible diagnostic was generic E008
+//!    // ("unrecognized token inside marking") at `Severity::Error`.
+//!    // Correct end-user signal but category-agnostic; an FVEY user
+//!    // saw the same diagnostic shape as a `(S//XYZZY)` typo.
+//!    // post-#501 — `FgiInvalidOwnershipTokenRule` (E073) emits a
+//!    // category-specific Error diagnostic at `Severity::Error`
+//!    // citing CAPCO-2016 §H.7 p123 (FGI ownership grammar). E008
+//!    // is suppressed via `is_fgi_invalid_ownership_token` so the
+//!    // user sees only the actionable category-specific diagnostic.
+//!    // No `text_correction` or `FixIntent` is offered (no single
+//!    // right replacement: FVEY is a 5-country coalition tetragraph;
+//!    // DEUX is shape-wrong rather than a typo for DEU).
+//!
+//! The lowercase-trigraph case (`(S//FGI deu)`) does work end-to-end:
+//! decoder fires R001 at `Severity::Fix`, auto-applies, and the
+//! output is the byte-canonical `(S//FGI DEU)` form. This is the only
+//! #280 case where the issue-body claim is fully realized today.
+//!
+//! Authority: this file is a regression-guard, not a primary-source
+//! grammar test. The underlying §-citations live on the rules and
+//! predicates these tests exercise — see #280's parent commits,
+//! `crates/core/tests/fgi_silent_skip_guard.rs` for the strict-parse
+//! anchors, and `crates/capco/tests/e073_fgi_invalid_ownership_token.rs`
+//! for the post-#501 E073 surface contract.
+
+use marque_capco::{CapcoRuleSet, CapcoScheme};
+use marque_config::Config;
+use marque_engine::{Engine, FixMode};
+use marque_rules::{Diagnostic, FixSource, RuleSet, Severity};
+use secrecy::ExposeSecret as _;
+
+fn build_engine() -> Engine {
+    let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
+    Engine::new(Config::default(), rule_sets, CapcoScheme::new())
+        .expect("default CAPCO scheme constructs without rewrite cycles")
+}
+
+/// Build an engine with `confidence_threshold = 0.0`. The engine
+/// demotes any `Severity::Fix` diagnostic whose `combined()`
+/// confidence falls below the threshold to `Severity::Suggest`, and
+/// only `Severity::Fix` diagnostics survive the apply-gate filter
+/// (`Severity::Suggest` is a hard exclusion regardless of
+/// confidence — see `Engine::fix_inner`). Lowering the threshold to
+/// zero keeps SAR-shape decoder fixes at `Severity::Fix` long enough
+/// to actually land, so the test can read the canonical bytes back
+/// out of `engine.fix(...).source`.
+fn build_engine_threshold_zero() -> Engine {
+    let mut config = Config::default();
+    config
+        .set_confidence_threshold(0.0)
+        .expect("0.0 is a valid threshold");
+    let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
+    Engine::new(config, rule_sets, CapcoScheme::new())
+        .expect("CAPCO scheme constructs without rewrite cycles")
+}
+
+fn diags_summary(diags: &[Diagnostic<CapcoScheme>]) -> Vec<(String, Severity)> {
+    diags
+        .iter()
+        .map(|d| (d.rule.predicate_id().to_owned(), d.severity))
+        .collect()
+}
+
+/// Locate the first R001 diagnostic carrying a `DecoderPosterior`
+/// fix source. Returns `None` if R001 didn't fire or didn't carry the
+/// decoder fix-source — either of which is a substantive failure mode
+/// for these tests.
+fn find_r001(diags: &[Diagnostic<CapcoScheme>]) -> Option<&Diagnostic<CapcoScheme>> {
+    diags.iter().find(|d| {
+        d.rule.predicate_id() == "recognition.decoder-recognized"
+            && d.fix
+                .as_ref()
+                .is_some_and(|f| matches!(f.source, FixSource::DecoderPosterior))
+    })
+}
+
+// ============================================================================
+// SAR fixtures — strict parser rejects (post-#280); dispatcher falls through
+// to decoder; decoder emits R001 with DecoderPosterior.
+//
+// // pre-#472 — Severity::Suggest, no auto-fix. R001 fired but the engine's
+// // confidence-threshold gate demoted it; `engine.fix(...)` returned the
+// // original bytes unchanged. The #280 issue body's "auto-fix via R001"
+// // claim was structurally false at that point.
+// // post-#472 — Severity::Fix, auto-applies. The null hypothesis now sums
+// // over the observed bytes (SAR identifiers are absent from prose priors,
+// // making the null materially more negative); the recognition_score
+// // clears 0.95 and R001 emits at Fix. `engine.fix(...)` writes the
+// // canonical uppercase bytes; an `AppliedFix` lands. The #280 claim is
+// // now structurally accurate for SAR. See per-test bodies for the
+// // detailed migration markers.
+// ============================================================================
+
+#[test]
+fn sar_lowercase_program_id_emits_r001_fix() {
+    // `(TS//SAR-fk)` — lowercase program identifier. Pre-#280 the
+    // strict parser silently accepted this as `SarProgram { id: "fk" }`.
+    // Post-#280 the strict path rejects the shape; the dispatcher's
+    // decoder fallback recognizes the canonical `SAR-FK` form.
+    //
+    // NOTE: pre-#472 the decoder's posterior on this SAR-shape
+    // recovery fell below the default `confidence_threshold = 0.95`,
+    // so the engine demoted R001 to `Severity::Suggest`. Post-#472
+    // the null hypothesis is now summed over the **observed** bytes
+    // (`TS`, `SAR`, `FK`) instead of the canonical token set (just
+    // `TS` — SAR program identifiers aren't part of
+    // `for_each_canonical_token`'s walk). The observed-bytes null is
+    // materially more negative, recognition_runner_up drops, and the
+    // resulting recognition_score clears the 0.95 threshold —
+    // promoting R001 from `Severity::Suggest` to `Severity::Fix`.
+    // This is the audit-worthy severity escalation the pre-#472
+    // assertion explicitly tracked; updated to pin post-#472
+    // behavior. #280's "auto-fix via R001" claim is now structurally
+    // accurate.
+    let engine = build_engine();
+    let input = b"(TS//SAR-fk)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on SAR \
+             lowercase program id; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(
+        r001.severity,
+        Severity::Fix,
+        "post-#472 the decoder emits R001 for SAR-shape recognition at \
+         Severity::Fix. The observed-bytes null hypothesis correctly \
+         reports SAR identifiers as low-prose-mass (they are not in \
+         the prose priors table), lowering the recognition runner-up \
+         and pushing the candidate above the 0.95 threshold.",
+    );
+
+    // Severity::Fix → engine.fix DOES auto-apply.
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_ne!(
+        fix.source.expose_secret(),
+        input,
+        "Fix severity must auto-apply; output bytes must differ from input",
+    );
+    assert!(
+        fix.applied_fixes().next().is_some(),
+        "AppliedFix must land for SAR lowercase under Fix severity",
+    );
+}
+
+#[test]
+fn sar_mixed_case_program_id_emits_r001_fix() {
+    // `(TS//SAR-Fk)` — title-case program identifier. Same
+    // shape-recognition path as the all-lowercase fixture; same
+    // post-#472 severity escalation.
+    let engine = build_engine();
+    let input = b"(TS//SAR-Fk)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on SAR \
+             mixed-case program id; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(r001.severity, Severity::Fix);
+
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_ne!(fix.source.expose_secret(), input);
+    assert!(fix.applied_fixes().next().is_some());
+}
+
+#[test]
+fn sar_lowercase_compartment_emits_r001_fix() {
+    // `(TS//SAR-FK-blue42)` — uppercase program, lowercase
+    // compartment. Tests the second SAR open-vocab tightening site
+    // (`SarCompartment::admits_identifier`). Same post-#472
+    // escalation.
+    let engine = build_engine();
+    let input = b"(TS//SAR-FK-blue42)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on SAR \
+             lowercase compartment; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(r001.severity, Severity::Fix);
+
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_ne!(fix.source.expose_secret(), input);
+    assert!(fix.applied_fixes().next().is_some());
+}
+
+#[test]
+fn sar_lowercase_sub_compartment_emits_r001_fix() {
+    // `(TS//SAR-FK-BLUE 42a)` — uppercase program + compartment,
+    // lowercase sub-compartment trailing letter. Tests the
+    // SAR sub-compartment open-vocab tightening site. Same post-#472
+    // escalation.
+    let engine = build_engine();
+    let input = b"(TS//SAR-FK-BLUE 42a)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on SAR \
+             lowercase sub-compartment; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(r001.severity, Severity::Fix);
+
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_ne!(fix.source.expose_secret(), input);
+    assert!(fix.applied_fixes().next().is_some());
+}
+
+#[test]
+fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
+    // Companion to the four `*_emits_r001_suggest` tests above that
+    // pins the actual canonical bytes the decoder produces for every
+    // SAR fixture, not just that R001 fires. With
+    // `confidence_threshold = 0.0` the engine's severity-demotion
+    // pass leaves R001 at `Severity::Fix`, so the fix auto-applies
+    // and the canonical bytes flow out via `engine.fix(...).source`.
+    //
+    // Spot-check requested by rust-reviewer (#493 PR review) and
+    // extended to every SAR shape per Copilot review on PR #500:
+    // without canonical-bytes pinning a decoder regression that
+    // uppercased noise bytes into a syntactically plausible but
+    // semantically wrong canonical form (e.g., `(TS//SAR-FK-blue42)`
+    // rendering to `(TS//SAR-FK-BLU 42)` instead of
+    // `(TS//SAR-FK-BLUE42)`) would slip past the default-threshold
+    // tests above. The default-threshold tests pin the dispatch +
+    // severity contract; this loop pins what the decoder actually
+    // writes.
+    //
+    // The `applied.iter().filter(...).count() == 1` form (rather
+    // than `.any(...)`) is load-bearing: it catches the case where
+    // additional decoder fixes also land — extra fixes would
+    // indicate the engine over-applied recovery or that the
+    // dispatcher reached the decoder twice on the same input.
+    //
+    // Audit-content-ignorance (Constitution V Principle V) is
+    // preserved: the canonical bytes are read from `fix.source`
+    // (the fixed document buffer), not from a diagnostic message
+    // field.
+    let engine = build_engine_threshold_zero();
+    let cases: &[(&[u8], &str)] = &[
+        // (input, expected_canonical_output)
+        (b"(TS//SAR-fk)", "(TS//SAR-FK)"),
+        (b"(TS//SAR-Fk)", "(TS//SAR-FK)"),
+        (b"(TS//SAR-FK-blue42)", "(TS//SAR-FK-BLUE42)"),
+        (b"(TS//SAR-FK-BLUE 42a)", "(TS//SAR-FK-BLUE 42A)"),
+    ];
+    for (input, expected) in cases {
+        let display = std::str::from_utf8(input).unwrap_or("<bytes>");
+        let fix = engine.fix(input, FixMode::Apply);
+        // `applied_fixes()` is `impl Iterator`; collect
+        // once for filter + Debug-render in the assertion message.
+        let applied: Vec<_> = fix.applied_fixes().collect();
+        let r001_decoder_count = applied
+            .iter()
+            .filter(|a| {
+                a.rule.predicate_id() == "recognition.decoder-recognized"
+                    && matches!(a.source, FixSource::DecoderPosterior)
+            })
+            .count();
+        assert_eq!(
+            r001_decoder_count,
+            1,
+            "input {display:?} must produce exactly one R001 DecoderPosterior \
+             AppliedFix under the zero-threshold engine; applied = {:?}",
+            applied
+                .iter()
+                .map(|a| (a.rule.predicate_id(), a.source))
+                .collect::<Vec<_>>(),
+        );
+        let output = String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output");
+        assert_eq!(
+            output, *expected,
+            "decoder must canonicalize {display:?} to {expected:?}; \
+             a different canonical form indicates the decoder is \
+             writing the wrong canonical bytes",
+        );
+    }
+}
+
+// ============================================================================
+// SAR missing-hyphen at the program/compartment boundary (issue #710).
+// A space typed where the §H.5 p100 program→compartment hyphen belongs
+// (`SAR-BP XA5`) makes the strict parser reject the SAR block (the
+// 6-byte `BP XA5` token fails `SarProgram::admits_program_id_abbrev`);
+// the dispatcher falls through to the decoder, which inserts the
+// missing hyphen and recovers `SAR-BP-XA5`. Distinct from the #699
+// case-mismatch demangling exercised above.
+// ============================================================================
+
+#[test]
+fn sar_program_boundary_space_emits_r001_fix() {
+    // `(S//SAR-BP XA5)` — space at the program/compartment boundary.
+    // The strict parser rejects the SAR block; the decoder's
+    // program-boundary repair recovers `SAR-BP-XA5`. Same post-#472
+    // SAR-shape severity-escalation path as the case-mismatch fixtures
+    // above (SAR identifiers are absent from the prose priors, so the
+    // observed-bytes null clears the 0.95 threshold and R001 lands at
+    // Severity::Fix).
+    let engine = build_engine();
+    let input = b"(S//SAR-BP XA5)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on SAR \
+             program/compartment-boundary space; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(r001.severity, Severity::Fix);
+
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_ne!(fix.source.expose_secret(), input);
+    assert!(fix.applied_fixes().next().is_some());
+}
+
+#[test]
+fn sar_boundary_inputs_canonicalize_under_zero_threshold() {
+    // Companion canonical-bytes pin (mirrors
+    // `sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold`).
+    // Pins what the decoder actually writes for the #710 recovery,
+    // including the combined case-mismatch (#699) + missing-hyphen
+    // (#710) input. Reads bytes from `fix.source` (not a diagnostic
+    // message) per Constitution V Principle V audit-content-ignorance.
+    let engine = build_engine_threshold_zero();
+    let cases: &[(&[u8], &str)] = &[
+        // (input, expected_canonical_output)
+        (b"(S//SAR-BP XA5)", "(S//SAR-BP-XA5)"),
+        // Combined: lowercase + missing hyphen. Fuzzy-correction
+        // uppercases (`sar-bp xa5` → `SAR-BP XA5`) before the
+        // boundary repair inserts the hyphen.
+        (b"(s//sar-bp xa5)", "(S//SAR-BP-XA5)"),
+    ];
+    for (input, expected) in cases {
+        let display = std::str::from_utf8(input).unwrap_or("<bytes>");
+        let fix = engine.fix(input, FixMode::Apply);
+        let applied: Vec<_> = fix.applied_fixes().collect();
+        let r001_decoder_count = applied
+            .iter()
+            .filter(|a| {
+                a.rule.predicate_id() == "recognition.decoder-recognized"
+                    && matches!(a.source, FixSource::DecoderPosterior)
+            })
+            .count();
+        assert_eq!(
+            r001_decoder_count,
+            1,
+            "input {display:?} must produce exactly one R001 DecoderPosterior \
+             AppliedFix under the zero-threshold engine; applied = {:?}",
+            applied
+                .iter()
+                .map(|a| (a.rule.predicate_id(), a.source))
+                .collect::<Vec<_>>(),
+        );
+        let output = String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output");
+        assert_eq!(
+            output, *expected,
+            "decoder must canonicalize {display:?} to {expected:?}",
+        );
+    }
+}
+
+#[test]
+fn sar_canonical_boundary_not_redecoded() {
+    // The already-canonical `(S//SAR-BP-XA5)` parses on the strict
+    // path, so the dispatcher never reaches the decoder — no R001,
+    // and `engine.fix` returns the input unchanged.
+    let engine = build_engine();
+    let input = b"(S//SAR-BP-XA5)";
+    let lint = engine.lint(input);
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "canonical SAR input must not be re-decoded; diagnostics = {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_eq!(
+        fix.source.expose_secret(),
+        input,
+        "canonical SAR input must pass through unchanged",
+    );
+}
+
+#[test]
+fn sar_invalid_compartment_after_boundary_space_no_spurious_fix() {
+    // `(S//SAR-BP XA@)` — the program-boundary repair would produce
+    // `SAR-BP-XA@`, but `XA@` is not a lawful compartment identifier
+    // (`@` fails `SarCompartment::admits_identifier`), so the strict
+    // reparse still rejects it. No R001 SAR recovery must land — the
+    // strict reparse is the gate, and the repair never silently
+    // promotes a structurally-invalid marking.
+    let engine = build_engine();
+    let input = b"(S//SAR-BP XA@)";
+    let lint = engine.lint(input);
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "structurally-invalid compartment must not trigger a spurious \
+         SAR boundary repair; diagnostics = {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_eq!(
+        fix.source.expose_secret(),
+        input,
+        "no fix should be applied to an irrecoverable SAR compartment",
+    );
+}
+
+// ============================================================================
+// FGI lowercase trigraph — the only #280 case that fully realizes the
+// issue-body claim. Strict parser rejects `deu` (post-#280); dispatcher
+// falls through; decoder emits R001 at Severity::Fix; auto-applies.
+// ============================================================================
+
+#[test]
+fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
+    // `(S//FGI deu)` — well-formed portion shape with leading
+    // classification and a lowercase ownership trigraph. Pre-#280 the
+    // strict parser silently accepted this as
+    // `FgiMarker { countries: [] }` — source-concealed FGI per
+    // CAPCO-2016 §H.7 p123 (the FGI "Authorized Portion Mark (when
+    // source must be concealed and segregated from US): FGI [Non-US
+    // Classification Portion Mark]" enumeration). Post-#280 the
+    // strict path rejects `deu`; the decoder recovers the canonical
+    // `DEU` form and the fix auto-applies.
+    let engine = build_engine();
+    let input = b"(S//FGI deu)";
+    let lint = engine.lint(input);
+
+    let r001 = find_r001(&lint.diagnostics).unwrap_or_else(|| {
+        panic!(
+            "expected R001 with FixSource::DecoderPosterior on FGI \
+             lowercase trigraph; diagnostics = {:?}",
+            diags_summary(&lint.diagnostics),
+        );
+    });
+    assert_eq!(
+        r001.severity,
+        Severity::Fix,
+        "FGI trigraph case-fold is the well-trodden decoder path and \
+         emits at Severity::Fix (auto-applies)",
+    );
+
+    let fix = engine.fix(input, FixMode::Apply);
+    assert_eq!(
+        String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output"),
+        "(S//FGI DEU)",
+        "decoder must canonicalize lowercase `deu` to uppercase `DEU` \
+         and write the fixed output byte-equal to the canonical form",
+    );
+    // `applied_fixes()` is `impl Iterator`; collect
+    // once for `.len()` + indexed read.
+    let applied: Vec<_> = fix.applied_fixes().collect();
+    assert_eq!(
+        applied.len(),
+        1,
+        "exactly one AppliedFix should land (the R001 decoder fix)",
+    );
+    assert_eq!(
+        applied[0].rule.predicate_id(),
+        "recognition.decoder-recognized"
+    );
+    assert!(matches!(applied[0].source, FixSource::DecoderPosterior));
+}
+
+// ============================================================================
+// FGI category-mismatch — wrong-shape ownership tokens that the dispatcher
+// does NOT route to the decoder.
+//
+// pre-#501 — these tests pinned E008 ("unrecognized token") as the observed
+// end-user signal. Correct severity, wrong category specificity.
+// post-#501 — `FgiInvalidOwnershipTokenRule` (E073) emits the category-
+// specific Error diagnostic citing CAPCO-2016 §H.7 p123, and E008 is
+// suppressed on the same span via `is_fgi_invalid_ownership_token` so the
+// user sees only the actionable category-specific diagnostic. Detailed
+// surface contract: `crates/capco/tests/e073_fgi_invalid_ownership_token.rs`.
+// ============================================================================
+
+#[test]
+fn fgi_fvey_ownership_token_emits_e073_category_diagnostic() {
+    // `(S//FGI FVEY)` — FVEY is a valid REL TO tetragraph (members
+    // = USA/GBR/CAN/AUS/NZL) but is semantically wrong as an FGI
+    // ownership token. CountryCode::admits_fgi_ownership_token rejects
+    // it post-#280.
+    //
+    // post-#501 — the strict-path rejection routes through E073
+    // (FgiInvalidOwnershipTokenRule) instead of the generic E008
+    // surface. Dispatcher still does NOT route to the decoder; the
+    // user-visible diagnostic is now category-specific.
+    let engine = build_engine();
+    let input = b"(S//FGI FVEY)";
+    let lint = engine.lint(input);
+
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "no R001 expected — dispatcher does not route FGI category- \
+         mismatch tetragraphs to the decoder today; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    assert!(
+        lint.diagnostics.iter().any(|d| d.rule.predicate_id()
+            == "marking.fgi.invalid-ownership-token"
+            && d.severity == Severity::Error),
+        "post-#501 expected E073 (fgi-invalid-ownership-token) at Error severity; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    assert!(
+        !lint
+            .diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token"),
+        "post-#501 E008 must NOT co-fire on FGI-marker span (suppressed via \
+         `is_fgi_invalid_ownership_token`); got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+}
+
+#[test]
+fn fgi_deux_unknown_tetragraph_emits_e073_category_diagnostic() {
+    // `(S//FGI DEUX)` — 4-byte uppercase token that's not a registered
+    // CountryCode tetragraph (`DEUX` is intentionally not FVEY/ACGU/
+    // NATO/AUSTRALIA_GROUP/…). Same dispatcher path as FVEY: post-#501
+    // E073 surfaces, E008 is suppressed, the decoder is not invoked.
+    let engine = build_engine();
+    let input = b"(S//FGI DEUX)";
+    let lint = engine.lint(input);
+
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "no R001 expected on DEUX (unknown 4-byte token); dispatcher \
+         keeps the strict-path result; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    assert!(
+        lint.diagnostics.iter().any(|d| d.rule.predicate_id()
+            == "marking.fgi.invalid-ownership-token"
+            && d.severity == Severity::Error),
+        "post-#501 expected E073 (fgi-invalid-ownership-token) at Error severity; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+    assert!(
+        !lint
+            .diagnostics
+            .iter()
+            .any(|d| d.rule.predicate_id() == "marking.metadata.unrecognized-token"),
+        "post-#501 E008 must NOT co-fire on FGI-marker span (suppressed via \
+         `is_fgi_invalid_ownership_token`); got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+}
+
+// ============================================================================
+// Negative controls — canonical inputs stay clean of R001.
+// ============================================================================
+
+#[test]
+fn canonical_sar_portion_emits_no_decoder_diagnostic() {
+    // `(TS//SAR-FK)` — already canonical. The strict path resolves
+    // unambiguously; the dispatcher does not call the decoder; no
+    // R001 should appear.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK)");
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "canonical SAR portion must not trip the decoder; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+}
+
+#[test]
+fn canonical_fgi_portion_emits_no_decoder_diagnostic() {
+    // `(S//FGI DEU)` — already canonical with a valid sovereign
+    // trigraph as the ownership token. The strict path admits DEU
+    // and R001 does not fire. (W002, the commingling-warning rule
+    // that used to fire on this shape, was retired in the PR
+    // closing #470; the canonical US-CLASS + FGI [LIST] shape is
+    // §H.7 p123-authorized and no longer triggers any rule.)
+    let engine = build_engine();
+    let lint = engine.lint(b"(S//FGI DEU)");
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "canonical FGI portion must not trip the decoder; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+}
+
+// ============================================================================
+// Issue #699 — decoder-recognized canonical form surfaced on
+// `Diagnostic.recognized_canonical`.
+//
+// `build_decoder_diagnostic` populates the field with the bytes the
+// decoder canonicalized to, wrapped in `SecretBox<Box<[u8]>>`
+// (Constitution Principle II — wipes on drop, every readout goes
+// through `expose_secret()`). The field is lint-side only; the audit
+// envelope continues to carry the BLAKE3 digest + structural intent
+// (Constitution V Principle V). The asymmetry is pinned by
+// `lint_carries_recognized_canonical_fix_audit_does_not` in
+// `crates/engine/tests/recognized_canonical_lint_vs_fix.rs`.
+// ============================================================================
+
+/// Read the recognized-canonical bytes from a diagnostic via the
+/// single sanctioned readout site. Principle II readout — test
+/// fixture (issue #699).
+fn recognized_canonical_bytes(d: &Diagnostic<CapcoScheme>) -> Option<Vec<u8>> {
+    d.recognized_canonical
+        .as_ref()
+        .map(|sb| sb.expose_secret().to_vec())
+}
+
+#[test]
+fn r001_sar_lowercase_program_id_emits_recognized_canonical_field() {
+    // `(TS//SAR-fk)` — lowercase program identifier. R001 fires
+    // post-#280; `recognized_canonical` carries the canonical
+    // uppercase form so `marque check` can show it without the user
+    // having to run `marque fix` and diff the output.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-fk)");
+    let r001 = find_r001(&lint.diagnostics).expect("R001 must fire on SAR lowercase program id");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(TS//SAR-FK)".as_ref()),
+        "decoder-recognized canonical bytes must surface on the \
+         diagnostic so the user can see the recognized form without \
+         running `fix`",
+    );
+}
+
+#[test]
+fn r001_sar_full_lowercase_compartment_emits_recognized_canonical() {
+    // `(TS//SAR-FK-blue42)` — uppercase program, lowercase
+    // compartment. Same surface contract as the program-id case.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK-blue42)");
+    let r001 = find_r001(&lint.diagnostics).expect("R001 must fire on SAR lowercase compartment");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(TS//SAR-FK-BLUE42)".as_ref()),
+    );
+}
+
+#[test]
+fn r001_fgi_lowercase_trigraph_emits_recognized_canonical() {
+    // `(S//FGI deu)` — lowercase ownership trigraph. The well-trodden
+    // decoder path emits R001 at Severity::Fix and the canonical form
+    // surfaces on the diagnostic.
+    let engine = build_engine();
+    let lint = engine.lint(b"(S//FGI deu)");
+    let r001 = find_r001(&lint.diagnostics).expect("R001 must fire on FGI lowercase trigraph");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(S//FGI DEU)".as_ref()),
+    );
+}
+
+#[test]
+fn r001_sar_sub_compartment_emits_recognized_canonical() {
+    // `(TS//SAR-FK-BLUE 42a)` — uppercase program + compartment,
+    // lowercase sub-compartment trailing letter. Pins the
+    // sub-compartment shape's canonical bytes on the diagnostic.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK-BLUE 42a)");
+    let r001 =
+        find_r001(&lint.diagnostics).expect("R001 must fire on SAR lowercase sub-compartment");
+    assert_eq!(
+        recognized_canonical_bytes(r001).as_deref(),
+        Some(b"(TS//SAR-FK-BLUE 42A)".as_ref()),
+    );
+}
+
+#[test]
+fn r001_idempotent_input_emits_no_diagnostic() {
+    // `(TS//SAR-FK)` — already canonical. Build_decoder_diagnostic's
+    // no-op-rewrite gate short-circuits (canonical == original); no
+    // R001 fires at all, and consequently no recognized_canonical is
+    // surfaced. This pins the "decoder is silent on canonical input"
+    // contract that the field's `Some(_)` invariant rests on.
+    let engine = build_engine();
+    let lint = engine.lint(b"(TS//SAR-FK)");
+    assert!(
+        find_r001(&lint.diagnostics).is_none(),
+        "no R001 expected on canonical input; got {:?}",
+        diags_summary(&lint.diagnostics),
+    );
+}

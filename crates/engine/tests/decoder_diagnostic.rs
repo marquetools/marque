@@ -23,7 +23,9 @@
 
 #![cfg(feature = "decoder-harness")]
 
-use marque_capco::CapcoMarking;
+use std::sync::LazyLock;
+
+use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_engine::{DecoderRecognizer, StrictRecognizer};
 use marque_ism::{CapcoTokenSet, TokenKind, token_set::TokenSet as _};
 use marque_scheme::ambiguity::Parsed;
@@ -32,15 +34,16 @@ use marque_scheme::recognizer::{ParseContext, Recognizer};
 fn deep_cx() -> ParseContext {
     ParseContext {
         strict_evidence: false,
-        zone: None,
-        position: None,
-        classification_floor: None,
-        as_of: None,
         preceded_by_whitespace: true,
+        ..ParseContext::default()
     }
 }
 
-fn same_meaning(a: &marque_ism::IsmAttributes, b: &marque_ism::IsmAttributes) -> bool {
+/// Shared scheme instance. `CapcoScheme::new()` builds non-trivial
+/// tables; constructing it once avoids repeated allocation.
+static TEST_SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
+
+fn same_meaning(a: &marque_ism::CanonicalAttrs, b: &marque_ism::CanonicalAttrs) -> bool {
     let mut a = a.clone();
     let mut b = b.clone();
     a.token_spans = Box::new([]);
@@ -56,13 +59,13 @@ fn same_meaning(a: &marque_ism::IsmAttributes, b: &marque_ism::IsmAttributes) ->
 /// decoder itself does internally.
 fn parse_strict_attrs(input: &[u8]) -> Option<CapcoMarking> {
     let strict = StrictRecognizer::new();
-    match strict.recognize(input, &deep_cx()) {
+    match strict.recognize(input, 0, &*TEST_SCHEME, &deep_cx()) {
         Parsed::Unambiguous(m) => Some(m),
         _ => None,
     }
 }
 
-fn token_summary(attrs: &marque_ism::IsmAttributes) -> String {
+fn token_summary(attrs: &marque_ism::CanonicalAttrs) -> String {
     let mut counts = std::collections::BTreeMap::new();
     for span in attrs.token_spans.iter() {
         *counts.entry(format!("{:?}", span.kind)).or_insert(0) += 1;
@@ -74,7 +77,7 @@ fn token_summary(attrs: &marque_ism::IsmAttributes) -> String {
         .join(", ")
 }
 
-fn unknown_token_text(input: &[u8], attrs: &marque_ism::IsmAttributes) -> Vec<String> {
+fn unknown_token_text(input: &[u8], attrs: &marque_ism::CanonicalAttrs) -> Vec<String> {
     attrs
         .token_spans
         .iter()
@@ -110,7 +113,7 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
             // Attempts come from `generate_candidate_bytes` →
             // `String::into_bytes()`, so they are valid UTF-8 by
             // construction. Asserting the invariant via `expect`
-            // surfaces a Phase D contract break loudly instead of
+            // surfaces a decoder contract break loudly instead of
             // silently substituting a placeholder string and feeding
             // it to the strict parser later.
             let attempt_str = std::str::from_utf8(attempt)
@@ -155,7 +158,7 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
 
     // 4. Run the actual decoder to see what it produces end-to-end.
     let decoder = DecoderRecognizer::new();
-    let result = decoder.recognize(observed.as_bytes(), &deep_cx());
+    let result = decoder.recognize(observed.as_bytes(), 0, &*TEST_SCHEME, &deep_cx());
     match result {
         Parsed::Unambiguous(m) => {
             let r =
@@ -196,13 +199,13 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
     }
 }
 
-fn attrs_summary(attrs: &marque_ism::IsmAttributes) -> String {
+fn attrs_summary(attrs: &marque_ism::CanonicalAttrs) -> String {
     format!(
         "cls={:?} sci={} sar={} dissem={} rel_to={} declass={:?}",
         attrs.classification,
         attrs.sci_markings.len(),
         attrs.sar_markings.is_some() as usize,
-        attrs.dissem_controls.len(),
+        attrs.dissem_iter().count(),
         attrs.rel_to.len(),
         attrs.declassify_on,
     )

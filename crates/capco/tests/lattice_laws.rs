@@ -4,7 +4,7 @@
 
 #![allow(clippy::type_complexity)] // Nested test-fixture DSL; explicit shape is clearer than a newtype.
 
-//! Phase B lattice-law verification for CAPCO structural lattice types.
+//! Lattice-law verification for CAPCO structural lattice types.
 //!
 //! Each type (`SciSet`, `SarSet`, `FgiSet`) is expected to satisfy the
 //! lattice laws on its join:
@@ -25,7 +25,8 @@ use marque_ism::{
     CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
     SciControlBare, SciControlSystem, SciMarking,
 };
-use marque_scheme::{BoundedLattice, Lattice};
+use marque_scheme::{JoinSemilattice, MeetSemilattice};
+use smol_str::SmolStr;
 use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
@@ -40,12 +41,12 @@ fn sci_system_with(bare: SciControlBare, comps: &[(&str, &[&str])]) -> SciMarkin
     let compartments: Vec<SciCompartment> = comps
         .iter()
         .map(|(cid, subs)| {
-            let sub_boxes: Box<[Box<str>]> = subs
+            let sub_boxes: Box<[SmolStr]> = subs
                 .iter()
-                .map(|s| (*s).to_string().into_boxed_str())
+                .map(|s| SmolStr::from(*s))
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SciCompartment::new(cid.to_string().into_boxed_str(), sub_boxes)
+            SciCompartment::new(*cid, sub_boxes)
         })
         .collect();
     SciMarking::new(
@@ -152,18 +153,15 @@ fn sar_marking(programs: &[(&str, &[(&str, &[&str])])]) -> SarMarking {
             let comp_boxes: Vec<SarCompartment> = comps
                 .iter()
                 .map(|(cid, subs)| {
-                    let sub_boxes: Box<[Box<str>]> = subs
+                    let sub_boxes: Box<[SmolStr]> = subs
                         .iter()
-                        .map(|s| (*s).to_string().into_boxed_str())
+                        .map(|s| SmolStr::from(*s))
                         .collect::<Vec<_>>()
                         .into_boxed_slice();
-                    SarCompartment::new(cid.to_string().into_boxed_str(), sub_boxes)
+                    SarCompartment::new(*cid, sub_boxes)
                 })
                 .collect();
-            SarProgram::new(
-                pid.to_string().into_boxed_str(),
-                comp_boxes.into_boxed_slice(),
-            )
+            SarProgram::new(*pid, comp_boxes.into_boxed_slice())
         })
         .collect();
     SarMarking::new(SarIndicator::Abbrev, progs.into_boxed_slice())
@@ -248,18 +246,16 @@ fn trigraph(s: &[u8; 3]) -> CountryCode {
 fn fgi_samples() -> Vec<FgiSet> {
     vec![
         FgiSet::None,
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([]),
-        })),
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([trigraph(b"GBR")]),
-        })),
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([trigraph(b"DEU"), trigraph(b"GBR")]),
-        })),
-        FgiSet::from_marker(Some(&FgiMarker {
-            countries: Box::new([trigraph(b"CAN")]),
-        })),
+        FgiSet::from_marker(Some(&FgiMarker::SourceConcealed)),
+        FgiSet::from_marker(Some(
+            &FgiMarker::acknowledged([trigraph(b"GBR")]).expect("non-empty"),
+        )),
+        FgiSet::from_marker(Some(
+            &FgiMarker::acknowledged([trigraph(b"DEU"), trigraph(b"GBR")]).expect("non-empty"),
+        )),
+        FgiSet::from_marker(Some(
+            &FgiMarker::acknowledged([trigraph(b"CAN")]).expect("non-empty"),
+        )),
     ]
 }
 
@@ -294,7 +290,10 @@ fn fgi_set_join_associative() {
 
 #[test]
 fn fgi_set_bottom_is_join_identity() {
-    let bottom = FgiSet::bottom();
+    // `FgiSet::bottom()` is retired alongside the `BoundedLattice` impl.
+    // `FgiSet::empty()` is the public bottom constructor with
+    // semantically-identical behavior — `Self::None`.
+    let bottom = FgiSet::empty();
     for a in fgi_samples() {
         assert_eq!(a.join(&bottom), a);
         assert_eq!(bottom.join(&a), a);

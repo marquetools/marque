@@ -2,18 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T051 — belt-and-suspenders check that `marque-wasm` cannot receive
+//! Belt-and-suspenders check that `marque-wasm` cannot receive
 //! the `corpus-override` Cargo feature.
 //!
-//! Enforces whitepaper §10.3 + Constitution III + FR-013 + the Phase-D
-//! threat model T3 (`docs/plans/2026-04-19-recursive-lattice-and-decoder.md`
-//! §6a) via the contract at
-//! `specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md`
-//! Gate 1:
-//!
-//! > The WASM artifact cannot contain a corpus-override codepath.
-//! > Enforcement is the `corpus-override` Cargo feature, not disabled
-//! > at runtime.
+//! Enforces Constitution III WASM-safety: the WASM artifact cannot
+//! contain a corpus-override codepath that would let a caller inject
+//! decoder priors at runtime. Enforcement is compile-time (the
+//! `corpus-override` Cargo feature is absent), not disabled at runtime.
 //!
 //! ## Two independent defenses
 //!

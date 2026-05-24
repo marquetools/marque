@@ -1,0 +1,83 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Runtime smoke test verifying the concrete `CapcoScheme` recognizer
+//! dispatch is `Send + Sync`-usable as a trait object. The compile-time
+//! property is already pinned by the `Recognizer<S>: Send + Sync`
+//! supertrait bound in `crates/scheme/src/recognizer.rs` plus each
+//! `impl Recognizer<CapcoScheme> for ...` block in
+//! `crates/engine/src/recognizer.rs` — those impls cannot exist
+//! without their concrete types being `Send + Sync`. This file
+//! exercises the boxed-trait-object dispatch path at runtime so a
+//! future regression that broke the dispatch (rather than the trait
+//! bound itself) would be caught here, and so the test contributes
+//! coverage to the dispatch surface alongside the compile-time
+//! enforcement.
+//!
+//! `marque-engine` is a dev-dependency here (path-only, see
+//! `crates/capco/Cargo.toml`); the runtime dep flows the other way
+//! (`marque-engine` consumes `marque-capco`). Keeping this assertion
+//! in a `tests/` file rather than inside the lib crate keeps the
+//! WASM-safe set honest under Constitution III + VII — `marque-capco`
+//! MUST NOT gain a non-dev dep on the engine.
+
+use marque_capco::CapcoScheme;
+use marque_engine::StrictRecognizer;
+use marque_rules::{AppliedFix, Diagnostic, FixIntent};
+use marque_scheme::recognizer::{ParseContext, Recognizer};
+use std::sync::Arc;
+
+fn assert_send_sync<T: ?Sized + Send + Sync>(_: &T) {}
+
+#[test]
+fn capco_recognizer_dispatch_is_send_sync_as_trait_object() {
+    let boxed: Box<dyn Recognizer<CapcoScheme>> = Box::new(StrictRecognizer::new());
+    assert_send_sync(&*boxed);
+
+    let arced: Arc<dyn Recognizer<CapcoScheme>> = Arc::new(StrictRecognizer::new());
+    assert_send_sync(&*arced);
+
+    // Exercise the dispatch path. Empty input is a deterministic
+    // zero-candidate case across all CapcoScheme recognizers, so the
+    // assertion is stable without depending on parser internals.
+    let cx = ParseContext::default();
+    let scheme = CapcoScheme::new();
+    let _ = boxed.recognize(b"", 0, &scheme, &cx);
+    let _ = arced.recognize(b"", 0, &scheme, &cx);
+}
+
+/// Compile-time `Send + Sync` proof for the rule-emission types
+/// monomorphized at `<CapcoScheme>`. `CapcoOpenVocabRef` is a field on
+/// `FactRef::OpenVocab`, which transitively flows through
+/// `FixIntent<CapcoScheme>`,
+/// `Diagnostic<CapcoScheme>`, and `AppliedFix<CapcoScheme>`. The
+/// structural correctness is already enforced by the
+/// `OpenVocabRef: Send + Sync + 'static` bound on `MarkingScheme`,
+/// but a future field addition to `CapcoOpenVocabRef` (e.g., wrapping
+/// a non-`Sync` type) would break Constitution VI's `BatchEngine`
+/// scheduling guarantee silently — this test catches that at compile
+/// time. The function bodies are empty; the assertion is the type
+/// constraint, fired at monomorphization.
+#[test]
+fn capco_rule_emission_types_are_send_sync() {
+    fn assert<T: Send + Sync>() {}
+    assert::<FixIntent<CapcoScheme>>();
+    assert::<Diagnostic<CapcoScheme>>();
+    assert::<AppliedFix<CapcoScheme>>();
+}
+
+/// Compile-time `Clone` proof for the same rule-emission types. The
+/// manual `Clone` impls in `crates/rules/src/lib.rs` (added to avoid
+/// the `S: Clone` over-constraint that `#[derive(Clone)]` would
+/// introduce) are correct field-by-field today, but a future variant
+/// addition to `ReplacementIntent<S>` or a future field addition to
+/// any of these types could silently break the manual impl chain.
+/// This assertion catches that at the concrete `<CapcoScheme>`
+/// monomorphization, which is the production path.
+#[test]
+fn capco_rule_emission_types_are_clone() {
+    fn assert<T: Clone>() {}
+    assert::<FixIntent<CapcoScheme>>();
+    assert::<Diagnostic<CapcoScheme>>();
+    assert::<AppliedFix<CapcoScheme>>();
+}

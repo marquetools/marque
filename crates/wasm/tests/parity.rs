@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T088 — WASM-target parity harness (SC-008).
+//! WASM-target parity harness.
 //!
 //! Runs under `wasm-pack test crates/wasm --node`, exercising the
 //! actual `wasm32-unknown-unknown` build of `marque-wasm`. For each
@@ -74,7 +74,7 @@ fn parse_corpus() -> ParityCorpus {
     );
     assert!(
         !corpus.entries.is_empty(),
-        "parity corpus is empty; T088 requires at least one fixture"
+        "parity corpus is empty; this test requires at least one fixture"
     );
     corpus
 }
@@ -99,7 +99,7 @@ fn wasm_lint_parity_matches_baked_native_output() {
 
         if actual != entry.expected_lint {
             failures.push(format!(
-                "{}/{}: SC-008 byte-equal NDJSON parity violated\n  \
+                "{}/{}: byte-equal NDJSON parity violated\n  \
                  expected ({} bytes): {:?}\n  \
                  actual   ({} bytes): {:?}",
                 entry.category,
@@ -166,21 +166,22 @@ fn wasm_fix_clean_input_is_unchanged() {
 
 #[wasm_bindgen_test]
 fn wasm_fix_applies_correction() {
-    // E001: abbreviated dissem control. fix should canonicalize NF → NOFORN.
-    let result =
-        marque_wasm::fix_native("SECRET//NF\n", 0.0, None).expect("fix_native must succeed");
+    // REL TO missing USA trigraph: fix should inject `USA` and
+    // canonicalize the list (USA-first alpha per §H.8 p150-151).
+    let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", 0.0, None)
+        .expect("fix_native must succeed");
     let parsed: serde_json::Value =
         serde_json::from_str(&result).expect("fix_native must return valid JSON");
     let fixed = parsed["fixed_text"].as_str().unwrap();
     assert!(
-        fixed.contains("NOFORN"),
-        "fix under wasm32 should expand NF → NOFORN, got: {fixed}"
+        fixed.contains("USA"),
+        "fix under wasm32 should inject USA into REL TO list, got: {fixed}"
     );
 }
 
 #[wasm_bindgen_test]
 fn wasm_fix_invalid_threshold_returns_error() {
-    let result = marque_wasm::fix_native("SECRET//NF\n", -1.0, None);
+    let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", -1.0, None);
     assert!(
         result.is_err(),
         "fix_native must reject negative threshold under wasm32"
@@ -206,9 +207,12 @@ fn wasm_lint_batch_empty_array() {
 
 #[wasm_bindgen_test]
 fn wasm_lint_batch_two_entries() {
+    // The diagnostic-firing fixture is SECRET//REL TO GBR (REL TO
+    // missing USA trigraph, §H.8 p150-151); the clean fixture is the
+    // canonical SECRET//REL TO USA, GBR (USA-first alpha).
     let entries = r#"[
-        {"id": "inv", "text": "SECRET//NF\n"},
-        {"id": "ok",  "text": "SECRET//NOFORN\n"}
+        {"id": "inv", "text": "SECRET//REL TO GBR\n"},
+        {"id": "ok",  "text": "SECRET//REL TO USA, GBR\n"}
     ]"#;
     let result =
         marque_wasm::lint_batch_native(entries, None).expect("lint_batch_native must succeed");
@@ -224,11 +228,11 @@ fn wasm_lint_batch_two_entries() {
     assert_eq!(arr[1]["id"], "ok");
     assert!(
         !arr[0]["diagnostics"].as_array().unwrap().is_empty(),
-        "SECRET//NF must produce diagnostics under wasm32"
+        "SECRET//REL TO GBR must produce diagnostics under wasm32"
     );
     assert!(
         arr[1]["diagnostics"].as_array().unwrap().is_empty(),
-        "SECRET//NOFORN must be clean under wasm32"
+        "SECRET//REL TO USA, GBR must be clean under wasm32"
     );
 }
 
@@ -342,9 +346,14 @@ fn wasm_lint_corrections_config_passthrough() {
     let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
     let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
         .expect("lint_native must accept corrections config under wasm32");
+    // The rule field is the structured 2-tuple
+    // ("capco", "marking.correction.token-typo").
     assert!(
-        result.contains("\"rule\":\"C001\""),
-        "corrections config must trigger C001 under wasm32, got: {result}"
+        result.contains(
+            "\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"marking.correction.token-typo\"}"
+        ),
+        "corrections config must trigger C001 (capco:marking.correction.token-typo) \
+         under wasm32, got: {result}"
     );
 }
 
