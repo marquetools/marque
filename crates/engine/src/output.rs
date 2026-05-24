@@ -122,13 +122,13 @@ impl LintResult {
     }
 
     /// Number of diagnostics that are configured at `Severity::Fix` AND
-    /// carry a fix payload (either legacy [`FixProposal`] or new
-    /// [`marque_rules::FixIntent`]). A diagnostic at `Fix` severity but
-    /// with neither `fix` nor `fix_intent` populated is not counted,
-    /// since it cannot produce an `AppliedFix` downstream.
+    /// carry an actionable payload (`Diagnostic.fix` or
+    /// `Diagnostic.text_correction`). A diagnostic at `Fix` severity
+    /// with neither populated is not counted, since it cannot produce
+    /// an `AppliedFix` or `TextCorrection` downstream.
     ///
     /// Both arms are counted because rules emit either `d.fix` or
-    /// `fix_intent`. The server's response struct ([`marque_server`])
+    /// `d.text_correction`. The server's response struct ([`marque_server`])
     /// and CLI exit-code summary both depend on `fix_count` matching the
     /// eventual `applied.len()` from `Engine::fix`.
     pub fn fix_count(&self) -> usize {
@@ -162,7 +162,7 @@ pub struct FixResult {
     /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
-    /// Audit stream. A single [`AuditLine<S>`] stream preserves the
+    /// Audit stream. A single [`AuditLine<CapcoScheme>`] stream preserves the
     /// confidence-then-span promotion-order invariant across the
     /// marking-fix channel (`AuditLine::AppliedFix`) and the
     /// text-correction channel (`AuditLine::TextCorrection`). The

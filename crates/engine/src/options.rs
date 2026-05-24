@@ -111,15 +111,11 @@ pub struct FixOptions {
     /// the semantic shape; the difference for `fix` is that expiry
     /// returns `Err(EngineError::DeadlineExceeded)`, not a partial
     /// success.
-    ///
-    /// **Phase 1 status:** ignored by the current build; deadline
-    /// enforcement lands in Phase 2.
-    ///
     /// [`LintOptions::deadline`]: crate::LintOptions::deadline
     pub deadline: Option<Instant>,
     /// Per-call confidence threshold override; `None` = use config.
     /// Values outside `[0.0, 1.0]` (including NaN) produce
-    /// `EngineError::InvalidThreshold`. Active from Phase 1.
+    /// `EngineError::InvalidThreshold`.
     pub threshold_override: Option<f32>,
 }
 
