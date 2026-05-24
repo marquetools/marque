@@ -77,18 +77,17 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
     const E5_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const E5_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
-    // Entry 6a (consultant §3.4.1 #6, split per D13): SBU-NF
+    // Entry 6a (consultant §3.4.1 #6): SBU-NF
     // transmutes on classified contact. Narrow-form reads:
     // CLASS only (see Entry 5 note on predicate-scan vs
     // dataflow reads — predicate also scans `non_ic_dissem`
-    // field for SBU-NF). Per Phase-3 pragmatic mapping
-    // (plan §8 Q1), the non-IC dissem axis is folded into
-    // CAT_DISSEM until a separate axis is exposed for a
+    // field for SBU-NF). Pragmatically, the non-IC dissem axis is
+    // folded into CAT_DISSEM until a separate axis is exposed for a
     // `CAT_NON_IC_DISSEM`.
     const E6A_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const E6A_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
-    // Entry 6b (consultant §3.4.1 #6, split per D13): LES-NF
+    // Entry 6b (consultant §3.4.1 #6): LES-NF
     // transmutes on classified contact. Same narrow-form +
     // axis-mapping pragmatism as Entry 6a. Cited at §H.9 p185
     // (LES-NF is its own §H.9 subsection p185–186, distinct
@@ -316,7 +315,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // marking) ... See US ORCON ARH requirements") maps onto
         // the same precedence surface — ORCON-NATO contacting
         // US-class transmutes to US ORCON in the page dissem
-        // axis. Per D13, the §H.8 p136 cite is the primary
+        // axis. The §H.8 p136 cite is the primary
         // anchor; the Appendix B mapping (line 895) is the
         // supplementary reference for ORCON-NATO ↔ US ORCON
         // equivalence.

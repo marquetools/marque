@@ -255,11 +255,11 @@ fn apply_fact_add(
             // and continues; whole-batch no-op surfaces as Err so the
             // engine drops the fix. Returning Ok here would let a
             // redundant-add intent appear as an applied no-op in the
-            // audit log (Copilot review of PR #372).
+            // audit log (#372).
             return Err(ApplyIntentError::IntentInapplicable);
         }
 
-        // PR 4b-D.2 Copilot R2 #1 (inverse-case rejection): if NOFORN
+        // Inverse-case rejection: if NOFORN
         // is already in `dissem_us`, FactAdd of any §H.8 p145 dominated
         // token (REL TO / RELIDO / DISPLAY ONLY / EYES ONLY) is a no-op
         // because NOFORN already supersedes it. Match the existing
@@ -285,8 +285,7 @@ fn apply_fact_add(
             return Err(ApplyIntentError::IntentInapplicable);
         }
 
-        // PR 4b-D.2 D22 (decisions.md) + Copilot R2 #1 (suppressed):
-        // when NOFORN is being inserted into dissem_us, route through
+        // When NOFORN is being inserted into dissem_us, route through
         // `DissemSet::with_noforn_injected` so the §H.8 p145
         // supersession overlay strips dominated FD&R *tokens* (REL TO /
         // RELIDO / DISPLAY ONLY / EYES ONLY) at the injection site —
@@ -295,7 +294,7 @@ fn apply_fact_add(
         // brings the FULL §H.8 p145 supersession with it, not just
         // the token-axis eviction.
         //
-        // Pre-R2 the token-axis eviction was correct but the country-
+        // Previously the token-axis eviction was correct but the country-
         // list axes (`attrs.rel_to`, `attrs.display_only_to`) stayed
         // populated, which produced a §H.8 p145 violation on the
         // direct `apply_intent` path used by E021 / E038 (callers that
@@ -531,12 +530,12 @@ fn apply_fact_remove(
         let target = match id {
             TOK_NODIS => NonIcDissem::Nodis,
             TOK_EXDIS => NonIcDissem::Exdis,
-            // PR 4b-C Commit 3 — §H.9 p170 (LIMITED DISTRIBUTION
+            // §H.9 p170 (LIMITED DISTRIBUTION
             // Precedence Rules for Banner Line Guidance): "Classified
             // documents: LIMDIS does not appear in the banner line."
             // verified 2026-05-16 against CAPCO-2016.md §H.9 p170.
             TOK_LIMDIS => NonIcDissem::Limdis,
-            // PR 4b-C Commit 3 — §H.9 p176 (SENSITIVE BUT
+            // §H.9 p176 (SENSITIVE BUT
             // UNCLASSIFIED Precedence Rules for Banner Line Guidance):
             // "Classified documents: SBU does not appear in the
             // banner line."

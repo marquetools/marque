@@ -27,8 +27,8 @@
 //! attach metadata to. The Vocabulary impl panics if asked about
 //! one of those, surfacing the misuse loudly.
 //!
-//! Phase C extends both the sentinel set and the canonical-string
-//! mapping to cover the full CVE-published token vocabulary; until
+//! A future extension covers both the sentinel set and the canonical-string
+//! mapping for the full CVE-published token vocabulary; until
 //! then the per-sentinel set is what "active" means here.
 
 use marque_capco::CapcoScheme;
@@ -140,7 +140,7 @@ fn authority_points_to_odni_for_ism_tokens() {
 /// `deprecation()`. The complementary positive case lives below; both
 /// arms of the `Option` are exercised between the two.
 ///
-/// When Phase C extends the sentinel set to include deprecated tokens
+/// When a future extension adds deprecated tokens to the sentinel set
 /// (e.g., adding a sentinel for `25X1-` from the `MIGRATIONS` table),
 /// this test should keep its current scope (active subset → `None`)
 /// and a new sibling test should land for the deprecated subset.
@@ -174,8 +174,8 @@ fn active_tokens_have_no_deprecation_metadata() {
 /// active sentinel currently has a `Some(replacement)` deprecation.
 /// This test asserts the structural property: every replacement that
 /// IS populated must be a TokenId that resolves cleanly in the same
-/// vocabulary (no dangling pointers). Phase C will extend the
-/// sentinel set to include real deprecations and this test will
+/// vocabulary (no dangling pointers). A future extension will add
+/// real deprecations to the sentinel set and this test will
 /// gain genuine `Some(_)` coverage.
 #[test]
 fn deprecation_replacement_when_known() {
@@ -201,7 +201,7 @@ fn deprecation_replacement_when_known() {
 
 /// Constructs a FOUO-bearing document and runs it through `Engine::lint`,
 /// asserting no diagnostic suggests migrating FOUO to CUI. The legacy
-/// `FOUO → CUI` migration entry was retired in Phase E
+/// `FOUO → CUI` migration entry was retired
 /// (`crates/ism/build.rs` doc-comment under `MIGRATIONS`); FOUO remains
 /// enumerated in `CVEnumISMDissem.json` and is a current, valid CAPCO
 /// dissem control. Any rule that proposes a CUI replacement on FOUO is

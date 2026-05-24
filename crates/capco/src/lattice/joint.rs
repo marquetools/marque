@@ -151,8 +151,8 @@ impl JointSet {
         //
         // 1. Producer list must be non-empty (`!j.countries.is_empty()`).
         // 2. **USA must appear in the producer list** ("USA always
-        //    appears as the OWNER/PRODUCER" per §H.3 p56). Pre-fix
-        //    (PR 4b-B 9th-pass), only invariant #1 was enforced; a
+        //    appears as the OWNER/PRODUCER" per §H.3 p56). Pre-fix,
+        //    only invariant #1 was enforced; a
         //    `JointClassification { countries: [GBR] }` (one country,
         //    no USA) was pushed to `joint_portions`, treated as
         //    well-formed unanimous, and emitted a JOINT banner

@@ -280,7 +280,7 @@ fn solely_nato_doc_two_portions_conservative_fire() {
 fn solely_nato_single_portion_fires_then_silent_after_fix() {
     // CAPCO-2016 §H.7 p127 Notional Example 2: a single-portion
     // solely-NATO document is the conservative-fire case per the
-    // S007 docblock (PR 9c.2 PM decision #2). The first portion has
+    // S007 docblock. The first portion has
     // no sibling evidence; the conservative path fires.
     //
     // Users in solely-NATO contexts who consistently see false

@@ -175,8 +175,8 @@ pub const CAT_NON_IC_DISSEM: CategoryId = CategoryId(11);
 
 /// DISPLAY ONLY country list — backed by
 /// `CanonicalAttrs.display_only_to`. Parallel to `CAT_REL_TO` for
-/// the REL TO country list. Introduced in PR 4b-D.2 Copilot R1 #2
-/// so the `capco/noforn-clears-display-only-to` PageRewrite can
+/// the REL TO country list. Introduced so the
+/// `capco/noforn-clears-display-only-to` PageRewrite can
 /// declare `Clear { CAT_DISPLAY_ONLY_TO }` symmetrically with
 /// `capco/noforn-clears-rel-to`'s `Clear { CAT_REL_TO }`.
 ///
@@ -363,7 +363,7 @@ pub const TOK_ATOMAL: TokenId = TokenId(140);
 pub const TOK_BALK: TokenId = TokenId(141);
 pub const TOK_BOHEMIA: TokenId = TokenId(142);
 
-// PR #505 (T112 follow-up): per-variant classification sentinels for the
+// Per-variant classification sentinels (issue #505) for the
 // `MarkingClassification::{Nato,Fgi}(_)` arms. These complement
 // `TOK_JOINT` (`TokenId(103)`) which already carries `Joint(_)` per-variant
 // matching, and round out the classification-axis sentinel surface so
@@ -381,7 +381,7 @@ pub const TOK_BOHEMIA: TokenId = TokenId(142);
 //   - `TOK_NATO_CLASS` / `TOK_FGI_CLASS` (this block) match the
 //     classification axis variant ONLY (strict per-variant).
 //
-// Reserved for the NATO closure cone deferred to #508 (PR 4b-D) and for
+// Reserved for the NATO closure cone deferred to #508 and for
 // any future `ConflictsWithFamily` row that needs strict-classification
 // FGI/NATO match without the dissem-axis or umbrella shape.
 //

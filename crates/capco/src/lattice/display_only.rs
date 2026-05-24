@@ -226,8 +226,8 @@ impl DisplayOnlyBlock {
                 let mut codes: Vec<CountryCode> = countries.iter().copied().collect();
                 // Named `fn`-item comparator
                 // (`super::helpers::cmp_country_code_trigraph_first`) for
-                // reviewability + pattern consistency with the other R1
-                // helpers (issue #689 / PR #585 precedent at
+                // reviewability + pattern consistency with the other
+                // comparator helpers (issue #689 / PR #585 precedent at
                 // `super::helpers::sort_smolstrs_by_sar`) — see the
                 // function-level doc-comment for why this single-callsite
                 // extraction is 1 → 1 on monomorphizations (no WASM saving)

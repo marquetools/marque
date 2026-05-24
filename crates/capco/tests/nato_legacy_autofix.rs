@@ -345,7 +345,7 @@ fn e066_does_not_fire_on_bare_us_portion() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 9c.1 R1 Copilot #3 — companion-write dedup.
+// Companion-write dedup.
 //
 // When the parser's legacy NATO compound canonicalization
 // (`crates/core/src/parser.rs` idx == 1 non-US classification block)
@@ -363,7 +363,7 @@ fn e066_does_not_fire_on_bare_us_portion() {
 // All four inputs were verified to produce duplicated output
 // (`ATOMAL/ATOMAL`, `BOHEMIA/BOHEMIA`, `BALK/BALK`,
 // `ATOMAL/ATOMAL`) when the dedup pass was temporarily disabled
-// during R1 — the tests would fail without `dedup_companions`.
+// — the tests would fail without `dedup_companions`.
 //
 // Authority:
 // - CAPCO-2016 §G.1 Table 4 p37 (legacy compound text — the source

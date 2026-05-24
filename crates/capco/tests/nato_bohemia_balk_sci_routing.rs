@@ -369,7 +369,7 @@ fn e066_does_not_fire_on_bare_cts_portion() {
 
 /// `(//CTS//BOHEMIA)` routes BOHEMIA onto `sci_markings` as
 /// `SciControlSystem::NatoSap(Bohemia)`. Closes the round-trip
-/// asymmetry from the R0 fix-up where the legacy form `(//CTS-B)`
+/// asymmetry where the legacy form `(//CTS-B)`
 /// canonicalized correctly but the canonical form parsed to an empty
 /// SCI block.
 ///
@@ -461,7 +461,7 @@ fn h7_p127_worked_example_round_trip() {
 
 // ---------------------------------------------------------------------------
 // Round-trip + combined-form coverage — these pin the deeper
-// invariants the R1 parser extension unlocks: canonical-form output
+// invariants the parser extension unlocks: canonical-form output
 // re-parses to the same `sci_markings` state, and combined BALK /
 // BOHEMIA chunks populate both NATO SAPs on a single marking.
 // ---------------------------------------------------------------------------

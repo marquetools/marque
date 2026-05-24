@@ -384,8 +384,8 @@ fn non_fdr_control_evicts_fouo() {
     // CLOSURE injection: post-strip the page carries a non-IC dissem
     // (LES) with no FD&R dominator, so `CLOSURE_NOFORN_CAVEATED`
     // (`crates/capco/src/scheme/closure.rs:348`, the consolidated
-    // §B.3 Table 2 p21 row that absorbed the per-token rows in PR
-    // #522 / decisions.md D18) fires and injects NOFORN. This pins
+    // §B.3 Table 2 p21 row that absorbed the per-token rows in
+    // #522) fires and injects NOFORN. This pins
     // the universal IC principle that non-IC dissem implies NOFORN
     // absent FD&R — LES is non-IC per §H.9 p181. The runner output
     // for this fixture confirms the post-closure banner is

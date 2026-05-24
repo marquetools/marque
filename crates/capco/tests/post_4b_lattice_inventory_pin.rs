@@ -19,8 +19,8 @@
 //!    to recognize the canonical `display_only_to` parser axis (29 → 30);
 //!  * 1 [`ClosureRule`] row returned by
 //!    [`MarkingScheme::closure_rules`] (post-PR-D of the FactBitmask
-//!    refactor, issue #371). The 10-row catalog walk that PR 4b-D.1
-//!    runtime-activated was retired in PR-D: nine rows had cones in
+//!    refactor, issue #371). The 10-row catalog walk that was
+//!    runtime-activated was later retired: nine rows had cones in
 //!    the closed-vocab atom inventory and migrated to the bitmask
 //!    Kleene fast path (`CLOSURE_TABLE` in `closure_table.rs`); only
 //!    `CLOSURE_REL_TO_USA_NATO` survives in fn-pointer form because
@@ -43,8 +43,7 @@
 //! ## Derivation through the nine 4b sub-PRs
 //!
 //! The post-4b-F terminal state is the cumulative result of nine
-//! sub-PRs (see `docs/plans/2026-05-19-pr4b-closeout-architect-plan.md`
-//! §1.0):
+//! sub-PRs:
 //!
 //! - **4b-A #426** adds [`AeaSet`] (Join + Meet); zero rewrites, zero
 //!   closures, zero new rules.
@@ -95,10 +94,10 @@
 //!   added `capco/les-nf-supersedes-les` (26 → 27 per §H.9 p185).
 //!   PageRewrite count reaches the final 27.
 //!
-//! Plus the 8 transmutation_stubs.rs Phase-3 stubs declared pre-4b
+//! Plus the 8 transmutation_stubs.rs stubs declared earlier
 //! that remain in `build_page_rewrites()` for declaration ordering
 //! but carry `never_fires` / `noop_action` placeholder bodies. They
-//! count in the structural exact-state pin per OQ-8.
+//! count in the structural exact-state pin.
 //!
 //! ## Why a separate test from the count assertion
 //!
@@ -126,16 +125,12 @@
 //!
 //! ## Authority
 //!
-//! - `docs/plans/2026-05-19-pr4b-closeout-pm-decisions.md` (PM
-//!   contract for this PR; OQ-RUST-2 = positional list for rewrites,
-//!   OQ-8 = transmutation_stubs included);
-//! - `docs/plans/2026-05-19-pr4b-closeout-architect-plan.md` §3.2
-//!   (exact-state pin design);
-//! - `docs/plans/2026-05-19-pr4b-closeout-rust-preflight.md` §4
-//!   (drift-class taxonomy: D1 rename, D2 count, D3 type-bound,
-//!   D4 dead-code-masking);
-//! - Per-row §-citations live in the originating sub-PR's plan and
-//!   in each catalog declaration's `citation` field.
+//! - Positional list for rewrites; transmutation_stubs included.
+//! - Exact-state pin design.
+//! - Drift-class taxonomy: rename, count, type-bound,
+//!   dead-code-masking.
+//! - Per-row §-citations live in each catalog declaration's
+//!   `citation` field.
 
 use marque_capco::CapcoScheme;
 use marque_scheme::{Constraint, MarkingScheme, Severity};

@@ -239,8 +239,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         bitmask_trigger_exact: true,
     },
     // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
-    // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
-    // model — BALK/BOHEMIA now live in `sci_markings` as
+    // §G.2 p40 + §H.7 p127. The structural model places
+    // BALK/BOHEMIA in `sci_markings` as
     // `SciControlSystem::NatoSap` entries (not as fused
     // `NatoClassification::*Balk/*Bohemia` variants which were retired
     // as a wrong fusion of classification and control-marking

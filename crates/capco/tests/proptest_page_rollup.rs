@@ -42,7 +42,7 @@ fn arb_classification() -> impl Strategy<Value = Classification> {
 /// Strategy producing any of the four `MarkingClassification` variants
 /// (Us / Fgi / Nato / Joint).
 ///
-/// PR 5 (006 T063a + #276): Pre-PR-5 `arb_ism_attrs` generated only
+/// Issue #276: `arb_ism_attrs` formerly generated only
 /// `Some(MarkingClassification::Us(c))`, so foreign-banner roll-up
 /// regressions were unreachable from proptest. Adding the foreign
 /// variants closes that coverage gap.
@@ -147,7 +147,7 @@ fn arb_ism_attrs() -> impl Strategy<Value = CanonicalAttrs> {
     (
         prop_oneof![
             Just(None),
-            // PR 5 (006 T063a + #276): generate Us/Fgi/Nato/Joint
+            // Issue #276: generate Us/Fgi/Nato/Joint
             // variants so foreign-banner roll-up regressions are
             // reachable from proptest. The dominant US case is
             // weighted at 60% inside the strategy; foreign variants

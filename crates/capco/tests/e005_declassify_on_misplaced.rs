@@ -131,14 +131,13 @@ fn e005_citation_anchors_at_e1_p31() {
 // Conscious-defer symmetry pin
 // ---------------------------------------------------------------------------
 
-/// E005 is a stage-4-pending Recanonicalize-document rule per
-/// `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md` D4
+/// E005 is a stage-4-pending Recanonicalize-document rule
 /// (Path A fallback). The structural blocker — `MarkingScheme::
 /// evaluate_custom` having no access to `RuleContext.marking_type` —
 /// means the rule MUST consciously decline to emit a fix today.
 ///
-/// Pre-PR-3c.B-Commit-10 the symmetry pin asserted both `fix.is_none()`
-/// AND `fix_intent.is_none()` (two separate fields). Post-cutover
+/// The symmetry pin formerly asserted both `fix.is_none()`
+/// AND `fix_intent.is_none()` (two separate fields). Now
 /// `Diagnostic` has a single `fix: Option<FixIntent<S>>` plus
 /// `text_correction: Option<TextCorrection>`; the dual-field
 /// assertion collapses to "neither fix nor text_correction is
@@ -160,8 +159,7 @@ fn e005_emits_neither_fix_nor_text_correction_pending_stage4() {
     assert!(
         e005.fix.is_none() && e005.text_correction.is_none(),
         "E005 must consciously decline to emit a fix or text_correction \
-         until Stage-4 Recanonicalize-document lands; \
-         see specs/006-engine-rule-refactor/decisions/02-catalog-shape.md D4. \
+         until Stage-4 Recanonicalize-document lands. \
          Got fix={:?}, text_correction={:?}",
         e005.fix,
         e005.text_correction,

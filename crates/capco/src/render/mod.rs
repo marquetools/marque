@@ -89,7 +89,7 @@ pub(crate) fn is_numeric_first(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Named-fn-item comparators — WASM bundle-size collapse (R1 / issue #689)
+// Named-fn-item comparators — WASM bundle-size collapse (issue #689)
 // ---------------------------------------------------------------------------
 //
 // These helpers extend the PR #585 precedent established by
@@ -100,7 +100,7 @@ pub(crate) fn is_numeric_first(s: &str) -> bool {
 // `slice::sort_by_key`) shares one closure-axis monomorphization with every
 // other callsite using the same `fn`-item.
 //
-// Two-axis Rust trap recap (per the R1 rust-feasibility preflight §3):
+// Two-axis Rust trap recap:
 //
 // 1. `slice::sort_by` passes `&T` to its comparator. When the slice element
 //    type is itself a borrow (`&SciMarking`, `&str`, …), the comparator

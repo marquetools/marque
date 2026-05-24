@@ -85,7 +85,7 @@ pub(crate) fn render_dissem(
             .filter(|d| !(drop_bare_rel && **d == DissemControl::Rel))
             .collect();
     // Named `fn`-item key adapter (`rank_dissem`) for closure-axis
-    // monomorphization collapse — R1 WASM-cut per issue #689 and the
+    // monomorphization collapse — WASM-cut per issue #689 and the
     // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     sorted.sort_by_key(rank_dissem);
     sorted.dedup();
@@ -181,7 +181,7 @@ fn portion_str(d: &DissemControl) -> &'static str {
 /// `sort_by_key` adapter — `slice::sort_by_key` over `&[&DissemControl]`
 /// invokes its key fn with `&&DissemControl`; [`register_rank`] takes
 /// `&DissemControl`. Named `fn`-item (not closure) for closure-axis
-/// monomorphization collapse per R1 / issue #689. The `&&DissemControl
+/// monomorphization collapse per issue #689. The `&&DissemControl
 /// → &DissemControl` reduction is auto-deref'd inside the adapter body.
 fn rank_dissem(d: &&DissemControl) -> u8 {
     register_rank(d)

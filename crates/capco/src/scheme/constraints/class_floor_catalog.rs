@@ -153,7 +153,7 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
             name: "banner.aea.floor-tfni",
             label: capco(SectionLetter::H, 6, 107),
         },
-        // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+        // Citation tightened from "§H.7 Appendix B"
         // to "§H.7 p122". §H.7 p122 is the worked example showing
         // ATOMAL in the AEA axis: `SECRET//RD/ATOMAL//FGI NATO//
         // NOFORN` — the direct, structurally-grounded citation for
