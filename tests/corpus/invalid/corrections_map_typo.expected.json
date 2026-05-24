@@ -1,6 +1,6 @@
 {
   "diagnostics": [
-    {"rule": "C001", "span": {"start": 8, "end": 14}}
+    {"rule": {"scheme": "capco", "predicate_id": "marking.correction.token-typo"}, "span": {"start": 0, "end": 6}}
   ],
   "_note": "Requires corrections config: {\"SERCET\": \"SECRET\"}. Tested by c001_corrections_map_accuracy."
 }

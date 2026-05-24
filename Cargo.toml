@@ -34,7 +34,14 @@ marque-core = { path = "crates/core", version = "0.2.0" }
 marque-engine = { path = "crates/engine", version = "0.2.0", default-features = false }
 marque-extract = { path = "crates/extract", version = "0.2.0" }
 # Internal crates
-marque-ism = { path = "crates/ism", version = "0.2.0" }
+# `default-features = false` excludes the `dates` feature (and the `jiff`
+# dep it pulls) by default so WASM consumers inherit the hand-rolled
+# Gregorian path. The CLI (`marque`) and server (`marque-server`) opt
+# back in via `features = ["dates"]`; Cargo feature unification then
+# propagates `dates = on` across the whole native build graph (including
+# `marque-extract`, which pulls `marque-ism` only transitively through
+# `marque-core` and so has no opt-in line of its own). See issue #455.
+marque-ism = { path = "crates/ism", version = "0.2.0", default-features = false }
 marque-rules = { path = "crates/rules", version = "0.2.0" }
 marque-scheme = { path = "crates/scheme", version = "0.2.0" }
 marque-test-utils = { path = "crates/test-utils" }
@@ -43,11 +50,30 @@ async-trait = "0.1.89"
 futures = "0.3.32"
 futures-core = "0.3.32"
 # Async
-tokio = { version = "1.52.2", features = ["full"] }
+tokio = { version = "1.52.1", features = ["full"] }
 
 aho-corasick = "1.1.4"
 # Text processing / scanning
 memchr = "2.8.0"
+
+# Inline-capable small vector (FgiMarker::Acknowledged.countries — most FGI
+# lists are <= 4 codes, so we keep them inline instead of heap-allocating).
+# MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
+# Constitution Principle III.
+smallvec = "1"
+
+# Small-string optimization (<=23 bytes inline, Arc<str> fallback above the
+# threshold, cheap Clone, zero-cost SmolStr::new_static(&'static str)).
+# Used at hot-path owned-string fields where the inline path eliminates per-
+# token / per-fix allocations (TokenSpan::text, SAR/SCI identifiers,
+# TextCorrection::replacement, page-context + lattice BTreeMap keys).
+# MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
+# Constitution Principle III.
+# `default-features = false` drops the `serde` and `borsh` features (and
+# their transitive `borsh` + `cfg_aliases` crates) that we do not use —
+# we only consume the core `SmolStr` type. Re-add `features = ["serde"]`
+# here if a downstream crate needs the `Serialize` impl.
+smol_str = { version = "0.3", default-features = false }
 
 anyhow = "1.0.102"
 # Error handling
@@ -100,6 +126,21 @@ insta = { version = "1.47.2", features = ["json"] }
 # Compile-time trait-bound assertions
 static_assertions = "1.1.0"
 
+# Sensitive-content access discipline (Constitution Principle II — Marque-
+# owned content-bearing buffers wipe on drop). `secrecy::SecretBox<_>` gates
+# readouts through `expose_secret()` — every content access is a grep target
+# for security review. Builds on `zeroize` for the underlying volatile-write
+# memset that the compiler cannot elide. RustCrypto, audited. Apache-2.0 OR
+# MIT licensed — WASM-safe.
+secrecy = "0.10.3"
+zeroize = "1.8.2"
+
+# BLAKE3 cryptographic hash for audit-record digesting.
+# `default-features = false, features = ["pure"]` selects the pure-Rust
+# SIMD-free path on `wasm32-unknown-unknown` per Constitution III
+# WASM-size discipline.
+blake3 = { version = "1", default-features = false, features = ["pure"] }
+
 # Property-based testing
 proptest = { version = "1", default-features = false, features = ["std"] }
 
@@ -134,7 +175,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 #
 # `corpus-override` is a real feature in marque-engine / marque-capco /
 # marque-config / marque (CLI) but is DELIBERATELY absent from
-# marque-wasm's own `[features]` (T067 / T3 enforcement — see
+# marque-wasm's own `[features]` (corpus-override enforcement — see
 # `docs/security/WHITEPAPER.md` §10.3). The `#[cfg(feature = "corpus-override")]`
 # probe in `crates/wasm/src/lib.rs` and `crates/wasm/tests/no_corpus_override.rs`
 # is the load-bearing part of that enforcement; without this check-cfg entry
@@ -145,6 +186,14 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   "cfg(coverage_nightly)",
   'cfg(feature, values("corpus-override"))',
 ] }
+
+[workspace.lints.clippy]
+# The `let mut x = T::default(); x.foo = ...;` test-fixture pattern trips
+# clippy::field_reassign_with_default at hundreds of sites. The style
+# preference is real but the migration cost is mechanical churn across
+# ~270 test sites with no correctness gain; suppress workspace-wide and
+# reconsider when a new construction pattern lands.
+field_reassign_with_default = "allow"
 
 [profile.bench]
 inherits = "release"
@@ -196,4 +245,7 @@ inherits = "release"
 inherits = "release"
 
 [profile.release-web]
+inherits = "release"
+
+[profile.release-monoaudit]
 inherits = "release"

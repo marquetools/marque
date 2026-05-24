@@ -4,11 +4,11 @@
 name: "🔀 Gemini Dispatch"
 
 on:
-  pull_request_review_comment: { types: [ created ] }
-  pull_request_review: { types: [ submitted ] }
-  pull_request: { types: [ opened ] }
-  issues: { types: [ opened, reopened ] }
-  issue_comment: { types: [ created ] }
+  pull_request_review_comment: { types: [created] }
+  pull_request_review: { types: [submitted] }
+  pull_request: { types: [opened] }
+  issues: { types: [opened, reopened] }
+  issue_comment: { types: [created] }
 
 defaults:
   run:
@@ -56,9 +56,11 @@ jobs:
       )
     runs-on: "ubuntu-latest"
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: write
+      id-token: write
     outputs:
       command: "${{ steps.extract_command.outputs.command }}"
       request: "${{ steps.extract_command.outputs.request }}"
@@ -66,18 +68,19 @@ jobs:
       issue_number: "${{ github.event.pull_request.number || github.event.issue.number }}"
       github_token: "${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}"
       gemini_api_key: "${{ secrets.GEMINI_API_KEY }}"
-      app_id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
+      app_id: "${{ vars.APP_CLIENT_ID || vars.APP_ID }}"
       app_private_key: "${{ secrets.APP_PRIVATE_KEY }}"
-      
+
     steps:
       - name: "Mint identity token"
         id: "mint_identity_token"
         if: |-
-          ${{ vars.APP_ID || vars.CLIENT_ID }}
+          ${{ vars.APP_CLIENT_ID || vars.APP_ID }}
         uses: "actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3"
         with:
-          client-id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
+          client-id: "${{ vars.APP_CLIENT_ID || vars.APP_ID }}"
           private-key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY }}"
+          permission-actions: "read"
           permission-contents: "read"
           permission-issues: "write"
           permission-pull-requests: "write"
@@ -114,23 +117,12 @@ jobs:
               core.setOutput('command', 'fallthrough');
             }
 
-      - name: "Acknowledge request"
-        env:
-          GITHUB_TOKEN: "${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}"
-          ISSUE_NUMBER: "${{ github.event.pull_request.number || github.event.issue.number }}"
-          MESSAGE: |-
-            🤖 Hi @${{ github.actor }}, I've received your request, and I'm working on it now! You can track my progress [in the logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
-          REPOSITORY: "${{ github.repository }}"
-        run: |-
-          gh issue comment "${ISSUE_NUMBER}" \
-            --body "${MESSAGE}" \
-            --repo "${REPOSITORY}"
 
   review:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'review' }}
-    uses: "marquetools/.github/.github/workflows/gemini-review.yml@d17343622078c19976da6edc4a295f484e1d93ab"
+    uses: "marquetools/.github/.github/workflows/gemini-review.yml@5e4d7384a049aa938b0ea80d0ac9787ae820f3bd"
     permissions:
       contents: "read"
       id-token: "write"
@@ -138,10 +130,7 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ needs.dispatch.outputs.app_id }}"
-      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
     secrets: "inherit"
 
@@ -149,7 +138,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'triage' }}
-    uses: "marquetools/.github/.github/workflows/gemini-triage.yml@d17343622078c19976da6edc4a295f484e1d93ab"
+    uses: "marquetools/.github/.github/workflows/gemini-triage.yml@5e4d7384a049aa938b0ea80d0ac9787ae820f3bd"
     permissions:
       contents: "read"
       id-token: "write"
@@ -157,10 +146,7 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ needs.dispatch.outputs.app_id }}"
-      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
     secrets: "inherit"
 
@@ -168,7 +154,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'invoke' }}
-    uses: "marquetools/.github/.github/workflows/gemini-invoke.yml@d17343622078c19976da6edc4a295f484e1d93ab"
+    uses: "marquetools/.github/.github/workflows/gemini-invoke.yml@5e4d7384a049aa938b0ea80d0ac9787ae820f3bd"
     permissions:
       contents: "read"
       id-token: "write"
@@ -176,10 +162,7 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ needs.dispatch.outputs.app_id }}"
-      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
     secrets: "inherit"
 
@@ -187,7 +170,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'approve' }}
-    uses: "marquetools/.github/.github/workflows/gemini-plan-execute.yml@d17343622078c19976da6edc4a295f484e1d93ab"
+    uses: "marquetools/.github/.github/workflows/gemini-plan-execute.yml@5e4d7384a049aa938b0ea80d0ac9787ae820f3bd"
     permissions:
       contents: "write"
       id-token: "write"
@@ -195,10 +178,7 @@ jobs:
       pull-requests: "write"
     with:
       github-token: "${{ needs.dispatch.outputs.github_token }}"
-      gemini_api_key: "${{ needs.dispatch.outputs.gemini_api_key }}"
       additional_context: "${{ needs.dispatch.outputs.additional_context }}"
-      app_id: "${{ needs.dispatch.outputs.app_id }}"
-      app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
     secrets: "inherit"
 
@@ -217,26 +197,11 @@ jobs:
       issues: "write"
       pull-requests: "write"
     steps:
-      - name: "Mint identity token"
-        id: "mint_identity_token"
-        if: |-
-          ${{ vars.APP_ID || vars.CLIENT_ID }}
-        uses: "actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3" # ratchet:actions/create-github-app-token@v2
-        with:
-          client-id: "${{ vars.APP_ID || vars.CLIENT_ID }}"
-          private-key: "${{ secrets.APP_PRIVATE_KEY || vars.APP_PRIVATE_KEY || needs.dispatch.outputs.app_private_key }}"
-          permission-contents: "read"
-          permission-issues: "write"
-          permission-pull-requests: "write"
-
       - name: "Send failure comment"
         env:
           GITHUB_TOKEN: "${{ needs.dispatch.outputs.github_token || secrets.GITHUB_TOKEN || github.token }}"
           ISSUE_NUMBER: "${{ github.event.pull_request.number || github.event.issue.number }}"
-          MESSAGE: |-
-            🤖 I'm sorry @${{ github.actor }}, but I was unable to process your request. Please [see the logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.
           REPOSITORY: "${{ github.repository }}"
         run: |-
-          gh issue comment "${ISSUE_NUMBER}" \
-            --body "${MESSAGE}" \
-            --repo "${REPOSITORY}"
+          echo '🤖 @${{ github.actor }} was unable to process your request. Please [see the logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.'
+

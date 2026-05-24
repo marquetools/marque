@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Mangled-marking fixtures
 
-Labeled mangled CAPCO markings used by the Phase-D decoder accuracy
+Labeled mangled CAPCO markings used by the decoder accuracy
 harness (`cargo test -p marque-capco --features decoder-harness`) and by
 the SC-004 regression gate (≥85% resolution at aggregate confidence
 ≥0.85 across ≥200 cases).
@@ -45,18 +45,17 @@ pinned there and the `invalid/` / `prose/` siblings are skipped.
 Homogeneous corpora (no `valid/` subdir) are used unchanged, so an
 Enron-style maildir still works as-is.
 
-**Corpus choice rationale.** Phase-D priors (`crates/capco/corpus/priors.json`)
-are derived from the Enron corpus because Enron measures how often
-CAPCO tokens appear in *non-IC business prose* — that's the question
-the priors answer (region-identification base rates). Mangled fixtures
-answer a different question: "given a span already flagged by the
-Scanner as a marking candidate but failing strict parse, can the
-decoder resolve to the intended canonical?" That test wants
-representative CAPCO-2016 canonical *shapes* as the mangling source,
-which `tests/corpus/` provides directly from curated marking shapes.
-Running the generator against Enron yielded only 5 usable canonicals
-(a real-world reflection of how rare classified markings are in
-non-IC email) — far below SC-004's ≥200-case floor.
+**Corpus choice rationale.** Chosen priors reflect the test and data output goals:
+  - `crates/capco/corpus/priors.json` are derived from the Enron corpus because Enron measures how often CAPCO tokens appear in *non-IC business prose* — that's the question the priors answer (region-identification base rates).
+  - Mangled fixtures answer a different question: "given a span already flagged by the Scanner as a marking candidate but failing strict parse, can the
+  decoder resolve to the intended canonical?" That test wants
+  representative CAPCO-2016 canonical *shapes* as the mangling source,
+  which `tests/corpus/` provides directly from curated marking shapes.
+  Running the generator against Enron yielded only 5 usable canonicals
+  (a real-world reflection of how rare classified markings are in
+  non-IC email) — far below SC-004's ≥200-case floor.
+  - Valid and invalid fixtures test the null hypothesis.
+  - Prose and document priors test detection accuracy and false positives/negatives.
 
 Regenerate whenever `tests/corpus/` canonicals change, the transform
 set changes, or the minimum-case count changes. The commit that

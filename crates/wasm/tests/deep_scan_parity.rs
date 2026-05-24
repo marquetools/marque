@@ -17,7 +17,7 @@
 //!    is `DecoderPosterior`, matching the native engine's output. If
 //!    this stops holding, either the dispatcher is dormant or the
 //!    WASM build's baked priors / vocab have drifted from the native
-//!    build (FR-013a / Gate 1 enforcement).
+//!    build.
 //!
 //! Native-only; cannot run inside `wasm32`.
 
@@ -25,7 +25,8 @@
 
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_rules::audit::AppliedFix;
+use marque_rules::{Diagnostic, RuleId};
 use marque_wasm::{fix_native, lint_native};
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -100,12 +101,39 @@ fn shared_relaxed_engine() -> &'static Engine {
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for byte-identical NDJSON.
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
-    message: &'a str,
-    citation: &'a str,
+    message: MessageJson<'a>,
+    citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors the
+    /// CLI and WASM emitters' `recognized_canonical` field for
+    /// byte-identical NDJSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MessageJson<'a> {
+    template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,7 +145,8 @@ struct SpanJson {
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     source: &'static str,
-    replacement: &'a str,
+    intent_kind: &'static str,
+    replacement: Option<&'a str>,
     confidence: f32,
     migration_ref: Option<&'a str>,
 }
@@ -132,26 +161,51 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — parity test mirror of the CLI / WASM
+    // projection (issue #699).
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: fix_source_str(f.source),
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: match &f.replacement {
+                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    _ => "Unknown",
+                },
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
+                intent_kind: "TextCorrection",
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
+            }),
+            (None, None) => None,
+        },
+        recognized_canonical,
     }
 }
 
-fn render_lint_ndjson(diagnostics: &[Diagnostic]) -> String {
+fn render_lint_ndjson(diagnostics: &[Diagnostic<marque_capco::CapcoScheme>]) -> String {
     let mut buf = Vec::with_capacity(diagnostics.len() * 256);
     for d in diagnostics {
         serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
@@ -196,10 +250,12 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     // See `shared_relaxed_engine` for the rationale.
     let engine = shared_relaxed_engine();
     let native_fix = engine.fix(MANGLED_INPUT, FixMode::Apply);
-    let saw_decoder_native = native_fix
-        .applied
-        .iter()
-        .any(|f: &AppliedFix| matches!(f.source, marque_rules::FixSource::DecoderPosterior));
+    let saw_decoder_native =
+        native_fix
+            .applied_fixes()
+            .any(|f: &AppliedFix<marque_capco::CapcoScheme>| {
+                matches!(f.source, marque_rules::FixSource::DecoderPosterior)
+            });
     assert!(
         saw_decoder_native,
         "native engine produced no DecoderPosterior fix on {:?}; \
@@ -232,13 +288,24 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
         .get("applied")
         .and_then(|v| v.as_array())
         .expect("fix_native output has an `applied` array");
+    // Audit records carry the discriminant ("strict"|"decoder") on the
+    // inner `fix.replacement.discriminant` path, not on a top-level
+    // `source` field. The engine derives `Discriminant` from
+    // `FixSource` at projection time: BuiltinRule / MigrationTable →
+    // "strict"; DecoderPosterior / DecoderClassificationHeuristic →
+    // "decoder".
     let saw_decoder_wasm = applied
         .iter()
-        .filter_map(|rec| rec.get("source").and_then(|v| v.as_str()))
-        .any(|s| s == "DecoderPosterior");
+        .filter_map(|rec| {
+            rec.get("fix")
+                .and_then(|fix| fix.get("replacement"))
+                .and_then(|r| r.get("discriminant"))
+                .and_then(|v| v.as_str())
+        })
+        .any(|s| s == "decoder");
     assert!(
         saw_decoder_wasm,
-        "WASM fix_native produced no DecoderPosterior audit record \
+        "WASM fix_native produced no decoder-discriminant audit record \
          on {:?}; output: {wasm_json}",
         std::str::from_utf8(MANGLED_INPUT).unwrap()
     );

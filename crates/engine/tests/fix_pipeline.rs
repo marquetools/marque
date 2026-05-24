@@ -2,19 +2,19 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 4 — fix pipeline integration tests (T044, T046).
+//! Fix pipeline integration tests.
 //!
 //! Drives `Engine::fix` against corpus fixtures and stub rules, verifying:
-//! - Mixed confidence: only high-confidence fixes applied (FR-004)
+//! - Mixed confidence: only high-confidence fixes applied
 //! - Dry-run parity: identical applied list, dry_run=true, source unchanged
 //! - Missing classifier identity: field is None
-//! - Overlap guard: deterministic FR-016 ordering
+//! - Overlap guard: deterministic confidence-then-span ordering
 //! - Post-fix re-lint: fewer diagnostics after fixing
 
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock, LintResult};
-use serde_json::json;
+use secrecy::ExposeSecret as _;
 use std::time::{Duration, UNIX_EPOCH};
 
 /// Fixed timestamp for deterministic audit records.
@@ -31,8 +31,13 @@ fn test_engine() -> Engine {
 }
 
 fn mixed_confidence_source() -> Vec<u8> {
-    // E001 at confidence 1.0 (NF → NOFORN), E003 at confidence 0.6 (misordered).
-    b"SECRET//NF\nSECRET//NOFORN//SI\n".to_vec()
+    // First line: REL TO missing USA at confidence 0.97 → fix applied.
+    // Second line `(TS//HCS)`: bare HCS legacy form (§H.4 p62) emitting
+    // a no-fix Severity::Error diagnostic that stays in
+    // `remaining_diagnostics`. HCS-O vs HCS-P is a classifier decision
+    // per §H.4, so the rule has no auto-fix path and its diagnostic
+    // persists through the fix pass.
+    b"SECRET//REL TO GBR, AUS\n(TS//HCS)\n".to_vec()
 }
 
 #[test]
@@ -41,28 +46,46 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // Only E001 (confidence 1.0) should be applied.
-    assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
-    assert_eq!(result.applied[0].proposal.rule.as_str(), "E001");
-    assert!((result.applied[0].proposal.confidence.combined() - 1.0).abs() < f32::EPSILON);
+    // Only the REL-TO-missing-USA fix (confidence 0.97 ≥ 0.95) should
+    // be applied. The remaining diagnostic on this fixture is the bare
+    // HCS legacy form (no-fix on the `(TS//HCS)\n` second line —
+    // conscious-defer per §H.4 p62, classifier picks HCS-O vs HCS-P) —
+    // verified below in the `remaining_diagnostics` assertion.
+    // `applied_fixes()` returns `impl Iterator`; collect once for index
+    // access + Debug formatting.
+    let applied: Vec<_> = result.applied_fixes().collect();
+    assert_eq!(applied.len(), 1, "applied: {applied:?}");
+    assert_eq!(
+        applied[0].rule.predicate_id(),
+        "portion.dissem.rel-to-missing-usa"
+    );
+    assert!((applied[0].fix.replacement.confidence.combined() - 0.97).abs() < 0.001);
 
-    // The post-fix text should have NF replaced with NOFORN.
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    // The post-fix first line should have USA elevated and codes
+    // sorted alphabetically.
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert!(
-        fixed_text.starts_with("SECRET//NOFORN"),
-        "expected NF → NOFORN, got: {fixed_text:?}"
+        fixed_text.starts_with("SECRET//REL TO USA"),
+        "expected canonical REL TO list, got: {fixed_text:?}"
     );
 
-    // E003 (confidence 0.6 < threshold 0.95) remains as a suggestion.
+    // E010 (bare HCS, no-fix Error) remains.
     assert!(
         !result.remaining_diagnostics.is_empty(),
-        "E003 should remain in remaining_diagnostics"
+        "E010 should remain in remaining_diagnostics"
     );
     assert!(
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.as_str() == "E003")
+            .any(|d| d.rule.predicate_id() == "portion.sci.hcs-system-constraints"),
+        "E010 (bare HCS, conscious-defer no-fix) should remain; \
+         remaining: {:?}",
+        result
+            .remaining_diagnostics
+            .iter()
+            .map(|d| d.rule.predicate_id())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -75,27 +98,31 @@ fn dry_run_parity_with_apply() {
     let dry_result = engine.fix(&source, FixMode::DryRun);
 
     // DryRun returns original source.
-    assert_eq!(dry_result.source, source);
+    assert_eq!(dry_result.source.expose_secret(), source);
 
     // Same number of applied fixes.
-    assert_eq!(apply_result.applied.len(), dry_result.applied.len());
+    assert_eq!(
+        apply_result.applied_fixes().count(),
+        dry_result.applied_fixes().count()
+    );
 
     // Same rule IDs and confidences.
-    for (a, d) in apply_result.applied.iter().zip(dry_result.applied.iter()) {
-        assert_eq!(a.proposal.rule.as_str(), d.proposal.rule.as_str());
+    for (a, d) in apply_result.applied_fixes().zip(dry_result.applied_fixes()) {
+        assert_eq!(a.rule.predicate_id(), d.rule.predicate_id());
         assert!(
-            (a.proposal.confidence.combined() - d.proposal.confidence.combined()).abs()
+            (a.fix.replacement.confidence.combined() - d.fix.replacement.confidence.combined())
+                .abs()
                 < f32::EPSILON
         );
     }
 
     // DryRun records have dry_run=true.
-    for fix in &dry_result.applied {
+    for fix in dry_result.applied_fixes() {
         assert!(fix.dry_run, "dry-run applied fix should have dry_run=true");
     }
 
     // Apply records have dry_run=false.
-    for fix in &apply_result.applied {
+    for fix in apply_result.applied_fixes() {
         assert!(!fix.dry_run, "apply applied fix should have dry_run=false");
     }
 
@@ -112,7 +139,7 @@ fn missing_classifier_id_is_none() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         assert!(
             fix.classifier_id.is_none(),
             "classifier_id should be None when not configured"
@@ -128,8 +155,8 @@ fn fixed_clock_produces_deterministic_timestamps() {
     let r1 = engine.fix(&source, FixMode::Apply);
     let r2 = engine.fix(&source, FixMode::Apply);
 
-    assert_eq!(r1.applied.len(), r2.applied.len());
-    for (a, b) in r1.applied.iter().zip(r2.applied.iter()) {
+    assert_eq!(r1.applied_fixes().count(), r2.applied_fixes().count());
+    for (a, b) in r1.applied_fixes().zip(r2.applied_fixes()) {
         assert_eq!(
             a.timestamp, b.timestamp,
             "timestamps should be deterministic"
@@ -149,7 +176,7 @@ fn post_fix_relint_has_fewer_diagnostics() {
     let result = engine.fix(&source, FixMode::Apply);
 
     // Re-lint the fixed text.
-    let after: LintResult = engine.lint(&result.source);
+    let after: LintResult = engine.lint(result.source.expose_secret());
 
     // The fixed text should have fewer diagnostics than the original.
     assert!(
@@ -175,7 +202,7 @@ fn classifier_id_propagated_when_configured() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         assert_eq!(
             fix.classifier_id.as_deref(),
             Some("TEST-CLASSIFIER-42"),
@@ -184,88 +211,16 @@ fn classifier_id_propagated_when_configured() {
     }
 }
 
-// --- H3: insta snapshot tests for audit NDJSON shape (T046) ---
-
-/// Serialize an `AppliedFix` to a v1-or-v2 audit-record JSON value for
-/// snapshot testing. Schema version is sourced from the engine's
-/// build-time constant so snapshots track the active schema; v2-only
-/// fields (`recognition`, `runner_up_ratio`, `features`) are emitted
-/// only when this build is `marque-mvp-2` (default), matching the
-/// CLI emitter's dispatch (`marque/src/render.rs::render_audit_record`).
-fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
-    let source_str = match fix.proposal.source {
-        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
-        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
-        marque_rules::FixSource::MigrationTable => "MigrationTable",
-        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
-        marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
-    };
-    let mut record = json!({
-        "schema": marque_engine::AUDIT_SCHEMA_VERSION,
-        "rule": fix.proposal.rule.as_str(),
-        "source": source_str,
-        "span": {
-            "start": fix.proposal.span.start,
-            "end": fix.proposal.span.end,
-        },
-        "original": fix.proposal.original.as_ref(),
-        "replacement": fix.proposal.replacement.as_ref(),
-        "confidence": fix.proposal.confidence.combined(),
-        "migration_ref": fix.proposal.migration_ref,
-        "timestamp": humantime::format_rfc3339(fix.timestamp).to_string(),
-        "classifier_id": fix.classifier_id.as_ref().map(|s| s.as_ref()),
-        "dry_run": fix.dry_run,
-        "input": fix.input.as_ref().map(|s| s.as_ref()),
-    });
-
-    if marque_engine::AUDIT_SCHEMA_IS_V2 {
-        let c = &fix.proposal.confidence;
-        let object = record.as_object_mut().expect("record is a JSON object");
-        object.insert("recognition".to_owned(), json!(c.recognition));
-        if let Some(r) = c.runner_up_ratio {
-            object.insert("runner_up_ratio".to_owned(), json!(r));
-        }
-        if !c.features.is_empty() {
-            let features: Vec<serde_json::Value> = c
-                .features
-                .iter()
-                .map(|f| json!({"id": f.id.as_str(), "delta": f.delta}))
-                .collect();
-            object.insert("features".to_owned(), json!(features));
-        }
-    }
-    record
-}
-
-#[test]
-fn audit_record_snapshot_e001_apply() {
-    let engine = test_engine();
-    let source = b"SECRET//NF\n";
-    let result = engine.fix(source, FixMode::Apply);
-    assert_eq!(result.applied.len(), 1);
-
-    let json: Vec<serde_json::Value> = result.applied.iter().map(applied_fix_to_json).collect();
-    // Snapshot is suffixed with the active audit schema so v1-downgrade
-    // and v2-default builds maintain independent fixtures (FR-014: each
-    // build emits exactly one schema, and the snapshot tracks that
-    // schema's expected shape).
-    insta::with_settings!({snapshot_suffix => marque_engine::AUDIT_SCHEMA_VERSION}, {
-        insta::assert_json_snapshot!(json);
-    });
-}
-
-#[test]
-fn audit_record_snapshot_e001_dry_run() {
-    let engine = test_engine();
-    let source = b"SECRET//NF\n";
-    let result = engine.fix(source, FixMode::DryRun);
-    assert_eq!(result.applied.len(), 1);
-
-    let json: Vec<serde_json::Value> = result.applied.iter().map(applied_fix_to_json).collect();
-    insta::with_settings!({snapshot_suffix => marque_engine::AUDIT_SCHEMA_VERSION}, {
-        insta::assert_json_snapshot!(json);
-    });
-}
+// --- audit NDJSON shape ---
+//
+// The NDJSON wire shape is pinned at two layers:
+//
+//   1. `marque/src/render.rs::render_audit_line_produces_valid_v1_0_ndjson`
+//      exercises the CLI emit path on a synthetic AuditLine.
+//   2. `crates/wasm/tests/audit_v1_0_parity.rs` pins CLI/WASM
+//      byte-identity on the same shape.
+//
+// `contracts/audit-record.md` is the single wire-format source of truth.
 
 // --- L4: parity test verifies rule IDs, not just count ---
 
@@ -281,12 +236,12 @@ fn dry_run_parity_rule_ids_match() {
     let apply_rules: Vec<&str> = apply_result
         .remaining_diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id())
         .collect();
     let dry_rules: Vec<&str> = dry_result
         .remaining_diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id())
         .collect();
     assert_eq!(
         apply_rules, dry_rules,
@@ -294,7 +249,7 @@ fn dry_run_parity_rule_ids_match() {
     );
 }
 
-// --- T035c-10: E002 REL TO canonicalization round-trip ---
+// --- REL TO canonicalization round-trip ---
 //
 // Verifies that E002's fix splices the canonical REL TO list into the
 // banner as a single replacement. The rule's span covers first → last
@@ -312,19 +267,16 @@ fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
     let source = b"SECRET//REL TO GBR, AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    let e002_applied: Vec<_> = result
-        .applied
+    // `applied_fixes()` is `impl Iterator`; collect once for the filter
+    // pass + Debug-render in the assertion message.
+    let applied: Vec<_> = result.applied_fixes().collect();
+    let e002_applied: Vec<_> = applied
         .iter()
-        .filter(|f| f.proposal.rule.as_str() == "E002")
+        .filter(|f| f.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
         .collect();
-    assert_eq!(
-        e002_applied.len(),
-        1,
-        "E002 must apply once: {:?}",
-        result.applied
-    );
+    assert_eq!(e002_applied.len(), 1, "E002 must apply once: {applied:?}");
 
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert_eq!(
         fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
         "E002's splice must rewrite the full REL TO list, not just the \
@@ -343,7 +295,7 @@ fn e002_fix_rewrites_banner_when_usa_misplaced() {
     let source = b"SECRET//REL TO GBR, USA, AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert_eq!(
         fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
         "E002 must canonicalize a misplaced USA + unsorted rest in one \
@@ -362,7 +314,7 @@ fn e002_fix_leaves_no_trailing_comma_after_splice() {
     let source = b"SECRET//REL TO GBR, AUS,\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert_eq!(
         fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
         "E002 splice must consume the trailing `,` inside the \
@@ -382,11 +334,12 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     let source = b"SECRET//REL TO GBR//NF//REL TO AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // No E002 fix should have been applied — the proposal is None.
-    let e002_applied: Vec<_> = result
-        .applied
+    // No REL-TO-missing-USA fix should have been applied — the proposal is None.
+    // Collect once for filter + Debug.
+    let applied: Vec<_> = result.applied_fixes().collect();
+    let e002_applied: Vec<_> = applied
         .iter()
-        .filter(|f| f.proposal.rule.as_str() == "E002")
+        .filter(|f| f.rule.predicate_id() == "portion.dissem.rel-to-missing-usa")
         .collect();
     assert!(
         e002_applied.is_empty(),
@@ -397,10 +350,110 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     // Intermediate `//NF//` content must survive in the output. Some
     // other rules may still rewrite other parts of the source (e.g.,
     // normalizing), so we only assert that NF is preserved.
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert!(
         fixed_text.contains("NF") || fixed_text.contains("NOFORN"),
         "intermediate NF content must survive multi-block scenario: \
          {fixed_text:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// TwoPassFixer behavioral locks
+// ---------------------------------------------------------------------------
+//
+// These tests lock the consumer-visible properties of the two-pass
+// pipeline: the no-pass-1-fixes short-circuit (pass-2 result byte-equals
+// pass-0 output, `r002_fired == false`), forward-buffer correctness
+// when pass-1 produces multiple fixes in one marking, and R002
+// emission when the post-pass-1 buffer cannot re-parse.
+//
+// "Behavior" means user-visible properties: byte equivalence, the
+// `r002_fired` flag, the rule ID of synthetic diagnostics. Internal
+// pipeline mechanics (the partition data structure, the synthesis
+// helpers) are NOT pinned here — they are implementation details.
+
+#[test]
+fn pass1_zero_fixes_skips_reparse() {
+    // No `Phase::Localized` rule in the production CAPCO ruleset emits
+    // a `FixIntent`-shape fix today (all 4 Localized rules — C001 /
+    // E006 / E007 / S004 — flow through pass-0 text-correction). So
+    // pass-1 produces zero fixes for every input, and the engine
+    // short-circuits the re-parse. The user-visible properties:
+    // `r002_fired == false`, and the returned source byte-equals the
+    // pass-0 (text-correction) output — pass-2 sees the same buffer
+    // pass-0 produced, no intermediate re-parse.
+    //
+    // 5-year-maintenance posture: a future PR that adds a Localized
+    // FixIntent rule would break this test because pass-1 would
+    // produce fixes; the test name itself ("zero fixes skips
+    // reparse") is the spec, and a regression toward "re-parse
+    // always" would be visible here.
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+    let result = engine.fix(&source, FixMode::Apply);
+    assert!(
+        !result.r002_fired,
+        "no pass-1 fixes -> no re-parse -> no R002"
+    );
+}
+
+#[test]
+fn r002_fired_false_on_clean_fixture() {
+    // A document that produces NO fixes at all (no diagnostics
+    // fire) MUST set `r002_fired = false` and return the source
+    // byte-identical to the input. This is the consumer-surface
+    // contract that lets a WASM/IDE caller read `r002_fired`
+    // without checking `applied.is_empty()` first.
+    let engine = test_engine();
+    let source = b"This is plain text with no markings.\n".to_vec();
+    let result = engine.fix(&source, FixMode::Apply);
+    assert!(!result.r002_fired);
+    assert_eq!(result.source.expose_secret(), source);
+    assert!(result.applied_fixes().next().is_none());
+}
+
+#[test]
+fn r002_not_minted_as_applied_fix() {
+    // Constitution V Principle V lock: NO `AppliedFix` in any fix
+    // pass result carries `rule == R002_RULE_ID`. R002 is a
+    // diagnostic, never a fix; promotion via `__engine_promote`
+    // would inject a false-positive audit record claiming a fix
+    // was applied when none was.
+    //
+    // Pairs with `audit_completeness.rs::r002_does_not_mint_applied_fix`
+    // which exercises the same property via a different fixture
+    // path.
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+    let result = engine.fix(&source, FixMode::Apply);
+    for fix in result.applied_fixes() {
+        // Compare against the typed constant rather than the string
+        // literal so a future rename of `R002_RULE_ID` is caught here
+        // instead of silently passing on stale identifier drift —
+        // matches the pattern in
+        // `audit_completeness.rs::r002_does_not_mint_applied_fix`
+        // (security-panel LOW-4 fix).
+        assert_ne!(
+            fix.rule,
+            marque_engine::R002_RULE_ID,
+            "R002 must never appear as an AppliedFix; \
+             Constitution V Principle V (audit-record integrity)"
+        );
+    }
+}
+
+#[test]
+fn r002_fired_field_independent_of_applied_count() {
+    // The `r002_fired` flag is consumer-visible and independent of
+    // `applied.is_empty()`. A run that produces N>0 applied fixes
+    // and does NOT trigger R002 must still have `r002_fired == false`
+    // — a consumer must not infer R002 from "no fixes applied"
+    // (the empty case is normal for clean documents).
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+    let result = engine.fix(&source, FixMode::Apply);
+    // Fixture is mixed_confidence_source -> E002 fires.
+    assert!(result.applied_fixes().next().is_some());
+    assert!(!result.r002_fired);
 }

@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2026 Adam Poulemanos
+SPDX-FileCopyrightText: 2026 Knitli Inc.
 
 SPDX-License-Identifier: MIT OR Apache-2.0
 -->
@@ -22,6 +22,14 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 > engine, not its identity. This helper is for marque-capco /
 > marque-ism work. Cross-domain engine work (marque-engine,
 > marque-scheme) does not need this loaded.
+>
+> **Rule-ID convention.** Rule IDs and catalog-row labels are wire
+> strings of the form `<scheme>:<surface>.<category>.<predicate>`
+> (e.g., `"capco:portion.dissem.noforn-conflicts-rel-to"`,
+> `"capco:banner.classification.floor-hcs-comp-sub"`).
+> [`docs/refactor-006/legacy-rule-id-map.md`](../../docs/refactor-006/legacy-rule-id-map.md)
+> maps the older `E### / W### / S### / C###` and slash-form labels
+> to their current wire strings if you encounter one.
 
 ---
 
@@ -100,23 +108,31 @@ rule that proposes the encouraged marking.**
 | Unclassified + caveated **non-IC** info (incl. DoD/DOE UCNI, DSEN, non-IC dissems) | Mark per source's overall classification | Handle as marked if present; else handle per banner |
 | Unclassified, uncaveated | Per internal agency procedures | n/a |
 
-**Pivot date.** 28 Jun 2010 splits "caveated → NOFORN" (older) from
-"uncaveated → RELIDO" (newer). A correct rule MUST read
-`Authority::Originated` from the CAB; it cannot infer the pivot from
-the document text alone.
+**Pivot date.** 28 Jun 2010 splits "uncaveated → NOFORN" (older) from
+"uncaveated → RELIDO" (newer).
 
-**Caveats** (a portion is "caveated" if it bears) per §B.2 / §H.8:
-ORCON / ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO,
-or any non-IC dissem (LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF,
-SSI). NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
-markings, not the upstream "caveat" trigger.
+**Caveats** (a portion is "caveated" if it bears) per the §B.3 p20
+Note (structural "caveated" definition: bears no FD&R markings but has
+one or more AEA / SAP / IC or non-IC dissemination control markings): ORCON / ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO, or any
+non-IC dissem (LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF, SSI).
+NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
+markings, not the upstream "caveat" trigger. Per-marking templates
+live in §H.8.
 
-**Marque encoding.** `marque-capco` SHOULD model the seven Table-2
-rows as Warn-level rules with a `confidence` reflecting how
-strongly the source dictates the suggestion. Apply-with-fix is
-permissible only when the date pivot is unambiguous (CAB present and
-parsed) and the caveat status is decidable from the portion text;
-otherwise emit a Warn diagnostic with no fix.
+**Marque encoding.** Default assumption: production date is post-cutoff
+(the FD&R rule changed 28 Jun 2010 — 16 years ago at time of writing).
+Under this default, `marque-capco` does NOT gate RELIDO-or-NOFORN
+defaults behind a CAB-derived `Authority::Originated` date; "uncaveated
+→ RELIDO" applies.
+
+This is a deliberate engine-side simplification, not an authoritative
+re-reading of §B.3. The pivot itself stays normative: a future
+**archival mode** (planned, not yet wired) will switch the default
+back to "uncaveated → NOFORN" for documents whose CAB carries a
+pre-cutoff `Authority::Originated`. CHK041 governs the spec-level
+contract for reading the date when the archival path lands; CHK043
+governs the CI-checkable "apply-with-fix permissible only when date
+pivot is unambiguous" guard.
 
 > Authority: CAPCO-2016 §B.3 Table 2, pp 21–22.
 
@@ -180,22 +196,45 @@ portions have Y, the banner FD&R becomes Z".
 | 26 | DISPLAY ONLY | REL TO (with common LIST) | DISPLAY ONLY [common LIST] (release implies disclosure) |
 | 27 | REL TO/DISPLAY ONLY | REL TO/DISPLAY ONLY (with common LISTs in each) | REL TO [common]/DISPLAY ONLY [common] |
 
-**Marque gap (current, 2026-05-02).** Our `PageRewrite` layer covers
-the symmetric meet for SCI / SAP / AEA categories and the supersession
-for `NOFORN clears REL TO` (rule 1+2). The FD&R rows that are NOT yet
-fully implemented:
+**How marque models this.** Per-category lattice types live in
+`marque-capco::lattice` (`ClassificationLattice`, `NatoClassLattice`,
+`JointSet`, `DissemSet`, `NatoDissemSet`, `RelToBlock`,
+`DeclassifyOnLattice`, `AeaSet`, …), composed by the inherent
+`CapcoMarking::join_via_lattice`. `MarkingScheme::project(Scope::Page,
+...)` drives page roll-up through that lattice path plus the
+declarative `PageRewrite` catalog and the closure rules. Cross-axis
+folds are projections, not lattice joins, so `CapcoMarking` does not
+implement `JoinSemilattice` — a structural-`Eq` idempotence law would
+fail in the presence of per-axis normalization such as `RelToBlock`'s
+tetragraph expansion.
 
-- Rule 17: RELIDO date-pivot + non-FD&R-caveat ambiguity (depends on
-  Table 2 lookup).
-- Rule 23: `TEYE / ACGU / FVEY` tetragraph **expansion** during
-  common-LIST roll-up.
-- Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
-  release-implies-disclosure".
-- Rule 27: dual-channel REL TO/DISPLAY ONLY composition where each
-  channel has its own common-LIST.
+Specific roll-up semantics worth noting:
 
-These are tracked against the lattice / engine refactor at
-`docs/plans/2026-05-01-lattice-design.md`.
+- OC-USGOV supersession (not unanimity-drop) per §H.8 p136 + p140.
+- RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
+- All-JOINT portions that disagree on producer lists collapse to a
+  cross-axis FGI migration (the `joint-disunity-collapse-to-fgi`
+  Warn rule) per §H.3 p57 + §H.7 p123.
+- Classified-document FOUO and UCNI eviction, plus the §H.6
+  NOFORN-promotion that classified UCNI requires, are declarative
+  `PageRewrite` rows on `CapcoScheme`, not procedural branches.
+- Rule 23 tetragraph expansion (FVEY → constituent trigraphs) lives
+  in `RelToBlock` via `marque_ism::lookup_tetragraph_members`.
+- Rules 26/27 (REL TO + DISPLAY ONLY cross-axis) fold into
+  `DisplayOnlyBlock` per §D.2 Table 3 rows 26-27.
+
+A parity gate (`crates/capco/tests/lattice_vs_scheme_parity.rs`)
+compares the per-axis lattice path against the full scheme pipeline
+and catches future `PageRewrite` catalog edits that would change
+scheme-side semantics without a matching lattice update. Expected
+asymmetries are annotated per fixture: the scheme path runs the
+caveated-classified NOFORN closure rule (§B.3 Table 2 p21) while the
+per-axis lattice path does not run closure rules — correct behavior
+on both sides.
+
+The one Table 3 row the lattice path does not yet fully model is
+**rule 17** (RELIDO date-pivot + non-FD&R-caveat ambiguity), which
+depends on a Table 2 date lookup.
 
 > Authority: CAPCO-2016 §D.2 + Table 3, pp 28–30.
 
@@ -241,14 +280,13 @@ For SCI / SAP, within-category multi-value ordering is
 the §A.6 separator alphabet (`/` for control systems, `-` for
 compartments, ` ` for sub-compartments).
 
-### 4.3 Marque gap (current, 2026-05-02)
+### 4.3 Marque gap
 
 We validate **presence** of correct markings and **inter-category**
 order via the `//`-separated category sequence, but we do **not**
 yet enforce the **within-group dissem ordering** or the
 **ascending-sort** rule for SCI/SAP multi-values across the entire
-banner. This is a candidate for a new `W###`-class rule per
-`docs/plans/2026-05-02-engine-refactor-consolidated.md` PR-3c.
+banner. This is a candidate for a future ordering rule.
 
 > Authority: CAPCO-2016 §G.1 + Table 4, pp 36–38.
 
@@ -304,6 +342,8 @@ banner". `<class>` placeholder = TS / S / C / U.
 | TK-IDIT [SUB-COMPARTMENT] | H.4 | 93 | IDITAROD [SUB] (≤6 alnum) | IDIT [SUB] | IDIT [SUB] | DNI / TK Policy | TS/S only; requires TK-IDIT + NOFORN | all unique SCI roll up | combinable; TK-IDIT [SUB] conveys in portion |
 | TK-KANDIK | H.4 | 95 | KANDIK | KAND | KAND | DNI / TK Policy | TS/S only; requires TK + NOFORN; KDK legacy → TK-KAND on new content | all unique SCI roll up | combinable; TK-KAND conveys in portion |
 | TK-KAND [SUB-COMPARTMENT] | H.4 | 97 | KANDIK [SUB] (≤6 alnum) | KAND [SUB] | KAND [SUB] | DNI / TK Policy | TS/S only; requires TK-KAND + NOFORN | all unique SCI roll up | combinable; TK-KAND [SUB] conveys in portion |
+| BOHEMIA (NATO SAP) | G.2 | 40 | BOHEMIA | BOHEMIA | BOHEMIA | NATO / CAPCO Register §G.2 | typically CTS; requires BOHEMIA read-in (§G.2 Table 5) | rendered standalone in SCI block position per §H.7 p127 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`; BALK before BOHEMIA in roll-up (alpha) | mutually-restricted NATO SAP; commingling guidance via §H.7 p127 + §G.2 Table 5 |
+| BALK (NATO SAP) | G.2 | 40 | BALK | BALK | BALK | NATO / CAPCO Register §G.2 | typically CTS; requires BALK read-in (§G.2 Table 5) | rendered standalone in SCI block position; BALK precedes BOHEMIA alphabetically | mutually-restricted NATO SAP; exercise replacement for BOHEMIA per legacy CCEB guidance referenced in §G.2 |
 
 **SCI grammar reminder.** Compartment is 2–3 alpha (SI), or 3 alnum
 (RSV); sub-compartment is 4–6 alnum depending on system (4 for SI-G,
@@ -311,6 +351,21 @@ banner". `<class>` placeholder = TS / S / C / U.
 + §H.4 syntax (p61): `/` between control systems, `-` between control
 and compartment, ` ` between sub-compartments. Numbered values sort
 before alphabetic.
+
+**NATO SAPs (BOHEMIA / BALK) — routing.** BOHEMIA and
+BALK are NATO Special Access Programs registered in §G.2 p40
+(Table 5: ARH by Registered Marking). They render standalone in the
+SCI category position — NOT as portion-suffixes on the NATO
+classification axis. The §H.7 p127 worked example
+`(//CTS//BOHEMIA//REL TO USA, NATO)` shows BOHEMIA in its own
+`//`-separated category between the bare class and the dissem
+block. Legacy fused-classification forms (`CTS-B`, `CTS-BALK`,
+`COSMIC TOP SECRET-BOHEMIA`, `COSMIC TOP SECRET-BALK`) are retired
+per the §G.2 p40 Table 5 registration of BOHEMIA/BALK as
+standalone control markings; the strict parser canonicalizes them
+to bare CTS class + SCI NatoSap companion, and a recanonicalization
+rule emits a Recanonicalize fix that re-renders to the canonical
+multi-block form.
 
 ### 5.4 §H.5 Special Access Program (pp 99–102)
 
@@ -336,6 +391,21 @@ linker is `-`. Sub-compartment linker is space.
 | DOD UCNI | H.6 | 116 | DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOD UCNI | DCNI | DoD / AEA | **U only**; not on classified content; CUI re-evaluation candidate (14 Nov 2016) | rolls up only on U documents; on classified docs DOD UCNI does NOT appear in banner but NOFORN must be applied if FD&R less restrictive | with classified non-UCNI: DCNI portion mark NOT used (class adequately protects); apply NF if FD&R less restrictive |
 | DOE UCNI | H.6 | 118 | DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOE UCNI | UCNI | DOE / AEA §148 | U only; CUI re-evaluation candidate | rolls up on U docs; on classified docs DOE UCNI does NOT appear in banner; NOFORN must be applied if FD&R less restrictive | same as DOD UCNI: UCNI portion mark NOT used in classified portions; NF if needed |
 | TFNI | H.6 | 120 | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION | TFNI | TFNI | DOE + DNI / AEA §142e + 32CFR2001 §2001.24(i) | TS/S/C only | TFNI appears in banner if no RD/FRD portion present; **fully evicted from banner if any RD or FRD portion present** (§H.6 p104); special "Declassify On" annotation required regardless | RD or FRD takes precedence in portion; TFNI ideally not commingled |
+| ATOMAL (NATO AEA) | H.7 | 122 | ATOMAL | ATOMAL | ATOMAL | NATO / Atomic Energy Act §123 + §144 sharing agreements | TS/S/C NATO classes typically; rendered in AEA category position per §H.7 p122 worked example `SECRET//RD/ATOMAL//FGI NATO//NOFORN` | ATOMAL trails the US-domestic AEA family in the AEA block; same-form across title/banner/portion columns per §G.1 Table 4 p37 | NATO-shared AEA marking; segregation guidance via §H.7 p122 |
+
+**ATOMAL routing.** ATOMAL is a NATO AEA marking
+(Atomic Energy Act information shared with NATO+UK under bilateral
+§123/§144 sharing agreements). The §H.7 p122 worked example places
+ATOMAL alongside RD in the AEA axis — NOT as a portion-suffix on
+the NATO classification axis. Legacy fused-classification forms
+(`CTSA`, `CTS-A`, `NSAT`, `NS-A`, `NCA`, `NC-A`, banner-form
+`COSMIC TOP SECRET ATOMAL` / `NATO SECRET ATOMAL` /
+`NATO CONFIDENTIAL ATOMAL`) are retired per the §G.2 p40 Table 5
+registration of ATOMAL as a standalone control marking; the strict
+parser canonicalizes them to bare NATO class + AEA Atomal companion,
+and a recanonicalization rule emits a Recanonicalize fix that
+re-renders to the canonical multi-block form (`(//CTS//ATOMAL)`,
+`(//NS//ATOMAL)`, etc.).
 
 ### 5.6 §H.7 Foreign Government Information (pp 122–130)
 

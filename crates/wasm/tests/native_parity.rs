@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T061 — Native-vs-WASM parity test (SC-008).
+//! Native-vs-WASM parity test.
 //!
 //! Drives the same inputs through the native `Engine::lint` API and the WASM
 //! crate's `lint_native()` wrapper, then asserts byte-equal NDJSON output.
@@ -12,13 +12,14 @@
 
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_rules::Diagnostic;
+use marque_rules::{Diagnostic, RuleId};
+use secrecy::ExposeSecret as _;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// Shared engine instance — avoids reconstructing per-fixture (M-3 review fix).
-/// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses (M-7).
+/// Shared engine instance — avoids reconstructing per-fixture.
+/// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses.
 fn shared_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(|| {
@@ -34,18 +35,49 @@ fn shared_engine() -> &'static Engine {
 // ---------------------------------------------------------------------------
 // DiagnosticJson — duplicated from the WASM crate and CLI render.rs.
 // This is intentional: the test must independently produce the same shape
-// as both the CLI and the WASM crate. If any of the three diverge, SC-008
+// as both the CLI and the WASM crate. If any of the three diverge, NDJSON
 // parity fails and this test catches it.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// 2-tuple `RuleId` shape. Mirrors
+    /// [`marque::render::RuleIdJson`] / `crates/wasm/src/lib.rs::RuleIdJson`
+    /// to keep this parity test's projection in lockstep with both
+    /// emitters.
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
-    message: &'a str,
-    citation: &'a str,
+    message: MessageJson<'a>,
+    citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors the
+    /// CLI / WASM `recognized_canonical` field for NDJSON
+    /// byte-identity. `skip_serializing_if = "Option::is_none"` keeps
+    /// the field absent for every non-R001 diagnostic, so existing
+    /// fixtures continue to produce identical NDJSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MessageJson<'a> {
+    template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,7 +89,8 @@ struct SpanJson {
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     source: &'static str,
-    replacement: &'a str,
+    intent_kind: &'static str,
+    replacement: Option<&'a str>,
     confidence: f32,
     migration_ref: Option<&'a str>,
 }
@@ -72,22 +105,49 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — third copy of the projection, used only
+    // by this parity test (issue #699). The CLI and WASM emitters
+    // each have their own copy; the parity test must produce the
+    // same shape both produce.
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(sb.expose_secret()).ok());
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: fix_source_str(f.source),
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: match &f.replacement {
+                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    _ => "Unknown",
+                },
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
+                intent_kind: "TextCorrection",
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
+            }),
+            (None, None) => None,
+        },
+        recognized_canonical,
     }
 }
 
@@ -133,7 +193,7 @@ fn lint_parity_invalid_fixtures() {
 
     assert!(
         !txt_files.is_empty(),
-        "T070 requires corpus fixtures, found none"
+        "parity test requires corpus fixtures, found none"
     );
 
     for path in &txt_files {
@@ -148,7 +208,7 @@ fn lint_parity_invalid_fixtures() {
         assert_eq!(
             native_ndjson,
             wasm_ndjson,
-            "SC-008 lint parity failure on {}",
+            "NDJSON parity failure on {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -157,7 +217,10 @@ fn lint_parity_invalid_fixtures() {
 #[test]
 fn lint_parity_valid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("valid"));
-    assert!(!txt_files.is_empty(), "T070 requires valid corpus fixtures");
+    assert!(
+        !txt_files.is_empty(),
+        "parity test requires valid corpus fixtures"
+    );
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -171,7 +234,7 @@ fn lint_parity_valid_fixtures() {
         assert_eq!(
             native_ndjson,
             wasm_ndjson,
-            "SC-008 lint parity failure on {}",
+            "NDJSON parity failure on {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -186,7 +249,7 @@ fn fix_parity_invalid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("invalid"));
     assert!(
         !txt_files.is_empty(),
-        "T070 requires invalid corpus fixtures"
+        "parity test requires invalid corpus fixtures"
     );
     let default_threshold = Config::default().confidence_threshold();
 
@@ -198,8 +261,8 @@ fn fix_parity_invalid_fixtures() {
         // Run fix through both paths with the same threshold.
         let engine = shared_engine();
         let native_result = engine.fix(source.as_slice(), marque_engine::FixMode::Apply);
-        let native_fixed =
-            String::from_utf8(native_result.source).expect("native fix produced non-UTF-8");
+        let native_fixed = String::from_utf8(native_result.source.expose_secret().to_vec())
+            .expect("native fix produced non-UTF-8");
 
         let wasm_json = marque_wasm::fix_native(text, default_threshold, None)
             .unwrap_or_else(|e| panic!("fix_native failed on {}: {e}", path.display()));
@@ -214,14 +277,14 @@ fn fix_parity_invalid_fixtures() {
         assert_eq!(
             native_fixed,
             wasm_fixed,
-            "SC-008 fix parity failure on {}",
+            "fix parity failure on {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
 }
 
 // ---------------------------------------------------------------------------
-// T070: Parity on prose corpus
+// Parity on prose corpus
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -229,10 +292,13 @@ fn lint_parity_prose_fixtures() {
     let prose_dir = corpus_dir().join("prose");
     assert!(
         prose_dir.is_dir(),
-        "tests/corpus/prose/ missing — required for SC-003a parity"
+        "tests/corpus/prose/ missing — required for prose parity"
     );
     let txt_files = txt_files_in(&prose_dir);
-    assert!(!txt_files.is_empty(), "T070 requires prose corpus fixtures");
+    assert!(
+        !txt_files.is_empty(),
+        "parity test requires prose corpus fixtures"
+    );
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -246,7 +312,7 @@ fn lint_parity_prose_fixtures() {
         assert_eq!(
             native_ndjson,
             wasm_ndjson,
-            "SC-008 lint parity failure on prose {}",
+            "lint parity failure on prose {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -255,7 +321,10 @@ fn lint_parity_prose_fixtures() {
 #[test]
 fn fix_parity_valid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("valid"));
-    assert!(!txt_files.is_empty(), "T070 requires valid corpus fixtures");
+    assert!(
+        !txt_files.is_empty(),
+        "parity test requires valid corpus fixtures"
+    );
     let default_threshold = Config::default().confidence_threshold();
 
     for path in &txt_files {
@@ -265,8 +334,8 @@ fn fix_parity_valid_fixtures() {
 
         let engine = shared_engine();
         let native_result = engine.fix(source.as_slice(), marque_engine::FixMode::Apply);
-        let native_fixed =
-            String::from_utf8(native_result.source).expect("native fix produced non-UTF-8");
+        let native_fixed = String::from_utf8(native_result.source.expose_secret().to_vec())
+            .expect("native fix produced non-UTF-8");
 
         let wasm_json = marque_wasm::fix_native(text, default_threshold, None)
             .unwrap_or_else(|e| panic!("fix_native failed on {}: {e}", path.display()));
@@ -281,7 +350,7 @@ fn fix_parity_valid_fixtures() {
         assert_eq!(
             native_fixed,
             wasm_fixed,
-            "SC-008 fix parity failure on valid {}",
+            "fix parity failure on valid {}",
             path.file_name().unwrap().to_string_lossy()
         );
     }
@@ -316,18 +385,23 @@ fn fix_clean_input_unchanged() {
 }
 
 // ---------------------------------------------------------------------------
-// Config passthrough (M-5: test corrections, classifier_id, error cases)
+// Config passthrough (test corrections, classifier_id, error cases)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn lint_with_corrections_config() {
-    // Corrections map NF→NOFORN should produce C001 diagnostic.
+    // Corrections map NF→NOFORN should produce a diagnostic with the
+    // 2-tuple `("capco", "marking.correction.token-typo")`.
     let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
     let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
         .expect("lint with corrections");
+    // The rule field on the wire is a structured 2-tuple object,
+    // not a flat string.
+    let expected_rule_fragment =
+        r#""rule":{"scheme":"capco","predicate_id":"marking.correction.token-typo"}"#;
     assert!(
-        result.contains("\"rule\":\"C001\""),
-        "corrections map should trigger C001, got: {result}"
+        result.contains(expected_rule_fragment),
+        "corrections map should trigger the C001 corrections-map predicate; got: {result}"
     );
 }
 
@@ -358,8 +432,10 @@ fn config_with_invalid_threshold_returns_error() {
 
 #[test]
 fn config_with_classifier_id() {
+    // Uses a REL TO-missing-USA fixture as the diagnostic-emitting
+    // input.
     let config = r#"{"classifier_id":"TEST-WASM-42"}"#;
-    let result = marque_wasm::fix_native("SECRET//NF\n", 0.95, Some(config.to_owned()))
+    let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", 0.95, Some(config.to_owned()))
         .expect("fix with classifier_id");
     assert!(
         result.contains("TEST-WASM-42"),
@@ -373,8 +449,10 @@ fn config_with_classifier_id() {
 
 #[test]
 fn lint_batch_returns_results_for_each_entry() {
+    // The batch entries use REL TO-missing-USA input on the first row
+    // and a clean banner on the second.
     let entries = r#"[
-        {"id": "a", "text": "SECRET//NF\n"},
+        {"id": "a", "text": "SECRET//REL TO GBR\n"},
         {"id": "b", "text": "SECRET//NOFORN\n"}
     ]"#;
     let result = marque_wasm::lint_batch_native(entries, None).expect("lint_batch");
@@ -383,10 +461,10 @@ fn lint_batch_returns_results_for_each_entry() {
     assert_eq!(parsed.len(), 2, "should return one result per entry");
     assert_eq!(parsed[0]["id"], "a");
     assert_eq!(parsed[1]["id"], "b");
-    // "a" has NF (abbreviated) → should have diagnostics
+    // "a" lacks USA in REL TO → should have diagnostics (E002).
     assert!(
         !parsed[0]["diagnostics"].as_array().unwrap().is_empty(),
-        "SECRET//NF should produce diagnostics"
+        "SECRET//REL TO GBR should produce diagnostics"
     );
     // "b" is clean → empty diagnostics
     assert!(
@@ -513,32 +591,52 @@ fn compute_banner_prose_only_no_portions_returns_unclassified() {
 
 #[test]
 fn compute_banner_single_secret_portion() {
+    // Issue #524 Phase 3: `CLOSURE_RELIDO_US_CLASS` fires the
+    // implicit RELIDO default on US collateral classifications
+    // absent any FD&R-dominator. Primary authority CAPCO-2016
+    // §B.3 Table 2 p21 ("Classified + uncaveated + on/after
+    // 28 June 2010 → Mark as RELIDO"); grammar reference §H.8
+    // p154 (the RELIDO marking template). The implicit FD&R
+    // default is made explicit in the banner.
     let banner = marque_wasm::compute_banner_native("(S) Only one portion here.")
         .expect("compute_banner single S");
     assert_eq!(
-        banner, "SECRET",
-        "single SECRET portion must produce SECRET banner"
+        banner, "SECRET//RELIDO",
+        "single SECRET portion must produce SECRET//RELIDO banner \
+         (Phase 3 implicit-RELIDO default)"
     );
 }
 
 #[test]
 fn compute_banner_single_unclassified_portion() {
+    // Issue #524 Phase 3 Unclassified carve-out (CAPCO-2016 §H.8 p154
+    // — "Explicit foreign disclosure and release markings are not
+    // required on unclassified information"): the
+    // `CLOSURE_RELIDO_US_CLASS` row's trigger
+    // (`TOK_US_COLLATERAL_CLASSIFIED`) does not fire on
+    // `Us(Unclassified)`, gating the implicit-RELIDO closure to
+    // collateral classified content. Bare UNCLASSIFIED produces a
+    // plain `UNCLASSIFIED` banner.
     let banner = marque_wasm::compute_banner_native("(U) Unclassified paragraph.")
         .expect("compute_banner single U");
     assert_eq!(
         banner, "UNCLASSIFIED",
-        "single UNCLASSIFIED portion must produce UNCLASSIFIED banner"
+        "single UNCLASSIFIED portion must produce UNCLASSIFIED banner \
+         (Phase 3 §H.8 p154 carve-out — RELIDO not required on \
+         unclassified information)"
     );
 }
 
 #[test]
 fn compute_banner_ts_beats_secret_max_wins() {
     // Classification max: TOP SECRET takes precedence over SECRET.
+    // Implicit RELIDO applies (see sibling tests).
     let text = "(S) Lower classification.\n(TS) Higher classification.";
     let banner = marque_wasm::compute_banner_native(text).expect("compute_banner TS>S");
     assert_eq!(
-        banner, "TOP SECRET",
-        "TOP SECRET must dominate SECRET in banner roll-up"
+        banner, "TOP SECRET//RELIDO",
+        "TOP SECRET must dominate SECRET in banner roll-up; Phase 3 \
+         implicit-RELIDO default applies to the post-roll-up bare US TS"
     );
 }
 
@@ -590,14 +688,16 @@ fn compute_banner_with_rel_to() {
 #[test]
 fn compute_banner_mixed_classified_and_unclassified_portions() {
     // Unclassified portions must not drag the banner below the highest
-    // classified level.
+    // classified level. Implicit RELIDO applies to the post-roll-up
+    // bare US SECRET.
     let text =
         "(U) Public info.\n(C) Confidential portion.\n(U) More public info.\n(S) Secret item.";
     let banner =
         marque_wasm::compute_banner_native(text).expect("compute_banner mixed classification");
     assert_eq!(
-        banner, "SECRET",
-        "maximum classification across all portions must be reflected in the banner"
+        banner, "SECRET//RELIDO",
+        "maximum classification across all portions must be reflected in the banner; \
+         Phase 3 implicit-RELIDO default applies to the post-roll-up bare US SECRET"
     );
 }
 
@@ -769,5 +869,35 @@ fn generate_cab_both_custom_fields() {
     assert!(
         cab.contains("Derived From: NSS 2024 Guidance"),
         "custom derived_from must appear, got: {cab}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #699 — recognized_canonical NDJSON parity (CLI vs WASM)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn wasm_lint_recognized_canonical_byte_identical_to_cli() {
+    // `(TS//SAR-fk)` — drives the decoder-recognition sentinel with a
+    // populated `recognized_canonical` field. The native parity projection and
+    // the WASM `lint_native` projection MUST produce byte-identical
+    // NDJSON — including the `recognized_canonical`
+    // field. A regression that adds the field on one side and not
+    // the other (e.g., CLI updated but WASM mirror missed) trips
+    // this test.
+    let input: &[u8] = b"(TS//SAR-fk)";
+    let text = std::str::from_utf8(input).expect("UTF-8 fixture");
+
+    let native_ndjson = engine_lint_to_ndjson(input);
+    let wasm_ndjson = marque_wasm::lint_native(text, None).expect("lint_native must succeed");
+
+    assert_eq!(
+        native_ndjson, wasm_ndjson,
+        "NDJSON byte-identity must hold for the decoder-recognition sentinel + recognized_canonical",
+    );
+    assert!(
+        native_ndjson.contains(r#""recognized_canonical":"(TS//SAR-FK)""#),
+        "the parity NDJSON must include the recognized_canonical \
+         field (issue #699); got: {native_ndjson}",
     );
 }

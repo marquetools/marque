@@ -16,17 +16,17 @@ Three modes of operation, selected via ``--mode``:
     Token-frequency analysis. Given a token vocabulary (JSON) and a text
     corpus, measures how often each token appears in normal (non-IC)
     English text and in what structural contexts. Back-compatible with
-    the original tool behavior — this was the only mode before Phase C.
+    the original tool behavior — this was the original single mode.
 
 ``priors``
-    Corpus-derived priors for the Phase-D decoder. Runs the baseline
+    Corpus-derived priors for the decoder. Runs the baseline
     analysis, then reshapes the result into the schema consumed by
     ``crates/capco/build.rs`` at compile time (see
     ``crates/capco/corpus/README.md``). Output goes to a single
     ``priors.json`` file.
 
 ``mangled``
-    Generates labeled mangled-marking fixtures for the Phase-D decoder
+    Generates labeled mangled-marking fixtures for the decoder
     accuracy harness. Walks a corpus, identifies high-confidence
     classification markings via pattern matching, applies one of six
     labeled mangling transforms per observed marking, and emits one
@@ -37,10 +37,10 @@ Usage:
     # Baseline token frequencies (default mode)
     python analyze.py --output output/enron-full.json
 
-    # Corpus-derived priors for the decoder (Phase D)
+    # Corpus-derived priors for the decoder
     python analyze.py --mode priors --output crates/capco/corpus/priors.json
 
-    # Labeled mangled-marking fixtures (Phase D, SC-004 gate)
+    # Labeled mangled-marking fixtures (mangled-fixture accuracy gate)
     python analyze.py --mode mangled \\
         --output tests/fixtures/mangled/ --min-cases 200
 
@@ -436,7 +436,7 @@ def download_crest_corpus(
     Args:
         max_documents: Maximum number of documents to cache (default 200).
             200 documents ≈ 5–10 MB of text, sufficient to exceed the
-            SC-004 gate of 200 mangled cases.
+            accuracy gate's minimum of 200 mangled cases.
         cache_dir: Root cache directory.
 
     Returns:
@@ -534,7 +534,7 @@ def iter_corpus_texts(
             fpath = Path(root) / fname
             try:
                 raw = fpath.read_bytes()
-                text = extract_body(raw)
+                text = extract_body(raw, min_length=min_length)
                 if text and len(text.strip()) >= min_length:
                     doc_id = str(fpath.relative_to(corpus_path))
                     yield doc_id, text
@@ -578,13 +578,13 @@ def iter_corpus_texts_multi(
                 return
 
 
-def extract_body(raw: bytes) -> Optional[str]:
+def extract_body(raw: bytes, min_length: int = 20) -> Optional[str]:
     """
     Extract the text body from raw file bytes.
 
     Handles three formats:
     - GovInfo HTML (CREC, GAO): text wrapped in ``<pre>`` tags — stripped via
-      ``strip_html()``.
+      ``strip_html()`` and filtered with *min_length*.
     - RFC 2822 email (Enron maildir format): text/plain body extracted.
     - Plain text: returned as-is.
     """
@@ -597,7 +597,7 @@ def extract_body(raw: bytes) -> Optional[str]:
     raw_prefix = raw[:200].lower()
     if b"<html" in raw_prefix or b"<!doctype" in raw_prefix:
         stripped = strip_html(text)
-        return stripped if stripped and len(stripped.strip()) > 20 else None
+        return stripped if stripped and len(stripped.strip()) >= min_length else None
 
     # Quick heuristic: if it has email-like headers, parse as email
     if text[:200].count(":") >= 2 and any(
@@ -1102,7 +1102,7 @@ def run_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Phase D: corpus-derived priors output
+# Corpus-derived priors output
 # ---------------------------------------------------------------------------
 
 PRIORS_SCHEMA_VERSION = "marque-priors-3"
@@ -1330,7 +1330,7 @@ def derive_priors(
     for key, data in template_base_rates.items():
         data["log_prior"] = round(math.log(float(data["count"] + 1) / tpl_denom), 6)
 
-    # Strict-context priors: floors for FR-011. These are heuristic
+    # Strict-context priors: floors for strict-path evidence. These are heuristic
     # defaults pending corpus refinement — the decoder uses these as the
     # lower bound when a document shows strict-path evidence at a given
     # classification level. Adjust when corpus measurement gives a
@@ -1404,7 +1404,7 @@ def derive_priors(
 # Issue #133 PR 4: heuristic-trigger frequency analysis
 # ---------------------------------------------------------------------------
 #
-# The position-aware short-token classification heuristic added in PR 2
+# The position-aware short-token classification heuristic
 # (`marque-engine::decoder::try_classification_heuristic_fix`) fires only
 # when:
 #   1. The decoder is invoked (deep-scan mode opt-in)
@@ -1438,7 +1438,7 @@ ALL_HEURISTIC_TRIGGERS = HEURISTIC_TRIGGERS_1CHAR + HEURISTIC_TRIGGERS_2CHAR
 # Marking-shape signal tokens: when one of these appears within
 # `MARKING_CONTEXT_WINDOW` chars of a trigger, we count that trigger
 # occurrence as in-marking-context. The list combines the long-form
-# IC dissem entries (PR 1's `EXTENDED_CORRECTION_VOCAB` additions),
+# IC dissem entries (the `EXTENDED_CORRECTION_VOCAB` additions),
 # classification full-words, and a few SCI/REL TO starters.
 MARKING_SHAPE_SIGNALS = (
     # Classifications (full forms only — short forms `S`, `C`, `U`,
@@ -1599,7 +1599,7 @@ def measure_heuristic_trigger_frequency(
 
 
 # ---------------------------------------------------------------------------
-# Phase D: mangled-marking fixture generation
+# Mangled-marking fixture generation
 # ---------------------------------------------------------------------------
 
 MANGLING_CLASSES = (
@@ -1833,7 +1833,7 @@ def _resolve_canonical_source(corpus_path: Path) -> Path:
 
     The ``mangled`` mode's fixture ``expected`` strings MUST be canonical
     CAPCO markings — they are the ground truth the decoder is graded
-    against in the SC-004 accuracy gate. If the corpus mixes canonical
+    against in the decoder accuracy gate. If the corpus mixes canonical
     and non-canonical text (as ``tests/corpus/`` does, with ``valid/``,
     ``invalid/``, and ``prose/`` siblings), walking the whole tree
     would pull regex-extractable shapes out of the ``invalid/`` fixtures
@@ -1868,7 +1868,7 @@ def generate_mangled_fixtures(
 
     Returns a summary dict with per-class case counts. Raises ``RuntimeError``
     if the total case count falls below ``min_cases`` after exhausting the
-    corpus, since the SC-004 gate depends on ≥200 cases.
+    corpus, since the accuracy gate depends on ≥200 cases.
 
     Each path in ``corpus_paths`` is resolved through
     ``_resolve_canonical_source`` so a mixed-validity test corpus
@@ -1916,7 +1916,7 @@ def generate_mangled_fixtures(
     # sampled up to ``SAMPLES_PER_CLASS_PER_CANONICAL`` times per seed.
     # Because the curated canonical source (``tests/corpus/valid/``) is
     # small (~10 extractable shapes) and we want ≥200 fixtures for the
-    # SC-004 gate, per-pair resampling multiplies coverage without
+    # accuracy gate, per-pair resampling multiplies coverage without
     # broadening the source. The RNG state advances on every call, so
     # repeated invocations of the same transform on the same canonical
     # typically yield distinct mangled outputs (different typo
@@ -2099,7 +2099,8 @@ def main():
             "owner confirmation: effectively zero portion-marking hits) "
             "and go in the prose stratum. "
             "Default for --mode priors when no source given: "
-            "tests/corpus/valid/ (marking) + Enron (prose). "
+            "tests/corpus/valid/ + tests/corpus/documents/marked/ "
+            "(marking) + Enron (prose). "
             "crest: CIA CREST declassified documents from Internet Archive — "
             "recommended for --mode mangled (real classification marking artifacts)."
         ),
@@ -2167,8 +2168,8 @@ def main():
         help=(
             "Maximum number of CIA CREST documents to download from Internet "
             "Archive. Each document is a DjVu OCR text file (~25 KB average). "
-            "200 documents ≈ 5 MB total; sufficient to exceed the SC-004 gate "
-            "of 200 mangled cases. Default: 200."
+            "200 documents ≈ 5 MB total; sufficient to exceed the accuracy gate's "
+            "minimum of 200 mangled cases. Default: 200."
         ),
     )
 
@@ -2195,7 +2196,7 @@ def main():
         help=(
             "Mangled mode: minimum total case count. Generator fails if the "
             "corpus produces fewer than this many distinct cases. Default: 200 "
-            "(matches SC-004 gate)."
+            "(matches the accuracy gate)."
         ),
     )
     parser.add_argument(
@@ -2233,8 +2234,14 @@ def main():
     #   3. --corpus-source (named auto-download — all prose stratum per
     #      issue #258 owner confirmation that all four sources are
     #      prose-dominant with effectively zero portion-marking hits)
-    #   4. Default for --mode priors: tests/corpus/valid/ (marking) +
-    #      Enron (prose) so a developer regen does not require flags.
+    #   4. Default for --mode priors: tests/corpus/valid/ +
+    #      tests/corpus/documents/marked/ (marking) + Enron (prose)
+    #      so a developer regen does not require flags. The documents
+    #      stratum supplies multi-page banner+CAB+portion-marked
+    #      content (~1700 lines across 40 synthetic-positive
+    #      documents) that `valid/` alone (~34 short fixtures)
+    #      cannot — closes the "single-digit token counts" gap
+    #      documented in crates/capco/corpus/README.md.
     marking_paths: list[Path] = list(args.marking_corpus)
     prose_paths: list[Path] = list(args.prose_corpus)
 
@@ -2303,18 +2310,24 @@ def main():
 
     # Per-mode defaults when no source flags are supplied:
     # - `--mode priors` needs both strata, so it pulls the marking
-    #   stratum from `tests/corpus/valid/` and the prose stratum
-    #   from Enron.
+    #   stratum from `tests/corpus/valid/` plus `tests/corpus/documents/marked/`
+    #   (the synthetic-positive multi-page document corpus — full
+    #   banner + CAB + portion-marked paragraph distributions, ~1700
+    #   lines across 40 documents). Prose stratum defaults to Enron.
     # - `--mode baseline` / `mangled` / `heuristic-frequency` keep
     #   their legacy single-path Enron default (the stratum tag is
     #   irrelevant for these modes — they iterate `corpus_paths`,
     #   the combined list, and don't separate marking from prose).
     repo_root = Path(__file__).resolve().parents[2]
-    default_marking = repo_root / "tests" / "corpus" / "valid"
+    default_marking_paths = [
+        repo_root / "tests" / "corpus" / "valid",
+        repo_root / "tests" / "corpus" / "documents" / "marked",
+    ]
     if not marking_paths and not prose_paths and not args.corpus_sources and not args.corpus:
         if args.mode == "priors":
-            if default_marking.exists():
-                marking_paths.append(default_marking)
+            for p in default_marking_paths:
+                if p.exists():
+                    marking_paths.append(p)
             prose_paths.append(download_enron())
         else:
             # baseline / mangled / heuristic-frequency
@@ -2346,7 +2359,8 @@ def main():
                 "  Provide --marking-corpus PATH and --prose-corpus PATH, or\n"
                 "  --corpus PATH (defaults to marking) plus a prose source\n"
                 "  via --corpus-source enron|congressional-record|gao|crest, or\n"
-                "  run with no source args to use tests/corpus/valid/ + Enron.",
+                "  run with no source args to use tests/corpus/valid/ +\n"
+                "  tests/corpus/documents/marked/ + Enron.",
                 file=sys.stderr,
             )
             sys.exit(1)

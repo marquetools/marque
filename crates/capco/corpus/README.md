@@ -6,13 +6,17 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # CAPCO corpus-derived priors
 
-Build-time inputs for the Phase-D decoder. A single
-`priors.json` file lives here once the generator has been run against a
-real CAPCO corpus; `crates/capco/build.rs` reads it at compile time and
-emits `&'static` Rust tables into `OUT_DIR/priors.rs` (included via
+Build-time inputs for the decoder. `priors.json` lives here;
+`crates/capco/build.rs` reads it at compile time and emits `&'static`
+Rust tables into `OUT_DIR/priors.rs` (included via
 `crates/capco/src/priors.rs`). No runtime JSON parsing, no runtime
 `serde_json` dependency — the decoder reads plain Rust const tables
-(Constitution II, SC-008).
+(Constitution II).
+
+`build.rs` treats `priors.json` as authoritative and fails closed on
+malformed input: a field in the schema below that is missing or
+malformed is a build failure. A change to `priors.json` triggers a
+recompile via a `cargo:rerun-if-changed` directive.
 
 ## What lives here
 
@@ -20,12 +24,6 @@ emits `&'static` Rust tables into `OUT_DIR/priors.rs` (included via
 |---|---|---|
 | `priors.json` | Corpus-derived token base rates, template base rates, strict-context priors | Yes (build input) |
 | `README.md` | This file | Yes |
-
-`priors.json` is absent until the first successful run of the generator
-against a usable corpus. The expected shape is documented below; the
-build script treats the file as authoritative and fails closed on
-malformed input — but only once the file exists (see §"Phase 1 / Phase
-4 deferral" below).
 
 ## Regenerating the priors
 
@@ -66,13 +64,21 @@ python3 tools/corpus-analysis/analyze.py \
 Re-run whenever the corpus contents change or the decoder's scoring
 shape changes.
 
-**Marking-stratum coverage caveat (issue #258).** As of the schema-3
-landing the marking stratum is just `tests/corpus/valid/` (~34 short
-fixtures). Coverage is sparse — most CAPCO tokens have single-digit
-counts, and tokens absent from the fixture set fall back to the
-Laplace-smoothed zero-count log-prior. Decoder accuracy on marking
-recovery improves as the marking stratum grows; expansion to a
-larger mock-classified corpus is tracked as follow-up work.
+**Marking-stratum coverage.** The marking stratum is the union of
+`tests/corpus/valid/` (~34 short per-rule fixtures) and
+`tests/corpus/documents/marked/` (40 synthetic-positive multi-page
+documents derived from declassified CIA CREST prose with synthetic
+CAPCO markings overlaid). The documents stratum supplies the
+banner + CAB + portion-marked paragraph distributions a per-rule
+fixture set cannot — full banner roll-ups, multi-portion pages, REL
+TO trigraph diversity, and real document-shaped token co-occurrence.
+Together they close most of the "single-digit token counts" gap that
+schema-3 (issue #258) called out when only `valid/` was wired in.
+Residual gaps that don't yet appear with meaningful frequency in
+either stratum (SAR program identifiers, deep SCI sub-compartments,
+some FGI trigraph combinations) still fall back to the
+Laplace-smoothed zero-count log-prior; expanding to a larger
+mock-classified corpus remains follow-up work.
 
 ## JSON schema
 
@@ -153,7 +159,7 @@ Field contract (what `build.rs` expects):
 - `template_base_rates` — one entry per grammar template shape the
   generator observed in the **marking stratum**. Keys are template
   identifiers matching the `GrammarTemplate` surface the decoder
-  consumes (T059). Templates by definition only appear in
+  consumes. Templates by definition only appear in
   marking-bearing material, so there is no prose-stratum counterpart.
 - `country_code_base_rates` — one entry per CAPCO country code the
   priors pipeline counted in REL TO blocks in the **marking stratum**,
@@ -177,7 +183,7 @@ Field contract (what `build.rs` expects):
   country mention) is exactly the case the decoder pushes back
   against; the prose-side log-prior for USA must be high enough that
   an isolated REL-TO-style mention in prose does not auto-fix.
-- `strict_context_priors` — scalar floors used by FR-011. Each floor
+- `strict_context_priors` — scalar probability floors. Each floor
   is the probability that a classification token at that level in one
   portion of a document implies other portions share at least that
   floor. Stratum-independent; heuristic defaults pending corpus
@@ -187,30 +193,13 @@ Any field beyond this set is ignored (forward-compatible with future
 generator additions). A field in this set missing or malformed is a
 build failure.
 
-## Phase 1 / Phase 4 deferral
-
-Phase 1 created this directory and this README but **does not** yet
-commit `priors.json`. The `build.rs` codepath that reads this artifact
-(task T004a in `specs/004-constraints-decoder-vocab/tasks.md`) has been
-deferred to Phase 4 alongside T042 — the task that produces the JSON
-from the Enron corpus. Landing T004a in Phase 1 as originally written
-would break every clean checkout until someone with corpus access ran
-the generator. Deferring keeps the scaffolding non-destructive.
-
-Until T042 lands, the decoder doesn't exist yet and nothing needs the
-priors. After T042, `priors.json` is committed in the same commit that
-lands T004a's `build.rs` changes, and the fails-closed contract takes
-effect.
-
 ## Invariants
 
 - Contents are reproducible given the same corpus input and generator
   version — not cryptographically, but mechanically (deterministic
   generator).
 - Contents are treated as a build input, not as runtime data. A change
-  to `priors.json` is a recompile (build.rs re-runs when this file
-  changes; the build script emits a `cargo:rerun-if-changed` directive
-  at T004a).
+  to `priors.json` is a recompile.
 - Content-ignorance applies transitively: `priors.json` contains only
   token frequencies and log-priors, never document-level text fragments
   from the source corpus (Constitution V).

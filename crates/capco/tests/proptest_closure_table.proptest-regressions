@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e88bf36f89555946567da10ea8772b870091ac45df2f47b911c8186aa5a0b7ea # shrinks to a = FactBitmask(0x5071841a3ad2f868_45a480ab94deb708), b_extra = FactBitmask(0x07da6cd96fd43954_02544012a258c3b8)

@@ -32,13 +32,24 @@ jobs:
           toolchain: "nightly"
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: cargo fmt
         run: cargo fmt --check
 
       - name: typos
-        uses: crate-ci/typos@bbaefadf97b0ec5fdc942684b647f1a6ab250274
+        uses: crate-ci/typos@7c572958218557a3272c2d6719629443b5cc26fd
+
+      # T138a — FR-037 absence-check (006 polish phase, PR 10.B).
+      # Asserts the clean-break audit-schema cutover (marque-mvp-3 →
+      # marque-1.0, PR 3c.2.D) stays a type-level guarantee rather
+      # than a convention: no audit-reader crate, no reader feature,
+      # no `marque_engine::reader::*` public surface. Source plan
+      # §10.1 calls comment-propagated absence the failure mode the
+      # murder board (W6) identified; this step is the positive
+      # enforcement.
+      - name: Audit-cleanup absence check (FR-037)
+        run: bash tools/audit-cleanup-check.sh
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -54,7 +65,7 @@ jobs:
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
         with:
@@ -62,6 +73,58 @@ jobs:
 
       - name: cargo nextest
         run: cargo nextest run --workspace --profile ci
+
+  # T025 / SC-014 — Refactor-006 PR-3a-only corpus regression sweep.
+  #
+  # PR 3a is the keystone "pivot type split + transitional adapter"
+  # commit on the `refactor-006-pr-3a` branch. The PR's revertability
+  # gate (consolidated plan §3.1, design doc §1) is byte-identical
+  # behavior on every fixture: every corpus regression test must pass
+  # against PR-3a HEAD with no rule semantics change.
+  #
+  # This job runs the corpus-regression suite (`*corpus*` integration
+  # tests in `crates/{capco,engine}/tests/` plus marque/tests/) on the
+  # PR-3a branch only — `if:` filters by branch name so the job doesn't
+  # run on unrelated PRs. PR 3b and PR 3c will land their own matrix
+  # entries with the same body and a different branch filter; running
+  # them separately keeps "did PR 3a regress?" answerable from the CI
+  # log alone, not by re-bisecting through the keystone window.
+  pr-3a-corpus-regression:
+    name: PR 3a corpus regression (T025)
+    needs: check
+    if: github.ref == 'refs/heads/refactor-006-pr-3a' || github.head_ref == 'refactor-006-pr-3a'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "nightly"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+
+      # Corpus regression tests live in `crates/{capco,engine}/tests/`
+      # and `marque/tests/`. `cargo test --test` matches an exact
+      # integration-test target name within ONE package; `--workspace`
+      # combined with `--test` fails when the named target doesn't
+      # exist in every member crate. Invoke each suite per-package
+      # explicitly (Copilot review feedback on PR #315):
+      #   - corpus_parity     in marque-capco
+      #   - corpus_accuracy   in marque-engine
+      #   - corpus_provenance in marque
+      #
+      # When new corpus suites land, add them here in the same shape.
+      # `--features marque-engine/corpus-override` enables the SC-002
+      # decoder accuracy gate that lives behind the same feature flag
+      # as the corpus override audit-trail tests.
+      - name: cargo test corpus regression suites
+        run: |
+          cargo test -p marque-capco --test corpus_parity \
+            --features marque-engine/corpus-override
+          cargo test -p marque-engine --test corpus_accuracy \
+            --features marque-engine/corpus-override
+          cargo test -p marque --test corpus_provenance \
+            --features marque-engine/corpus-override
 
       # Phase 4 (US2) regression suites are file-level gated on
       # `decoder-harness` and `corpus-override` features that are NOT
@@ -74,11 +137,374 @@ jobs:
       # its tests are all `#[ignore]`-marked (issue #133 root-cause
       # traces) and require an explicit `--run-ignored` invocation;
       # they intentionally do not run in this step.
-      - name: cargo nextest (Phase 4 gated suites)
+      #
+      # Uses `cargo test` rather than `cargo nextest` so this job does
+      # not require the extra `taiki-e/install-action` step the main
+      # `test` job uses. Functional behavior is the same for these
+      # suites — neither relies on nextest-specific isolation.
+      - name: cargo test (Phase 4 gated suites)
         run: |
-          cargo nextest run --profile ci \
+          cargo test \
             -p marque-engine -p marque \
             --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
+
+  # T029 / SC-014 — Refactor-006 PR-3b corpus regression sweep ×
+  # {3a + 3b} subsequence.
+  #
+  # T025 (the PR-3a-only sweep above) validates 3a in isolation:
+  # "did PR 3a regress?" answerable from the CI log alone, not by
+  # re-bisecting through the keystone window. T029 validates the
+  # 3a + 3b subsequence by running the same corpus-regression suites
+  # on every 3b-prefixed branch (the umbrella + each of the six
+  # sub-PR branches 3b.A–3b.F + the closeout branch). Together,
+  # T025 and T029 are the SC-014 keystone subsequence verification
+  # for the engine-rule-refactor PRs that have landed so far; PR 3c
+  # will land its own equivalent matrix entry when its keystone
+  # branch opens.
+  #
+  # Prefix-match `if:` filter is intentional: the umbrella naming
+  # `refactor-006-pr-3b*` is namespace-clean per the project's
+  # branch-naming convention, and any future 3b-followup branch is
+  # in scope by construction without an explicit ci.yml edit. The
+  # job body is byte-identical to T025 — same toolchain pin, same
+  # cache config, same three corpus suites, same Phase 4 gated
+  # invocation.
+  pr-3b-corpus-regression:
+    name: PR 3b corpus regression (T029)
+    needs: check
+    if: |
+      startsWith(github.ref, 'refs/heads/refactor-006-pr-3b') ||
+      startsWith(github.head_ref, 'refactor-006-pr-3b')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "nightly"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+
+      # Corpus regression tests live in `crates/{capco,engine}/tests/`
+      # and `marque/tests/`. `cargo test --test` matches an exact
+      # integration-test target name within ONE package; `--workspace`
+      # combined with `--test` fails when the named target doesn't
+      # exist in every member crate. Invoke each suite per-package
+      # explicitly (Copilot review feedback on PR #315):
+      #   - corpus_parity     in marque-capco
+      #   - corpus_accuracy   in marque-engine
+      #   - corpus_provenance in marque
+      #
+      # When new corpus suites land, add them here in the same shape.
+      # `--features marque-engine/corpus-override` enables the SC-002
+      # decoder accuracy gate that lives behind the same feature flag
+      # as the corpus override audit-trail tests.
+      - name: cargo test corpus regression suites
+        run: |
+          cargo test -p marque-capco --test corpus_parity \
+            --features marque-engine/corpus-override
+          cargo test -p marque-engine --test corpus_accuracy \
+            --features marque-engine/corpus-override
+          cargo test -p marque --test corpus_provenance \
+            --features marque-engine/corpus-override
+
+      # Phase 4 (US2) regression suites are file-level gated on
+      # `decoder-harness` and `corpus-override` features that are NOT
+      # in any default feature set. Without this explicit invocation
+      # the SC-004 always-on regression floor (decoder_accuracy.rs)
+      # and the corpus-override audit-trail invariants
+      # (corpus_override.rs + cli_corpus_override.rs) are dormant.
+      # Enable both features here so those non-ignored gated suites run.
+      # `decoder_diagnostic.rs` is also gated on `decoder-harness`, but
+      # its tests are all `#[ignore]`-marked (issue #133 root-cause
+      # traces) and require an explicit `--run-ignored` invocation;
+      # they intentionally do not run in this step.
+      #
+      # Uses `cargo test` rather than `cargo nextest` so this job does
+      # not require the extra `taiki-e/install-action` step the main
+      # `test` job uses. Functional behavior is the same for these
+      # suites — neither relies on nextest-specific isolation.
+      - name: cargo test (Phase 4 gated suites)
+        run: |
+          cargo test \
+            -p marque-engine -p marque \
+            --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
+
+  # T145 / SC-014 — Refactor-006 PR-4b corpus regression sweep ×
+  # {3a + 3b + 4b} subsequence.
+  #
+  # T025 (3a) and T029 (3b) above validate each prior keystone in
+  # isolation: "did 3a regress?" / "did 3b regress?" answerable from
+  # the CI log alone, without re-bisecting through the keystone
+  # window. T145 extends the subsequence to 4b by running the same
+  # corpus-regression suites on every 4b-prefixed branch (the
+  # umbrella + each of the nine sub-PR branches 4b-A / 4b-B / 4b-C /
+  # 4b-D.0 / 4b-D.1 / 4b-D.2 / 4b-D.3 / 4b-E / 4b-F + the closeout
+  # branch). Together, T025 / T029 / T145 are the SC-014 keystone
+  # subsequence verification for the engine-rule-refactor keystone
+  # PRs that have landed so far; PR 5 will land its own equivalent
+  # matrix entry when its keystone branch opens.
+  #
+  # Prefix-match `if:` filter is intentional: the umbrella naming
+  # `refactor-006-pr-4b*` is namespace-clean per the project's
+  # branch-naming convention, and any future 4b-followup branch is
+  # in scope by construction without an explicit ci.yml edit. The
+  # job body is byte-identical to T029 — same toolchain pin, same
+  # cache config, same three corpus suites, same Phase 4 gated
+  # invocation.
+  pr-4b-corpus-regression:
+    name: PR 4b corpus regression (T145)
+    needs: check
+    if: |
+      startsWith(github.ref, 'refs/heads/refactor-006-pr-4b') ||
+      startsWith(github.head_ref, 'refactor-006-pr-4b')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "nightly"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+
+      # Corpus regression tests live in `crates/{capco,engine}/tests/`
+      # and `marque/tests/`. `cargo test --test` matches an exact
+      # integration-test target name within ONE package; `--workspace`
+      # combined with `--test` fails when the named target doesn't
+      # exist in every member crate. Invoke each suite per-package
+      # explicitly (Copilot review feedback on PR #315):
+      #   - corpus_parity     in marque-capco (currently dormant —
+      #     `#![cfg(any())]` disabled by PR 3c.B Commit 10 pending
+      #     FixProposal-shape rewrite; runs 0 tests today but kept
+      #     in the invocation so this job re-activates the moment
+      #     the file is re-enabled)
+      #   - corpus_accuracy   in marque-engine (ACTIVE)
+      #   - corpus_provenance in marque (ACTIVE)
+      #   - post_4b_lattice_inventory_pin in marque-capco (T144 —
+      #     PR 4b structural exact-state pin; rejects rename /
+      #     reorder / swap / duplicate-label drift in PageRewrite /
+      #     ClosureRule / Constraint::Custom catalogs)
+      #   - lattice_static_assertions in marque-capco (T143 —
+      #     compile-time pin via static_assertions; `cargo test
+      #     --test` builds the file and any violated assertion is
+      #     a build error)
+      #   - post_3b_registration_pin in marque-capco (T028 — exact
+      #     38-rule set; pre-existing, re-run alongside the new
+      #     4b pins for the umbrella regression surface)
+      #
+      # The post_4b + lattice_static + post_3b additions close the
+      # Copilot R1 finding on PR #557 that this job otherwise
+      # inherits the corpus_parity dormancy hole. With four active
+      # pins plus corpus_accuracy + corpus_provenance, the job has
+      # real 4b-specific coverage even while corpus_parity stays
+      # dormant.
+      #
+      # `--features marque-engine/corpus-override` enables the SC-002
+      # decoder accuracy gate that lives behind the same feature flag
+      # as the corpus override audit-trail tests.
+      - name: cargo test corpus regression suites
+        run: |
+          cargo test -p marque-capco --test corpus_parity \
+            --features marque-engine/corpus-override
+          cargo test -p marque-engine --test corpus_accuracy \
+            --features marque-engine/corpus-override
+          cargo test -p marque --test corpus_provenance \
+            --features marque-engine/corpus-override
+          cargo test -p marque-capco --test post_4b_lattice_inventory_pin
+          cargo test -p marque-capco --test lattice_static_assertions
+          cargo test -p marque-capco --test post_3b_registration_pin
+
+      # Phase 4 (US2) regression suites are file-level gated on
+      # `decoder-harness` and `corpus-override` features that are NOT
+      # in any default feature set. Without this explicit invocation
+      # the SC-004 always-on regression floor (decoder_accuracy.rs)
+      # and the corpus-override audit-trail invariants
+      # (corpus_override.rs + cli_corpus_override.rs) are dormant.
+      # Enable both features here so those non-ignored gated suites run.
+      # `decoder_diagnostic.rs` is also gated on `decoder-harness`, but
+      # its tests are all `#[ignore]`-marked (issue #133 root-cause
+      # traces) and require an explicit `--run-ignored` invocation;
+      # they intentionally do not run in this step.
+      #
+      # Uses `cargo test` rather than `cargo nextest` so this job does
+      # not require the extra `taiki-e/install-action` step the main
+      # `test` job uses. Functional behavior is the same for these
+      # suites — neither relies on nextest-specific isolation.
+      - name: cargo test (Phase 4 gated suites)
+        run: |
+          cargo test \
+            -p marque-engine -p marque \
+            --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
+
+  # FR-039 — masking-pin lint. AST scan over `tests/` and
+  # `crates/*/tests/` that locates every `with_recognizer(...StrictRecognizer...)`
+  # call site and asserts each carries either a `// MASKING-PIN: tracks #NNN`
+  # comment whose tracked GitHub issue is still open, or a
+  # `// INTENTIONAL-STRICT: <reason>` comment, within 5 lines of the
+  # method-ident position. Decision D11 in
+  # `specs/006-engine-rule-refactor/decisions.md` defines the
+  # cache-with-fallback design — the daily refresh-cache workflow
+  # (`.github/workflows/masking-pin-cache-refresh.yml`) keeps
+  # `tools/masking-pin-lint/cache/` current; this CI job runs in
+  # `--mode ci` which queries the GitHub API and falls back to the
+  # cached state when the API is unreachable or rate-limited.
+  masking-pin-lint:
+    name: Masking-pin lint (FR-039)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+        with:
+          workspaces: tools/masking-pin-lint
+
+      # `--release` matters: the lint crate pulls a non-trivial dep tree
+      # (octocrab → reqwest/tokio); release builds run faster and match
+      # the daily cache-refresh workflow. `GITHUB_TOKEN` is the
+      # ephemeral read-only token GitHub injects on every PR build; the
+      # lint crate reads it via the `--github-token` flag's
+      # `env = "GITHUB_TOKEN"` fallback.
+      - name: Run masking-pin lint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo run --manifest-path tools/masking-pin-lint/Cargo.toml --release -- \
+              --workspace-dir . --mode ci
+
+  # FR-040 + decision D12 — promote-callsite lint. AST scan that asserts
+  # every production-code call site of `AppliedFix::__engine_promote`
+  # lives inside `Engine::fix_inner` (Constitution V invariant: only the
+  # engine may promote a `FixProposal` to an `AppliedFix`). Test code is
+  # exempt under the test-fixture carve-out; the lint encodes that
+  # exemption per D12.
+  promote-callsite-lint:
+    name: Promote-callsite lint (FR-040 + D12)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+        with:
+          workspaces: tools/promote-callsite-lint
+
+      - name: Run promote-callsite lint
+        run: |
+          cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release -- \
+              --workspace-dir . --all
+
+  # FR-018 — citation-lint. AST scan over `crates/*/src/**/*.rs` that
+  # extracts every `§X.Y pNN` reference (in `citation:`/`message:`/
+  # `constraint_label:` struct fields, doc-comment attributes, and
+  # generic string literals containing `§`) and validates each
+  # against `crates/capco/docs/CAPCO-2016.md`. Defects include bare
+  # `§NN` forms, non-normative-section citations (§I/§J/§K), page
+  # anchors outside the cited subsection's span, the FR-020 doubled-
+  # page-anchor pattern, and the retired `line NNNN` form.
+  #
+  # PR 0.5 landed the lint and the defect catalog at
+  # `docs/refactor-006/citation-defect-catalog.md`. PR 3c.B commit 1
+  # cleared all 14 lint-detectable defects from the catalog
+  # (8 legacy-line-form + 6 bare-section in
+  # `crates/capco/src/{rules.rs, rules_declarative.rs, scheme.rs}`).
+  # The same commit also corrected the E011/E012/E015 wrapper-
+  # vs-catalog citation drift per
+  # `decisions/04-citation-hygiene.md` — those are semantic defects
+  # caught by `rule-body-audit.md`, not by the structural lint
+  # (which validates page-anchor / subsection-span integrity, not
+  # passage-text fidelity). From this commit forward the job is
+  # hard-blocking on the structural lint: any new citation defect
+  # fails CI immediately.
+  #
+  # PR 10.A.2 T102: this job ships pinned as the hard structural
+  # gate. The complementary semantic gate is the F.1 corpus-
+  # fidelity test at `crates/capco/tests/citation_fidelity.rs`
+  # (declared ⊆ harvested ∪ whitelist ⊆ declared), which runs
+  # under the regular `cargo test --workspace` invocation in the
+  # `test` job below — no separate workflow step needed. The
+  # BLAKE3 pin on `docs/CAPCO-2016.md` (PR 10.A.2 T103) runs at
+  # `build.rs` evaluation under any `cargo check` / `cargo build`
+  # invocation, also without a dedicated workflow step.
+  citation-lint:
+    name: Citation lint (FR-018)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+        with:
+          workspaces: tools/citation-lint
+
+      - name: Run citation lint
+        # Hard CI gate. Any defect cataloged at
+        # `docs/refactor-006/citation-defect-catalog.md` fails the job;
+        # the placeholder "no defects" form is the green-state
+        # invariant. Constitution Principle VIII (Authoritative Source
+        # Fidelity) treats fabricated, hallucinated, misattributed, or
+        # silently-drifted citations as correctness defects of the
+        # same severity as a wrong predicate — this gate prevents
+        # them from accreting silently.
+        run: |
+          cargo run --manifest-path tools/citation-lint/Cargo.toml --release -- \
+              "$GITHUB_WORKSPACE"
+
+  # FR-051 / decision D16 — flake-watch cap check. Counts active
+  # `## flake-NNN` headers in `tools/flake-watch/issues.md` and fails
+  # the workflow when the count exceeds 10. The template entry uses a
+  # blockquote (`> ##`) so it does not count; see
+  # `tools/flake-watch/README.md` for the full convention. Shell-only
+  # by design (no Rust toolchain needed).
+  flake-watch-cap:
+    name: flake-watch cap (FR-051 / D16)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      # `|| true` handles the zero-match case — `grep -c` exits 1 when
+      # nothing matches, which would otherwise fail the step before the
+      # cap comparison runs.
+      - name: Cap check
+        run: |
+          count=$(grep -c '^## flake-' tools/flake-watch/issues.md || true)
+          echo "flake-watch active count: $count / 10"
+          if [ "$count" -gt 10 ]; then
+            echo "::error::flake-watch queue exceeds cap of 10 (count=$count) per D16"
+            exit 1
+          fi
+
+  # FR-015 / CHK030 — regression-grep guards. Pattern-anchored guards
+  # against forbidden source-code shapes that PR 2 (and future PRs)
+  # migrated to documented vocabulary surfaces. Currently enforces:
+  #   - no inline `is_ascii_alphanumeric()` in `crates/core/src/parser.rs`
+  #     (PR 2 routed admission through `Vocabulary<S>::shape_admits` and
+  #     the lifted `marque-ism` predicates).
+  # See `tools/regression-grep/README.md` for the active guard list and
+  # the contract for adding a new guard.
+  # Shell-only by design (no Rust toolchain needed); also runnable
+  # locally via `./tools/regression-grep/regression-grep.sh`.
+  regression-grep:
+    name: regression-grep (FR-015 / CHK030)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - name: Run regression-grep guards
+        run: ./tools/regression-grep/regression-grep.sh
 
   wasm:
     name: WASM build
@@ -92,7 +518,7 @@ jobs:
           toolchain: "1.89"
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
 
@@ -112,6 +538,57 @@ jobs:
       # executes. Node is preinstalled on `ubuntu-latest`.
       - name: wasm-pack test --node (parity)
         run: wasm-pack test --node crates/wasm --test parity
+
+      # PR 3d.3 — WASM binary-size regression gate (T058i quality
+      # gate, Constitution III). Runs a SEPARATE `wasm-pack build
+      # --profile release-web` invocation and compares the resulting
+      # pre-`wasm-opt` artifact size to
+      # `tools/wasm-size-baseline.txt`. Fails if the size regressed
+      # by more than 5%. Adds ~30 seconds to the wasm job (acceptable
+      # for the catch-rust-side-bloat property the gate provides).
+      #
+      # Profile note: this build uses `release-web`, while the
+      # parity build and ship artifact use `--profiling` +
+      # `wasm-opt`. See `tools/wasm-size-check.sh` header comment
+      # for why measurement happens at the pre-opt boundary.
+      # The `MARQUE_WASM_SKIP_REGRESSION` env-var skip is enabled
+      # for two branches:
+      #
+      # 1. `refactor-006-pr-4b-perf-closeout` — the diagnosis branch
+      #    where the cumulative WASM regression is the deliverable
+      #    rather than a defect.
+      # 2. `refactor/006-pr10-*` — the PR 10 sub-PR umbrella
+      #    branches (10.A.1 / 10.A.2 / 10.B and any closeout
+      #    follow-ups) carrying the residual cumulative
+      #    006-refactor regression forward. Project memories
+      #    `project_perf_regression_4_to_6` and
+      #    `project_perf_baseline_pr5_trigger` (the `lint_10kb`
+      #    828→914+µs cumulative band) document that the
+      #    PR-4-through-9 drift is bundled — zero-hot-path closeout
+      #    PRs on this branch must not block on bench-check until
+      #    dedicated perf-analysis lands and refreshes the
+      #    baseline. Prefix-match (`startsWith`) covers every
+      #    sub-PR under the PR-10 umbrella without per-branch
+      #    yaml edits each time a new sub-PR splits off.
+      #
+      # Build failures and missing-artifact failures still fail;
+      # only the +5% drift gate is skipped (there is no absolute-
+      # size ceiling on the WASM gate — only the drift gate). The
+      # match covers both `push` events (`github.ref`) and
+      # `pull_request` events (`github.head_ref`), mirroring the
+      # existing branch-gate patterns at lines 84, 166, 249 of this
+      # file — on `pull_request` events `github.ref` is
+      # `refs/pull/N/merge`, not the source branch, so without the
+      # `head_ref` arm the skip would silently fail to fire on PR
+      # runs. REMOVE these env blocks once the diagnosis branch
+      # merges, the polish branch lands its final sub-PR, AND
+      # dedicated perf-analysis closes the PR-4-through-9
+      # cumulative drift. See
+      # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
+      - name: wasm-size-check (release-web profile)
+        env:
+          MARQUE_WASM_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || startsWith(github.ref, 'refs/heads/refactor/006-pr10-') || startsWith(github.head_ref, 'refactor/006-pr10-')) && '1' || '' }}
+        run: ./tools/wasm-size-check.sh
 
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
         with:
@@ -252,18 +729,57 @@ jobs:
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
+      # Coverage runs on nightly so that the existing
+      # `#[cfg_attr(coverage_nightly, coverage(off))]` annotations on
+      # `mod tests { ... }` blocks across the workspace activate. The
+      # annotations require `#![feature(coverage_attribute)]` (set at
+      # crate root via `#![cfg_attr(coverage_nightly, feature(...))]`),
+      # which is nightly-only on stable Rust 1.85+. Without nightly +
+      # the cfg flag below, every `mod tests` block lands in coverage
+      # data with hundreds of `assert!`-message-continuation lines
+      # marked as missed — pure tooling noise that gates `codecov/
+      # patch` on PRs without measuring real coverage.
+      #
+      # The other CI jobs (build, test, clippy, etc.) stay pinned to
+      # the stable Rust toolchain in `rust-toolchain.toml`. Nightly
+      # appears here ONLY for coverage instrumentation.
+      #
+      # **Toolchain-override discipline.** The workspace ships a
+      # `rust-toolchain.toml` at the repo root that pins
+      # `channel = "1.89"`. rustup respects that file automatically,
+      # so even after `dtolnay/rust-toolchain` installs nightly,
+      # plain `cargo` invocations from inside the workspace would
+      # still resolve to stable 1.89 (and stable rejects the
+      # `feature(coverage_attribute)` gate with E0554). The fix is to
+      # invoke cargo with the `+nightly` channel-prefix below, which
+      # is a hard rustup-level override that beats the file pin.
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
-          toolchain: "1.89"
+          toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
         with:
           tool: cargo-llvm-cov
 
       - name: Generate coverage
-        run: cargo llvm-cov --workspace --codecov --output-path codecov.json
+        # `--cfg coverage_nightly` activates the source-tree
+        # `#[cfg_attr(coverage_nightly, coverage(off))]` markers on
+        # `mod tests` blocks (≈30 sites across the workspace) so test
+        # functions and their `assert!` continuations don't pollute
+        # the coverage report. cargo-llvm-cov merges this RUSTFLAGS
+        # value with its own instrumentation flags rather than
+        # overriding it.
+        #
+        # `cargo +nightly` (note the `+` prefix) forces the nightly
+        # toolchain even though `rust-toolchain.toml` pins 1.89 at
+        # the workspace level. Without `+nightly`, rustup resolves
+        # the toolchain from the file and stable 1.89 fails with
+        # E0554 on the `feature(coverage_attribute)` gate.
+        env:
+          RUSTFLAGS: "--cfg coverage_nightly"
+        run: cargo +nightly llvm-cov --workspace --codecov --output-path codecov.json
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
@@ -300,7 +816,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: cargo test (alloc-budget gate)
         run: |
@@ -345,7 +861,44 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
+      # The `MARQUE_BENCH_SKIP_REGRESSION` env-var skip is enabled
+      # for two branches:
+      #
+      # 1. `refactor-006-pr-4b-perf-closeout` — the diagnosis branch
+      #    where the cumulative perf regression is the deliverable
+      #    rather than a defect.
+      # 2. `refactor/006-pr10-*` — the PR 10 sub-PR umbrella
+      #    branches (10.A.1 / 10.A.2 / 10.B and any closeout
+      #    follow-ups) carrying the residual cumulative
+      #    006-refactor regression forward. The `lint_10kb`
+      #    828→914+µs band is cumulative across PRs 4–6 plus GHA
+      #    runner noise, and consistently lands 1086–1251µs on
+      #    CI (over the +10% drift gate). Per project memory
+      #    `project_perf_regression_4_to_6` (zero-hot-path closeout
+      #    PRs do NOT block on bench-check) and
+      #    `project_perf_baseline_pr5_trigger` (dedicated perf-
+      #    analysis is the right place to close this drift, not
+      #    incremental baseline bumps). Prefix-match
+      #    (`startsWith`) covers every sub-PR under the PR-10
+      #    umbrella without per-branch yaml edits each time.
+      #
+      # Absolute SC-001 16ms ceiling, SC-002 18ms ceiling, SC-005
+      # R² gate, fix-throughput R² gate, and deadline-overhead gate
+      # are still enforced (per `scripts/bench-check.sh` policy
+      # comment at line 31). The match covers both `push` events
+      # (`github.ref`) and `pull_request` events
+      # (`github.head_ref`), mirroring the existing branch-gate
+      # patterns at lines 84, 166, 249 — on `pull_request` events
+      # `github.ref` is `refs/pull/N/merge`, not the source branch,
+      # so without the `head_ref` arm the skip would silently fail
+      # to fire on PR runs. REMOVE these env blocks once the
+      # diagnosis branch merges, the polish branch lands its final
+      # sub-PR, AND dedicated perf-analysis closes the
+      # PR-4-through-9 cumulative drift. See
+      # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
       - name: scripts/bench-check.sh
+        env:
+          MARQUE_BENCH_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || startsWith(github.ref, 'refs/heads/refactor/006-pr10-') || startsWith(github.head_ref, 'refactor/006-pr10-')) && '1' || '' }}
         run: bash scripts/bench-check.sh

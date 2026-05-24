@@ -1,0 +1,8 @@
+{
+  "_note": "CAPCO-2016 §H.4 p68 (E059 sci-per-system/HCS-P-sub-companions — ORCON required on HCS-P with sub-compartment) + §H.4 p62 (E010 HCS family) + §H.4 p66 (E059 sci-per-system/HCS-P-NOFORN). HCS-P with sub-compartment requires both NOFORN and ORCON; here both are missing.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "portion.sci.hcs-system-constraints"}, "span": {"start": 12, "end": 21}},
+    {"rule": {"scheme": "capco", "predicate_id": "marking.sci.hcs-p-noforn-required"}, "span": {"start": 12, "end": 21}},
+    {"rule": {"scheme": "capco", "predicate_id": "marking.sci.hcs-p-sub-companions"}, "span": {"start": 12, "end": 21}}
+  ]
+}

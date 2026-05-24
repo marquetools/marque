@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T056 — audit-stream content-ignorance tests.
+//! Audit-stream content-ignorance tests.
 //!
-//! Enforces Constitution V + the G13 invariant (Phase 004 §spec,
-//! `docs/security/WHITEPAPER.md` §3.1): no document content, metadata
+//! Enforces Constitution V and the audit content-ignorance boundary
+//! (`docs/security/WHITEPAPER.md` §3.1): no document content, metadata
 //! field values, or subject-claim free-form text appears in the
 //! text-bearing fields of an `AppliedFix` that the audit stream
 //! serializes, nor in `Diagnostic.message`.
@@ -27,7 +27,7 @@
 //! `severity`), numeric (`confidence`, span offsets), process-supplied
 //! opaque identifiers (`classifier_id`, `input`, `timestamp`),
 //! `&'static str` references (`migration_ref`), or enum-typed feature
-//! labels (`FeatureId` — landed via FR-012). None carry document-
+//! labels (`FeatureId`). None carry document-
 //! derived text by type, so they are not greppable targets for this
 //! invariant. The test intentionally does not re-invoke the CLI's
 //! NDJSON serializer (`marque::render::applied_fix_to_audit_json`),
@@ -51,8 +51,9 @@
 //!    parser (non-UTF-8 candidates yield `CoreError::InvalidUtf8`
 //!    and are skipped there, not by the test).
 //!
-//! 3. **Companion: diagnostic messages.** Not T056 proper (T056 is
-//!    scoped to the audit stream), but the same invariant applies to
+//! 3. **Companion: diagnostic messages.** Strictly the audit-stream
+//!    check is scoped to the audit stream, but the same invariant
+//!    applies to
 //!    `Diagnostic.message` since that field is emitted on the lint
 //!    NDJSON stream. Kept here because the sentinel infrastructure is
 //!    identical.
@@ -71,11 +72,14 @@
 //! marking by construction — no classification level, compartment,
 //! dissem control, or trigraph contains English words with spaces.
 
-use marque_capco::capco_rules;
+use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
-use marque_ism::Span;
-use marque_rules::{AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId};
+use marque_rules::audit::{AppliedTextCorrection, AuditLine};
+use marque_rules::{
+    Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, RuleId,
+};
+use marque_scheme::{Severity, Span};
 use marque_test_utils::{invalid_fixtures, load_fixture, prose_fixtures, valid_fixtures};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -103,7 +107,7 @@ const PROSE_SENTINELS: &[&str] = &[
 ];
 
 fn test_engine() -> Engine {
-    // `audit_v2_strict_path_invariants` (T052) asserts strict-shape
+    // `audit_v2_strict_path_invariants` asserts strict-shape
     // invariants on every produced `AppliedFix`. Pin the recognizer to
     // `StrictRecognizer` explicitly — the engine default
     // (`StrictOrDecoderRecognizer`) would still hold the invariant on
@@ -117,6 +121,7 @@ fn test_engine() -> Engine {
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: audit-trail tests pin the strict recognizer because the audit invariants tested here apply to the strict-path AppliedFix shape; decoder-path differences are exercised in decoder_diagnostic.rs
     .with_recognizer(std::sync::Arc::new(marque_engine::StrictRecognizer::new()))
 }
 
@@ -163,32 +168,64 @@ fn deep_scan_engine_relaxed() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-/// Panic if any prose sentinel appears in the given string.
+/// Check every AppliedFix in `applied` for sentinel leaks.
 ///
-/// Panic includes the rule ID and span so a failure points directly at
-/// the offending proposal without requiring test re-runs to find it.
-fn assert_clean(proposal: &FixProposal, field_name: &str, value: &str, context: &str) {
+/// The only audit field that can carry corpus-derived bytes is the
+/// `TextCorrection.replacement` payload — and that's a canonical token
+/// from the `[corrections]` map, on Constitution V's
+/// permitted-identifier list. No raw original-byte field is
+/// representable in the audit record.
+fn check_fixes_clean(audit_lines: &[AuditLine<CapcoScheme>], context: &str) {
+    for line in audit_lines {
+        // Marking-side fixes carry a sealed `Canonical<S>` payload —
+        // no free-form string surface to scan. Text-correction lines
+        // carry a corpus-derived `replacement: SmolStr`; that's where
+        // a regressed channel would leak.
+        if let AuditLine::TextCorrection(tc) = line {
+            assert_text_correction_clean(tc, "replacement", tc.replacement.as_ref(), context);
+        }
+    }
+}
+
+/// Panic if any prose sentinel appears in the given string (v2
+/// [`AppliedTextCorrection`] variant).
+///
+/// Mirrors [`assert_clean`] but reads the v2 audit-record type's
+/// fields ([`marque_rules::audit::AppliedTextCorrection::rule`] +
+/// `.span` + `.replacement`). Used by the v2 self-test
+/// [`sentinel_check_panics_on_synthetic_leak`].
+fn assert_text_correction_clean(
+    tc: &AppliedTextCorrection,
+    field_name: &str,
+    value: &str,
+    context: &str,
+) {
     for sentinel in PROSE_SENTINELS {
         if value.contains(sentinel) {
             panic!(
-                "G13 violation: prose sentinel {sentinel:?} leaked into \
-                 AppliedFix.proposal.{field_name} \
+                "content-ignorance violation: prose sentinel {sentinel:?} leaked into \
+                 AppliedTextCorrection.{field_name} \
                  (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
                  field value: {value:?}",
-                rule = proposal.rule.as_str(),
-                start = proposal.span.start,
-                end = proposal.span.end,
+                rule = tc.rule,
+                start = tc.span.start,
+                end = tc.span.end,
             );
         }
     }
 }
 
-/// Check every AppliedFix in `applied` for sentinel leaks.
-fn check_fixes_clean(applied: &[AppliedFix], context: &str) {
-    for fix in applied {
-        let p = &fix.proposal;
-        assert_clean(p, "original", p.original.as_ref(), context);
-        assert_clean(p, "replacement", p.replacement.as_ref(), context);
+/// Check every v2 [`AppliedTextCorrection`] in `corrections` for
+/// sentinel leaks.
+///
+/// The v2 type's only corpus-derived field is `replacement: SmolStr`
+/// (the canonical token from the `[corrections]` map). Constitution V
+/// Principle V permits the corpus-derived value here because it must
+/// be on the permitted-identifier list; this checker exists to catch
+/// regressions where prose would leak into that field.
+fn check_text_corrections_clean(corrections: &[AppliedTextCorrection], context: &str) {
+    for tc in corrections {
+        assert_text_correction_clean(tc, "replacement", tc.replacement.as_ref(), context);
     }
 }
 
@@ -202,12 +239,12 @@ fn no_document_text_leaks_from_invalid_corpus() {
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no invalid fixtures found — cannot validate G13"
+        "no invalid fixtures found — cannot validate audit content-ignorance"
     );
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        check_fixes_clean(&result.applied, &path.display().to_string());
+        check_fixes_clean(&result.audit_lines, &path.display().to_string());
     }
 }
 
@@ -217,12 +254,12 @@ fn no_document_text_leaks_from_valid_corpus() {
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no valid fixtures found — cannot validate G13"
+        "no valid fixtures found — cannot validate audit content-ignorance"
     );
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        check_fixes_clean(&result.applied, &path.display().to_string());
+        check_fixes_clean(&result.audit_lines, &path.display().to_string());
     }
 }
 
@@ -232,12 +269,12 @@ fn no_document_text_leaks_from_prose_corpus() {
     let fixtures = prose_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no prose fixtures found — cannot validate G13"
+        "no prose fixtures found — cannot validate audit content-ignorance"
     );
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        check_fixes_clean(&result.applied, &path.display().to_string());
+        check_fixes_clean(&result.audit_lines, &path.display().to_string());
     }
 }
 
@@ -297,8 +334,8 @@ fn no_document_text_leaks_when_markings_are_embedded_in_prose() {
 
         let result = run_fix(&engine, &composite);
         let label = format!("wrapped:{}", path.display());
-        check_fixes_clean(&result.applied, &label);
-        fixes_examined += result.applied.len();
+        check_fixes_clean(&result.audit_lines, &label);
+        fixes_examined += result.applied_fixes().count();
     }
 
     assert!(
@@ -334,85 +371,177 @@ fn no_document_text_leaks_into_diagnostic_messages() {
     assert!(
         !sources.is_empty(),
         "no fixtures found across invalid/valid/prose — \
-         cannot validate G13 against diagnostic messages \
+         cannot validate audit content-ignorance against diagnostic messages \
          (vacuous-pass guard)"
     );
 
     for (label, source) in &sources {
         let result = engine.lint(source);
         for d in &result.diagnostics {
+            // `Diagnostic.message` is a typed `Message`, not a
+            // `Box<str>`. Document text is no longer
+            // constructible inside `Diagnostic.message` by type — every
+            // field on `MessageArgs` is a closed-set identifier
+            // (`TokenId`/`CategoryId`/`Span`/`Blake3Hash`/`Confidence`/
+            // `FeatureId`/`RuleId`), and the only string content is the
+            // `MessageTemplate` label (a `&'static str` from the closed
+            // enum). Scan that label as the load-bearing structural
+            // pin: if a future refactor reintroduced a free-form string
+            // channel on `Message`, this scan would still catch it.
+            let template_label = d.message.template().as_str();
             for sentinel in PROSE_SENTINELS {
                 assert!(
-                    !d.message.contains(sentinel),
-                    "G13 violation: prose sentinel {sentinel:?} leaked into \
-                     Diagnostic.message (rule: {}, fixture: {label})\n\n\
-                     message: {:?}",
-                    d.rule.as_str(),
-                    d.message
+                    !template_label.contains(sentinel),
+                    "content-ignorance violation: prose sentinel {sentinel:?} leaked into \
+                     Diagnostic.message template (rule: {}, fixture: {label})\n\n\
+                     template: {template_label}",
+                    d.rule,
                 );
             }
         }
     }
 }
 
+#[test]
+fn no_document_text_leaks_into_fix_remaining_diagnostics() {
+    // Companion to `no_document_text_leaks_into_diagnostic_messages`.
+    //
+    // The lint-side sweep covers `LintResult.diagnostics`. A second
+    // stream of `Diagnostic` values flows out
+    // of the engine: `FixResult.remaining_diagnostics`. R002 — the
+    // synthetic post-pass-1 re-parse-failure diagnostic — lands
+    // exclusively in this stream, not in `LintResult.diagnostics`.
+    // Other diagnostics that the fix path filters in (suggest-only
+    // entries below the confidence threshold, diagnostics whose
+    // fix did not apply due to C-1 overlap, pass-0 dropped
+    // text-correction diagnostics) also reach the caller through
+    // this field. The content-ignorance invariant — no document content in any
+    // `Diagnostic.message` reaching the audit / consumer boundary
+    // — applies identically to both streams; the corpus-level test
+    // requirement from Constitution V Principle V is "engine output
+    // streams," plural.
+    let engine = test_engine();
+
+    let mut sources: Vec<(String, Vec<u8>)> = Vec::new();
+    for path in invalid_fixtures() {
+        sources.push((path.display().to_string(), load_fixture(&path)));
+    }
+    for path in valid_fixtures() {
+        sources.push((path.display().to_string(), load_fixture(&path)));
+    }
+    for path in prose_fixtures() {
+        sources.push((path.display().to_string(), load_fixture(&path)));
+    }
+
+    assert!(
+        !sources.is_empty(),
+        "no fixtures found across invalid/valid/prose — \
+         cannot validate audit content-ignorance against fix-remaining-diagnostic messages \
+         (vacuous-pass guard)"
+    );
+
+    // Vacuity guard: the test is meaningful only if at least one
+    // fixture produces a remaining diagnostic. The invalid fixture
+    // set is the natural producer (sub-threshold suggestions surface
+    // in `remaining_diagnostics`), but if a future refactor purged
+    // every below-threshold path the assertion below would silently
+    // pass. Fail loudly instead.
+    let mut diagnostics_examined = 0usize;
+
+    for (label, source) in &sources {
+        let result = engine.fix(source, FixMode::Apply);
+        diagnostics_examined += result.remaining_diagnostics.len();
+        for d in &result.remaining_diagnostics {
+            // `Diagnostic.message` is closed-template `Message`, no
+            // document text constructible by type. Scan
+            // the template label as the structural-pin equivalent of
+            // the prior `contains()` byte-substring check (see the
+            // companion `no_document_text_leaks_into_diagnostic_messages`
+            // explanation above).
+            let template_label = d.message.template().as_str();
+            for sentinel in PROSE_SENTINELS {
+                assert!(
+                    !template_label.contains(sentinel),
+                    "content-ignorance violation: prose sentinel {sentinel:?} leaked into \
+                     FixResult.remaining_diagnostics[].message template \
+                     (rule: {}, fixture: {label})\n\n\
+                     template: {template_label}",
+                    d.rule,
+                );
+            }
+        }
+    }
+
+    assert!(
+        diagnostics_examined > 0,
+        "fix-remaining-diagnostics sweep produced zero diagnostics across the \
+         full corpus — either the corpus is empty or the engine's fix path \
+         no longer surfaces remaining diagnostics (vacuous-pass guard)"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Self-test — the sentinel check actually catches leaks.
 // ---------------------------------------------------------------------------
 
-/// Fabricate an `AppliedFix` whose `original` contains a known sentinel.
+/// Fabricate an `AppliedTextCorrection` whose `replacement` contains
+/// a known sentinel.
 ///
 /// Test-fixture carve-out per Constitution V Principle V: this
-/// fabricated `AppliedFix` is the input to `check_fixes_clean`'s
-/// G13 sentinel sweep, exists only inside the `tests/` tree, and is
-/// never spliced into a real audit stream. Engine production paths
-/// remain the only route to a real `AppliedFix` in `cfg(not(test))`
-/// code; see the doc comment on `AppliedFix::__engine_promote` for
-/// the three-constraint definition of the carve-out.
-fn fabricate_leaky_fix() -> AppliedFix {
-    // A deliberately leaky `original`: a literal prose sentinel. In
-    // production this could never happen because every proposal's
-    // `original` is a byte-exact slice of the marking span, not of
-    // surrounding prose. This is a synthetic leak to prove the check
-    // is load-bearing.
-    let leaky_original = "enlightened statesmen";
-    let proposal = FixProposal::new(
-        RuleId::new("E001"),
-        FixSource::BuiltinRule,
-        Span::new(0, leaky_original.len()),
-        leaky_original,
-        "SECRET",
+/// fabricated record is the input to
+/// [`check_text_corrections_clean`]'s sentinel sweep, exists only
+/// inside the `tests/` tree, and is never spliced into a real audit
+/// stream. Engine production paths remain the only route to a real
+/// [`AppliedTextCorrection`] in `cfg(not(test))` code; see the doc
+/// comment on
+/// [`marque_rules::audit::AppliedTextCorrection::__engine_promote_text_correction`]
+/// for the three-constraint definition of the carve-out.
+///
+/// The leak channel under test is `replacement: SmolStr` on the
+/// [`AppliedTextCorrection`] type.
+fn fabricate_leaky_text_correction() -> AppliedTextCorrection {
+    // A deliberately leaky text-correction replacement carrying a
+    // literal prose sentinel. The only audit field that can carry
+    // corpus-derived bytes in the v2 envelope is the
+    // `AppliedTextCorrection.replacement` payload; a real
+    // corrections-map entry would never contain prose, but this
+    // synthetic fixture proves the checker can catch a leak if one
+    // were to land.
+    let leaky_replacement = "enlightened statesmen";
+    let original_digest = blake3::hash(leaky_replacement.as_bytes());
+    // Test-fixture carve-out per Constitution V Principle V.
+    let token = EnginePromotionToken::__engine_construct();
+    AppliedTextCorrection::__engine_promote_text_correction(
+        RuleId::new("capco", "marking.correction.token-typo"),
+        Severity::Fix,
+        Span::new(0, leaky_replacement.len()),
+        original_digest,
+        leaky_replacement.into(),
+        FixSource::CorrectionsMap,
         Confidence::strict(1.0),
-        None,
-    );
-    // Test-fixture carve-out per Constitution V Principle V: the
-    // token is minted via the engine-only door so the synthetic
-    // `AppliedFix` can flow through the G13 sentinel sweep. The
-    // fabricated value is consumed inside `tests/` and never
-    // commingled with engine output (see `fabricate_leaky_fix`'s
-    // doc comment above).
-    AppliedFix::__engine_promote(
-        proposal,
+        /* migration_ref */ None,
+        Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
         Some(Arc::<str>::from("test-classifier")),
         /* dry_run */ false,
         Some(Arc::<str>::from("-")),
-        EnginePromotionToken::__engine_construct(),
+        token,
     )
 }
 
 #[test]
-#[should_panic(expected = "G13 violation")]
+#[should_panic(expected = "content-ignorance violation")]
 fn sentinel_check_panics_on_synthetic_leak() {
     // Guard against future regressions of the checker itself: a
     // refactor that emptied `PROSE_SENTINELS` or disabled
-    // `assert_clean` would cause this `#[should_panic]` test to fail
-    // loudly, not silently weaken the real corpus sweep.
-    let leaky = fabricate_leaky_fix();
-    check_fixes_clean(&[leaky], "synthetic self-test");
+    // `assert_text_correction_clean` would cause this `#[should_panic]`
+    // test to fail loudly, not silently weaken the real corpus sweep.
+    let leaky = fabricate_leaky_text_correction();
+    check_text_corrections_clean(&[leaky], "synthetic self-test");
 }
 
 // ---------------------------------------------------------------------------
-// T052 — audit v2 strict-path record invariants.
+// Audit v2 strict-path record invariants.
 // ---------------------------------------------------------------------------
 //
 // The strict path is the explicit-opt-out mode: `Engine::new(...)`
@@ -442,14 +571,13 @@ fn sentinel_check_panics_on_synthetic_leak() {
 // stuffs feature contributions into a strict-path `Confidence`,
 // trips this test immediately.
 //
-// **Companion checks:** the v2 NDJSON envelope is now driven by
-// `marque_engine::AUDIT_SCHEMA_VERSION` (PR-4 closed whitepaper §980
-// P0-1). T054 (v1-record back-compat parse) lives below; T055
-// (stream-level single-schema invariant) lives in
+// **Companion checks:** the v2 NDJSON envelope is driven by
+// `marque_engine::AUDIT_SCHEMA_VERSION`. The v1-record back-compat
+// parse test lives below; the stream-level single-schema invariant
+// lives in
 // `marque/tests/cli_fix.rs::audit_stream_uses_only_one_schema_version`
-// because the stream emitter is at the CLI layer. T053 (decoder-path
-// record shape) waits on PR-4b — `Engine::fix_inner` does not yet
-// produce `FixSource::DecoderPosterior` records.
+// because the stream emitter is at the CLI layer. The decoder-path
+// record-shape test lives further below.
 
 #[test]
 fn audit_v2_strict_path_invariants() {
@@ -457,7 +585,7 @@ fn audit_v2_strict_path_invariants() {
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no invalid fixtures found — cannot validate T052 strict-path invariants"
+        "no invalid fixtures found — cannot validate strict-path invariants"
     );
 
     // Vacuity guard: the test is meaningful only if the engine's
@@ -468,73 +596,81 @@ fn audit_v2_strict_path_invariants() {
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        for fix in &result.applied {
-            let p = &fix.proposal;
-            let c = &p.confidence;
+        for line in &result.audit_lines {
+            // Marking-side audit-record contract per
+            // `contracts/audit-record.md` §107-178: `fix.replacement
+            // .confidence` carries the strict invariants below.
+            // Text-correction lines have their own `confidence` field
+            // at the top level.
+            let (rule, span, source_arm, confidence) = match line {
+                AuditLine::AppliedFix(f) => {
+                    (&f.rule, f.span, f.source, &f.fix.replacement.confidence)
+                }
+                AuditLine::TextCorrection(tc) => (&tc.rule, tc.span, tc.source, &tc.confidence),
+                _ => continue,
+            };
             let context = format!(
                 "rule {} at {}..{} ({})",
-                p.rule.as_str(),
-                p.span.start,
-                p.span.end,
+                rule,
+                span.start,
+                span.end,
                 path.display()
             );
 
             assert_eq!(
-                c.recognition, 1.0_f32,
+                confidence.recognition, 1.0_f32,
                 "strict-path Confidence.recognition must be 1.0; got {} for {context}",
-                c.recognition,
+                confidence.recognition,
             );
             assert!(
-                c.runner_up_ratio.is_none(),
+                confidence.runner_up_ratio.is_none(),
                 "strict-path Confidence.runner_up_ratio must be None; \
                  got {:?} for {context}",
-                c.runner_up_ratio,
+                confidence.runner_up_ratio,
             );
             assert!(
-                c.features.is_empty(),
+                confidence.features.is_empty(),
                 "strict-path Confidence.features must be empty; \
                  got {} feature(s) for {context}: {:?}",
-                c.features.len(),
-                c.features,
+                confidence.features.len(),
+                confidence.features,
             );
             assert!(
                 matches!(
-                    p.source,
+                    source_arm,
                     FixSource::BuiltinRule | FixSource::CorrectionsMap | FixSource::MigrationTable
                 ),
                 "strict-path FixSource must be BuiltinRule | CorrectionsMap | \
-                 MigrationTable; got {:?} for {context}",
-                p.source,
+                 MigrationTable; got {source_arm:?} for {context}",
             );
         }
-        total_fixes_examined += result.applied.len();
+        total_fixes_examined += result.audit_lines.len();
     }
 
     assert!(
         total_fixes_examined > 0,
-        "T052 sweep produced zero applied fixes — \
+        "strict-path sweep produced zero applied fixes — \
          either the invalid corpus is empty or the engine's strict path \
          is not firing (vacuous-pass guard)"
     );
 }
 
 // ---------------------------------------------------------------------------
-// T054 — v1 audit records parse in a v2-aware consumer.
+// v1 audit records parse in a v2-aware consumer.
 // ---------------------------------------------------------------------------
 //
-// The Phase-D contract (`contracts/audit-record-v2.md`) defines v2 as a
-// strict superset of v1: every v1 field is preserved, then `recognition`
-// / `runner_up_ratio` / `features` are added. A v2 consumer MUST be able
-// to deserialize a v1 record emitted by a pre-Phase-D engine without
-// error — the new fields are simply absent and default to "no decoder
-// evidence" (recognition=1.0, runner_up_ratio=None, features=[]).
+// v2 is a strict superset of v1: every v1 field is preserved, then
+// `recognition` / `runner_up_ratio` / `features` are added. A v2
+// consumer MUST be able to deserialize a v1 record without error — the
+// new fields are simply absent and default to "no decoder evidence"
+// (recognition=1.0, runner_up_ratio=None, features=[]).
 //
 // This test pins the back-compat property at the schema level: a known
-// v1-shape JSON fixture (the canonical 12-field record from
-// `contracts/audit-record.json`) is deserialized into a struct that
-// mirrors the v2 schema. Success means the v2 deserializer is tolerant
-// of missing v2 fields; failure means a v2 consumer would reject v1
-// records, breaking the back-compat contract (FR-014, SC-006).
+// v1-shape JSON fixture (the canonical 12-field record) is
+// deserialized into a struct that mirrors the v2 schema. Success means
+// the v2 deserializer is tolerant of missing v2 fields; failure means a
+// v2 consumer would reject v1 records, breaking the back-compat
+// contract.
 
 /// v2 deserializer for back-compat testing.
 ///
@@ -592,8 +728,7 @@ struct FeatureDeserializer {
 #[test]
 fn v1_records_parse_in_v2_consumer() {
     // Canonical v1 fixture — the 12-field shape `marque-mvp-1` consumers
-    // emit. Pulled from the snapshot of a pre-Phase-D engine build to
-    // ensure parity with what's actually on the wire.
+    // emit, matching what an older engine put on the wire.
     const V1_RECORD: &str = r#"{
         "schema": "marque-mvp-1",
         "rule": "E001",
@@ -635,11 +770,11 @@ fn v1_records_parse_in_v2_consumer() {
 }
 
 // ---------------------------------------------------------------------------
-// T053 — decoder-path audit-record shape.
+// Decoder-path audit-record shape.
 // ---------------------------------------------------------------------------
 //
-// Strict-path invariants are pinned by `audit_v2_strict_path_invariants`
-// (T052): every applied fix must have `recognition == 1.0`,
+// Strict-path invariants are pinned by `audit_v2_strict_path_invariants`:
+// every applied fix must have `recognition == 1.0`,
 // `runner_up_ratio == None`, `features == []`, and a
 // non-`DecoderPosterior` source. The decoder-path counterpart asserts
 // the dual: when the engine is in deep-scan mode AND the recognizer
@@ -650,27 +785,24 @@ fn v1_records_parse_in_v2_consumer() {
 //   sentinel so audit consumers can distinguish strict from decoder
 //   provenance via a single field comparison.
 // - `confidence.features` non-empty with every entry's `id` typed as
-//   `FeatureId` (free-form strings rejected by the type system per
-//   FR-012).
+//   `FeatureId` (free-form strings rejected by the type system).
 // - `source == FixSource::DecoderPosterior`.
 // - `confidence.runner_up_ratio` is either `None` (decoder's K-truncated
 //   set collapsed to a single candidate, per `decoder.rs`'s K=1 branch)
 //   or `Some(r)` with finite `r`. Both shapes are legal; the audit-shape
-//   invariant T053 pins is "if `Some`, the value is finite" — never
-//   `NaN` / `±∞`.
+//   invariant is "if `Some`, the value is finite" — never `NaN` / `±∞`.
 //
 // Vacuity guard: ≥ 1 decoder fix examined. A pass with zero fixes
 // would indicate the deep-scan dispatcher never invoked the decoder
 // at all — silently weakening the assertion.
 
-// Default-threshold deep-scan engine helper. Pre-#258 this was used
-// by `decoder_path_record_shape`, but the prose null-hypothesis
+// Default-threshold deep-scan engine helper. The prose null-hypothesis
 // runner-up shrinks recognition for short fuzzy fixes below the
-// default 0.95 gate, so the test now uses `deep_scan_engine_relaxed`
-// (config threshold 0.80). Kept for documentation and as a
-// scaffolding handle if a future test needs the default threshold;
-// `#[allow(dead_code)]` suppresses the unused-function warning rather
-// than deleting the helper outright.
+// default 0.95 gate, so `decoder_path_record_shape` uses
+// `deep_scan_engine_relaxed` (config threshold 0.80) instead. Kept for
+// documentation and as a scaffolding handle if a future test needs the
+// default threshold; `#[allow(dead_code)]` suppresses the unused-function
+// warning rather than deleting the helper outright.
 #[allow(dead_code)]
 fn deep_scan_engine() -> Engine {
     // The decoder fallback is the engine default (`Engine::new` /
@@ -708,33 +840,34 @@ fn decoder_path_record_shape() {
     let result = run_fix(&engine, source);
 
     let mut decoder_fixes_examined = 0usize;
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         // Identify the decoder-path fix and assert its shape. Other
-        // fixes (e.g., a strict-path E001 against the canonical attrs)
-        // may also appear in the same audit set; they remain
+        // fixes (e.g., a strict-path rule firing against the canonical
+        // attrs) may also appear in the same audit set; they remain
         // strict-shape and are skipped here.
         if fix.source != FixSource::DecoderPosterior {
             continue;
         }
         decoder_fixes_examined += 1;
 
-        let c = &fix.confidence;
+        // `fix.replacement.confidence` per the audit-record shape.
+        let c = &fix.fix.replacement.confidence;
         assert!(
             c.recognition < 1.0_f32,
             "decoder-path Confidence.recognition must be strictly < 1.0; \
              got {} (rule {}, span {}..{})",
             c.recognition,
-            fix.proposal.rule.as_str(),
-            fix.proposal.span.start,
-            fix.proposal.span.end,
+            fix.rule,
+            fix.span.start,
+            fix.span.end,
         );
         assert!(
             !c.features.is_empty(),
-            "decoder-path Confidence.features must be non-empty (FR-009); \
+            "decoder-path Confidence.features must be non-empty; \
              got 0 features for rule {} at {}..{}",
-            fix.proposal.rule.as_str(),
-            fix.proposal.span.start,
-            fix.proposal.span.end,
+            fix.rule,
+            fix.span.start,
+            fix.span.end,
         );
         // Every feature carries a `FeatureId` enum — by type, not by
         // string. Iterating exercises the field; pattern-matching is
@@ -749,7 +882,10 @@ fn decoder_path_record_shape() {
                 | FeatureId::SupersededToken
                 | FeatureId::BaseRateCommonMarking
                 | FeatureId::StrictContextClassification
-                | FeatureId::CorpusOverrideInEffect => {}
+                | FeatureId::CorpusOverrideInEffect
+                | FeatureId::LinePositionPenalty
+                | FeatureId::BulletAnchorBonus
+                | FeatureId::LowercaseSurroundingContext => {}
             }
             assert!(
                 feature.delta.is_finite(),
@@ -761,15 +897,16 @@ fn decoder_path_record_shape() {
         // `runner_up_ratio` is `Some(r)` when the decoder's K-truncated
         // candidate set had ≥ 2 survivors so a runner-up exists, and
         // `None` when only one candidate cleared strict-parse + the
-        // FR-011 floor + the non-trivial filter (decoder.rs's K=1 branch
-        // where `runner_up_score.is_finite()` is `false`). Both shapes
-        // are legal for a decoder-path fix per the `Confidence` contract
-        // in `crates/rules/src/confidence.rs`. The audit-shape invariant
-        // T053 pins is "if Some, the value is finite" — `runner_up_ratio`
-        // never carries `NaN` / `±∞` at the audit boundary, since
-        // `Confidence::validate` rejects non-finite ratios. Whether a
-        // particular input produces K=1 or K≥2 is decoder-implementation
-        // territory (PR-3) and not what this audit-shape test gates.
+        // classification floor + the non-trivial filter (decoder.rs's
+        // K=1 branch where `runner_up_score.is_finite()` is `false`).
+        // Both shapes are legal for a decoder-path fix per the
+        // `Confidence` contract in `crates/rules/src/confidence.rs`. The
+        // audit-shape invariant is "if Some, the value is finite" —
+        // `runner_up_ratio` never carries `NaN` / `±∞` at the audit
+        // boundary, since `Confidence::validate` rejects non-finite
+        // ratios. Whether a particular input produces K=1 or K≥2 is
+        // decoder-implementation territory and not what this audit-shape
+        // test gates.
         if let Some(r) = c.runner_up_ratio {
             assert!(
                 r.is_finite(),
@@ -780,7 +917,7 @@ fn decoder_path_record_shape() {
 
     assert!(
         decoder_fixes_examined > 0,
-        "T053 vacuity guard: zero decoder-path fixes were produced for \
+        "vacuity guard: zero decoder-path fixes were produced for \
          the mangled fixture {:?}. Either the deep-scan dispatcher never \
          reached the decoder, or the decoder declined to canonicalize. \
          Without ≥1 fix examined the per-fix shape assertions above pass \
@@ -790,7 +927,7 @@ fn decoder_path_record_shape() {
 }
 
 // ---------------------------------------------------------------------------
-// T079 — migration-audit URN provenance.
+// Migration-audit URN provenance.
 // ---------------------------------------------------------------------------
 //
 // The audit-record contract (Constitution V) requires every applied
@@ -827,7 +964,7 @@ fn decoder_path_record_shape() {
 //
 // ## Cross-check: `Vocabulary<S>` agrees
 //
-// The `Vocabulary<CapcoScheme>` trait surface (Phase 5 PR-2 / T084)
+// The `Vocabulary<CapcoScheme>` trait surface
 // is the TYPED accessor: `TokenId`-keyed, used by rule code that
 // already has a typed token. The cross-check below verifies the typed
 // and untyped paths agree — a divergence would indicate either the
@@ -836,118 +973,55 @@ fn decoder_path_record_shape() {
 //
 // ## Test shape
 //
-// 1. Runs an E001 portion-mark-in-banner fix — the canonical
-//    `NF` → `NOFORN` shape the spec calls out.
-// 2. Captures the resulting `AppliedFix`.
-// 3. Recovers `source_urn` from `original` ("NF") via the canonical
+// 1. Takes the canonical `NF` / `NOFORN` form pair directly.
+// 2. Recovers `source_urn` from the canonical value ("NF") via the
 //    string-keyed path.
-// 4. Recovers `replacement_urn` from `replacement` ("NOFORN") via
+// 3. Recovers `replacement_urn` from the banner form ("NOFORN") via
 //    the banner-form round-trip path.
-// 5. Asserts both URNs trace to ODNI and are equal (same CVE entry).
-// 6. Cross-checks the typed `Vocabulary` accessor agrees with the
+// 4. Asserts both URNs trace to ODNI and are equal (same CVE entry).
+// 5. Cross-checks the typed `Vocabulary` accessor agrees with the
 //    string-keyed path.
-//
-// Vacuity guard: ≥ 1 E001 fix examined. A pass with zero fixes would
-// indicate the rule never ran — silently weakening the assertion.
 
 #[test]
-fn migration_audit_has_both_urns() {
+fn nf_noforn_form_pair_resolves_to_same_odni_urn() {
+    // The contract being tested is the URN provenance property itself
+    // — that a canonical CVE value and its banner form resolve to the
+    // same ODNI URN via the public lookup tables — independent of any
+    // emitting rule. The portion-mark-in-banner remediation now lives
+    // in `MarkingScheme::render_canonical` rather than a dedicated
+    // rule, so the contract is exercised directly here against the
+    // recovery helpers, not via a rule's emitted audit record.
     use marque_capco::scheme::{CapcoScheme, TOK_NOFORN};
     use marque_scheme::Vocabulary;
 
-    let engine = test_engine();
+    let original = "NF";
+    let replacement = "NOFORN";
 
-    // Banner-line shape with the portion-form `NF` triggers E001
-    // (portion-mark-in-banner, see `crates/capco/src/rules.rs`). The
-    // proposed fix replaces `NF` with the banner form `NOFORN`.
-    //
-    // The leading `SECRET//` makes this a banner — banners don't have
-    // enclosing parentheses; portions do. CAPCO-2016 §A.6 (banner-
-    // line grammar) governs the parse.
-    let source: &[u8] = b"SECRET//NF";
-    let result = run_fix(&engine, source);
-
-    // Find the E001 applied fix. Other rules may also fire on this
-    // input; we narrow to E001 because it is the only one whose
-    // original/replacement directly map onto the URN-traceable
-    // canonical/banner-form pair.
-    let e001_fix = result
-        .applied
-        .iter()
-        .find(|f| f.proposal.rule.as_str() == "E001")
-        .unwrap_or_else(|| {
-            panic!(
-                "T079 vacuity guard: E001 portion-mark-in-banner did not fire on \
-                 banner-shaped input {:?} — the test cannot validate URN provenance \
-                 without the fix being applied. Applied rules: {:?}",
-                std::str::from_utf8(source).unwrap_or("<non-utf8>"),
-                result
-                    .applied
-                    .iter()
-                    .map(|f| f.proposal.rule.as_str())
-                    .collect::<Vec<_>>(),
-            )
-        });
-
-    assert_eq!(
-        e001_fix.proposal.original.as_ref(),
-        "NF",
-        "E001 fix's `original` must be the portion form `NF`",
-    );
-    assert_eq!(
-        e001_fix.proposal.replacement.as_ref(),
-        "NOFORN",
-        "E001 fix's `replacement` must be the banner form `NOFORN`",
-    );
-
-    // Resolve URN provenance via two INDEPENDENT lookup paths — one
-    // per audit-record string — so the test catches a divergence
-    // between the canonical and banner-form lookups (e.g., a future
-    // ODNI release that splits NOFORN into a separate entry).
-    //
     // Path 1: `original` is "NF", a canonical CVE value. Look it up
-    // directly in the per-token metadata table. This is what an audit
-    // consumer with only the audit record + public vocabulary tables
-    // does to recover the source URN.
-    let source_metadata = marque_ism::generated::vocabulary::lookup_token_metadata(
-        e001_fix.proposal.original.as_ref(),
-    )
-    .unwrap_or_else(|| {
-        panic!(
-            "audit's `original` ({:?}) must resolve to a TOKEN_METADATA \
-                     entry — every E001 source token is canonical-form by \
-                     construction",
-            e001_fix.proposal.original.as_ref(),
-        )
-    });
+    // directly in the per-token metadata table.
+    let source_metadata = marque_ism::generated::vocabulary::lookup_token_metadata(original)
+        .unwrap_or_else(|| panic!("canonical {original:?} must resolve to TOKEN_METADATA",));
     let source_urn = source_metadata.cve_file.urn;
 
     // Path 2: `replacement` is "NOFORN", a banner form (not a CVE
     // value). The audit consumer's recovery path is to map back to
     // canonical via `marking_forms::banner_to_portion`, then look up
-    // the canonical in TOKEN_METADATA. This is the round-trip the
-    // recovery contract relies on.
-    let canonical_for_replacement =
-        marque_ism::marking_forms::banner_to_portion(e001_fix.proposal.replacement.as_ref())
-            .unwrap_or_else(|| {
-                panic!(
-                    "banner form {:?} must map back to a portion-form canonical via \
-             marking_forms::banner_to_portion — recovery contract violated",
-                    e001_fix.proposal.replacement.as_ref(),
-                )
-            });
+    // the canonical in TOKEN_METADATA.
+    let canonical_for_replacement = marque_ism::marking_forms::banner_to_portion(replacement)
+        .unwrap_or_else(|| {
+            panic!("banner form {replacement:?} must map back via banner_to_portion",)
+        });
     let replacement_metadata =
         marque_ism::generated::vocabulary::lookup_token_metadata(canonical_for_replacement)
             .unwrap_or_else(|| {
                 panic!(
-                    "canonical {canonical_for_replacement:?} (from banner form {:?}) \
-                     must resolve to a TOKEN_METADATA entry",
-                    e001_fix.proposal.replacement.as_ref(),
+                    "canonical {canonical_for_replacement:?} (from banner form \
+                     {replacement:?}) must resolve to a TOKEN_METADATA entry",
                 )
             });
     let replacement_urn = replacement_metadata.cve_file.urn;
 
-    // Both URNs must be present and trace to ODNI.
+    // Both URNs must trace to ODNI.
     assert!(
         source_urn.starts_with("urn:us:gov:ic:cvenum:"),
         "source URN must trace to ODNI: {source_urn:?}",
@@ -958,62 +1032,33 @@ fn migration_audit_has_both_urns() {
     );
 
     // The canonical/banner-form pair NF/NOFORN are forms of the same
-    // CVE entry, so the URNs must match exactly. A future ODNI
-    // release that splits NOFORN into its own entry would invalidate
-    // this — that's a deliberate schema-bump signal, not a stylistic
-    // change.
+    // CVE entry, so the URNs must match exactly.
     assert_eq!(
         source_urn, replacement_urn,
         "NF (source) and NOFORN (replacement) are forms of the same CVE entry — \
-         their URNs must match. Source URN: {source_urn:?}, replacement URN: \
-         {replacement_urn:?}",
+         their URNs must match.",
     );
 
     // Cross-check against the Vocabulary trait surface — both lookup
-    // paths must agree with `Vocabulary<CapcoScheme>::metadata`,
-    // which is the typed accessor the rule-side code uses.
+    // paths must agree with `Vocabulary<CapcoScheme>::metadata`.
     let scheme = CapcoScheme::new();
     let metadata = scheme.metadata(&TOK_NOFORN);
-    assert_eq!(
-        metadata.urn, source_urn,
-        "Vocabulary trait URN must match the string-keyed lookup — typed and \
-         untyped paths must agree",
-    );
-
-    // Pin the canonical / banner_form mapping so a future ODNI
-    // schema-package release that renames either form makes this
-    // test loud.
-    assert_eq!(
-        metadata.canonical, "NF",
-        "NF is the canonical CVE value — a rename means schema bump",
-    );
-    assert_eq!(
-        metadata.banner_form, "NOFORN",
-        "NOFORN is the banner form per CAPCO-2016 §G.1 Table 4",
-    );
-
-    // CAPCO-adapter-specific: `Authority::urn` is documented in
-    // `marque-scheme` as the URN of the publishing authority — a
-    // scheme could legitimately populate it at a coarser granularity
-    // than the token's URN (e.g., a single system-root URN like
-    // `urn:us:gov:ic:ism` shared across every CVE file). CAPCO's
-    // adapter chose per-CVE-file granularity (see
-    // `crates/capco/src/vocabulary.rs::build_authority`), so for
-    // CAPCO the authority URN equals the token's URN by
-    // construction. This invariant is therefore CAPCO-scoped, not a
-    // universal `Vocabulary<S>` contract — a future non-CAPCO scheme
-    // (CUI, NATO, JOINT) is free to choose a different authority-
-    // URN granularity.
-    assert_eq!(
-        metadata.authority.urn, source_urn,
-        "CAPCO adapter populates authority.urn from cve_file.urn — \
-         the two URNs must agree for any token in the CAPCO \
-         vocabulary. (For non-CAPCO schemes this equality may not \
-         hold.)",
-    );
+    assert_eq!(metadata.urn, source_urn);
+    assert_eq!(metadata.canonical, "NF");
+    assert_eq!(metadata.banner_form, "NOFORN");
+    assert_eq!(metadata.authority.urn, source_urn);
     assert_eq!(
         metadata.authority.schema_version,
-        marque_ism::SCHEMA_VERSION,
-        "URN provenance must be pinned to the active schema package",
+        marque_ism::SCHEMA_VERSION
     );
+
+    // NOTE: This test exercises the vocabulary lookup tables
+    // (`lookup_token_metadata`, `banner_to_portion`, `Vocabulary::for_token`)
+    // directly with hardcoded `NF` / `NOFORN`, NOT through a rule-emitted
+    // `AppliedFix` — the portion-mark-in-banner remediation lives in the
+    // renderer, not a rule. The end-to-end audit round-trip (engine
+    // produces fix → audit fields → URN recovery) is no longer separately
+    // pinned by this file. A regression in `proposal.original` /
+    // `proposal.replacement` field emission would surface in the audit
+    // snapshot tests (`fix_pipeline.rs::audit_record_snapshot_*`), not here.
 }

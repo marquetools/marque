@@ -32,20 +32,21 @@ chooses to register. Rule crates depend only on `marque-rules` and
 |---|---|
 | `Rule` | The trait every rule implements. Stateless; given parsed attributes plus a `RuleContext`, returns `Vec<Diagnostic>`. |
 | `RuleSet` | A bundle of rules exposed by a rule crate, with a schema version. |
-| `RuleId` | Stable rule identifier (e.g., `"E001"`). |
-| `Severity` | `Off` / `Warn` / `Error` / `Fix`. Configurable per rule. |
+| `RuleId` | Stable rule identifier (e.g., `"E002"`). |
+| `Severity` | `Off` / `Suggest` / `Info` / `Warn` / `Error` / `Fix`. Configurable per rule. Defined in `marque-scheme`, re-exported here. |
 | `Diagnostic` | A violation: rule, severity, span, message, citation, optional fix. |
 | `FixProposal` | A proposed edit with `confidence: f32` and `FixSource` provenance. |
 | `AppliedFix` | A `FixProposal` promoted by the engine, with timestamp + classifier id. The audit record. |
-| `RuleContext` | Position context (`Zone`, `DocumentPosition`, `PageContext`) and corrections map handed to `Rule::check`. |
+| `RuleContext` | Position context (`Zone`, `DocumentPosition`, per-page portion snapshot, page-level `ProjectedMarking`) and corrections map handed to `Rule::check`. |
 
 ## Usage
 
 A minimal rule:
 
 ```rust
-use marque_ism::{IsmAttributes, Span};
+use marque_ism::CanonicalAttrs;
 use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, Severity};
+use marque_scheme::Span;
 
 struct AlwaysFire;
 
@@ -54,7 +55,7 @@ impl Rule for AlwaysFire {
     fn name(&self) -> &'static str { "always-fire" }
     fn default_severity(&self) -> Severity { Severity::Warn }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
         vec![Diagnostic::new(
             self.id(),
             Severity::Warn,

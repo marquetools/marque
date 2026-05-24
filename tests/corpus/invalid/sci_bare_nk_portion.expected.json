@@ -1,0 +1,7 @@
+{
+  "_note": "CAPCO-2016 §H.4 p83 — bare NK is not registered; canonical portion mark is SI-NK (E067). Co-fires S008 §H.8 p154 RELIDO closure suggestion.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "marking.recanonicalize.bare-canonical-compound"}, "span": {"start": 4, "end": 6}},
+    {"rule": {"scheme": "capco", "predicate_id": "portion.dissem.relido-implied-by-closure"}, "span": {"start": 0, "end": 7}}
+  ]
+}

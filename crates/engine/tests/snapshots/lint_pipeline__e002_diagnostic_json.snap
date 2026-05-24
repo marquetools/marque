@@ -1,0 +1,22 @@
+---
+source: crates/engine/tests/lint_pipeline.rs
+expression: json
+---
+[
+  {
+    "citation": "CAPCO-2016 §H.8 (REL TO, p150–151)",
+    "fix": {
+      "confidence": 0.9700000286102295,
+      "migration_ref": null,
+      "replacement": "USA, GBR",
+      "source": "BuiltinRule"
+    },
+    "message": "REL TO list missing required USA trigraph",
+    "rule": "E002",
+    "severity": "fix",
+    "span": {
+      "end": 18,
+      "start": 15
+    }
+  }
+]

@@ -70,7 +70,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir);
 
-    // T010: Assert schema version matches Cargo.toml metadata.
+    // Assert schema version matches Cargo.toml metadata.
     verify_schema_version();
     // Issue #208: ISMCAT Tetragraph Taxonomy version pin.
     verify_ismcat_tetra_version();
@@ -91,7 +91,7 @@ fn main() {
 }
 
 // ---------------------------------------------------------------------------
-// T010: Schema version pinning assertion
+// Schema version pinning assertion
 // ---------------------------------------------------------------------------
 
 fn verify_schema_version() {
@@ -109,14 +109,14 @@ fn verify_schema_version() {
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| {
             panic!(
-                "FR-011: [package.metadata.marque] ism-schema-version not found in Cargo.toml. \
+                "[package.metadata.marque] ism-schema-version not found in Cargo.toml. \
                  Add: [package.metadata.marque]\nism-schema-version = \"{SCHEMA_VERSION}\""
             )
         });
 
     assert_eq!(
         pinned, SCHEMA_VERSION,
-        "FR-011: schema version mismatch — Cargo.toml says {pinned:?} but build.rs targets \
+        "schema version mismatch — Cargo.toml says {pinned:?} but build.rs targets \
          {SCHEMA_VERSION:?}. Update one to match the other."
     );
 }
@@ -153,7 +153,7 @@ fn verify_ism_data_version() {
 }
 
 // ---------------------------------------------------------------------------
-// T006: CVE XML parsing → typed Rust enums
+// CVE XML parsing → typed Rust enums
 // ---------------------------------------------------------------------------
 
 /// Parse a CVE XML file and extract all `<Value>` text content.
@@ -202,10 +202,11 @@ fn parse_cve_xml(path: &Path) -> Vec<(String, String)> {
                 }
             }
             Ok(Event::Text(ref e)) => {
-                // M-10: do not silently truncate on unescape failure. A bad
+                // Do not silently truncate on unescape failure. A bad
                 // entity in a CVE file would otherwise feed an empty value
-                // into `to_rust_ident`, which would be caught by C-4 below
-                // but with a confusing error message — fail loudly here.
+                // into `to_rust_ident`, which would be caught by the
+                // `resolve_idents` empty-ident check below but with a
+                // confusing error message — fail loudly here.
                 let decoded = e.decode().unwrap_or_else(|err| {
                     panic!("XML entity unescape error in {}: {err}", path.display())
                 });
@@ -266,11 +267,11 @@ fn to_rust_ident(s: &str) -> String {
 /// Resolve every CVE entry to a `(value, ident, desc)` triple, asserting that
 /// no identifier is empty and that no two identifiers collide. Detects
 /// codegen-breaking CVE additions at build time rather than at consumer
-/// compile time. (C-4)
+/// compile time.
 fn resolve_idents(name: &str, entries: &[(String, String)]) -> Vec<(String, String, String)> {
     use std::collections::HashMap;
     // Map ident -> first CVE value that produced it, so a collision can name
-    // both offenders in its panic message. (M-2)
+    // both offenders in its panic message.
     let mut seen: HashMap<String, String> = HashMap::with_capacity(entries.len());
     let mut resolved = Vec::with_capacity(entries.len());
     for (value, desc) in entries {
@@ -372,7 +373,7 @@ fn emit_enum(out: &mut String, name: &str, entries: &[(String, String)], doc: &s
 }
 
 /// Emit a minimal enum for CVE types that have zero entries in the public spec.
-#[allow(dead_code)] // Retained for potential future empty-CVE categories; SAR removed per specs/002-sar-implementation.
+#[allow(dead_code)] // Retained for potential future empty-CVE categories; SAR is modeled structurally instead.
 fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
     use std::fmt::Write;
 
@@ -427,7 +428,7 @@ fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
 /// schema intentionally ships no entries). Every other enum must be
 /// non-empty — an empty `CVEnumISMDissem.xml` from a bad schema copy would
 /// silently produce a valid-but-empty Rust enum and make all dissem rules
-/// fire zero diagnostics. (M-1)
+/// fire zero diagnostics.
 fn assert_required(name: &str, entries: &[(String, String)], file: &str) {
     assert!(
         !entries.is_empty(),
@@ -579,8 +580,8 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // tool for a category whose membership is not enumerable.
     //
     // SAR is modeled structurally via `attrs::SarMarking` / `SarProgram` /
-    // `SarCompartment` and validated by syntactic rules (E026–E031) rather
-    // than membership checks. See `specs/002-sar-implementation/spec.md`.
+    // `SarCompartment` and validated by the hand-written SAR syntax rules
+    // rather than membership checks.
 
     // --- Declass Exemptions (25X codes) ---
     let declass_entries = parse_cve_xml(&cve_dir.join("CVEnumISM25X.xml"));
@@ -602,7 +603,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
         "Exempt-from rule sets from CVEnumISMExemptFrom.xml.",
     );
 
-    // --- T007: Trigraphs from XSD ---
+    // --- Trigraphs from XSD ---
     // Source: the standalone ODNI ISMCAT package (ism-ismcat crate), not the
     // bundled ISMCAT subset inside the ISM zip. The standalone package is the
     // canonical home of the `urn:us:gov:ic:cvenum:ismcat:relto` namespace.
@@ -627,7 +628,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
 
     // Merge: extension recognition codes go into TRIGRAPHS
     // alongside CVE entries. The BTreeSet keeps the slice sorted
-    // for `is_trigraph` binary_search.
+    // for `is_country_code` binary_search.
     let mut sorted_trigraphs = cve_codes.clone();
     for ext in &extensions {
         sorted_trigraphs.insert(ext.code.clone());
@@ -673,11 +674,11 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // 3-byte trigraphs, 4-byte tetragraphs (`FVEY`, `NATO`, …),
     // and 15-byte `AUSTRALIA_GROUP`. The name is kept for
     // backwards compatibility with consumers; a future PR may
-    // rename to `COUNTRY_CODES` alongside the `is_trigraph`
+    // rename to `COUNTRY_CODES` alongside the `is_country_code`
     // rename.
     //
-    // M-3: sort and deduplicate into a BTreeSet before emission so
-    // `is_trigraph` in token_set.rs can use `binary_search` over a
+    // Sort and deduplicate into a BTreeSet before emission so
+    // `is_country_code` in token_set.rs can use `binary_search` over a
     // guaranteed-sorted slice. The XSD emits entries in document order
     // (USA first, then alphabetical), so an unsorted emission would
     // silently break binary_search if the ODNI bundle ever reorders.
@@ -686,7 +687,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
         "/// All valid country / country-group codes — CVE entries \
          from CVEnumISMCATRelTo.xsd plus any org-specific\n\
          /// extensions from `country_extensions.toml`. Sorted \
-         ascending and deduplicated. `is_trigraph` uses \
+         ascending and deduplicated. `is_country_code` uses \
          binary_search."
     )
     .unwrap();
@@ -746,7 +747,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
 
     // --- Emit a flat token list for the Aho-Corasick automaton ---
     //
-    // H-8: deduplicate. The CVE files already contain NOFORN/ORCON/PROPIN/
+    // Deduplicate. The CVE files already contain NOFORN/ORCON/PROPIN/
     // IMCON in the dissem block, so the previous hand-rolled additions
     // produced duplicate entries that bloated the slice and the
     // automaton. We now collect into a `BTreeSet` (sorted, deduped) and
@@ -783,12 +784,12 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
     // Issue #183 PR-B note: country-code extensions are NOT inserted
     // into `ALL_CVE_TOKENS`. CVE country codes themselves (`USA`,
     // `GBR`, `FVEY`, …) are not in this slice either — they live
-    // exclusively in `TRIGRAPHS`, reached via `is_trigraph` from the
+    // exclusively in `TRIGRAPHS`, reached via `is_country_code` from the
     // REL TO parser. Adding extensions here would give them
     // canonicalize / fuzzy-correction privileges that real CVE
     // trigraphs don't have, which would be an asymmetric and
     // surprising behavior change. Recognition flows through
-    // `is_trigraph` for both CVE codes and extensions, uniformly.
+    // `is_country_code` for both CVE codes and extensions, uniformly.
 
     writeln!(
         content,
@@ -821,7 +822,7 @@ fn generate_values(out: &Path, ism_root: &Path, ismcat_root: &Path) {
 }
 
 // ---------------------------------------------------------------------------
-// T007: XSD trigraph parsing
+// XSD trigraph parsing
 // ---------------------------------------------------------------------------
 
 fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
@@ -863,7 +864,7 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
 }
 
 // ---------------------------------------------------------------------------
-// T008: Schematron → validator predicates
+// Schematron → validator predicates
 // ---------------------------------------------------------------------------
 
 fn generate_validators(out: &Path, ism_root: &Path) {
@@ -932,13 +933,13 @@ pub fn banner_requires_full_classification(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// T009: Deprecated marking migrations
+// Deprecated marking migrations
 // ---------------------------------------------------------------------------
 
 fn generate_migrations(out: &Path, _ism_root: &Path) {
     // Deterministic deprecated-marking migration table.
     // Derived from CVE XML deprecation annotations and IC policy changes.
-    // Confidence >= 0.95 per FR-004a.
+    // Confidence >= 0.95.
     let content = r#"
 // Generated by build.rs — DO NOT EDIT.
 //
@@ -955,12 +956,22 @@ pub struct MigrationEntry {
     pub confidence: f32,
     /// Policy reference (CAPCO section).
     pub reference: &'static str,
+    /// Schema version after which the deprecated marking is no longer
+    /// valid in newly-authored documents.
+    ///
+    /// Plumbed through to `marque_scheme::Deprecation::valid_until`
+    /// by `crates/capco/src/vocabulary.rs::build_deprecation`. Every
+    /// current entry leaves this `None` because no per-token cutoff
+    /// data exists in the ODNI sources today (see
+    /// `project_no_per_token_valid_from`). A future ODNI publication
+    /// that surfaces per-term version metadata can populate it.
+    pub valid_until: Option<&'static str>,
 }
 
 /// Deprecated-marking migration table.
 ///
 /// Policy-driven replacements for markings that CAPCO has formally retired
-/// or renamed. All entries have confidence >= 0.95 per FR-004a, and every
+/// or renamed. All entries have confidence >= 0.95, and every
 /// `reference` cites a real passage in `crates/capco/docs/CAPCO-2016.md`
 /// per Constitution VIII.
 ///
@@ -968,26 +979,28 @@ pub struct MigrationEntry {
 ///
 /// - **Abbreviation ↔ banner form** (e.g., `NF` ↔ `NOFORN`): these are
 ///   the two authorized forms of the same marking, not a deprecation.
-///   `E001 portion-mark-in-banner` owns the portion-form-in-banner check;
-///   `E009 portion-abbreviation` owns the banner-form-in-portion check.
-///   A prior `NF → NOFORN` entry was removed in T035c-4 as misleading —
-///   it was filtered out by `E006 is_abbreviation_expansion` anyway.
+///   `capco:banner.metadata.uses-portion-form` owns the
+///   portion-form-in-banner check;
+///   `capco:portion.metadata.uses-banner-form` owns the
+///   banner-form-in-portion check. A `NF → NOFORN` entry would be
+///   misleading and is intentionally absent — the
+///   `is_dissem_replacement` filter in `crates/capco/src/rules.rs`
+///   keeps declass-shorthand migrations separate from form-pair
+///   validation.
 ///
 /// - **FOUO → CUI**: FOUO remains a valid CAPCO dissem control per
 ///   CVEnumISMDissem.xml (still enumerated in the active CVE). CUI is a
-///   separate marking system under NARA jurisdiction. A prior entry was
-///   removed in Phase E of
-///   `docs/plans/2026-04-19-recursive-lattice-and-decoder.md` (§14 "What
-///   we dropped" — explicit `FOUO → CUI` bullet). Any "suggest CUI on
-///   non-IC documents" behavior belongs in a future CUI adapter, gated
-///   by `[agency] is_ic_member` / `[cui] migrate_fouo` config gates
-///   (Phase F), not as a blanket CAPCO-level migration.
+///   separate marking system under NARA jurisdiction, so no `FOUO → CUI`
+///   migration belongs here. Any "suggest CUI on non-IC documents"
+///   behavior belongs in a future CUI adapter, gated by
+///   `[agency] is_ic_member` / `[cui] migrate_fouo` config gates, not as
+///   a blanket CAPCO-level migration.
 ///
 /// - **LIMDIS → RELIDO**: LIMDIS is a current non-IC dissem control
 ///   per CAPCO-2016 §H.9 (p18 of the 2008 manual, §H.9 of 2016). A
 ///   prior entry was incorrect.
 pub static MIGRATIONS: &[MigrationEntry] = &[
-    // X-shorthand date marking patterns (FR-004a, research R-3).
+    // X-shorthand date marking patterns.
     //
     // CAPCO-2016 §E.6 "Retired or Invalid Declassify On Values"
     // (pp. 33-34) enumerates retired exemption forms. The substantive
@@ -1005,6 +1018,7 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
         replacement: "25X1",
         confidence: 0.97,
         reference: "CAPCO-2016 §E.6 p34",
+        valid_until: None,
     },
     MigrationEntry {
         deprecated: "50X1-",
@@ -1016,6 +1030,7 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
         // '50X1 - HUM' marking." The trailing-hyphen form `50X1-` is
         // canonicalized to the full replacement form.
         reference: "CAPCO-2016 §E.6 p34",
+        valid_until: None,
     },
 ];
 
@@ -1030,13 +1045,13 @@ pub fn find_migration(deprecated: &str) -> Option<&'static MigrationEntry> {
 }
 
 // ---------------------------------------------------------------------------
-// T080 / T081: Per-token metadata from ODNI JSON sidecars
+// Per-token metadata from ODNI JSON sidecars
 // ---------------------------------------------------------------------------
 //
-// The XML codepath above (T006) extracts the closed CVE token vocabulary —
+// The XML codepath above extracts the closed CVE token vocabulary —
 // that is what the strict parser, the corrections map, and the rule
-// predicates consume. The JSON codepath here is parallel and additive
-// (FR-018 + R5): it reads the ODNI JSON sidecars in the same CVE_ISM/
+// predicates consume. The JSON codepath here is parallel and additive:
+// it reads the ODNI JSON sidecars in the same CVE_ISM/
 // directory to recover *per-term metadata* the XML never carried —
 // publishing authority (URN, source, schema version, point of contact)
 // and the long-form description that pairs with each canonical value.
@@ -1045,11 +1060,11 @@ pub fn find_migration(deprecated: &str) -> Option<&'static MigrationEntry> {
 // other. If a CVE file exists in JSON but not XML, the strict parser
 // will not recognize the values — even though the metadata table will
 // surface them; that is a deliberate split because the strict parser is
-// the sole arbiter of token shape (foundational invariant from PR-3),
+// the sole arbiter of token shape (foundational invariant),
 // and a JSON-only token would bypass that invariant.
 //
-// The emitted tables are the raw data backing PR-2's
-// `impl Vocabulary<CapcoScheme>` (task T084). Per Constitution VII the
+// The emitted tables are the raw data backing the
+// `impl Vocabulary<CapcoScheme>` in `marque-capco`. Per Constitution VII the
 // `marque-scheme` `Vocabulary<S>` / `TokenMetadataFull<Token>` types
 // cannot be referenced from this crate — `marque-ism` does not depend
 // on `marque-scheme`. The composition into the trait surface happens in
@@ -1265,8 +1280,8 @@ fn nested_text(obj: &serde_json::Value, field: &str, path: &Path) -> Option<Stri
 /// 2. Field present but not a JSON string (number / object / null).
 /// 3. Field present, type-correct, but empty or whitespace-only.
 ///
-/// The third case is the one a Copilot review on PR #152 caught:
-/// without it, an empty-but-present sidecar field (e.g.,
+/// The third case (see PR #152): without it, an empty-but-present
+/// sidecar field (e.g.,
 /// `"poc_email": ""`) would compile cleanly and emit `&'static ""` into
 /// the generated `TokenMetadataFull` table — which is exactly the
 /// silent-fallback failure mode `required_string` was added to
@@ -1382,6 +1397,19 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
         cve_dir.display()
     );
 
+    // Issue #453: when building for wasm32, drop the heavy English prose
+    // strings — long-form term descriptions, free-form CVE Source text,
+    // and POC name/email — to keep them out of the WASM rodata. The
+    // accessor surface in `crates/capco/src/vocabulary.rs` keeps reading
+    // these fields; on WASM they return empty `&'static str`. Production
+    // call sites for `scheme.authority()` / `scheme.point_of_contact()`
+    // / `scheme.metadata().description` are test-only as of 2026-05-16,
+    // so empty strings here are a no-op for runtime semantics. Native
+    // CLI / server / test builds keep the full strings.
+    let is_wasm = env::var("CARGO_CFG_TARGET_ARCH")
+        .map(|s| s == "wasm32")
+        .unwrap_or(false);
+
     // Deduplicate tokens by value. The CVE_ISM/ JSON set has overlap
     // (e.g., FOUO appears in CVEnumISMDissem.json AND CVEnumISMNotice
     // does not, but classification levels appear in both
@@ -1409,6 +1437,16 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          /// metadata entry references one of these so the same authority,\n\
          /// point of contact, and schema-version provenance is shared\n\
          /// across all tokens published in that file.\n\
+         ///\n\
+         /// **wasm32 elision (issue #453)**: when this build runs with\n\
+         /// `CARGO_CFG_TARGET_ARCH == \"wasm32\"`, the informational\n\
+         /// `source`, `poc_name`, and `poc_email` fields are emitted\n\
+         /// as `\"\"` to drop their prose strings out of the generated\n\
+         /// source. Identifying fields (`const_name`, `urn`,\n\
+         /// `owner_producer`, `spec_version`, `des_version`,\n\
+         /// `schema_version`) and the `title` are always populated.\n\
+         /// This is the documented carve-out described on the\n\
+         /// `Vocabulary` trait invariant in `marque-scheme`.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct CveFileMetadata {{\n\
          \x20   /// Symbolic constant name (e.g., \"CVE_DISSEM\").\n\
@@ -1418,11 +1456,20 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          \x20   pub urn: &'static str,\n\
          \x20   /// CVE title text.\n\
          \x20   pub title: &'static str,\n\
-         \x20   /// Free-form `Source` text from the CVE IRM.\n\
+         \x20   /// Free-form `Source` text from the CVE IRM. **Empty\n\
+         \x20   /// on `wasm32`** per the struct-level wasm32 elision\n\
+         \x20   /// note above (issue #453); populated with the ODNI\n\
+         \x20   /// publishing register name on every other target.\n\
          \x20   pub source: &'static str,\n\
-         \x20   /// Point-of-contact name.\n\
+         \x20   /// Point-of-contact name. **Empty on `wasm32`** per\n\
+         \x20   /// the struct-level wasm32 elision note above (issue\n\
+         \x20   /// #453); populated with the ODNI POC name on every\n\
+         \x20   /// other target.\n\
          \x20   pub poc_name: &'static str,\n\
-         \x20   /// Point-of-contact email.\n\
+         \x20   /// Point-of-contact email. **Empty on `wasm32`** per\n\
+         \x20   /// the struct-level wasm32 elision note above (issue\n\
+         \x20   /// #453); populated with the ODNI POC email on every\n\
+         \x20   /// other target.\n\
          \x20   pub poc_email: &'static str,\n\
          \x20   /// Owner/producer code, e.g., `\"USA\"`.\n\
          \x20   pub owner_producer: &'static str,\n\
@@ -1439,13 +1486,22 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     writeln!(
         content,
         "/// Per-token metadata published by exactly one [`CveFileMetadata`].\n\
+         ///\n\
+         /// **wasm32 elision (issue #453)**: when this build runs with\n\
+         /// `CARGO_CFG_TARGET_ARCH == \"wasm32\"`, the `description`\n\
+         /// field is emitted as `\"\"` regardless of whether the source\n\
+         /// CVE file provided one. `value` and `cve_file` are always\n\
+         /// populated. See the `Vocabulary` trait invariant in\n\
+         /// `marque-scheme` for the documented carve-out.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct TokenMetadataEntry {{\n\
          \x20   /// Canonical CVE value, e.g., `\"NOFORN\"` or `\"S\"`.\n\
          \x20   pub value: &'static str,\n\
          \x20   /// Long-form description, e.g., `\"NOT RELEASABLE TO\n\
-         \x20   /// FOREIGN NATIONALS\"`. Empty when the source CVE file\n\
-         \x20   /// did not provide a description.\n\
+         \x20   /// FOREIGN NATIONALS\"`. **Empty on `wasm32` builds**\n\
+         \x20   /// (issue #453) per the struct-level wasm32 elision\n\
+         \x20   /// note above. On every other target, empty only when\n\
+         \x20   /// the source CVE file did not provide a description.\n\
          \x20   pub description: &'static str,\n\
          \x20   /// CVE file that published this token.\n\
          \x20   pub cve_file: &'static CveFileMetadata,\n\
@@ -1464,6 +1520,15 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     // `crates/ism/tests/vocabulary_tables.rs` enforces it.
     for f in &files {
         writeln!(content, "/// CVE-file metadata for `{}`.", f.const_ident).unwrap();
+        // On wasm32, drop the free-form `Source` / POC name+email strings
+        // (issue #453). They are read only by `scheme.authority()` /
+        // `scheme.point_of_contact()` accessors that have no production
+        // call sites today.
+        let (source_lit, poc_name_lit, poc_email_lit) = if is_wasm {
+            ("", "", "")
+        } else {
+            (f.source.as_str(), f.poc_name.as_str(), f.poc_email.as_str())
+        };
         writeln!(
             content,
             "pub static {ident}: CveFileMetadata = CveFileMetadata {{\n\
@@ -1482,9 +1547,9 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
             name = f.const_ident,
             urn = f.urn,
             title = f.title,
-            source = f.source,
-            poc_name = f.poc_name,
-            poc_email = f.poc_email,
+            source = source_lit,
+            poc_name = poc_name_lit,
+            poc_email = poc_email_lit,
             owner_producer = f.owner_producer,
             spec_version = f.spec_version,
             des_version = f.des_version,
@@ -1517,11 +1582,21 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     )
     .unwrap();
     for (value, entry) in &by_value {
+        // On wasm32, drop the long-form English description text (the
+        // single largest contributor to the generated vocabulary table's
+        // size — avg ~100-300 bytes per token across 347 rows). Read
+        // only by audit-record narration paths that have no production
+        // call sites today (issue #453).
+        let desc_lit: &str = if is_wasm {
+            ""
+        } else {
+            entry.description.as_str()
+        };
         writeln!(
             content,
             "    TokenMetadataEntry {{ value: {value:?}, description: {desc:?}, cve_file: &{cve_file} }},",
             value = value,
-            desc = entry.description,
+            desc = desc_lit,
             cve_file = entry.cve_file_const_ident,
         )
         .unwrap();

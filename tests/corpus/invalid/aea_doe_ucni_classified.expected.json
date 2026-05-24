@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.6 p118 — DOE UCNI is UNCLASSIFIED-only; classified contexts violate the ceiling. Fires E058 DOE-UCNI-classification-ceiling.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "banner.aea.ceiling-doe-ucni"}, "span": {"start": 8, "end": 16}}
+  ]
+}

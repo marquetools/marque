@@ -1,0 +1,194 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP09T00207R001000100002-2",
+    "title": "THE WEEKLY GAZETTE OF THE REPUBLIC OF IRAQ - INTERIM CONSTITUTION OF THE REPUBLIC OF IRAQ",
+    "year": 1990,
+    "source_pdf": "https://archive.org/download/CIA-RDP09T00207R001000100002-2/CIA-RDP09T00207R001000100002-2.pdf",
+    "cab": {
+      "classified_by": "A. Lavigne, RDM/SAD, CIA",
+      "derived_from": "HCS-SCG-001",
+      "declassify_on": "50X1-HUM"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//SI/TALENT KEYHOLE//RISK SENSITIVE//FOREIGN GOVERNMENT INFORMATION GBR NZL//NOT RELEASABLE TO FOREIGN NATIONALS//LAW ENFORCEMENT SENSITIVE",
+        "paragraphs": [
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "The Weekly Gazette of the Republic of Iraq 2-1",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Issued by the Ministry of Guidance -Baghdad",
+            "is_table": false
+          },
+          {
+            "mark": "S//FGI GBR NZL//NF",
+            "text": "Annual Subscription",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "I.D. 5/000 in Baghdad and",
+            "is_table": false
+          },
+          {
+            "mark": "S//FGI GBR NZL//NF",
+            "text": "I.D. 5/500 in the Provinces and Abroad",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Wednesday 26th Moharram,",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "1378 and the 13th August, 1958.",
+            "is_table": false
+          },
+          {
+            "mark": "U",
+            "text": "<table><tr><td>Serial SUBJECT No.</td><td>No. of Notification.</td><td>Office of OOrigin</td><td>Pago</td></tr><tr><td>1. Interim Constitution of the Republic of Iraq.</td><td>3 ..\u2022</td><td>C.M.</td><td>37</td></tr></table>",
+            "is_table": true
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "TOP SECRET//SI/TALENT KEYHOLE//RISK SENSITIVE//FOREIGN GOVERNMENT INFORMATION GBR NZL//NOT RELEASABLE TO FOREIGN NATIONALS//LAW ENFORCEMENT SENSITIVE/SENSITIVE SECURITY INFORMATION",
+        "paragraphs": [
+          {
+            "mark": "U//SSI",
+            "text": "INTERIM - CONSTITUTION",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "WHEREAS the National Move undertaken by the Iraqi Army on the 14th of July with the co - operation and support of the people aims at establishing the sovereignty of the people, and endeavour to guard against its violation and at ensuring and safeguarding the rights of citizens and whereas the previous regime in the country which has been rejected was supported by political corruption; as power was seized by individuals who ruled the country against the will of the majority and against the interests of the people, since the objective of that rule was the satisfaction of those individuals'and to ensure the interests of colonialism and the implementation of its desires as was set down in the first proclamation to the people on the 14th of July 1958 at the inception of the National move and which incorporated the downfall of the Monarchy and the setting up of the Iraqi Republic.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "We therefore in the name of the people hereby declare the annulement of the Iraqi Constitution and all its amendments as from July 14, 1958. And in order to establish the basis for Government and to regulate the rights and duties for all the citizens, we hereby proclaim this provisional Constitution to remain in force during the transitional period until such time as a permanent constitution is adopted.",
+            "is_table": false
+          },
+          {
+            "mark": "U//SSI",
+            "text": "CHAPTER I",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "THE REPUBLIC OF 'IRAQ",
+            "is_table": false
+          },
+          {
+            "mark": "U//SSI",
+            "text": "Article 1.\u2014The state of Iraq is an independent sovereign Republic.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Article 2.-\u2014Iraq is an integral part of the Arab Nation.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Article 3.-The structure of Iraq stands on a basis of mutual co - operation among all its citizens and respect of their rights and protection of their liberty.",
+            "is_table": false
+          },
+          {
+            "mark": "S//FGI GBR NZL//NF",
+            "text": "Arabs and Kurds are considered partners in this Nation and their national rights within the unity of Iraq are recognized by this constitution.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Article 4.-Islam is the Religion of the State.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Article 5.\u2014The Capital of the Republic is Baghdad.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Article 6.-The Iraqi Flag and the National Emblem of the Republic and all matters relating to them shall be determined by Law.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "CHAPTER II",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "SOURCE OF POWERS, PUBLIC RIGHTS AND DUTIES.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Article 7.-The people are the source of all powers.",
+            "is_table": false
+          },
+          {
+            "mark": "U//SSI",
+            "text": "Article 8.-Iraqi Nationality is determined by law.",
+            "is_table": false
+          },
+          {
+            "mark": "U//SSI",
+            "text": "Article 9.-Citizens are equal before the law in their public rights and obligations and there shall be no distinction between them by reasons of race, origin, language, religion or belief.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Article 10.-Freedom of thought and expression are guaranteed and shall be regulated by law.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Article 11.\u2014Freedom of the individual and the inviolability of the home are safeguarded and shall not be violated except according to the requirements of public safety. These principles shall be regulated by law.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK//RS/REL TO USA, FVEY",
+            "text": "Article 12.-Freedom of religions are safeguarded and religious rites shall be respected provided that they do not violate public order or are contrary to public morals.",
+            "is_table": false
+          },
+          {
+            "mark": "U//SSI",
+            "text": "Article 13.-Private property is safeguarded. Its social role, is to be regulated by law and it shall not be seized except for the public interest and against fair compensation according to the law.",
+            "is_table": false
+          },
+          {
+            "mark": "S//FGI GBR NZL//NF",
+            "text": "Article 14.-(a) Agricultural ownership shall be limited and regulated by law.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Title to agricultural property shall be preserved according to existing laws until new laws are enacted and provisions made for their implementation.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Article 15.\u2014No tax rate or duty shall be imposed, nor amendments or cancellation thereof shall be made except by law.",
+            "is_table": false
+          },
+          {
+            "mark": "S//FGI GBR NZL//NF",
+            "text": "Article 16.--National defence is a sacred duty and military service is a source of pride for citizens. This is to be regulated by Law.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

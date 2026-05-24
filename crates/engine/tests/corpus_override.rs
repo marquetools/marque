@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T069 — engine emits `CorpusOverrideInEffect` feature contribution
-//! when a corpus override is installed via
-//! [`Engine::with_corpus_override`] (Phase 4 PR-5, FR-013).
+//! Engine emits a `CorpusOverrideInEffect` feature contribution when a
+//! corpus override is installed via [`Engine::with_corpus_override`].
 //!
-//! Scope: PR-5 minimal. The contribution is an audit-trail marker
-//! (`delta = 0.0`) — the engine does **not** yet substitute override
-//! priors into decoder scoring. Wiring substitution is a follow-up.
+//! The contribution is an audit-trail marker (`delta = 0.0`) — the
+//! engine does **not** yet substitute override priors into decoder
+//! scoring. Wiring substitution is a follow-up.
 //!
 //! Why behind `corpus-override`: the test exercises the gated builder
 //! `Engine::with_corpus_override(...)`, which only exists when the
@@ -40,7 +39,7 @@ fn deep_scan_engine_without_override() -> Engine {
 fn deep_scan_engine_with_override() -> Engine {
     deep_scan_engine_without_override()
         // Audit-marker-only override: every scoring section empty,
-        // schema_version implicit. The flag is what matters for T069.
+        // schema_version implicit. The flag is what this test checks.
         .with_corpus_override(Arc::new(CorpusOverride::default()))
 }
 
@@ -64,15 +63,19 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
 
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
+    // `Confidence` is nested at `fix.fix.replacement.confidence`. The
+    // iteration is by way of `applied_fixes()` (zero-alloc
+    // `impl Iterator`) so we only walk the marking-side audit lines —
+    // text-correction lines don't carry a DecoderPosterior `FixSource`.
     let mut decoder_fixes_examined = 0usize;
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         if fix.source != FixSource::DecoderPosterior {
             continue;
         }
         decoder_fixes_examined += 1;
 
-        let override_features: Vec<_> = fix
-            .confidence
+        let confidence = &fix.fix.replacement.confidence;
+        let override_features: Vec<_> = confidence
             .features
             .iter()
             .filter(|f| f.id == FeatureId::CorpusOverrideInEffect)
@@ -82,10 +85,10 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
             1,
             "expected exactly one CorpusOverrideInEffect contribution on \
              decoder-path fix at {}..{}, got {} (full features: {:?})",
-            fix.proposal.span.start,
-            fix.proposal.span.end,
+            fix.span.start,
+            fix.span.end,
             override_features.len(),
-            fix.confidence.features,
+            confidence.features,
         );
         assert_eq!(
             override_features[0].delta, 0.0,
@@ -108,8 +111,8 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
 }
 
 /// Without corpus override, no decoder-path fix may carry
-/// `CorpusOverrideInEffect`. This is the negative half of T069 —
-/// the audit-marker is silent unless override is actually in
+/// `CorpusOverrideInEffect`. The audit-marker is silent unless override
+/// is actually in
 /// effect, so an auditor reading the audit stream can trust
 /// "this fix has no override marker" as positive evidence the
 /// fix came out of stock priors.
@@ -124,14 +127,14 @@ fn decoder_fix_omits_corpus_override_feature_without_override() {
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
     let mut decoder_fixes_examined = 0usize;
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         if fix.source != FixSource::DecoderPosterior {
             continue;
         }
         decoder_fixes_examined += 1;
 
-        let has_override_marker = fix
-            .confidence
+        let confidence = &fix.fix.replacement.confidence;
+        let has_override_marker = confidence
             .features
             .iter()
             .any(|f| f.id == FeatureId::CorpusOverrideInEffect);
@@ -140,7 +143,7 @@ fn decoder_fix_omits_corpus_override_feature_without_override() {
             "decoder-path fix at {}..{} carries CorpusOverrideInEffect \
              without an override installed — audit stream would be \
              misleading. Full features: {:?}",
-            fix.proposal.span.start, fix.proposal.span.end, fix.confidence.features,
+            fix.span.start, fix.span.end, confidence.features,
         );
     }
 

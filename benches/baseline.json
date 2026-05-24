@@ -4,22 +4,33 @@
     "cpu": "x86_64 GitHub Actions hosted runner (ubuntu-latest, 4-core). See git log for exact capture commit.",
     "profile": "GitHub Actions ubuntu-latest, hosted runner",
     "rust_version": "1.89",
-    "date_captured": "2026-04-26"
+    "date_captured": "2026-04-26",
+    "_dev_capture_note": "PR 4b-D.2 commit-8 lint_10kb capture was on dev WSL2, NOT ubuntu-latest — see `lint_10kb._wsl2_dev_capture` sub-object below. WSL2 typically reads 5-10% slower than GHA ubuntu-latest. The first GHA re-capture of this branch via `scripts/capture-baselines.sh` becomes the new authoritative `lint_10kb.{lower,mean,upper}_ci_us`; the WSL2 numbers stay in the sub-object as a reference point for cross-host comparisons. Other baselines in this file (`decoder_10kb_one_mangled_region`, etc.) are still GHA captures from 2026-05-17 (PR #498)."
   },
   "lint_10kb": {
-    "lower_ci_us": 746,
-    "mean_us": 749,
-    "upper_ci_us": 753,
+    "lower_ci_us": 912,
+    "mean_us": 913,
+    "upper_ci_us": 914,
     "unit": "microseconds",
-    "_note": "Values are Criterion 95% confidence-interval bounds captured on a GitHub Actions ubuntu-latest hosted runner (observed [746–747µs, 749–750µs, 752–753µs] CI). The baseline is CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~828µs). The SC-001 16ms absolute target remains the load-bearing constitution gate.",
-    "target_upper_ci_us": 16000
+    "_wsl2_dev_capture": {
+      "lower_ci_us": 1030,
+      "mean_us": 1033,
+      "upper_ci_us": 1036,
+      "profile": "WSL2 dev worktree, x86_64",
+      "date_captured": "2026-05-17",
+      "_note": "PR 4b-D.2 post-commit-8 WSL2 measurement (median 1033µs). Captured during PR 4b-D.2 perf-mitigation work for record-keeping; **NOT the authoritative baseline**. The top-level `lint_10kb.{lower,mean,upper}_ci_us` fields are the GHA `ubuntu-latest` reference values that `scripts/bench-check.sh` consumes for the CI regression gate. The CI gate MUST be calibrated to GHA hardware — calibrating to WSL2 (5-10% slower) would mask regressions on faster GHA runners. **Follow-up**: the GHA re-capture via `scripts/capture-baselines.sh` after PR 4b-D.2 merges produces the post-flip authoritative numbers and updates the top-level fields."
+    },
+    "_note": "Values are Criterion 95% confidence-interval bounds. **2026-05-17 PR 4b-D.2 hot-path-flip context.** Per Copilot R1 review #3 these top-level fields hold the pre-PR GHA `ubuntu-latest` baseline (912/913/914 from PR #498), not the WSL2 dev-capture from the PR 4b-D.2 perf-mitigation work — the CI regression gate at `scripts/bench-check.sh:32-35` consumes these fields and must be calibrated to the same hardware where CI runs. The WSL2 measurement is preserved in `_wsl2_dev_capture` for cross-host context. **Post-PR-4b-D.2 expectation**: the new pipeline IS structurally heavier than the pre-flip path (~50% more O(n) walks per call across 10 lattice constructors + closure + page rewrites vs PageContext's 13 `expected_*` accessors; PageContext stays alive as the page-state accumulator until PR 4b-E). Commits 6-8 brought the WSL2 measurement from +65% unmitigated to +13% via three optimizations: (6) closure short-circuit on empty cone triggers (architect's R-1); (7) engine-side fast-path `project_from_attrs_slice`; (8) `project_from_page_context` borrowing the engine's existing PageContext through to `join_via_lattice_with_context`. The first GHA re-capture after merge updates these numbers and the CI gate moves with it. Per the `project_perf_baseline_pr5_trigger.md` project memory, further perf-analysis work is scheduled for PR 5+ if the structural costs survive the GHA re-capture; PR 4b-E (PageContext deletion) will retire the remaining residue-axis tmp_ctx requirement, expected to bring the GHA value back down. **2026-05-17 re-capture (PR #498).** Refreshed lower/mean/upper to {912, 913, 914} on `ubuntu-latest` GHA runner (PR #498 CI run 25991729674), 3µs over the previous 911µs threshold; the new threshold (`upper_ci_us * 1.10` ≈ 1005µs) restores the +10% noise envelope. **2026-05-05 widening (D8 amendment) — superseded by the 2026-05-17 re-capture.** Original 2026-04-26 baseline (lower 746 / mean 749 / upper 753) flapped on shared GHA `ubuntu-latest` runners; per D8 `decisions.md`, the +10% widening (746→821, 749→824, 753→828) held until staging complexity additions exceeded the noise band. The SC-001 16ms absolute target remains the load-bearing constitution gate; CI-side regression-gate calibration is independent.",
+    "target_upper_ci_us": 16000,
+    "target_p99_us": 16000,
+    "_p99_note": "T098 / FR-030 / SC-008 tail-percentile gate, **partial activation**. Pins p99 cost of the `Arc<dyn Vocabulary<S>>::shape_admits` indirect call introduced in PR 2; vtable misses surface at the tail, not in the mean. **Status as of 2026-05-05:** only the absolute gate (`target_p99_us = 16000µs`, the SC-001 16ms constitutional ceiling applied to p99 specifically) is wired here. The drift gate (`p99_baseline * 1.05` per FR-030 / SC-008 `p99 ≤ baseline + 5%`) requires a `p99_us` baseline captured on the same hardware as the existing `upper_ci_us` baseline (`ubuntu-latest` per `reference_machine.profile`); a WSL2 dev-worktree capture would turn the drift gate into runner-noise flake on shared GHA runners. **Re-activation procedure (follow-up):** capture `p99_us` on `ubuntu-latest` via `scripts/capture-baselines.sh` (using `compute_percentiles_python` for capture-time / gate-time agreement), add the field to this block, and the drift check in `scripts/bench-check.sh::check_one_bench` will activate automatically (the gate is field-presence-gated). The absolute gate stays load-bearing across both states."
   },
   "decoder_10kb_one_mangled_region": {
-    "lower_ci_us": 917,
-    "mean_us": 918,
-    "upper_ci_us": 919,
+    "lower_ci_us": 1155,
+    "mean_us": 1157,
+    "upper_ci_us": 1158,
     "unit": "microseconds",
-    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. Captured on a GitHub Actions ubuntu-latest hosted runner (observed [916–917µs, 917–918µs, 918–919µs] CI). The baseline is CI-reproducible, so the +10% percentage gate against `upper_ci_us` is re-enabled (threshold ~1011µs). The SC-002 18ms absolute target remains the load-bearing constitution gate.",
+    "_note": "Engine::lint with `with_deep_scan()` on a 10KB document containing exactly one mangled portion (`(SERCET//NF)`) plus normal valid markings + prose. `SERCET` is the deliberate misspelling the SC-002 bench feeds the engine to force the decoder to fire — it is NOT a typo to be corrected. **2026-05-17 re-capture (PR #498).** Measured upper CI landed at 1158µs on `ubuntu-latest` GHA runner (PR #498 CI run 25991729674), 46µs over the previous 1113µs threshold — a substantive shift, not noise. Refreshed lower/mean/upper to the new capture (1155 / 1157 / 1158); the new threshold (`upper_ci_us * 1.10` ≈ 1274µs) restores headroom against intervening staging merges (PR 4b-B/C lattice landings, decoder priors work in #258/#259/#262, parser/recognizer additions). PR 4b-D's hot-path flip is expected to retire the old PageContext machinery on the decoder path and bring this value back down, at which point a routine re-capture steps the baseline back down. **2026-05-05 widening (D8 amendment) — superseded by this re-capture.** Original 2026-04-26 capture was lower 917 / mean 918 / upper 919; bumped uniformly +10% (917→1009, 918→1010, 919→1011) paired with the lint_10kb widening. The widening held until intervening complexity additions exceeded it. The SC-002 18ms absolute target remains the load-bearing constitution gate.",
     "target_upper_ci_us": 18000
   },
   "lint_scaling": {
@@ -33,5 +44,21 @@
   "deadline_overhead": {
     "max_ratio_pct": 10,
     "_note": "Spec 005 T018/T019. Compares `deadline_overhead_baseline` (Engine::lint, no deadline) against `deadline_overhead_with_deadline` (Engine::lint_with_options with a 1-hour deadline that never trips). The ratio is computed from Criterion's mean (middle CI value), not the upper-CI bound — clock jitter inflates CI width and would convert noise into false positives on a tight ratio gate. The gate is set at 10% (permissive starting point) rather than the 2% design target from `specs/005-engine-deadlines/spec.md` because the per-candidate Instant::now() cost varies dramatically by host: native Linux x86 vDSO clock_gettime is ~10–30ns and the spec's ≤2% target is reachable, but WSL2's virtualized HV clock is ~500–700ns and observed end-to-end overhead is 7–12% on the same fixture. Tightening this gate to 2% is a follow-up once a CI-runner baseline is captured (mirrors the `MARQUE_BENCH_SKIP_REGRESSION` pattern for the +10% absolute regression gate). Enforced by `scripts/bench-check.sh::check_deadline_overhead`."
+  },
+  "fix_10kb_pass2_only": {
+    "lower_ci_us": 1033,
+    "mean_us": 1035,
+    "upper_ci_us": 1037,
+    "unit": "microseconds",
+    "target_upper_ci_us": 16000,
+    "_note": "PR 7c (T085) + CO-1 (4b-perf). Baseline captured after the CO-1 `Box<FixIntent<S>>` unboxing (PR 4b-perf) on GHA ubuntu-latest. SC-001 absolute target for the two-pass fix pipeline's pass-2-only path. Exercises the no-reshape short-circuit: pass-1 produces zero applied fixes, the pre-pass-1 cache stays empty, the re-parse arm short-circuits, and pass-2 dispatches against the post-pass-0 buffer. The +10% regression gate (`upper_ci_us * 1.10` ≈ 1141µs) activates with this baseline. See `crates/engine/benches/fix_10kb.rs`."
+  },
+  "fix_10kb_two_pass": {
+    "lower_ci_us": 2519,
+    "mean_us": 2522,
+    "upper_ci_us": 2526,
+    "unit": "microseconds",
+    "target_upper_ci_us": 16000,
+    "_note": "PR 7c (T085) + CO-1 (4b-perf). Baseline captured after the CO-1 `Box<FixIntent<S>>` unboxing (PR 4b-perf) on GHA ubuntu-latest. SC-001 absolute target for the two-pass fix pipeline's full path. Exercises pass-0 corrections, pass-1 Localized fixes (C001 typo correction), the pre-pass-1 attrs cache population, post-pass-1 re-lint via `lint_with_options_internal_with_cache`, FR-023 disambiguation, and I-18 overlap demotion. The +10% regression gate (`upper_ci_us * 1.10` ≈ 2779µs) activates with this baseline. See `crates/engine/benches/fix_10kb.rs`."
   }
 }

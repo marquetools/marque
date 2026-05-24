@@ -10,8 +10,8 @@ Criterion benchmarks for marque performance targets.
 
 The actual benchmark source files live in `crates/engine/benches/`:
 
-- `lint_latency.rs` — SC-001: Engine::lint p95 latency on <= 10KB inputs
-- `linear_scaling.rs` — SC-005: linear throughput scaling across input sizes
+- `lint_latency.rs` — Engine::lint p95 latency on <= 10KB inputs (interactive-latency gate)
+- `linear_scaling.rs` — linear throughput scaling across input sizes
 
 Run with:
 

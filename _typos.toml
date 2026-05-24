@@ -31,6 +31,15 @@ extend-exclude = [
   # files contain axis-name codes (e.g. `wdth`) that are valid font
   # metadata, not spelling errors.
   "demo/assets/fonts/",
+  "tests/corpus/documents/",
+  # OCR cleanup script: every regex pattern in this file encodes a known
+  # CAPCO-2016 OCR corruption (e.g. `r'clas sification'` → "classification",
+  # `r'di sc l os ure'` → "disclosure", `r'elemenTheads'` → "element heads")
+  # and the canonical replacement. The broken-word side of every pattern is
+  # by definition a misspelling typos cannot distinguish from a real one.
+  # Per-pattern allowlisting would grow without bound as new OCR cases
+  # land; whole-file exclusion is the maintenance-cheap choice.
+  "scripts/clean_ocr.py",
 ]
 
 [default]
@@ -94,6 +103,22 @@ UOP = "UOP"
 OT = "OT"
 ot = "ot"
 RELT = "RELT"
+# PR 3d FR-053 — verbatim ODNI ISM `<Description>` text reproduction.
+# `Controled` (single L) is the actual misspelling published in the
+# ODNI ISM-v2022-DEC schema package for CNWDI's Description field;
+# `crates/ism/src/marking_forms.rs` carries it byte-identical so the
+# divergence-count test in
+# `crates/ism/tests/description_title_divergence.rs` can pin it as a
+# regression guard. Constitution Principle VIII (Authoritative Source
+# Fidelity) — reproducing the source's typos verbatim is the correct
+# behavior; "fixing" the spelling would silently mask the upstream
+# divergence we are explicitly tracking. Affects the
+# `description_title` field text + doc comments in
+# `crates/ism/src/marking_forms.rs`, the catalog doc comment in
+# `crates/ism/tests/description_title_divergence.rs`, and a derived
+# reference in `crates/capco/tests/vocabulary_forms.rs`.
+Controled = "Controled"
+axe = "axe"
 # Python package names that look like typos but aren't
 certifi = "certifi"
 
@@ -103,3 +128,6 @@ mis = "mis"
 
 # "unparseable" is acceptable (both forms exist in English)
 unparseable = "unparseable"
+
+[type.xml.extend-words]
+HED = "HED"

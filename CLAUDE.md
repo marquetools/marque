@@ -93,7 +93,7 @@ has no runtime deps on `marque-ism`/`marque-core`/`marque-rules`.
 | `marque-ism` | ISM vocabulary types + generated CVE enums + `Span` + `IsmAttributes`. **WASM-safe** — build-time XML parsing only, no runtime I/O. `build.rs` consumes ODNI schemas via the `ism` and `ism-ismcat` build-dependencies from [`marquetools/ism-data`](https://github.com/marquetools/ism-data). |
 | `marque-core` | Scanner + parser. **WASM-safe** — no I/O, no format deps, operates on `&[u8]`. Produces `IsmAttributes` from byte buffers. |
 | `marque-rules` | Trait definitions only: `Rule`, `Diagnostic`, `FixProposal`, `Severity`, `AppliedFix`. No implementations. |
-| `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `Lattice`, `BoundedLattice`, `Category`/`AggregationOp`/`CategoryShape`, `Constraint`, `Parsed<M>`, `Scope`, `PageRewrite`, and built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`). Zero runtime deps; no dependency on `marque-ism`. Phase B landed the recursive-lattice surface — see `docs/plans/2026-04-19-recursive-lattice-and-decoder.md`. |
+| `marque-scheme` | Domain-neutral trait surface for structured marking schemes. Defines `MarkingScheme`, `JoinSemilattice`, `MeetSemilattice`, `Lattice` (blanket-impl marker), `BoundedJoinSemilattice`, `BoundedMeetSemilattice`, `BoundedLattice` (blanket-impl marker), `Category`/`AggregationOp`/`CategoryShape`, `Constraint`, `Parsed<M>`, `Scope`, `PageRewrite`, and built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`). The `Lattice` trait split (issue #456 / PR #502) divided `Lattice` into `JoinSemilattice + MeetSemilattice` halves; `DissemSet`, `JointSet`, and `SupersessionSet` implement only `JoinSemilattice`. One permitted runtime dep: `smallvec` (inline-2 buffer for `ReplacementIntent::FactRemove::facts`; keeps single-fact removals heap-free per #348). No dependency on `marque-ism`. Phase B landed the recursive-lattice surface — see `docs/plans/2026-04-19-recursive-lattice-and-decoder.md`. |
 | `marque-capco` | CAPCO Layer 2 rule implementations. Consumes generated predicates from `marque-ism`. Also hosts `CapcoScheme`, the `marque-scheme` adapter over `IsmAttributes`; `SciSet`/`SarSet`/`FgiSet` lattice types (`marque_capco::lattice`); and tetragraph expansion tables (`marque_capco::vocab`). |
 | `marque-engine` | Pipeline orchestration: `Engine` (single doc) and `BatchEngine` (async concurrent). |
 | `marque-extract` | Kreuzberg wrapper for 75+ document formats + OCR + metadata extraction. Alternately a narrowing custom or pieced together use of other libraries (Kreuzberg has some licensing complication) **Not in WASM.** |
@@ -128,13 +128,21 @@ The hybrid approach: the CVE vocabulary generated from `CVEnumISMSCIControls.xml
 
 `IsmAttributes` exposes both `sci_markings: Box<[SciMarking]>` (authoritative structural form — control system + compartments + sub-compartments) and the original `sci_controls: Box<[SciControl]>` (CVE enum projection) for back-compat with existing consumers. `canonical_enum` on a `SciMarking` is populated only when the bare control or `{ctrl}-{first_comp}` matches a CVE value AND no sub-compartments are present; anything richer is structural-only.
 
-**Phase B canonicalization.** Post-Phase-B, `SciSet` (in `marque_capco::lattice`, the lattice form of SCI state) is the canonical page-context storage: it implements `Lattice`, round-trips with `[SciMarking]` via `SciSet::from_markings` / `SciSet::to_markings`, and composes through `CapcoScheme::project(Scope::Page, ...)`. `SciSet` (and `SarSet`) deliberately do **not** implement `BoundedLattice` — SCI control systems and SAR program identifiers are both agency-extensible open sets, so no lawful finite `top` exists. Use `SciSet::empty()` / `SciSet::default()` when you need the lattice bottom. `IsmAttributes::sci_controls` stays populated for rules that currently read it, but is a compatibility view scheduled for removal in Phase C or D when no rule references it. New rules that need compartment / sub-compartment semantics should read `sci_markings` or construct an `SciSet`; rules that just need "which bare control systems appear" can stay on `sci_controls` until the migration closes.
+**SCI canonical storage.** `SciSet` (in `marque_capco::lattice`, the lattice form of SCI state) is the canonical page-context storage: it implements `JoinSemilattice + MeetSemilattice` (i.e. `Lattice` via blanket impl), round-trips with `[SciMarking]` via `SciSet::from_markings` / `SciSet::to_markings`, and composes through `CapcoScheme::project(Scope::Page, ...)`. `SciSet` (and `SarSet`) deliberately do **not** implement `BoundedLattice` — SCI control systems and SAR program identifiers are both agency-extensible open sets, so no lawful finite `top` exists. Use `SciSet::empty()` / `SciSet::default()` when you need the lattice bottom. `IsmAttributes::sci_controls` stays populated for rules that currently read it, but is a compatibility view scheduled for removal once no rule references it. New rules that need compartment / sub-compartment semantics should read `sci_markings` or construct an `SciSet`; rules that just need "which bare control systems appear" can stay on `sci_controls` until the migration closes.
 
-Banner roll-up for SCI (E035) uses `PageContext::expected_sci_markings()`, which unions compartments and sub-compartments across all portions on the page and sorts per §A.6 p15 (numeric first, alpha after). Authority: CAPCO-2016 §A.6 (grammar, canonical example p16) + §H.4 (per-system banner precedence).
+Banner roll-up for SCI uses `PageContext::expected_sci_markings()`, which unions compartments and sub-compartments across all portions on the page and sorts per §A.6 p15 (numeric first, alpha after). Authority: CAPCO-2016 §A.6 (grammar, canonical example p16) + §H.4 (per-system banner precedence).
+
+**NATO SAPs.** `SciControlSystem::NatoSap(NatoSap)` is the canonical home for `BOHEMIA` and `BALK` (CAPCO-2016 §G.2 p40 + §H.7 p127). They render standalone (no `SAR-` prefix) in the SCI block position — e.g. `(//CTS//BOHEMIA)` or `(//CTS//BALK/BOHEMIA)`. BALK sorts before BOHEMIA alphabetically per §H.7 p127 worked example. NATO SAPs are CAPCO-only (no ODNI ISM CVE entry) — the third `SciControlSystem` variant keeps `Published(SciControlBare)` ODNI-faithful and `Custom(SmolStr)` reserved for agency-allocated `[A-Z0-9]{2,5}` identifiers per §A.6 p15. Legacy `CTS-B` / `CTS-BALK` text and the banner-form equivalents canonicalize through the strict parser into bare CTS class + SCI NatoSap companion; a recanonicalization rule emits a Recanonicalize FixIntent so the source text is re-rendered to the canonical multi-block form.
 
 ### SAR (Special Access Required)
 
-SAR (Special Access Required) markings are modeled structurally, not as a CVE-derived enum. The ODNI public `CVEnumISMSAR.xml` is empty because SAR program identifiers are agency-assigned codewords not centrally registered. `marque-ism::SarMarking` captures the full hierarchy — programs, compartments, sub-compartments — parsed by a hand-written subparser in `marque-core` (see `parse_sar_category`). The six SAR rules (E026–E031) validate syntax, ordering, classification constraints, and banner roll-up per CAPCO-2016 §H.5.
+SAR (Special Access Required) markings are modeled structurally, not as a CVE-derived enum. The ODNI public `CVEnumISMSAR.xml` is empty because SAR program identifiers are agency-assigned codewords not centrally registered. `marque-ism::SarMarking` captures the full hierarchy — programs, compartments, sub-compartments — parsed by a hand-written subparser in `marque-core` (see `parse_sar_category`). The SAR rules validate syntax, ordering, classification constraints, and banner roll-up per CAPCO-2016 §H.5.
+
+### ATOMAL (NATO AEA)
+
+ATOMAL is a NATO AEA marking — Atomic Energy Act information shared with NATO+UK under bilateral §123/§144 sharing agreements. Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking) ATOMAL is a registered standalone control marking; the §H.7 p122 worked example (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL in the AEA axis alongside RD/FRD/TFNI — **not** as a NATO classification portion-suffix.
+
+`AeaMarking::Atomal(AtomalBlock)` is the canonical home. The block is empty (no registered sub-markings) but mirrors `RdBlock`/`FrdBlock` so a future CAPCO grammar extension is a planned migration. The strict parser canonicalizes legacy compound text (`CTSA`, `CTS-A`, `NSAT`, `NS-A`, `NCA`, `NC-A`, banner-form `COSMIC TOP SECRET ATOMAL`, etc.) into bare NATO class + AEA ATOMAL companion at parse time; a recanonicalization rule emits a Recanonicalize FixIntent that re-renders to the canonical multi-block form (`(//CTS//ATOMAL)`, etc.) per the §G.2 p40 Table 5 registration. Per project memory `remark-on-derivative-use-is-marque-autofix`, Marque automates the canonical re-marking the manual permits doing by hand. The legacy fused `NatoClassification::*Atomal` variants (`NatoConfidentialAtomal`, `NatoSecretAtomal`, `CosmicTopSecretAtomal`) and the corresponding `*Bohemia` / `*Balk` variants were retired.
 
 ### Key Types
 
@@ -145,21 +153,21 @@ SAR (Special Access Required) markings are modeled structurally, not as a CVE-de
 - `AppliedFix` (`marque-rules`) — a promoted `FixProposal` with `timestamp`, `classifier_id`, `dry_run`, `input`. Constructed only by `Engine::fix`. Serves as the audit record.
 - `RuleContext` (`marque-rules`) — position context passed to rules alongside attributes (`MarkingType`, `Zone`, `DocumentPosition`). Also carries an optional `Arc<PageContext>` for banner/CAB candidates so banner-validation rules can compare the observed banner against the composite expected from all preceding portions.
 - `PageContext` (`marque-ism`) — page-level aggregation of portion markings: `max()` for classification, union for SCI/SAR/dissem controls, intersection (with NOFORN supersession) for `REL TO`, max-date for `declassify_on`. The engine builds this incrementally during `lint()` and hands banner/CAB rules an `Arc<PageContext>` via `RuleContext`.
-- `Recognizer<S>` (trait in `marque-scheme`; impls in `marque-engine`) — pluggable first stage of the engine. Turns a byte slice + `ParseContext` into `Parsed<S::Marking>`. The trait lives in `marque_scheme::recognizer`; the three shipped concrete implementations are `marque_engine::StrictRecognizer` (zero-FP header-only, the existing structural parser), `marque_engine::DecoderRecognizer` (Phase D probabilistic / bag-of-tokens), and `marque_engine::StrictOrDecoderRecognizer` (the strict-first / decoder-fallback dispatcher installed by default in `Engine::new`). Callers that need strict-only dispatch (the SC-001 interactive-latency benchmark, tests asserting strict behavior) install `StrictRecognizer` explicitly via `Engine::with_recognizer`. Trait is domain-neutral: depends only on the scheme's `Marking` and the `Parsed` / `Candidate` / `EvidenceFeature` primitives in `marque_scheme::ambiguity`.
-- `Vocabulary<S>` (`marque-scheme`) — per-token metadata surface (authority, owner/producer, point of contact, deprecation, URN, schema version, portion/banner forms). Returns `&'static` data, zero runtime allocation (SC-008). Implemented for `CapcoScheme` from build-time-generated tables; rules read this instead of hardcoding metadata.
-- `Codec<S>` (`marque-scheme`) — pinned trait surface for grammar serialization (encode/decode round-trip). No concrete impls in-tree; Phase G lands XML and JSON. `Codec::decode` returns `Parsed<S::Marking>` so ambiguity preserves through the codec layer (FR-019, SC-010).
-- `Confidence` + `FeatureId` (`marque-rules`) — Phase D audit-provenance payload attached to every `FixProposal`. Carries `recognition` and `rule` confidence axes (combined as their product), optional `region` and `runner_up_ratio`, and a closed list of named `FeatureId` contributions. `f32` at the audit boundary (`f64` internally in the decoder). Adding a `FeatureId` variant requires a coordinated bump of `MARQUE_AUDIT_SCHEMA`.
+- `Recognizer<S>` (trait in `marque-scheme`; impls in `marque-engine`) — pluggable first stage of the engine. Turns a byte slice + `ParseContext` into `Parsed<S::Marking>`. The trait lives in `marque_scheme::recognizer`; the three shipped concrete implementations are `marque_engine::StrictRecognizer` (zero-FP header-only, the existing structural parser), `marque_engine::DecoderRecognizer` (probabilistic / bag-of-tokens), and `marque_engine::StrictOrDecoderRecognizer` (the strict-first / decoder-fallback dispatcher installed by default in `Engine::new`). Callers that need strict-only dispatch (the interactive-latency benchmark, tests asserting strict behavior) install `StrictRecognizer` explicitly via `Engine::with_recognizer`. Trait is domain-neutral: depends only on the scheme's `Marking` and the `Parsed` / `Candidate` / `EvidenceFeature` primitives in `marque_scheme::ambiguity`.
+- `Vocabulary<S>` (`marque-scheme`) — per-token metadata surface (authority, owner/producer, point of contact, deprecation, URN, schema version, portion/banner forms). Returns `&'static` data, zero runtime allocation. Implemented for `CapcoScheme` from build-time-generated tables; rules read this instead of hardcoding metadata.
+- `Codec<S>` (`marque-scheme`) — pinned trait surface for grammar serialization (encode/decode round-trip). No production/library impls ship in-tree yet; only test stubs exist. XML and JSON are planned. `Codec::decode` returns `Parsed<S::Marking>` so ambiguity preserves through the codec layer.
+- `Confidence` + `FeatureId` (`marque-rules`) — audit-provenance payload attached to every `FixProposal`. Carries `recognition` and `rule` confidence axes (combined as their product), optional `region` and `runner_up_ratio`, and a closed list of named `FeatureId` contributions. `f32` at the audit boundary (`f64` internally in the decoder). Adding a `FeatureId` variant requires a coordinated bump of `MARQUE_AUDIT_SCHEMA`.
 - Topological scheduler (`marque_engine::scheduler`) — runs Kahn's algorithm over `PageRewrite::reads` / `writes` once at `Engine::new` to produce a deterministic rewrite order (writers before readers). Cycles fail with `EngineConstructionError::RewriteCycle`; `Custom` rewrites with empty axis annotations fail with `UnannotatedCustomAxes`. The cached order drives per-document evaluation without re-sorting.
 
 ### Architectural Invariants (do not bypass)
 
 These contracts are enforced by convention and code review, not by the type system. A new crate or refactor that breaks one of them silently compromises the correctness or compliance guarantees of the tool.
 
-- **`AppliedFix::__engine_promote` is engine-only in production code.** The constructor is `pub #[doc(hidden)]` because `marque-rules` is a dependency of `marque-engine` (not the other way around), so there is no way to seal it inside the engine crate at the visibility level. In **production code** (anything reachable from a `cfg(not(test))` build) it **must only be called from `Engine::fix_inner`**. Calling it from a rule crate, CLI binary, or downstream consumer bypasses the confidence-threshold gate, the FR-016 sort, and the C-1 overlap guard, and injects arbitrary entries into the audit log. The audit log is the compliance output — arbitrary injection is a data-integrity failure, not just a bug. If you are writing a crate that needs to produce fixes, produce `FixProposal` values and let `Engine` promote them. **Test-fixture carve-out**: `#[cfg(test)]` modules, `tests/` integration files, and `dev-dependencies`-gated test-utility crates MAY call `__engine_promote` to fabricate synthetic `AppliedFix` fixtures for unit-testing audit emitters, sentinel checks, and renderers — scoped per Constitution V Principle V (test-fixture construction only, never commingled with engine output, never `cfg(not(test))`-reachable). Each test call site should carry a comment naming the carve-out so a future reviewer doesn't have to re-derive the policy. See the doc comment on `AppliedFix::__engine_promote` for the full three-constraint definition.
+- **`AppliedFix::__engine_promote` is engine-only in production code.** The constructor is `pub #[doc(hidden)]` because `marque-rules` is a dependency of `marque-engine` (not the other way around), so there is no way to seal it inside the engine crate at the visibility level. In **production code** (anything reachable from a `cfg(not(test))` build) it **must only be called from `Engine::fix_inner`**. Calling it from a rule crate, CLI binary, or downstream consumer bypasses the confidence-threshold gate, the fix-ordering sort, and the overlap guard, and injects arbitrary entries into the audit log. The audit log is the compliance output — arbitrary injection is a data-integrity failure, not just a bug. If you are writing a crate that needs to produce fixes, produce `FixProposal` values and let `Engine` promote them. **Test-fixture carve-out**: `#[cfg(test)]` modules, `tests/` integration files, and `dev-dependencies`-gated test-utility crates MAY call `__engine_promote` to fabricate synthetic `AppliedFix` fixtures for unit-testing audit emitters, sentinel checks, and renderers — scoped per Constitution V Principle V (test-fixture construction only, never commingled with engine output, never `cfg(not(test))`-reachable). Each test call site should carry a comment naming the carve-out so a future reviewer doesn't have to re-derive the policy. See the doc comment on `AppliedFix::__engine_promote` for the full three-constraint definition.
 - **`FixProposal` is pure data.** No timestamps, no classifier identity, no runtime context. Rule crates construct it; the engine snapshots runtime state into `AppliedFix` at promotion time. Keeping `FixProposal` pure is what lets tests snapshot rule output without a clock or user identity.
-- **`RuleContext.zone` and `RuleContext.position` are `Option`-typed.** Phase 3 made both fields `Option<Zone>` and `Option<DocumentPosition>` and the engine populates them as `None` until a structural scanner pass can prove a value (header vs footer detection, document position from extracted-document metadata). Rules that read either field MUST handle `None`. The previous Phase-2 hardcoded `Body` was a silent lie — making the type carry the uncertainty makes it impossible to misuse.
-- **`PageContext` resets at scanner-emitted page-break candidates.** Phase 3 added `MarkingType::PageBreak` to the scanner (form-feed `\f` and `\n\n\n+` heuristic). The engine resets its `PageContext` accumulator BEFORE attempting to parse the page-break candidate, so a corrupted or malformed candidate cannot block the reset. Banner/CAB rules on a new page see only that page's portions, not the whole document. Note: the scanner heuristic is conservative — `\n\n` (a normal paragraph break) does NOT trip the reset.
-- **`Severity::Off` is a non-firing state, not a suppression.** A rule configured at `Off` is skipped in the rule loop, so no diagnostic is produced. This is the FR-008 invariant: an `Off`-severity diagnostic is unrepresentable.
+- **`RuleContext.zone` and `RuleContext.position` are `Option`-typed.** Both fields are `Option<Zone>` and `Option<DocumentPosition>`; the engine populates them as `None` until a structural scanner pass can prove a value (header vs footer detection, document position from extracted-document metadata). Rules that read either field MUST handle `None`. An earlier hardcoded `Body` default was a silent lie — making the type carry the uncertainty makes it impossible to misuse.
+- **`PageContext` resets at scanner-emitted page-break candidates.** The scanner emits `MarkingType::PageBreak` (form-feed `\f` and `\n\n\n+` heuristic). The engine resets its `PageContext` accumulator BEFORE attempting to parse the page-break candidate, so a corrupted or malformed candidate cannot block the reset. Banner/CAB rules on a new page see only that page's portions, not the whole document. Note: the scanner heuristic is conservative — `\n\n` (a normal paragraph break) does NOT trip the reset.
+- **`Severity::Off` is a non-firing state, not a suppression.** A rule configured at `Off` is skipped in the rule loop, so no diagnostic is produced: an `Off`-severity diagnostic is unrepresentable.
 
 ### Batch Processing
 
@@ -177,8 +185,9 @@ LMDB (`heed` crate) at `.marque/cache.lmdb`. Cache key = `blake3(content) ++ sch
 version = "2023.1"
 
 [rules]
-E001 = "fix"                   # portion-mark-in-banner; off | info | warn | error | fix
-E002 = "fix"                   # missing-usa-trigraph
+# Wire-string `<scheme>:<predicate_id>` keys.
+"capco:banner.classification.portion-mark-in-banner" = "fix"   # off | suggest | info | warn | error | fix
+"capco:banner.classification.usa-trigraph" = "fix"
 
 [corrections]
 "SERCET" = "SECRET"
@@ -232,7 +241,7 @@ A monthly canary in [`marquetools/ism-data`](https://github.com/marquetools/ism-
 
 1. Add a zero-size struct implementing `Rule` in `crates/capco/src/rules.rs`.
 2. Register it in `CapcoRuleSet::new()`.
-3. Rule IDs follow: `E###` = error, `W###` = warning, `C###` = correction.
+3. Rule IDs are 2-tuples `RuleId::new("<scheme>", "<surface>.<category>.<predicate>")`. For CAPCO rules `<scheme>` is `"capco"`; `<surface>` ∈ `{ banner, portion, page, marking, closure }`; `<category>` matches the lattice axis (`classification | sci | sar | dissem | fgi | nato | aea | declassification | fouo | banner-rollup | metadata`); `<predicate>` is descriptive English-with-hyphens. The default-severity tier is encoded via `Severity::Error | Severity::Warn | Severity::Suggest | Severity::Info` on the `Rule` trait, not via an ID prefix. `docs/refactor-006/legacy-rule-id-map.md` maps the older `E### / W### / S### / C###` IDs to their current wire strings if you encounter one.
 4. Rules are stateless; all config-dependent behavior (severity overrides, classifier ID injection) is handled by the engine.
 5. Fixes with `confidence < threshold` are surfaced as suggestions; those at or above are auto-applied by `Engine::fix`.
 6. Cite the authoritative section in the rule (e.g., `CAPCO-2016 §H.5 p99`) and verify the citation against the primary source — `crates/capco/docs/CAPCO-2016.md` — before opening the PR. **Constitution Principle VIII (Authoritative Source Fidelity)** treats a fabricated, hallucinated, misattributed, or silently-drifted citation as a correctness defect of the same severity as a wrong predicate. A citation that cannot be traced to a real passage MUST be removed, not left in place pending follow-up.
@@ -248,9 +257,84 @@ GET  /v1/schema/version
 
 Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch`, auth + structured logging middleware.
 
+## Stable API Surface
+
+The following surfaces are committed. Changing any of them requires a
+coordinated audit-schema bump — `marque-2.1` for additive changes,
+`marque-3.0` for breaking ones. The current audit schema is
+`marque-2.0`.
+
+- **Crate dependency graph** per Constitution VII §IV — the
+  canonical graph diagram in this file's `Crate Dependency Graph`
+  section is the frozen shape. A future second scheme (CUI, NATO,
+  partner-national) sits alongside `marque-ism` as a peer
+  foundation; it does NOT modify the engine convergence node.
+- **`MarkingScheme` trait** in `marque-scheme` — `Marking`
+  associated type bound (`JoinSemilattice`); `parse` / `project` /
+  `render_portion` / `render_banner` / `render_canonical` /
+  `categories` / `constraints` / `closure_rules` / `templates`
+  surface; `Scope` enum; `CategoryShape` / `Constraint` /
+  `PageRewrite` / `ClosureRule` types.
+- **`Rule<S>` trait** in `marque-rules` — `id` / `name` /
+  `default_severity` / `check` / `phase` /
+  `additional_emitted_ids` / `trusted` / `cited_authorities`
+  surface; `Phase` non-exhaustive enum; `RuleContext<'a>`
+  `#[non_exhaustive]` shape + `new` / `with_*` constructors.
+- **`RuleId` 2-tuple form** — the
+  `(scheme: &'static str, predicate_id: &'static str)` shape with
+  the canonical `<scheme>:<predicate_id>` wire string produced by
+  `RuleId::Display`. Predicate IDs follow
+  `<surface>.<category>.<predicate>` where `<surface>` ∈
+  `{ banner, portion, page, marking, closure }` (the `closure`
+  surface keeps closure-operator inferences from conflating with
+  strict page-banner rules at the predicate level). Reserved
+  schemes: `"engine"` (synthetic engine-minted diagnostics) and
+  `"test"` (test fixtures); neither is a valid `MarkingScheme`
+  registration target. Engine sentinels:
+  `("engine", "recognition.decoder-recognized")` and
+  `("engine", "fix.reparse-failed")`.
+  `docs/refactor-006/legacy-rule-id-map.md` maps the older
+  flat-string IDs to their current wire strings.
+- **Typed `Citation`** in `marque-scheme` — `Citation::new` plus
+  ergonomic helpers (`capco` / `capco_section` /
+  `capco_table`); `SectionRef` + `SectionLetter` + `PageNumber`;
+  `AuthoritativeSource` enum with `Capco2016` / `Config` /
+  `EngineInternal` variants.
+- **`AppliedFix<S>` audit-record envelope** — sealed
+  `__engine_promote` constructor (Constitution V Principle V); the
+  `marque-2.0` JSON wire format (`MARQUE_AUDIT_SCHEMA = "marque-2.0"`);
+  structured 2-tuple `"rule"` field; BLAKE3 digest field; closed
+  `MessageTemplate` JSON projection.
+- **Audit content-ignorance invariant** — the canary
+  scan at `crates/engine/tests/audit_g13_canary.rs` is the
+  type-system + corpus-regression form of the invariant. Adding
+  a free-form string surface to any audit-side type breaks it.
+
+**Not frozen** (open scope):
+
+- **v0.2 LMDB incremental cache** (`crates/engine` `cache` feature)
+  — the `LintResult` cache surface is a separable v0.2 line, not
+  part of this stable surface.
+- **`marque-extract` format-extraction backend** — Kreuzberg
+  integration is gated on a licensing decision; the scaffolded
+  `Extractor` / `ExtractedDocument` / `ExtractionOptions` /
+  `MetadataReport` surface is frozen, but the backend is open.
+- **Server auth + structured logging middleware** in
+  `marque-server` — Tower-layer surface is frozen; specific
+  middleware implementations are still open.
+
+Upstream-source bumps: pinned via
+`[package.metadata.marque]` in `crates/ism/Cargo.toml`
+(`ism-schema-version` / `ism-data-version` /
+`ismcat-tetra-version`) and via the matching `[build-dependencies]`
+versions on `ism` / `ism-ismcat`. ODNI schema revisions are
+deliberate, reviewed migrations per Constitution VIII —
+re-verify every cited authority against the new source before
+the migration lands.
+
 ## Current Status
 
-MVP complete. Full lint → fix → audit pipeline for raw text with 56 CAPCO rules (E001–E016, E020–E052, S001–S004, W002–W003, C001; W001 retired in T035c-14 per CAPCO-2016 §F; E052 added in issue #234 PR-B per §H.8; S004 trigraph-suggest added in PR-C of #186 per §H.8 — first consumer of the suggest-don't-fix channel). CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics (SC-008 parity). Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks validate p95 ≤16ms on 10KB inputs (SC-001) and linear throughput scaling (SC-005). Corpus accuracy harness enforces ≥95% per-rule accuracy (SC-002/SC-003). `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
+MVP complete. Full lint → fix → audit pipeline for raw text with **32 registered CAPCO rules** (issues #261/#250/#251/#501/#545/#677 and PR #578). The exact set is authoritatively gated by the registration pin in `crates/capco/tests/post_3b_registration_pin.rs` against the 2-tuple wire strings; `crates/capco/README.md` provides the narrative rule inventory, and `docs/refactor-006/legacy-rule-id-map.md` decodes older `E### / W### / S### / C###` IDs. CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics. Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks measure interactive latency p95 ≤ 16 ms on 10 KB single-portion inputs and multi-page projection + two-pass overhead; the `fix_throughput` linear-scaling gate is active (R² = 0.994 measured; O(N²) accumulation fixed in PR #674, closing #306). Corpus accuracy harness enforces ≥ 95% lint and fix accuracy per-rule against the invalid-fixtures corpus. `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
 
 **Not yet built**: `marque-extract` is scaffolded (workspace member with `Extractor`, `ExtractedDocument`, `ExtractionOptions`, `MetadataReport` surface) but the Kreuzberg backend is stubbed — `crates/extract/src/extractor.rs` reads raw text only and `crates/extract/Cargo.toml` keeps `kreuzberg` commented out pending a licensing decision. Also outstanding: `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
 
@@ -261,27 +345,13 @@ MVP complete. Full lint → fix → audit pipeline for raw text with 56 CAPCO ru
 - `quick-xml` — build-time ODNI XSD/Schematron parsing
 - `serde` + `serde_json` — build-time JSON codepath for per-term vocabulary data (runtime deserialization not required; data is emitted as `&'static` const tables by `build.rs`)
 - `phf` — compile-time replacement lookup (perfect hash)
-- `criterion` 0.8 — benchmarking (SC-001, SC-005)
+- `criterion` 0.8 — benchmarking (interactive-latency and linear-scaling gates)
 - `libfuzzer-sys` 0.4 — fuzz target (requires nightly, not CI-gated)
-- No new runtime crates introduced by Phase D's decoder — log-posterior scoring uses `f64` and Rust standard ops. Corpus-derived priors baked in as `&'static [T]` tables at build time.
-- Rust 1.85+ (edition 2024); workspace `rust-version = "1.85"` floor pinned in workspace `Cargo.toml` per Constitution Technology Stack. + `tokio` (async runtime, `BatchEngine`), `axum` + `tower` (server middleware), `memchr` 2 (Phase 1 SIMD scanner), `aho-corasick` 1 (Phase 2 token matching, native + WASM), `quick-xml` (build-time ODNI XSD/Schematron), `serde` + `serde_json` (build-time JSON sidecar), `phf` (compile-time replacement lookup), `criterion` 0.8 (benches), `static_assertions` (compile-time `Send + Sync` checks — FR-038), `blake3` (audit-record digests — FR-002/FR-004), `heed` (LMDB, planned v0.2 cache; not in scope here), `wasm-pack` (WASM target). (006-engine-rule-refactor)
-- N/A on the hot path. Build-time cache via Cargo `OUT_DIR`. The planned LMDB `LintResult` cache is out of scope for this refactor. (006-engine-rule-refactor)
+- `tokio` (async runtime, `BatchEngine`), `axum` + `tower` (server middleware), `static_assertions` (compile-time `Send + Sync` checks), `blake3` (audit-record digests), `wasm-pack` (WASM target), `secrecy` (zeroize/grepable call sites on all content), `zeroize` (securely dropping internal buffers)
+- No runtime cache on the hot path. Build-time cache via Cargo `OUT_DIR`. The planned LMDB `LintResult` cache is a future v0.2 line.
 
 **Build-time inputs**: ODNI XML pulled from the `ism` and `ism-ismcat` build-deps (vendored in [`marquetools/ism-data`](https://github.com/marquetools/ism-data) at snapshot `20230609.0.0`, package label `ISM-v2022-DEC`); `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored); `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). **Test inputs**: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable).
 
-**Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-mvp-1", "marque-mvp-2"]`. Defaults to `"marque-mvp-2"` (Phase D, decoder + provenance). Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema (FR-014).
+**Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-2.0"]` and defaulting to `"marque-2.0"`. The audit envelope carries a structural `proposal: FixIntent | TextCorrection` sub-object (no free-form content, keeping audit records content-ignorant), a BLAKE3 digest, and a closed `MessageTemplate` JSON projection. Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema.
 
 ## Recent Changes
-- Decoder per-token prose null-hypothesis priors (#258): corpus-analysis stratified into marking (`tests/corpus/valid/`) and prose (Enron / CIA CREST / Congressional Record / GAO Reports — all confirmed prose-dominant per #258 owner confirmation); `priors.json` schema bumped `marque-priors-2 → marque-priors-3` with `token_prose_base_rates` and `country_code_prose_base_rates` tables; `marque_capco::priors::token_prose_log_prior` / `country_code_prose_log_prior` lookup APIs landed alongside the marking-side ones; `MISSING_PROSE_LOG_PRIOR` floor mirrors `MISSING_TOKEN_LOG_PRIOR` so unknown tokens contribute a neutral marking-y delta (zero); `decoder.rs::score_candidate` now returns `(prior, posterior, null_posterior)` with `null_posterior` summing the prose-side priors over the same canonical tokens (no feature deltas, no structural penalties); the `recognize` dispatch now treats `top.null_posterior` as a virtual runner-up — if it beats `top.posterior` the decoder returns zero candidates (FR-015, no R001 emitted on prose), if it loses it competes with `scored[1].posterior` for the runner-up that flows into `recognition_score`. Lifted the `StrictRecognizer` pin in `corpus_accuracy.rs::make_engine` — SC-003a precision (`tests/corpus/prose/article.txt`, Federalist-corpus `Notwithstanding (s) the early prevalence` case) now enforces zero diagnostics under the dispatcher default, the load-bearing test for this PR. Marking-stratum coverage caveat: `tests/corpus/valid/` is currently ~34 short fixtures, so marking-side priors are sparse; accuracy improves as the marking corpus grows. Document-level priors and region detection deferred to follow-up issues. The closed `proposal.replacement` canonical contamination channel (#257) is unaffected by this PR.
-- Decoder default-on (#259): `Engine::new` installs `StrictOrDecoderRecognizer` (strict-first / decoder-fallback dispatch); `--deep-scan` CLI flag + `Engine::with_deep_scan()` retired; `Engine::with_recognizer(Arc<dyn Recognizer<CapcoScheme>>)` added for callers that pin a specific recognizer (typically `StrictRecognizer` for SC-001 strict-latency bench / `core_error_isolation.rs` / `corpus_accuracy.rs`). WASM `lint_deep_scan_native` / `fix_deep_scan_native` deleted; the regular `lint_native` / `fix_native` exercise the dispatcher transparently. Live-typing surfaces concerned with per-keystroke latency are expected to debounce calls into the engine. Closed two leak channels in the same PR: the R001 diagnostic message no longer interpolates input bytes (`format!("decoder-recognized canonical form: {replacement:?}")`), and `AppliedFix.proposal.original` is set to the empty string for decoder-path fixes (Constitution V Principle V / G13). Remaining tracked items: `proposal.replacement` canonical contamination (#257) — decoder-canonicalization sometimes uppercases unrecognized middle tokens — and the decoder's case-canonicalization producing a precision regression on `(s)` in prose contexts (the SC-003a corpus, gated by pinning `corpus_accuracy.rs` to `StrictRecognizer` until per-token null-hypothesis priors land via #258). `feat/preceded-by-whitespace` (#262) closed a related precision channel — single-letter portions glued to a preceding word and bare `Us(Restricted)` markings — but the mid-prose null-hypothesis case still requires #258.
-- Phase 5 (vocabulary surface + trait-surface completion): build-time generation of per-token metadata tables (T080–T082); `impl Vocabulary<CapcoScheme> for CapcoScheme` (PR-2); FOUO regression guards confirming FOUO stays an active dissem control (FR-020, no `FOUO → CUI` migration entry); `Codec<S>` trait surface published with no concrete impls (T078, FR-019); `T089b` readiness stub exercising every Phase-E trait surface as if building a minimal second scheme (SC-010 deferred-verifiable check). Phase 5 PR-1 (#141) → PR-3 (#146).
-- Phase 4 (probabilistic recognition + audit v2): compile-time corpus priors bake (PR-1, #111); `Box<dyn Recognizer<S>>` dispatch with `StrictRecognizer` as the default path (PR-2, #112); `DecoderRecognizer` for probabilistic recovery (PR-3 #114, PR-4b #127); `MARQUE_AUDIT_SCHEMA` env-pinned at build time, `marque-mvp-2` audit records emit `Confidence` provenance (PR-4, #122); SC-002 deep-scan latency bench + SC-004 mangled-corpus accuracy gate at 0.85 threshold (PR-6, #135); corpus-override security gates (PR-5, #131); fuzzy CAPCO-token corrector (#96). The R001 message + `AppliedFix.proposal.original` leak channels were closed in the decoder-default-on flip (#259, see entry above); `proposal.replacement` canonical contamination remains tracked as #257.
-- Phase 9 (S003 + T035c-21 PR-B): S003 `joint-usa-first` style rule per §H.3/§H.8 + E039 (NODIS/EXDIS clears banner REL TO) + E040 (NODIS/EXDIS banner roll-up) + E041 (NODIS supersedes EXDIS in portion) per §H.9 p172–174. Rule count: 41 → 44.
-- Phase B (recursive lattice & decoder plan, §12): built-in lattice constructors (`OrdMax`, `OrdMin`, `FlatSet`, `IntersectSet`, `SupersessionSet`, `ModeSet`, `MaxDate`, `OptionalSingleton`, `Product`); `Scope` / `DiffInput` / `CategoryShape` / `PageRewrite` trait-surface additions; `SciSet`/`SarSet`/`FgiSet` lattice types in `marque-capco` with §3.3a equal-depth meet policy; `CapcoScheme::project(Scope, ...)` taking over from `project_banner`; `capco/noforn-clears-rel-to` declared as the first `PageRewrite`; tetragraph expansion tables consolidated in `marque-capco::vocab`; `AggregationOp::Custom` retired from runtime dispatch (build-time shorthand only). Phase 3 of 004 (#69) added the topological page-rewrite scheduler with cycle and unannotated-axis detection.
-- Phase 7: Criterion benchmarks (lint_latency, linear_scaling), corpus accuracy harness, WASM parity scaling to full corpus, cargo-fuzz target, bench-check regression gate
-- Phase 6: WASM web worker build with SC-008 parity, `batch` feature flag, CachedAhoCorasick optimization
-- Phase 5: Configurable severity overrides, corrections map with AhoCorasick pre-scanner
-- SCI compartments (#003): structural subparser + `SciMarking` data model, E032–E035 rules, banner roll-up via `PageContext::expected_sci_markings()` (rule count 35 → 39)
-- Phase 8: SAR implementation — structural `SarMarking` type (replaces empty `SarIdentifier` CVE enum), six new rules E026–E031 covering portion form, classification constraint, ordering, indicator-repeat coalescing, and banner roll-up per CAPCO-2016 §H.5
-- Phase 3-4: Full lint/fix/audit pipeline, 29 CAPCO rules (E001–E025, W001–W003, C001), CLI with check/fix subcommands
-- Phase 1-2: marque-ism crate extraction, test corpus scaffolding, benchmark stubs
