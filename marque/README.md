@@ -84,8 +84,9 @@ full schema.
 version = "ISM-v2022-DEC"
 
 [rules]
-E001 = "fix"                    # portion-mark-in-banner; off | info | warn | error | fix
-E002 = "warn"                   # missing-usa-trigraph
+# Keys are `<scheme>:<predicate_id>` wire strings; off | info | warn | error | fix
+"capco:banner.classification.portion-mark-in-banner" = "fix"
+"capco:portion.dissem.rel-to-missing-usa" = "warn"
 
 [corrections]
 "SERCET" = "SECRET"

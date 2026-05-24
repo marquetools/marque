@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Spec 005 Phase 3a — CLI integration tests for `--deadline`.
+//! CLI integration tests for `--deadline`.
 //!
-//! Covers T026–T028:
 //! - `--deadline 0` (and `--deadline 0s`) → `EX_USAGE` (64).
 //! - `marque check --deadline 1ms` against a multi-candidate input
 //!   succeeds with a stderr truncation warning.
