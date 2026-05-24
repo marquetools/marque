@@ -63,7 +63,7 @@ pub(crate) fn capco_category_contains(
 ) -> bool {
     let attrs = &m.0;
     if category == CAT_DISSEM && token == TOK_NOFORN {
-        // PR 9b (T132): "Contains NOFORN" is namespace-agnostic — the
+        // "Contains NOFORN" is namespace-agnostic — the
         // dissem token is what matters, not its attribution. Scan
         // across both fields via `dissem_iter`.
         return attrs
@@ -157,7 +157,7 @@ pub(crate) fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
         // Table 3 rows 1-2).
         attrs.display_only_to = Box::new([]);
     } else if category == CAT_DISSEM {
-        // PR 9b (T132): clearing the dissem category zeroes both
+        // clearing the dissem category zeroes both
         // namespaces. The CAT_DISSEM axis is namespace-agnostic from
         // the category-id perspective.
         attrs.dissem_us = Box::new([]);
@@ -180,7 +180,7 @@ pub(crate) fn capco_category_replace(
     if category == CAT_REL_TO {
         attrs.rel_to = with.0.rel_to.clone();
     } else if category == CAT_DISSEM {
-        // PR 9b (T132): replacing the dissem category copies both
+        // replacing the dissem category copies both
         // namespaces from `with`. The two fields are independent
         // post-attribution per CAPCO-2016 p41 — replacing only one
         // would silently drop the other.

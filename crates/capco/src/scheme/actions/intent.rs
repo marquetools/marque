@@ -240,7 +240,7 @@ fn apply_fact_add(
             TOK_ORCON_USGOV => DissemControl::OcUsgov,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
-        // PR 9b (T132): FactAdd on the CAT_DISSEM axis writes to
+        // FactAdd on the CAT_DISSEM axis writes to
         // `dissem_us` by default. The CAPCO-2016 p41 reciprocity rule
         // says these tokens are US-attributed in any US-classified
         // marking (the overwhelming majority of FactAdd consumers);
@@ -459,7 +459,7 @@ fn apply_fact_remove(
             TOK_EYES => DissemControl::Eyes,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
-        // PR 9b (T132): FactRemove on the CAT_DISSEM axis filters the
+        // FactRemove on the CAT_DISSEM axis filters the
         // target token from BOTH namespaces — a removal request is
         // namespace-agnostic at the rule level (the rule says "drop
         // RELIDO", not "drop RELIDO from US"; consumers that need

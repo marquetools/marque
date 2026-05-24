@@ -393,7 +393,7 @@ pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 // `TOK_DCNI` is Pattern-C-neutral. verified 2026-05-16.
 pub const TOK_DCNI: TokenId = TokenId(147); // DCNI — DOD UCNI portion form, §H.6 p116
 
-// PR 9c.1 (T134): canonical NATO control-marking sentinels for
+// canonical NATO control-marking sentinels for
 // ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
 // shapes added in `marque-ism` PR 9c.1 Commit 1:
 //   - ATOMAL lives in the AEA axis as `AeaMarking::Atomal(AtomalBlock)`
