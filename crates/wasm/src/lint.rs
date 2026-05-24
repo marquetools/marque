@@ -8,11 +8,11 @@ use marque_engine::LintOptions;
 
 /// Lint text, returning NDJSON conforming to `contracts/diagnostic.json`.
 /// One diagnostic per line, newline-terminated. Byte-identical to the CLI's
-/// `--format json` output (SC-008) — the truncation case (deadline tripped
+/// `--format json` output — the truncation case (deadline tripped
 /// mid-pass) returns whatever partial NDJSON the engine produced before
 /// abort, exactly matching the CLI's stdout shape on the same condition.
 ///
-/// Spec 005 §R3 / Constitution III analysis (T043): when `config_json`
+/// Constitution III (WASM safety): when `config_json`
 /// carries `deadline_ms`, the engine's per-candidate deadline check
 /// activates and the lint pass cooperatively aborts on expiry. This is
 /// a *runtime budget cap*, not a vocabulary or scoring change — the

@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Spec 005 Phase 3c — T044: byte-identical NDJSON parity between
+//! Byte-identical NDJSON parity between
 //! `lint_native(text, deadline_ms)` (the WASM-target entry point
 //! exercised here on native) and the equivalent native engine call
 //! `Engine::lint_with_options(text, &LintOptions { deadline: Some(_) })`.
 //!
 //! The non-deadline parity is already pinned at full corpus scope by
-//! `tests/native_parity.rs` (SC-008). This file extends that contract
+//! `tests/native_parity.rs`. This file extends that contract
 //! to the deadline path: a configured `deadline_ms` MUST NOT alter the
 //! NDJSON shape relative to a deadline-free call on the same fixture
 //! when the deadline does not trip, and a pre-expired deadline MUST
@@ -48,13 +48,13 @@ fn engine() -> Engine {
 
 // Native-side projection used to render the NDJSON expected from the
 // engine — matches the shape `marque-wasm` and `marque/src/render.rs`
-// produce, so any divergence between the three surfaces SC-008 fails
-// here (mirrors `tests/native_parity.rs`).
+// produce, so any divergence between the three surfaces fails the
+// parity check here (mirrors `tests/native_parity.rs`).
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    /// T044 PM OD-2: 2-tuple `RuleId` wire shape. Mirrors the CLI and
-    /// WASM emitters' `RuleIdJson` for SC-008 byte-identical NDJSON.
+    /// 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for byte-identical NDJSON.
     rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
@@ -345,8 +345,8 @@ fn wasm_deadline_ms_does_not_invalidate_engine_cache() {
 
 #[test]
 fn wasm_rejects_negative_deadline_ms() {
-    // T041 validation — negative `deadline_ms` is rejected before any
-    // engine work. JS callers should never construct this; rejecting
+    // Negative `deadline_ms` is rejected before any engine work.
+    // JS callers should never construct this; rejecting
     // catches a serialization or transformation bug.
     let cfg = r#"{"deadline_ms": -1}"#;
     let err = marque_wasm::lint_native("(S//NF)", Some(cfg.to_owned()))
@@ -359,7 +359,7 @@ fn wasm_rejects_negative_deadline_ms() {
 
 #[test]
 fn wasm_rejects_non_finite_deadline_ms() {
-    // Defense in depth for T041 — non-finite `deadline_ms` values are
+    // Defense in depth — non-finite `deadline_ms` values are
     // rejected before reaching the engine. There are two layers:
     //
     // 1. `serde_json` itself rejects `1e500` (overflows to f64::INFINITY)

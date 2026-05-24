@@ -26,21 +26,12 @@ use secrecy::SecretSlice;
 /// result.diagnostics.clear();
 /// ```
 ///
-/// Spec 005 added `truncated`, `candidates_processed`, and
-/// `candidates_total` to surface deadline-driven cooperative
-/// cancellation.
-///
-/// **Phase 1 status (current build):** deadline enforcement is not
-/// wired yet. Lint passes run to completion regardless of
-/// `LintOptions::deadline`, so `truncated` is always `false` and
-/// both candidate-count fields are always `0`. The semantics below
-/// describe the Phase 2 behavior that lands in tasks T007–T009.
-///
-/// Once Phase 2 wiring lands: a fully completed pass reports
-/// `truncated: false` with `candidates_processed ==
-/// candidates_total`. An already-expired deadline returns
-/// immediately with `truncated: true` and both counts at `0`.
-/// Mid-document expiry produces `truncated: true` with
+/// `truncated`, `candidates_processed`, and `candidates_total` surface
+/// deadline-driven cooperative cancellation. A fully completed pass
+/// reports `truncated: false` with `candidates_processed ==
+/// candidates_total`. An already-expired deadline returns immediately
+/// with `truncated: true` and both counts at `0`. Mid-document expiry
+/// produces `truncated: true` with
 /// `0 < candidates_processed < candidates_total`.
 #[non_exhaustive]
 #[derive(Debug, Default, Clone)]
@@ -131,17 +122,15 @@ impl LintResult {
     }
 
     /// Number of diagnostics that are configured at `Severity::Fix` AND
-    /// carry a fix payload (either legacy [`FixProposal`] or new
-    /// [`marque_rules::FixIntent`]). A diagnostic at `Fix` severity but
-    /// with neither `fix` nor `fix_intent` populated is not counted,
-    /// since it cannot produce an `AppliedFix` downstream.
+    /// carry an actionable payload (`Diagnostic.fix` or
+    /// `Diagnostic.text_correction`). A diagnostic at `Fix` severity
+    /// with neither populated is not counted, since it cannot produce
+    /// an `AppliedFix` or `TextCorrection` downstream.
     ///
-    /// Both arms are counted to keep `fix_count` honest across the
-    /// PR 3c.B Commit 2–9 transition: in Commit 2 only `d.fix` ever
-    /// fires, but Commit 3+ migrates rules to emit `fix_intent`. The
-    /// server's response struct ([`marque_server`]) and CLI exit-code
-    /// summary both depend on `fix_count` matching the eventual
-    /// `applied.len()` from `Engine::fix`.
+    /// Both arms are counted because rules emit either `d.fix` or
+    /// `d.text_correction`. The server's response struct ([`marque_server`])
+    /// and CLI exit-code summary both depend on `fix_count` matching the
+    /// eventual `applied.len()` from `Engine::fix`.
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
         self.diagnostics
@@ -173,23 +162,18 @@ pub struct FixResult {
     /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
-    /// **`marque-1.0` audit stream.** Per PR 3c.2.D / PM-D-8 a
-    /// single [`AuditLine<S>`] stream preserves the FR-016
-    /// promotion-order invariant across the marking-fix channel
-    /// (`AuditLine::AppliedFix`) and the text-correction channel
-    /// (`AuditLine::TextCorrection`). The renderer projects each
-    /// line to its NDJSON record type.
-    ///
-    /// Post PR 3c.2.D (atomic cutover) this is the sole audit-output
-    /// channel. The pre-cutover `applied: Vec<AppliedFix<S>>` v1
-    /// stream retired with the `marque-mvp-3 → marque-1.0` schema
-    /// flip.
+    /// Audit stream. A single [`AuditLine<CapcoScheme>`] stream preserves the
+    /// confidence-then-span promotion-order invariant across the
+    /// marking-fix channel (`AuditLine::AppliedFix`) and the
+    /// text-correction channel (`AuditLine::TextCorrection`). The
+    /// renderer projects each line to its NDJSON record type. This is
+    /// the sole audit-output channel.
     pub audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
     pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
     /// `true` when pass-1 re-parse failed and the engine emitted an
-    /// `R002` synthetic diagnostic (PR 7b, FR-024). When set:
+    /// `R002` synthetic diagnostic. When set:
     ///
     /// - [`Self::source`] holds the post-pass-1 buffer ONLY. Pass-2
     ///   never ran, so any pass-2 fixes that would have applied are
@@ -215,28 +199,20 @@ pub struct FixResult {
 impl FixResult {
     /// Iterate marking-side audit lines (zero-alloc filter view).
     ///
-    /// Post PR 3c.2.D (atomic cutover) the sole audit-output channel
-    /// is [`Self::audit_lines`]: a sum-type stream
-    /// (`AuditLine::AppliedFix` for marking fixes,
-    /// `AuditLine::TextCorrection` for the C001 / E006 text-
-    /// correction path). This accessor preserves the pre-cutover
-    /// read shape for consumers that only need marking fixes, so
-    /// the migration doesn't force every assertion site to pattern-
-    /// match the sum type.
+    /// The sole audit-output channel is [`Self::audit_lines`]: a
+    /// sum-type stream (`AuditLine::AppliedFix` for marking fixes,
+    /// `AuditLine::TextCorrection` for the text-correction path). This
+    /// accessor exposes a marking-fix-only read shape for consumers that
+    /// don't need to pattern-match the sum type.
     ///
-    /// # Zero-alloc (PR 3c.2.D fixup F-3)
+    /// # Zero-alloc
     ///
     /// Returns `impl Iterator<Item = &AppliedFix<CapcoScheme>>` —
     /// each invocation walks [`Self::audit_lines`] lazily without
     /// allocating an intermediate `Vec`. Callers that need `.len()`
     /// or `.is_empty()` use `.count()` / `.next().is_none()`
     /// respectively (or `Iterator::collect` into a local `Vec` when
-    /// the same fixes need to be visited twice). The pre-fixup
-    /// `Vec<&AppliedFix>` shape allocated on every call, which the
-    /// `crates/engine/benches/fix_latency.rs` hot path called four
-    /// times in one function body — exactly the kind of post-
-    /// stabilization breaking signature change pre-users freedom
-    /// permits.
+    /// the same fixes need to be visited twice).
     #[inline]
     pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<CapcoScheme>> {
         self.audit_lines.iter().filter_map(|line| match line {
@@ -302,7 +278,7 @@ mod tests {
     fn is_clean_returns_false_when_has_diagnostics() {
         let dirty_result = LintResult {
             diagnostics: vec![Diagnostic::new(
-                // T044: synthetic test fixture in reserved `"test"` scheme.
+                // Synthetic test fixture in the reserved `"test"` scheme.
                 RuleId::new("test", "synthetic.is-clean-fixture"),
                 Severity::Error,
                 Span::new(0, 0),
@@ -317,7 +293,7 @@ mod tests {
 
     #[test]
     fn info_count_isolates_info_from_error_and_warn() {
-        // T035c-2: `Severity::Info` diagnostics count in `info_count()`
+        // `Severity::Info` diagnostics count in `info_count()`
         // only — they do NOT contribute to `error_count()` or
         // `warn_count()`. Critical because the CLI has two non-zero
         // exit gates: `error_count() > 0 || fix_count() > 0` maps to
@@ -329,8 +305,6 @@ mod tests {
         let result = LintResult {
             diagnostics: vec![
                 Diagnostic::new(
-                    // T044: W034 → `portion.sci.unpublished-custom-control`
-                    // per legacy-rule-id-map.md §1.
                     RuleId::new("capco", "portion.sci.unpublished-custom-control"),
                     Severity::Info,
                     Span::new(0, 0),
@@ -347,7 +321,6 @@ mod tests {
                     None,
                 ),
                 Diagnostic::new(
-                    // T044: W003 → `page.dissem.non-ic-dissem-in-classified-banner`.
                     RuleId::new("capco", "page.dissem.non-ic-dissem-in-classified-banner"),
                     Severity::Warn,
                     Span::new(0, 0),
@@ -356,8 +329,7 @@ mod tests {
                     None,
                 ),
                 Diagnostic::new(
-                    // T044: E001 was retired in PR 3c.B Commit 6;
-                    // synthetic test fixture to exercise error_count().
+                    // Synthetic test fixture to exercise error_count().
                     RuleId::new("test", "synthetic.error-count-fixture"),
                     Severity::Error,
                     Span::new(0, 0),

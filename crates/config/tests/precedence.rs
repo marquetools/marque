@@ -6,14 +6,14 @@
 // which is itself gated on the same feature (issue #454, WASM size).
 #![cfg(feature = "toml-loader")]
 
-//! Phase 5 — Config precedence chain and hard-fail validator tests (T052, T053).
+//! Config precedence chain and hard-fail validator tests.
 //!
-//! Tests the four-layer precedence chain (FR-007):
+//! Tests the four-layer precedence chain:
 //!   committed `.marque.toml` → `.marque.local.toml` → env vars → CLI flags
 //!
 //! And the three hard-fail scenarios from `contracts/cli.md`:
-//!   1. `[user]` section in committed config (FR-010, SC-006) → exit 65
-//!   2. Schema version mismatch (FR-011) → exit 65
+//!   1. `[user]` section in committed config → exit 65
+//!   2. Schema version mismatch → exit 65
 //!   3. Confidence threshold out of range → exit 65
 
 use marque_config::ConfigError;
@@ -29,7 +29,8 @@ fn make_tmpdir(name: &str) -> PathBuf {
     dir
 }
 
-/// The compiled schema version — config files must use this to pass FR-011.
+/// The compiled schema version — config files must use this to pass
+/// the schema-version validator.
 const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
 
 /// Global mutex serializing all env-var access in this test binary.
@@ -78,7 +79,7 @@ impl Drop for EnvGuard {
 }
 
 // -----------------------------------------------------------------------
-// T052: Four-layer precedence chain
+// Four-layer precedence chain
 // -----------------------------------------------------------------------
 
 #[test]
@@ -281,7 +282,7 @@ classifier_id = ""
     let _ = fs::remove_dir_all(&dir);
 }
 
-// F-07: local config intentionally carries only user identity, not rules.
+// Local config intentionally carries only user identity, not rules.
 #[test]
 fn layer2_local_config_does_not_override_rule_severities() {
     let dir = make_tmpdir("l2-rules-ignored");
@@ -322,7 +323,7 @@ E001 = "off"
 }
 
 // -----------------------------------------------------------------------
-// T053: Hard-fail scenarios
+// Hard-fail scenarios
 // -----------------------------------------------------------------------
 
 #[test]
@@ -438,7 +439,7 @@ fn hard_fail_env_threshold_not_a_float() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-// F-11: NaN parses as f32 but must be rejected by set_confidence_threshold.
+// NaN parses as f32 but must be rejected by set_confidence_threshold.
 #[test]
 fn hard_fail_env_threshold_nan() {
     let dir = make_tmpdir("hf-env-nan");
@@ -456,7 +457,7 @@ fn hard_fail_env_threshold_nan() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-// F-02: empty MARQUE_CLASSIFIER_ID must not overwrite a populated local value.
+// Empty MARQUE_CLASSIFIER_ID must not overwrite a populated local value.
 #[test]
 fn empty_env_classifier_id_does_not_overwrite_local() {
     let dir = make_tmpdir("env-empty-classifier");

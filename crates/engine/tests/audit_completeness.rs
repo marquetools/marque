@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 4 — audit completeness tests (T045).
+//! Audit completeness tests.
 //!
-//! Enforces SC-004: every AppliedFix has a complete payload (no missing fields,
-//! no orphaned changes). Sub-threshold FixProposals never appear in the audit
-//! stream.
+//! Every AppliedFix has a complete payload (no missing fields, no
+//! orphaned changes). Sub-threshold FixProposals never appear in the
+//! audit stream.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -31,9 +31,8 @@ fn test_engine() -> Engine {
 #[test]
 fn applied_fix_has_all_required_fields() {
     let engine = test_engine();
-    // This source triggers E002 at confidence 0.97. (PR 3c.B Commit
-    // 6 retired E001 — the original "high confidence single fix"
-    // anchor — into the renderer.)
+    // This source triggers the REL-TO-missing-USA fix at confidence
+    // 0.97 — the "high confidence single fix" anchor.
     let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
@@ -42,10 +41,10 @@ fn applied_fix_has_all_required_fields() {
         "should have at least one applied fix"
     );
 
-    // Post-PR-3c.2.D the engine's audit stream is `Vec<AuditLine>`.
-    // Each line is either a marking fix (`AppliedFix`) or a text-
-    // correction (`AppliedTextCorrection`); both carry the audit-
-    // record contract fields. Walk both arms.
+    // The engine's audit stream is `Vec<AuditLine>`. Each line is
+    // either a marking fix (`AppliedFix`) or a text-correction
+    // (`AppliedTextCorrection`); both carry the audit-record contract
+    // fields. Walk both arms.
     for line in &result.audit_lines {
         let (rule, span, source, timestamp) = match line {
             AuditLine::AppliedFix(f) => (&f.rule, f.span, f.source, f.timestamp),
@@ -53,8 +52,8 @@ fn applied_fix_has_all_required_fields() {
             _ => continue,
         };
 
-        // T044: rule is the 2-tuple `(scheme, predicate_id)`. The
-        // engine emits only known schemes (`"capco"` for CAPCO rules,
+        // Rule is the 2-tuple `(scheme, predicate_id)`. The engine
+        // emits only known schemes (`"capco"` for CAPCO rules,
         // `"engine"` for R001/R002 sentinels) — there is no `"test"`
         // emission in a real engine audit stream. Predicate ids are
         // non-empty by the `RuleId::new` contract.
@@ -152,10 +151,10 @@ fn sub_threshold_proposals_never_in_applied() {
     let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
-    // No fix should be applied at threshold 0.99 — E002's 0.97 is
-    // sub-threshold.
-    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator` (not
-    // `Debug`); collect once for the `is_empty` + Debug-render path.
+    // No fix should be applied at threshold 0.99 — the
+    // REL-TO-missing-USA fix's 0.97 is sub-threshold.
+    // `applied_fixes()` is `impl Iterator` (not `Debug`); collect once
+    // for the `is_empty` + Debug-render path.
     let applied: Vec<_> = result.applied_fixes().collect();
     assert!(
         applied.is_empty(),
@@ -172,8 +171,9 @@ fn sub_threshold_proposals_never_in_applied() {
         );
     }
 
-    // E002 (post-T044: `portion.dissem.rel-to-missing-usa`) should
-    // remain in remaining_diagnostics.
+    // The REL-TO-missing-USA rule
+    // (`portion.dissem.rel-to-missing-usa`) should remain in
+    // remaining_diagnostics.
     assert!(
         result
             .remaining_diagnostics
@@ -225,7 +225,7 @@ fn applied_fix_timestamp_matches_clock() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 7b — R002 audit-record integrity
+// R002 audit-record integrity
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -331,7 +331,7 @@ struct TemplateParityFixture {
     name: &'static str,
     /// Source buffer to lint and fix.
     source: &'static [u8],
-    /// Predicate id (post-T044 form) of the rule under test.
+    /// Predicate id of the rule under test.
     predicate_id: &'static str,
     /// Expected template on the lint-side Diagnostic.
     expected_lint_template: MessageTemplate,

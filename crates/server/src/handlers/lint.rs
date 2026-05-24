@@ -31,7 +31,7 @@ pub async fn lint_handler(
     // would otherwise short-circuit with 422 before this handler ran).
     reject_if_corpus_override("/v1/lint", &uri, &headers)?;
 
-    // Spec 005 §R3 — validate `X-Marque-Deadline` BEFORE body
+    // Validate `X-Marque-Deadline` BEFORE body
     // deserialization so an out-of-range header surfaces as 400, not
     // as 422 (which axum's Json extractor would emit on a malformed
     // body). The `Instant::now()` stamp is deferred until just
@@ -67,7 +67,7 @@ pub async fn lint_handler(
     };
 
     if truncated {
-        // Spec 005 §10.2 — surface partial-pass status on the wire
+        // Surface partial-pass status on the wire
         // shell as well as in the body. Status remains 200 because
         // the lint pass produced a usable (if incomplete) result;
         // the asymmetric 504-on-deadline shape is reserved for

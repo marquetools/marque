@@ -113,8 +113,6 @@ fn assemble_r002_result_carries_through_pass0_dropped_diagnostics() {
     };
 
     let dropped = vec![Diagnostic::<CapcoScheme>::new(
-        // T044: legacy C001 → predicate id
-        // `marking.correction.token-typo`.
         RuleId::new("capco", "marking.correction.token-typo"),
         Severity::Fix,
         Span::new(20, 24),
@@ -176,10 +174,10 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         source: FixSource::BuiltinRule,
         migration_ref: None,
     };
-    // T044: keep the test's `(rule, span)` matching invariant by
-    // using a synthetic `"test"`-scheme id on both the diagnostic
-    // and the audit line — the assembler's filter key is
-    // `(rule, span)` so both ends must agree on rule identity.
+    // Keep the test's `(rule, span)` matching invariant by using a
+    // synthetic `"test"`-scheme id on both the diagnostic and the audit
+    // line — the assembler's filter key is `(rule, span)` so both ends
+    // must agree on rule identity.
     let diag_with_fix = Diagnostic::with_fix(
         RuleId::new("test", "E006"),
         Severity::Error,
@@ -270,8 +268,8 @@ mod sentinel_tests {
     ///
     /// Exercises the `Err` branch and verifies the format-arg
     /// interpolation lands the three `usize` operands in the
-    /// rendered string. The G13 negative assertions guard against
-    /// a future format-string edit that re-introduces operand
+    /// rendered string. The content-ignorance negative assertions guard
+    /// against a future format-string edit that re-introduces operand
     /// `Debug` representation.
     #[test]
     fn check_portions_unchanged_returns_err_on_mismatched_lengths() {
@@ -291,8 +289,8 @@ mod sentinel_tests {
             "expected rule_count phrase in error, got: {err}"
         );
 
-        // G13 (Constitution V Principle V): no type names that
-        // would imply portion content leakage.
+        // Audit content-ignorance (Constitution V Principle V): no type
+        // names that would imply portion content leakage.
         assert!(
             !err.contains("CanonicalAttrs"),
             "G13 violation: type name `CanonicalAttrs` in error: {err}"
@@ -350,21 +348,19 @@ mod sentinel_tests {
         );
     }
 
-    /// Test 4 — load-bearing G13 invariant test.
+    /// Test 4 — load-bearing content-ignorance invariant test.
     ///
     /// Constructs a `CanonicalAttrs` with distinctive free-text
-    /// content (`classified_by`) — the kind of field that the
-    /// retired `debug_assert_eq!` macro would have auto-dumped via
-    /// `Debug` formatting on panic per the Copilot round-1 finding
-    /// (`core::panicking::assert_failed_inner` formats both
-    /// operands as `left: {:?} right: {:?}` regardless of any
-    /// custom message). Calls the helper with a mismatch and
-    /// asserts the rendered error string does NOT contain the
-    /// distinctive content.
+    /// content (`classified_by`) — the kind of field that a
+    /// `debug_assert_eq!` macro would auto-dump via `Debug` formatting
+    /// on panic (`core::panicking::assert_failed_inner` formats both
+    /// operands as `left: {:?} right: {:?}` regardless of any custom
+    /// message). Calls the helper with a mismatch and asserts the
+    /// rendered error string does NOT contain the distinctive content.
     ///
-    /// This is the redundant-by-design G13 check that pins the
-    /// helper's content-ignorance contract independent of the
-    /// type-name negative assertions in test 2 — the failure mode
+    /// This is the redundant-by-design content-ignorance check that
+    /// pins the helper's contract independent of the type-name negative
+    /// assertions in test 2 — the failure mode
     /// being guarded against is "a future helper edit pipes
     /// element content through `{:?}`", and the sentinel value
     /// here is what makes that regression detectable.
@@ -386,9 +382,8 @@ mod sentinel_tests {
 
         // The load-bearing assertion: the distinctive sentinel
         // string MUST NOT appear anywhere in the rendered error.
-        // If this fires, the helper has regressed against the
-        // round-1 Copilot finding — operand content is leaking
-        // through the panic surface.
+        // If this fires, the helper has regressed — operand content is
+        // leaking through the panic surface.
         assert!(
             !err.contains(G13_SENTINEL),
             "G13 violation: classified_by content leaked into sentinel \

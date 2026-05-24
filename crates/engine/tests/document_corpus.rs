@@ -121,10 +121,9 @@ fn scanner_counts_match_ground_truth() {
     let mut violations: Vec<String> = Vec::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): scheme constructed once per
-    // test-function invocation, reused across all fixtures. Inline
-    // construction stays in the test function (no module-level
-    // LazyLock per PM-B-3 hermeticity).
+    // Scheme constructed once per test-function invocation, reused
+    // across all fixtures. Inline construction stays in the test
+    // function (no module-level LazyLock — keeps the test hermetic).
     let scheme = CapcoScheme::new();
 
     for marked_path in &fixtures {

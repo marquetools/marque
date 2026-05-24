@@ -2,35 +2,33 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7c — `Engine::fix` latency on a 10 KB document under two-pass dispatch.
+//! `Engine::fix` latency on a 10 KB document under two-pass dispatch.
 //!
-//! Two bench functions per D-7.11:
+//! Two bench functions:
 //!
 //! - **`fix_10kb_pass2_only`**: 10 KB input with only `Phase::WholeMarking`-
-//!   triggering content (no C001 corrections, no E006 deprecations). The
+//!   triggering content (no text corrections, no deprecations). The
 //!   short-circuit path through pass-1 (empty `pass1_applied`) exercises
 //!   the no-reshape branch — the pre-pass-1 attrs cache is empty, the
 //!   re-parse arm short-circuits, and pass-2 dispatches directly against
 //!   the post-pass-0 buffer.
 //! - **`fix_10kb_two_pass`**: 10 KB input with BOTH `Phase::Localized`
-//!   triggers (C001 typos that the corrections map fixes) AND
-//!   `Phase::WholeMarking` triggers. Exercises the full two-pass path:
-//!   pre-pass-1 cache population, post-pass-1 re-lint, FR-023
-//!   disambiguation, and I-18 overlap demotion.
+//!   triggers (corrections-map typos) AND `Phase::WholeMarking`
+//!   triggers. Exercises the full two-pass path: pre-pass-1 cache
+//!   population, post-pass-1 re-lint, disambiguation, and overlap
+//!   demotion.
 //!
 //! Both benches construct the engine ONCE outside the `b.iter` loop —
 //! constructing the AhoCorasick automaton on every iteration would
 //! dominate the measurement (~1 ms / construction; well above the
-//! per-call SC-001 budget). The constant-time engine construction is a
-//! native-call concern, not a per-fix concern.
+//! per-call interactive-latency budget). The constant-time engine
+//! construction is a native-call concern, not a per-fix concern.
 //!
 //! # Gating
 //!
-//! - **Absolute (SC-001 / FR-030)**: p95 ≤ 16 ms on 10 KB inputs.
-//! - **Delta (D-7.11 / FR-033)**: p99 ≤ baseline.p99 × 1.05 against the
-//!   pre-PR-7c baseline. Capture: `cargo bench --bench fix_10kb -- \
-//!   --save-baseline pre-pr7c` on `origin/staging`; then `--save-baseline pr7c`
-//!   on this branch. `scripts/bench-check.sh` enforces the delta.
+//! - **Absolute (interactive-latency gate)**: p95 ≤ 16 ms on 10 KB inputs.
+//! - **Delta**: p99 ≤ baseline.p99 × 1.05 against the prior baseline.
+//!   `scripts/bench-check.sh` enforces the delta.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
@@ -135,7 +133,6 @@ fn fix_10kb_pass2_only(c: &mut Criterion) {
     // re-parse arm and dispatches pass-2 directly against the
     // post-pass-0 buffer.
     let result = engine.fix(&input, FixMode::Apply);
-    // T044: legacy `C001` → predicate id `marking.correction.token-typo`.
     debug_assert!(
         result
             .applied_fixes()
@@ -151,17 +148,15 @@ fn fix_10kb_pass2_only(c: &mut Criterion) {
 fn fix_10kb_two_pass(c: &mut Criterion) {
     let input = build_two_pass_input(10_000);
     let engine = build_engine_with_corrections();
-    // Sanity-check: pass-0 / pass-1 produces ≥1 applied C001 text
-    // correction (the `SERCET → SECRET` typo splice), driving the
-    // engine through the post-pass-1 re-parse arm and exercising the
-    // FR-023 / I-18 codepaths.
+    // Sanity-check: pass-0 / pass-1 produces ≥1 applied text correction
+    // (the `SERCET → SECRET` typo splice), driving the engine through
+    // the post-pass-1 re-parse arm and exercising the disambiguation +
+    // overlap-demotion codepaths.
     //
-    // PR 3c.2.D's `marque-mvp-3 → marque-1.0` audit-schema cutover
-    // split non-marking text corrections off `applied_fixes()` into
-    // the dedicated `applied_text_corrections()` channel; the C001
-    // fix lands there, not in `applied_fixes()`. Check both channels
-    // so this sanity assertion reflects "the fixture exercises at
-    // least one fix path," not "the fixture exercises the
+    // Text corrections land on the dedicated
+    // `applied_text_corrections()` channel, not in `applied_fixes()`.
+    // Check both channels so this sanity assertion reflects "the fixture
+    // exercises at least one fix path," not "the fixture exercises the
     // marking-fix channel specifically."
     let result = engine.fix(&input, FixMode::Apply);
     debug_assert!(

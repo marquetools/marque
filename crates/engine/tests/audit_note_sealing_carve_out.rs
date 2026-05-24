@@ -7,19 +7,15 @@
 //!
 //! ## Why this test exists
 //!
-//! Per PR 3.7's architectural plan
-//! (`docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
-//! Stage C.5), `AuditNote` lands in PR 3.7 as type + sealing only. The
-//! production engine construct-site is deferred to PR 4 (alongside
-//! `Engine::project::closure()` wiring); the NDJSON renderer dispatch
-//! and `"type"` discriminator landed in the `marque-mvp-3 → marque-1.0`
-//! audit-schema cutover at PR 3c.2.D alongside BLAKE3 digesting,
-//! closed MessageTemplate JSON, and the T055 content-ignorance
-//! canary. PR 3.7 reviewers therefore cannot observe an end-to-end
-//! audit_note line in NDJSON output during review.
+//! `AuditNote` ships as a type + sealing surface; the production engine
+//! construct-site is not yet wired (it will land alongside
+//! `Engine::project::closure()`). The NDJSON renderer dispatch and
+//! `"type"` discriminator already exist. Without a production
+//! construct-site, an end-to-end audit_note line cannot be observed in
+//! NDJSON output, so this test exercises the sealing pattern directly.
 //!
-//! This test closes the reviewer-blindness gap by exercising the
-//! sealing pattern end-to-end with synthetic fixture data:
+//! It exercises the sealing pattern end-to-end with synthetic fixture
+//! data:
 //!
 //! 1. Mint an `EnginePromotionToken` via `__engine_construct` (the test
 //!    constructor).
@@ -42,8 +38,8 @@
 //!    surface.
 //! 3. **Test-fixture construction only** — this is fixture construction,
 //!    not a "convenience helper for the engine"; the engine production
-//!    construct-site lands in PR 4 and uses the same `__engine_promote`
-//!    call site from inside `Engine::fix_inner` or similar.
+//!    construct-site will use the same `__engine_promote` call from
+//!    inside `Engine::fix_inner` or similar.
 //!
 //! Each call site below carries an inline comment naming the carve-out.
 
@@ -80,7 +76,7 @@ fn audit_note_engine_promote_sealing_pattern() {
     };
 
     let timestamp = SystemTime::UNIX_EPOCH; // deterministic for snapshot
-    // Use the SC-006 allowlisted test sentinel (see marque/tests/no_classifier_id_in_commits.rs
+    // Use the allowlisted test sentinel (see marque/tests/no_classifier_id_in_commits.rs
     // ALLOWED_SENTINELS list — TEST-AUDIT-99 is the audit-test-scoped sentinel).
     let classifier_id: Option<Arc<str>> = Some(Arc::from("TEST-AUDIT-99"));
 
@@ -91,16 +87,10 @@ fn audit_note_engine_promote_sealing_pattern() {
     // AuditNote construction exercising the __engine_promote seal;
     // verifies sealing pattern compiles + round-trips via Debug.
     let note = AuditNote::<CapcoScheme>::__engine_promote(
-        // T044 (Wave 2 Agent B decision): the pre-T044
-        // `"capco/noforn-if-no-fdr"` string looked like a
-        // closure-rule key but never matched a real closure row in
-        // `closure_table.rs::CLOSURE_TABLE` (the test fabricates the
-        // AuditNote for the sealing carve-out — the row name is
-        // synthetic). Reclassified to the reserved `"test"` scheme
-        // so it is unambiguously a test fixture per the
-        // `legacy-rule-id-map.md` §10 entry for this site. The
-        // structural `row_name` field below preserves the legacy
-        // slash form (separate identifier surface from `RuleId`).
+        // The fabricated AuditNote uses the reserved `"test"` scheme so
+        // it is unambiguously a test fixture. The structural `row_name`
+        // field below carries the slash form (a separate identifier
+        // surface from `RuleId`).
         RuleId::new("test", "synthetic.audit-note-sealing-capco-fixture"),
         capco(SectionLetter::H, 8, 145),
         AuditNoteKind::InferredFact,
@@ -152,9 +142,8 @@ fn audit_note_clone_does_not_require_scheme_clone() {
     // Test-fixture carve-out per Constitution V Principle V — synthetic
     // AuditNote construction for the Clone-surface test below.
     let note: AuditNote<CapcoScheme> = AuditNote::__engine_promote(
-        // T044: legacy `"test/clone"` → `"test"` scheme + synthetic
-        // predicate id. The `row_name` field below stays unchanged
-        // (separate identifier surface).
+        // Reserved `"test"` scheme + synthetic predicate id. The
+        // `row_name` field below is a separate identifier surface.
         RuleId::new("test", "synthetic.audit-note-sealing-clone-fixture"),
         capco(SectionLetter::A, 1, 1),
         AuditNoteKind::InferredFact,

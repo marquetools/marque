@@ -289,7 +289,7 @@ fn parsed_markings_cache_persists_across_page_breaks() {
     );
 }
 
-// M6: FR-016 tiebreaker — same span, different rule IDs.
+// Fix-ordering tiebreaker — same span, different rule IDs.
 // The sort is (span.end DESC, span.start DESC, rule_id ASC, replacement ASC).
 // When two fixes target the exact same span, rule_id ASC breaks the tie,
 // and C-1 drops the second (overlapping) fix.
@@ -312,7 +312,7 @@ fn fr016_same_span_different_rule_ids_picks_lower_rule_id() {
     assert_eq!(text_corrections[0].replacement.as_str(), "AA");
 }
 
-// FR-016 tiebreaker — same span, same rule ID, different replacements.
+// Fix-ordering tiebreaker — same span, same rule ID, different replacements.
 #[test]
 fn fr016_same_span_same_rule_picks_lower_replacement() {
     let engine = engine_with(vec![
@@ -326,7 +326,7 @@ fn fr016_same_span_same_rule_picks_lower_replacement() {
 }
 
 // -----------------------------------------------------------------------
-// T026a (PR 3b Sub-move A) — per-emitted-id severity-override propagation
+// Per-emitted-id severity-override propagation
 // -----------------------------------------------------------------------
 //
 // The walker collapse changed the engine's configured-severity override
@@ -381,18 +381,16 @@ fn lint_propagates_warn_override_to_walker_emitted_e031_diagnostic() {
     // its emitted value (Fix → demoted to Suggest by the post-pass)
     // to Warn.
     //
-    // This is the load-bearing invariant of the engine change in
-    // commit `refactor(capco,engine): collapse banner roll-up rules
-    // into walker (T026a)`. A future regression that quietly
-    // re-keys the override on the registered rule's `id()` would
-    // still pass for non-walker rules (where registered ID equals
-    // emitted ID) but would either lose the per-row override or
-    // silently apply the walker's `default_severity()` to E035 /
-    // E040 — both of which are the failure modes this test exists
-    // to prevent.
-    // T044: legacy `"E031"` config key → wire-string form
-    // `"capco:banner.banner-rollup.sar-portions-roll-up"` per
-    // OD-7. The diagnostic's predicate id is the SAR roll-up tuple.
+    // A future regression that quietly re-keys the override on the
+    // registered rule's `id()` would still pass for non-walker rules
+    // (where registered ID equals emitted ID) but would either lose the
+    // per-row override or silently apply the walker's
+    // `default_severity()` to the SCI / FGI roll-up rows — both of which
+    // are the failure modes this test exists to prevent.
+    //
+    // Users type the wire-string config key
+    // `"capco:banner.banner-rollup.sar-portions-roll-up"`. The
+    // diagnostic's predicate id is the SAR roll-up tuple.
     let engine =
         capco_engine_with_overrides(&[("capco:banner.banner-rollup.sar-portions-roll-up", "warn")]);
     let diagnostics = engine.lint(SAR_BANNER_MISSING_PROGRAM).diagnostics;
@@ -419,22 +417,16 @@ fn lint_propagates_warn_override_to_walker_emitted_e031_diagnostic() {
 
 #[test]
 fn lint_propagates_warn_override_to_walker_emitted_e035_diagnostic() {
-    // Parallel test for E035 — the SCI row of the walker. E035 is
-    // NOT a registered rule ID after T026a (the walker registers
-    // under E031 only); a configured `E035 = "warn"` therefore can
-    // ONLY take effect through the per-emitted-id override path.
-    // This is exactly the case where pre-change behavior diverges
-    // from post-change behavior: the prior engine looked up
-    // overrides by `rule.id()`, never saw E035 because no
-    // registered rule has that ID, and applied the walker's
-    // `default_severity()` (Error) to the diagnostic. The post-
-    // change path looks up by `d.rule.as_str()`, finds the E035
-    // override, and rewrites to Warn.
+    // Parallel test for the SCI roll-up row of the walker. That row is
+    // NOT a registered rule ID (the walker registers under the SAR
+    // roll-up row only); a configured override on it can therefore ONLY
+    // take effect through the per-emitted-id override path. An engine
+    // that keyed overrides on the registered rule's `id()` would never
+    // see the SCI row and would apply the walker's `default_severity()`
+    // (Error) to the diagnostic. The per-emitted-id path keys on
+    // `d.rule.as_str()`, finds the override, and rewrites to Warn.
     //
-    // This is the strongest end-to-end pin available for the
-    // per-emitted-id override path: there is no way for the test
-    // to pass under the pre-change semantics.
-    // T044: legacy `"E035"` config key → wire-string form
+    // Users type the wire-string config key
     // `"capco:banner.banner-rollup.sci-portions-roll-up"`.
     let engine =
         capco_engine_with_overrides(&[("capco:banner.banner-rollup.sci-portions-roll-up", "warn")]);
@@ -468,16 +460,13 @@ fn lint_off_override_skips_non_walker_rule_via_fast_path() {
     // `BannerMatchesProjectedRule`) emits diagnostics only under
     // its registered ID. Configuring that ID to `Off` must skip
     // the rule's `check()` body before invocation — the engine's
-    // pre-check fast-path skip restored after the T026a refactor
-    // made `check()` always run.
+    // pre-check fast-path skip.
     //
-    // PR 3c.B Commit 6 retired E001; this test now exercises the
-    // fast-path skip on E002 (`missing-usa-trigraph`), a non-
-    // walker rule that fires deterministically on
-    // `SECRET//REL TO GBR`. The contract is identical: with
-    // `E002 = "off"` configured, the engine must produce zero
-    // E002 diagnostics via the fast-path skip.
-    // T044: legacy `"E002"` config key → wire-string form
+    // This exercises the fast-path skip on the missing-USA-trigraph
+    // rule, a non-walker rule that fires deterministically on
+    // `SECRET//REL TO GBR`. With the rule configured `off`, the engine
+    // must produce zero diagnostics from it via the fast-path skip.
+    // Users type the wire-string config key
     // `"capco:portion.dissem.rel-to-missing-usa"`.
     let engine = capco_engine_with_overrides(&[("capco:portion.dissem.rel-to-missing-usa", "off")]);
     let diagnostics = engine.lint(b"SECRET//REL TO GBR").diagnostics;
@@ -645,7 +634,7 @@ fn build_severity_tables_catalog_id_override_lands_in_emitted_only() {
     //      but pinning it here also catches an inverted
     //      population (a future bug that conflated registered
     //      and catalog ID lookups).
-    // T044: legacy `"E035"` config → wire-string form
+    // Wire-string config key
     // `"capco:banner.banner-rollup.sci-portions-roll-up"`.
     let engine =
         capco_engine_with_overrides(&[("capco:banner.banner-rollup.sci-portions-roll-up", "warn")]);
@@ -705,9 +694,9 @@ fn build_severity_tables_skips_unparsable_severity() {
     // `.and_then(parse_config)` which returned `None` on a
     // malformed string and fell through to
     // `unwrap_or(default_severity)`. Preserve that exactly: the
-    // E002 rule's fast-path entry stays at its default and
-    // `emitted_id_overrides` does NOT contain `"E002"`.
-    // T044: legacy `"E002"` config → wire-string form.
+    // missing-USA-trigraph rule's fast-path entry stays at its default
+    // and `emitted_id_overrides` does NOT contain its predicate id.
+    // Wire-string config key.
     let engine =
         capco_engine_with_overrides(&[("capco:portion.dissem.rel-to-missing-usa", "borked")]);
 

@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-D.2 commit 7 — phase-attribution probe for
-//! `CapcoScheme::project`.
+//! Phase-attribution probe for `CapcoScheme::project`.
 //!
 //! Measures isolated calls to (a) `join_via_lattice`, (b) `closure`,
 //! (c) the trait-path `scheme.project`, (d) `from_canonical`,
@@ -13,13 +12,12 @@
 //! accumulator rebuild in isolation, and (i) `join_via_lattice`
 //! scaling.
 //!
-//! Used to attribute the PR 4b-D.2 hot-path-flip regression and to
-//! verify the commit 6-8 optimization wins. Ships in-tree so future
+//! Attributes per-stage projection cost. Ships in-tree so future
 //! perf work has a baseline to compare against.
 //!
-//! ## Post-close stage cost (post-#704, #714)
+//! ## Post-close stage cost (#704, #714)
 //!
-//! Post-#704 `scheme.closure()` runs only the 6-row `CLOSURE_TABLE`
+//! `scheme.closure()` runs only the 6-row `CLOSURE_TABLE`
 //! Kleene fixpoint. The full `scheme.project()` pipeline (see
 //! `crates/capco/src/scheme/marking_scheme_impl.rs::project_attrs_pipeline`)
 //! runs FIVE stages in order:
@@ -171,7 +169,7 @@ fn collect_portions() -> Vec<CanonicalAttrs> {
     // synthesize a representative portion mix matching the bench
     // input. Rather than wiring through internal accessors, build
     // a Vec<CanonicalAttrs> directly — that's the same shape the
-    // engine accumulator carries internally post-PR-6c (T069).
+    // engine accumulator carries internally.
     let _ = engine.lint(black_box(&input));
 
     let mut p1 = CanonicalAttrs::default();
@@ -293,8 +291,8 @@ fn phase_attribution(c: &mut Criterion) {
     });
 
     // Phase E: end-to-end engine-side replay through the
-    // `project_from_attrs_slice` fast-path (PR 6c (T069) successor
-    // to `project_from_page_context`).
+    // `project_from_attrs_slice` fast-path (successor to
+    // `project_from_page_context`).
     let page_portions: Vec<CanonicalAttrs> = portions.to_vec();
     c.bench_function("phase_e_engine_project_path", |b| {
         b.iter(|| {

@@ -53,12 +53,12 @@ fn decoder_zero_candidate_on_no_template_fit() {
 
 #[test]
 fn decoder_resolves_sar_with_trailing_noforn_via_absorption_penalty() {
-    // The SC-004 fixtures `SAR-BP-J12 …` and
+    // The mangled fixtures `SAR-BP-J12 …` and
     // `SPECIAL ACCESS REQUIRED-BUTTER POPCORN …` with a trailing
-    // NOFORN have always produced the right candidate bytes from
-    // `try_insert_delimiter`, but lost the scoring contest before
-    // PR-5 because the absorbing strict parse contributed only the
-    // classification's prior while the delim-inserted parse paid
+    // NOFORN produce the right candidate bytes from
+    // `try_insert_delimiter`, but a naive scoring contest would lose
+    // because the absorbing strict parse contributes only the
+    // classification's prior while the delim-inserted parse pays
     // the additional log-prior of NF. The
     // `HARD_SPLITTER_ABSORPTION_PENALTY` flips the contest; this
     // test pins both fixture shapes.
@@ -245,32 +245,23 @@ fn decoder_prose_glue_suppresses_u_that_null_gate_would_admit() {
 
 #[test]
 fn decoder_suppresses_single_letter_portion_via_null_hypothesis() {
-    // Issue #258 + PR1 (documents-corpus marking stratum): an
-    // isolated `(s)` (preceded by whitespace, so the prose-glue
-    // heuristic is bypassed) is the prose null-hypothesis case.
-    // The decoder must produce zero candidates so the engine
-    // doesn't synthesize a spurious R001 diagnostic.
+    // An isolated `(s)` (preceded by whitespace, so the prose-glue
+    // heuristic is bypassed) is the prose null-hypothesis case
+    // (issue #258). The decoder must produce zero candidates so the
+    // engine doesn't synthesize a spurious R001 diagnostic.
     //
-    // Before PR1: the marking-side prior for `S` was the Laplace
-    // floor (zero hits in `tests/corpus/valid/`) so the per-token
-    // marking-y delta `log P("S"|marking) − log P("S"|prose)` was
-    // negative — the null hypothesis won under the original
-    // `posterior >= null_posterior` filter.
+    // The marking corpus (`tests/corpus/documents/marked/`) contributes
+    // 173 hits for `S`, pushing the marking-side delta to `+2.21`
+    // (`S`: marking `-3.28`, prose `-5.49`). A zero-margin filter would
+    // let the marking hypothesis win and re-introduce the Federalist
+    // `(s)` regression. The `NULL_HYPOTHESIS_LOG_MARGIN = 2.5` floor
+    // (see constant doc) is tuned to keep `(s)` suppressed at +2.21
+    // while still admitting multi-token candidates whose delta is many
+    // times larger.
     //
-    // After PR1: `tests/corpus/documents/marked/` contributes 173
-    // hits for `S`, pushing the marking-side delta to `+2.21`
-    // (`S`: marking `-3.28`, prose `-5.49`). A zero-margin
-    // filter would let the marking hypothesis win and
-    // re-introduce the SC-003a Federalist `(s)` regression. The
-    // `NULL_HYPOTHESIS_LOG_MARGIN = 2.5` floor (see constant
-    // doc) was tuned to keep `(s)` suppressed at +2.21 while
-    // still admitting multi-token candidates whose delta is
-    // many times larger.
-    //
-    // This is the exact behavior that closes the SC-003a
-    // regression on `Notwithstanding (s) the early prevalence` —
-    // the decoder doesn't auto-fix prose-shaped single-letter
-    // portions to a SECRET portion.
+    // This keeps the decoder from auto-fixing prose-shaped
+    // single-letter portions like `Notwithstanding (s) the early
+    // prevalence` into a SECRET portion.
     let rx = DecoderRecognizer::new();
     match rx.recognize(b"(s)", 0, &*TEST_SCHEME, &deep_cx()) {
         Parsed::Ambiguous { candidates } => assert!(

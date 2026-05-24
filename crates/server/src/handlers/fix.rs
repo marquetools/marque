@@ -28,7 +28,7 @@ pub async fn fix_handler(
     // Wire-level checks (header + query) run BEFORE body deserialization.
     reject_if_corpus_override("/v1/fix", &uri, &headers)?;
 
-    // Spec 005 §R3 — validate the deadline header BEFORE body
+    // Validate the deadline header BEFORE body
     // deserialization so 400 (bad header) takes precedence over 422
     // (malformed JSON). Same `Instant::now()` deferral as `lint_handler`.
     let deadline_duration =
@@ -68,8 +68,8 @@ pub async fn fix_handler(
             .into_response())
         }
         Err(EngineError::DeadlineExceeded { partial_lint }) => {
-            // Spec 005 §R4 / Constitution V Principle V: no partial
-            // FixResult is ever produced. The 504 body carries the
+            // Constitution V Principle V: no partial FixResult is
+            // ever produced. The 504 body carries the
             // partial-lint diagnostics so the caller can render
             // them (matching the CLI's stderr behavior). The
             // `truncated_by` discriminator distinguishes a lint-

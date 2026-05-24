@@ -5,17 +5,12 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! Post T044 (atomic cutover) the accept-list is a single value:
-//! `["marque-2.0"]`. The pre-T044 `marque-1.0` shape carried the
-//! 1-tuple `RuleId(&'static str)` form; T044 reshapes `RuleId` to a
-//! `(scheme, predicate_id)` 2-tuple and structures the audit-record
-//! `"rule"` JSON field accordingly (object form, never a flattened
-//! string). Pre-cutover `marque-1.0` records are not interoperable
-//! with post-cutover binaries per FR-037 (clean break, no
-//! marque-audit-reader crate). The earlier `mvp-1` / `mvp-2` /
-//! `mvp-3` shapes retired in PR 3c.2.D atomically with the v2
-//! `AppliedFix` reshape and BLAKE3 digesting. A single build emits
-//! exactly one schema version per FR-014.
+//! The accept-list is a single value: `["marque-2.0"]`. Under that
+//! schema, `RuleId` is a `(scheme, predicate_id)` 2-tuple and the
+//! audit-record `"rule"` JSON field is an object (never a flattened
+//! string). Older record shapes are not interoperable with current
+//! binaries (clean break — there is no audit-reader crate). A single
+//! build emits exactly one schema version.
 //!
 //! The value is surfaced to downstream code via
 //! `env!("MARQUE_AUDIT_SCHEMA")`. Rebuilds are triggered when the

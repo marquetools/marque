@@ -18,18 +18,14 @@
 //!   005). Variants: `DeadlineExceeded { partial_lint }` and
 //!   `InvalidThreshold(_)`. `#[non_exhaustive]` so future runtime
 //!   conditions (memory budgets, per-rule deadlines, cancellation
-//!   tokens) can land non-breaking. **Phase 1 status:** the type
-//!   surface ships, but `DeadlineExceeded` cannot currently fire —
-//!   `fix_with_options` ignores `opts.deadline` until Phase 2
-//!   wiring lands (tasks T010–T012). Only `InvalidThreshold` is
-//!   observable today.
+//!   tokens) can land non-breaking.
 //!
 //! Keeping the two enums separate means matching on one does not
 //! force callers to pattern against variants they could never
 //! encounter at the corresponding lifecycle stage.
 //!
 //! `EngineConstructionError`'s `RewriteCycle` and
-//! `UnannotatedCustomAxes` variants are emitted by the Phase 3
+//! `UnannotatedCustomAxes` variants are emitted by the
 //! scheduler (`Engine::new` runs Kahn's algorithm over
 //! `PageRewrite::reads` / `writes`); `UnknownRuleOverride` and
 //! `ConflictingRuleOverride` come from the rule-override
@@ -73,8 +69,8 @@ pub enum EngineConstructionError {
     /// so the per-entry payload is still `'static`; only the
     /// container is heap-allocated.
     ///
-    /// Fired by the Phase 3 scheduler when `Engine::new` runs Kahn's
-    /// algorithm over the rewrite graph (tasks T031–T032).
+    /// Fired by the scheduler when `Engine::new` runs Kahn's
+    /// algorithm over the rewrite graph.
     RewriteCycle {
         axis: CategoryId,
         members: Box<[RewriteId]>,
@@ -125,8 +121,8 @@ pub enum EngineConstructionError {
     /// [`ReplacementIntent`] references a token that does not route
     /// to any category in the scheme. The rewrite is a scheme-
     /// authoring bug — the engine catches it at construction time
-    /// (PR 3c.B Sub-PR 8.F engine-prereq) rather than letting the
-    /// intent silently no-op on the first page that triggers it.
+    /// rather than letting the intent silently no-op on the first page
+    /// that triggers it.
     ///
     /// The `error` field carries the [`ApplyIntentError`] returned
     /// by the validation walk (`UnknownToken` in practice, since

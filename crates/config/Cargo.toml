@@ -21,7 +21,7 @@ include = [
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 serde = { workspace = true }
-# Parsing the corpus-override JSON file (T065). Unconditional —
+# Parsing the corpus-override JSON file. Unconditional —
 # serde_json is small enough that the conditional dependency
 # machinery (`optional + feature enables = ["dep:..."]`) buys nothing
 # here. The corpus_override module is still cfg-gated; this dep just
@@ -47,11 +47,11 @@ tempfile = { workspace = true }
 default = ["toml-loader"]
 toml-loader = ["dep:toml"]
 # Gate the corpus-override parsing codepath. Parsing lives in
-# `crates/config/src/corpus_override.rs` (US2 / T065); the feature gate
+# `crates/config/src/corpus_override.rs`; the feature gate
 # here mirrors the gate in `marque-capco` and `marque-engine` so the
 # WASM artifact (default-features = false on engine, no corpus-override)
 # compiles out the parser entirely. CLI-only, rejected by
-# `marque-server` at the handler layer (FR-013 / T3 enforcement).
+# `marque-server` at the handler layer.
 corpus-override = []
 
 [lints]

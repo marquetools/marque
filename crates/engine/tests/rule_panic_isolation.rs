@@ -40,11 +40,9 @@ struct AlwaysPanicsRule;
 
 impl Rule<CapcoScheme> for AlwaysPanicsRule {
     fn id(&self) -> RuleId {
-        // T044: synthetic test sentinel in the reserved `"test"`
-        // scheme. The pre-T044 `"Z001"` flat-string lived only in
-        // tests; the `"test"` scheme keeps test fixtures out of any
-        // real marking scheme's namespace per the
-        // `marque_rules::RuleId` doc-comment.
+        // Synthetic test sentinel in the reserved `"test"` scheme,
+        // which keeps test fixtures out of any real marking scheme's
+        // namespace per the `marque_rules::RuleId` doc-comment.
         RuleId::new("test", "synthetic.z001-rule-panic-isolation")
     }
 
@@ -69,9 +67,9 @@ struct AlwaysFiresRule;
 
 /// Test-fixture `Message` stub mirroring the helpers in
 /// `engine.rs::tests` and `output.rs::tests`. The rule body only needs
-/// to emit *some* diagnostic; the closed-set `Message` shape (per
-/// PR 3c.2.C C5) means no free-form sentinel text is constructible
-/// here. `UnrecognizedToken` is the generic template; default args
+/// to emit *some* diagnostic; the closed-set `Message` shape means no
+/// free-form sentinel text is constructible here. `UnrecognizedToken`
+/// is the generic template; default args
 /// keep the payload empty.
 #[inline]
 fn stub_message() -> Message {

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! SC-005-class fix throughput benchmark: `Engine::fix` with `FixMode::Apply`
+//! Linear-throughput fix benchmark: `Engine::fix` with `FixMode::Apply`
 //! must scale linearly in input size when fix density is proportional to
 //! document size.
 //!
@@ -16,7 +16,7 @@
 //! The benchmark sweeps from 1 MB to 100 MB and reports throughput (MB/s) at
 //! each size. Linearity is enforced by `scripts/bench-check.sh` via the
 //! `fix_throughput` R² gate in `benches/baseline.json` (R² ≥ 0.9 across the
-//! size sweep), mirroring the `lint_scaling` gate for SC-005. The
+//! size sweep), mirroring the `lint_scaling` linear-throughput gate. The
 //! `fix_throughput/100000000` data point specifically guards the
 //! `Vec::splice`-per-fix regression described in the
 //! `perf(engine): fix-apply path is quadratic in input size` issue.

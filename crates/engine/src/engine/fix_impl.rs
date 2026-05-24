@@ -122,8 +122,8 @@ impl<'engine> TwoPassFixer<'engine> {
         // immediately after pass-1: the post-pass-1 rebind below may
         // replace `lint` with `relint`, and pass-2 in either branch
         // operates on the post-rebind `lint.diagnostics`. The fresh
-        // re-partition is the correct pass-2 input (FR-023 partial —
-        // Copilot round-1 #2). Reference partitioning is O(N) pointer
+        // re-partition is the correct pass-2 input. Reference
+        // partitioning is O(N) pointer
         // pushes; the prior owned-vec clone allocated O(N) Diagnostic
         // bodies on every call (Constitution I).
         let pass1 = {
@@ -137,9 +137,9 @@ impl<'engine> TwoPassFixer<'engine> {
             )?
         };
 
-        // PR 7c — capture pre-pass-1 attrs for every marking whose
-        // span overlaps a pass-1 applied fix. The cache is owned on
-        // this stack frame so the references it spawns
+        // Capture pre-pass-1 attrs for every marking whose span
+        // overlaps a pass-1 applied fix. The cache is owned on this
+        // stack frame so the references it spawns
         // (`RuleContext.pre_pass_1_attrs`) cannot outlive `run()`.
         // `parsed_markings` is still the pre-pass-1 cache at this
         // point — the re-parse arm below will move ownership of it
@@ -147,10 +147,8 @@ impl<'engine> TwoPassFixer<'engine> {
         // snapshot has to land BEFORE that branch. Empty when pass-1
         // promoted no fixes; the field-only consumer
         // (`RuleContext.pre_pass_1_attrs`) sees `None` in that case.
-        // The originally-planned `PrecedingFixPenalty` consumer of
-        // this cache was retired in PR 7c per D-7.22; the cache + the
-        // field stay as the architectural two-pass-reshape signal
-        // for future rule consumers.
+        // The cache + the field stay as the architectural
+        // two-pass-reshape signal for future rule consumers.
         let pre_pass_1_cache = self.populate_pre_pass_1_cache(&pass1.audit_lines, &parsed_markings);
 
         // Destructure pass0 into owned locals so the re-parse / R002
@@ -177,10 +175,9 @@ impl<'engine> TwoPassFixer<'engine> {
         // Moving it in both branches keeps both arms producing the
         // same owned type — no `Cow`, no clone (rust pre-flight Q3).
         //
-        // FR-023 (partial — full reshape-aware disambiguation lands
-        // in PR 7c with the pre-pass-1 attrs cache + the
-        // `(scheme, predicate-id) → no re-fire` gate): when pass-1
-        // changed bytes, the re-parse arm dispatches pass-2 against
+        // Reshape-aware disambiguation uses the pre-pass-1 attrs cache
+        // and the `(scheme, predicate-id) → no re-fire` gate: when
+        // pass-1 changed bytes, the re-parse arm dispatches pass-2 against
         // **post-pass-1 attrs AND post-pass-1 diagnostics**, NOT
         // against the stale pre-pass-1 `pass2_diags` partition. Pass-1
         // may have shifted spans (so a pre-pass-1 diagnostic's span no
@@ -196,10 +193,10 @@ impl<'engine> TwoPassFixer<'engine> {
         // arm so EVERY downstream consumer — the pass-2 dispatch, the
         // `DeadlineExceeded { partial_lint }` payload, and the
         // remaining-diagnostics filter — sees the same post-pass-1
-        // state. Round 2 of Copilot review caught three call sites
-        // that previously kept reading the pre-pass-1 `lint` here;
-        // tupling `lint` through the decision is what makes
-        // post-pass-1 propagation total rather than partial. The
+        // state. Tupling `lint` through the decision is what makes
+        // post-pass-1 propagation total rather than partial — every
+        // call site reads the post-pass-1 `lint`, not the stale
+        // pre-pass-1 one. The
         // R002 short-circuit explicitly passes the **pre-pass-1**
         // `lint` into `assemble_r002_result`: pass-1 destroyed the
         // marking shape, so post-pass-1 diagnostics are degenerate
@@ -208,8 +205,8 @@ impl<'engine> TwoPassFixer<'engine> {
         // Rebind `(pass2_source, pass2_markings, pass1_applied,
         // pass1_applied_keys, lint)` first — splitting `pass2_diags`
         // off into its own subsequent let-binding (below) is what
-        // unblocks the reference-propagation refactor (Copilot
-        // round-3 R3-2). With the old single-tuple shape, the `else`
+        // unblocks the reference propagation. With a single-tuple
+        // shape, the `else`
         // arm tried to move both `relint` and a `Vec<&relint.diagnostics>`
         // out together, which Rust correctly rejects as a
         // self-referential bundle. Splitting lets `lint` settle to
@@ -234,21 +231,18 @@ impl<'engine> TwoPassFixer<'engine> {
                     lint,
                 )
             } else {
-                // PR 7c — pass the pre-pass-1 attrs cache into the
-                // post-pass-1 re-lint so every candidate's RuleContext
-                // gets a populated `pre_pass_1_attrs` field when its
-                // span overlaps a pass-1-reshaped marking. The field
-                // is the architectural two-pass-reshape signal kept
-                // for future rule consumers (D-7.22 retired the
-                // originally-planned `PrecedingFixPenalty` engine
-                // consumer; the field's data source — the cache —
-                // stays plumbed.)
+                // Pass the pre-pass-1 attrs cache into the post-pass-1
+                // re-lint so every candidate's RuleContext gets a
+                // populated `pre_pass_1_attrs` field when its span
+                // overlaps a pass-1-reshaped marking. The field is the
+                // architectural two-pass-reshape signal kept for future
+                // rule consumers.
                 let (relint, new_markings) = self.engine.lint_with_options_internal_with_cache(
                     &pass1.post_buffer,
                     &lint_opts,
                     Some(&pre_pass_1_cache),
                 );
-                // R002 trigger (PR 7b, FR-024): pass-1 changed bytes,
+                // R002 trigger: pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
                 // parsed markings. Marque's recognizer is total — it
                 // never returns a hard `Err` — so the "re-parse failed"
@@ -314,7 +308,7 @@ impl<'engine> TwoPassFixer<'engine> {
 
         // Re-partition the (now post-pass-1, when applicable) lint's
         // diagnostic stream. Pass-2 dispatches against this fresh
-        // partition (FR-023 partial — Copilot round-1 #2). The pre-
+        // partition. The pre-
         // pass-1 partition went out of scope when its enclosing block
         // ended above, so its borrow of the pre-rebind `lint` doesn't
         // outlive the rebind. `localized_ids` is `Engine::new`-time
@@ -324,7 +318,7 @@ impl<'engine> TwoPassFixer<'engine> {
         //
         // The partition itself is O(N) pointer pushes into two
         // reference vectors — no clones, no extra owned-diagnostic
-        // bodies (Copilot round-3 R3-2 / Constitution I).
+        // bodies (Constitution I).
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded { partial_lint: lint });
         }
@@ -347,10 +341,11 @@ impl<'engine> TwoPassFixer<'engine> {
             )?
         };
 
-        // Merge audit-line streams (PR 3c.2.D / D7). Order matches the
-        // existing audit-stream contract (D-7.6: "applied-fix records
-        // emit in the order c001; pass1; pass2"). PM-D-8 generalizes
-        // FR-016 to the marking-fix + text-correction sum-type stream.
+        // Merge audit-line streams. Order matches the audit-stream
+        // contract: applied-fix records emit in the order
+        // corrections; pass1; pass2. The confidence-then-span fix
+        // ordering generalizes to the marking-fix + text-correction
+        // sum-type stream.
         let mut all_audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(
             pass0_audit_lines.len() + pass1_audit_lines.len() + pass2.audit_lines.len(),
         );
@@ -429,8 +424,8 @@ impl<'engine> TwoPassFixer<'engine> {
     /// Pass-1 — synthesize + filter + sort + C-1 dedup + forward-pass
     /// splice for [`Phase::Localized`] rule fixes.
     ///
-    /// First-fire span-shape check (D-7.16) drops out-of-shape fixes
-    /// BEFORE the FR-016 sort, so a rule that misdeclared `Localized`
+    /// First-fire span-shape check drops out-of-shape fixes BEFORE the
+    /// confidence-then-span sort, so a rule that misdeclared `Localized`
     /// and emitted a marking-wide span never enters the sort or the
     /// C-1 walk. `debug_assert!` panics in debug builds (CI catches);
     /// `tracing::error!` is always-on. The audit stream records
@@ -472,14 +467,13 @@ impl<'engine> TwoPassFixer<'engine> {
             self.threshold,
         );
 
-        // First-fire span-shape filter (PR 7b D-7.16). For a
-        // `Phase::Localized` rule the fix span MUST be contained
-        // within the candidate marking's parsed bytes. The
-        // synthesized record carries `span` set from the
-        // diagnostic's `candidate_span` (or `span`); the parsed
-        // marking's bytes are `parsed_markings`' key span. A fix
-        // whose span sits outside the candidate is a misuse of the
-        // phase tag and is dropped before the FR-016 sort.
+        // First-fire span-shape filter. For a `Phase::Localized` rule
+        // the fix span MUST be contained within the candidate marking's
+        // parsed bytes. The synthesized record carries `span` set from
+        // the diagnostic's `candidate_span` (or `span`); the parsed
+        // marking's bytes are `parsed_markings`' key span. A fix whose
+        // span sits outside the candidate is a misuse of the phase tag
+        // and is dropped before the confidence-then-span sort.
         let in_shape: Vec<SynthesizedFix> = synthesized
             .into_iter()
             .filter(
@@ -554,23 +548,23 @@ impl<'engine> TwoPassFixer<'engine> {
     /// rule phase, the union of winners has no rule-and-span
     /// collision.
     ///
-    /// PR 7c adds two reshape-aware adjustments before the fixes
-    /// pass into [`synthesize_fixes`]:
+    /// Two reshape-aware adjustments run before the fixes pass into
+    /// [`synthesize_fixes`]:
     ///
-    /// - **FR-023 disambiguation**: a pass-2 diagnostic whose
-    ///   `(rule, span)` equals a pass-1 promoted fix is dropped. The
-    ///   same rule has already fired on the same marking-scope span;
-    ///   re-emitting it after the reshape would double-fire and
-    ///   pollute `remaining_diagnostics`.
-    /// - **I-18 overlap demotion**: a pass-2 diagnostic whose span
-    ///   overlaps ANY pass-1 promoted fix span (any rule) at
+    /// - **Disambiguation**: a pass-2 diagnostic whose `(rule, span)`
+    ///   equals a pass-1 promoted fix is dropped. The same rule has
+    ///   already fired on the same marking-scope span; re-emitting it
+    ///   after the reshape would double-fire and pollute
+    ///   `remaining_diagnostics`.
+    /// - **Overlap demotion**: a pass-2 diagnostic whose span overlaps
+    ///   ANY pass-1 promoted fix span (any rule) at
     ///   `Severity::{Error, Warn, Fix}` is demoted to
     ///   `Severity::Suggest`. The pass-1 fix already shipped, so
     ///   pass-2 MUST NOT auto-apply on the same byte range
     ///   (Constitution V audit-record integrity); `Suggest` surfaces
     ///   the finding as advisory and is excluded from the audit
-    ///   stream by `synthesize_fixes`' existing filter (FR-042 —
-    ///   `Suggest` does not trigger `EX_DIAG_WARN`).
+    ///   stream by `synthesize_fixes`' existing filter (`Suggest` does
+    ///   not trigger `EX_DIAG_WARN`).
     ///
     /// Both adjustments operate on owned clones of the affected
     /// diagnostics so the input reference vector stays unmodified
@@ -596,7 +590,7 @@ impl<'engine> TwoPassFixer<'engine> {
             });
         }
 
-        // PR 7c FR-023 disambiguation + I-18 overlap demotion. The
+        // Disambiguation + overlap demotion. The
         // owned vector holds the post-adjustment diagnostics; a ref
         // vector keyed to its addresses feeds `synthesize_fixes`
         // (which signature still takes `&[&Diagnostic]`). The owned
@@ -630,15 +624,15 @@ impl<'engine> TwoPassFixer<'engine> {
         })
     }
 
-    /// Apply `kept_fixes` (already FR-016-sorted and C-1-deduped)
-    /// against `source_buf`, producing the post-splice buffer and the
+    /// Apply `kept_fixes` (already confidence-then-span-sorted and
+    /// C-1-deduped) against `source_buf`, producing the post-splice buffer and the
     /// promoted [`AppliedFix`] records. Shared between pass-1 and
     /// pass-2 because the splice semantics are identical at this
     /// layer.
     ///
     /// The post-splice buffer is built in **both** [`FixMode::Apply`]
     /// and [`FixMode::DryRun`] because pass-1's `post_buffer` is the
-    /// input to pass-2's re-lint + dispatch (FR-022 / FR-023): pass-2
+    /// input to pass-2's re-lint + dispatch: pass-2
     /// MUST see the post-pass-1 coordinate space regardless of mode,
     /// or DryRun would silently dispatch pass-2 against the pre-pass-1
     /// buffer and produce a different applied set than Apply. The
@@ -670,18 +664,18 @@ impl<'engine> TwoPassFixer<'engine> {
     }
 
     /// Capture pre-pass-1 attribute snapshots for every marking
-    /// whose span overlaps a pass-1 applied fix (PR 7c / FR-023 / R-4).
+    /// whose span overlaps a pass-1 applied fix.
     /// Returns an empty cache when pass-1 promoted no fixes — pass-2
     /// has no reshape to disambiguate against and the
     /// `RuleContext.pre_pass_1_attrs` field is `None` everywhere on
     /// the post-pass-1 re-lint.
     ///
     /// Cache shape: at most one entry per pass-1-reshaped marking.
-    /// `Phase::Localized` rules emit sub-token fix spans (PR 7b
-    /// D-7.16 first-fire check), so a single fix always anchors to a
-    /// single parent marking. Two fixes against the same marking
-    /// dedupe to one cache entry. Inline-4 storage matches the
-    /// existing Localized rule cap (C001 / E006 / E007 / S004).
+    /// `Phase::Localized` rules emit sub-token fix spans (the
+    /// first-fire check enforces this), so a single fix always anchors
+    /// to a single parent marking. Two fixes against the same marking
+    /// dedupe to one cache entry. Inline-4 storage matches the small
+    /// Localized rule count.
     ///
     /// The `parsed_markings` slice is the pre-pass-1 cache from
     /// `lint_with_options_internal` (issue #432 swapped the storage
@@ -703,7 +697,7 @@ impl<'engine> TwoPassFixer<'engine> {
         // For each applied pass-1 fix, find the marking whose span
         // contains the fix span and dedupe into the cache. Sub-token
         // span containment is what `find_containing_marking` already
-        // checks for the PR 7b first-fire path, so reuse it.
+        // checks for the first-fire path, so reuse it.
         //
         // Walks both `AppliedFix` and `TextCorrection` arms of
         // `AuditLine` — pass-1 today only produces marking fixes
@@ -719,7 +713,7 @@ impl<'engine> TwoPassFixer<'engine> {
             let Some(marking_span) = find_containing_marking(parsed_markings, span) else {
                 // A Localized rule whose fix span has no enclosing
                 // marking should already have been dropped by the
-                // PR 7b in_shape filter; if one slips through it
+                // in_shape filter; if one slips through it
                 // means a violated phase contract elsewhere. Log and
                 // skip — never panic on the audit hot path.
                 tracing::warn!(
