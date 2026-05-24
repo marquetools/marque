@@ -850,7 +850,7 @@ impl CapcoMarking {
 ///
 /// Each variant carries the *canonicalize-produced* structural value
 /// (a SAR program ID value, a tetragraph code) — never source-buffer
-/// surgery payloads. This preserves the G13 audit-content-ignorance
+/// surgery payloads. This preserves the audit content-ignorance
 /// invariant (Constitution V Principle V): an `AppliedFix` referring
 /// to a CAPCO open-vocab token stores a typed structural reference,
 /// not document content.

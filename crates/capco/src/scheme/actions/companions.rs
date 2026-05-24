@@ -385,7 +385,7 @@ pub(crate) fn emit_companion_required(
         _ => dissem.as_str(),
     };
 
-    // G13: drop the runtime interpolation; typed Message identifies
+    // Audit content-ignorance: drop the runtime interpolation; typed Message identifies
     // the required-by-presence class.
     let _ = (token_name, &row.marking_label);
     let message = marque_rules::Message::new(

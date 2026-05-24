@@ -74,7 +74,7 @@ use crate::scheme::CapcoScheme;
 pub(super) struct MissingUsaTrigraphRule;
 
 /// Citations E002 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 ///
 /// §H.8 p151 is the precise authority for "USA always appears first"
@@ -120,7 +120,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             return vec![];
         }
 
-        // PR 3c.2.C C5 / G13: drop the runtime string distinction;
+        // Audit content-ignorance: no runtime string distinction;
         // `MessageTemplate::NonCanonicalOrder` with `category =
         // Some(CAT_REL_TO)` identifies the violation class. Both arms
         // (missing USA / USA not first) map to the same template
@@ -137,10 +137,9 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         // §H.8 p151 carries the verbatim USA-first rule (the
         // Additional Marking Instructions block on the REL TO page);
         // p150 is the section anchor for the REL TO marking template
-        // generally. T044 reviewer pass corrected this from p150 to
-        // p151 to match the precision of `cited_authorities()` —
-        // declared and emitted citations must agree (F.1 corpus-
-        // fidelity gate).
+        // generally. The anchor is p151 to match `cited_authorities()`
+        // — declared and emitted citations must agree (corpus-fidelity
+        // gate).
         let citation = capco(SectionLetter::H, 8, 151);
 
         // Locate the `RelToBlock` this diagnostic refers to. If the
@@ -258,14 +257,14 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         // §H.8 p151 ordering invariant moved into `render_rel_to.rs`
         // when E020 / E060 retired. Dedup before canonicalize so
         // E002's fix output stays canonical when input also has
-        // duplicates — under the C-1 overlap guard E002's narrow span
-        // would not deduplicate other rules' edits, so we deduplicate
-        // PR 3c.B Commit 10: structural FixIntent only. The engine's
-        // synthesis path (`synthesize_fixes`) re-renders the canonical
-        // bytes from the per-page projection at promotion time via
-        // `apply_intent` + `render_canonical`. The rule emits the
-        // structural intent only; no byte-precise replacement
-        // computation lives on this path post-cutover (G13).
+        // duplicates — under the overlap guard this rule's narrow span
+        // would not deduplicate other rules' edits, so we deduplicate.
+        // Structural FixIntent only: the engine's synthesis path
+        // (`synthesize_fixes`) re-renders the canonical bytes from the
+        // per-page projection at promotion time via `apply_intent` +
+        // `render_canonical`. The rule emits the structural intent only;
+        // no byte-precise replacement computation lives on this path
+        // (audit content-ignorance).
         //
         //   - USA missing → `FactAdd { USA, Scope::Portion }`
         //     (USA injection is a fact-set addition mandated by §H.8 p151).
@@ -300,7 +299,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 // `RequiredByPresence` accepts `category`: the
                 // declarative `RequiredByPresence` catalog rows in
                 // `scheme/adapter.rs` set `category: Some(CAT_SCI)` /
-                // `Some(CAT_DISSEM)` the same way. G13: `CAT_REL_TO` is a
+                // `Some(CAT_DISSEM)` the same way. `CAT_REL_TO` is a
                 // `CategoryId` constant, not document content.
                 message: Message::new(
                     MessageTemplate::RequiredByPresence,
@@ -325,19 +324,18 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 // the same REL TO ordering violation under the same
                 // `NonCanonicalOrder` template, so they share one
                 // (template, args) pair — matching the
-                // FixIntent-mirrors-parent convention that PR #745 (#739)
-                // applied to the analogous S003 case in `joint.rs`, and
+                // FixIntent-mirrors-parent convention in `joint.rs` and
                 // the `nato.rs` (`WrongTokenForm` + `token`) precedent.
                 // Dropping `category` from only the FixIntent message
-                // lost the REL TO axis context for any consumer reading
-                // `FixIntent.message` rather than the parent
+                // would lose the REL TO axis context for any consumer
+                // reading `FixIntent.message` rather than the parent
                 // `Diagnostic.message`.
                 //
-                // G13 (Constitution V Principle V): `CAT_REL_TO` is a
-                // `CategoryId` constant — a permitted audit identifier,
-                // not document content. `MessageTemplate::NonCanonicalOrder`
-                // documents `category` as its arg ("which axis is out of
-                // order"), so the category is meant to flow through.
+                // `CAT_REL_TO` is a `CategoryId` constant — a permitted
+                // audit identifier, not document content (Constitution V).
+                // `MessageTemplate::NonCanonicalOrder` documents
+                // `category` as its arg ("which axis is out of order"),
+                // so the category is meant to flow through.
                 message: message.clone(),
                 source: FixSource::BuiltinRule,
                 migration_ref: None,

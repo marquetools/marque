@@ -241,7 +241,7 @@ pub(crate) fn s004_candidate_covered_by_block(
 }
 
 /// Citations S004 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
 
@@ -393,7 +393,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
             // correction carries the canonical trigraph for
             // renderer / UI display.
             //
-            // G13 (Constitution V Principle V): the diagnostic's
+            // Audit content-ignorance (Constitution V): the diagnostic's
             // human-facing prose lives in the closed `MessageTemplate`
             // enum — there is no string-bearing template arg, by
             // design — so the candidate trigraph rides only on the

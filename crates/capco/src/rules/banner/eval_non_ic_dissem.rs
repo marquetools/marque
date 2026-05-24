@@ -28,16 +28,11 @@ pub(super) fn evaluate_non_ic_dissem_banner_rollup(
 ) -> Vec<Diagnostic<CapcoScheme>> {
     use marque_ism::NonIcDissem;
 
-    // PR 9b (T133): the NODIS/EXDIS supersession logic in
-    // `PageContext::expected_non_ic_dissem` is preserved inside
+    // The NODIS/EXDIS supersession logic lives inside
     // `PageContext::project` (the `non_ic_dissem` field on the
     // projection comes from `expected_non_ic_dissem().0`). The
-    // second tuple element (`needs_nf` injection signal) is
-    // intentionally not surfaced here — this evaluator does not
-    // consume it. If a future change needs it, plumb it through
-    // either a `ProjectionProvenance` extension or a dedicated
-    // accessor that returns the pre-projection
-    // `(non_ic, needs_nf)` pair.
+    // `needs_nf` injection signal is intentionally not surfaced here —
+    // this evaluator does not consume it.
     let portions_have_nodis = page
         .non_ic_dissem
         .iter()
@@ -64,10 +59,9 @@ pub(super) fn evaluate_non_ic_dissem_banner_rollup(
     }
 
     let required_str = required.banner_str();
-    // PR 3c.2.C C5: both arms now use the typed `Message` shape.
-    // §H.9 p172 (EXDIS) and §H.9 p174 (NODIS) — typed Citation
-    // anchors at p172; the p174 cross-reference lives in the rule
-    // doc comment.
+    // Both arms use the typed `Message` shape. §H.9 p172 (EXDIS) and
+    // §H.9 p174 (NODIS) — typed Citation anchors at p172; the p174
+    // cross-reference lives in the rule doc comment.
     const CITATION: Citation = capco(SectionLetter::H, 9, 172);
 
     // Fix: if banner has at least one Non-IC dissem token, emit a
@@ -112,7 +106,7 @@ pub(super) fn evaluate_non_ic_dissem_banner_rollup(
                 .first()
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
-            // G13: drop the runtime `required_str` interpolation.
+            // Audit content-ignorance: drop the runtime `required_str` interpolation.
             let _ = required_str;
             vec![Diagnostic::new(
                 row.rule_id,

@@ -206,7 +206,7 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
 pub(super) struct XShorthandDateRule;
 
 /// Citations E007 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const X_SHORTHAND_DATE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::E, 6, 33)];
 
@@ -448,7 +448,7 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 pub(super) struct UnknownTokenRule;
 
 /// Citations E008 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const UNKNOWN_TOKEN_AUTHORITIES: &[Citation] = &[capco(SectionLetter::G, 1, 36)];
 

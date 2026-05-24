@@ -123,7 +123,7 @@ pub(super) struct FgiExplicitWithTrigraphRule;
 /// 3, 21)` companion citations on the NOFORN closure suggest —
 /// those are tracked through the closure-table rows
 /// (`scheme/closure_table.rs::capco_table(B, 3, 2, 21)`), not via
-/// this rule's primary `cited_authorities` declaration, so the F.1
+/// this rule's primary `cited_authorities` declaration, so the
 /// corpus-fidelity gate harvests them through the closure path
 /// instead. See [`Rule::cited_authorities`] for the gate contract.
 const FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 124)];
