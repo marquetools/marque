@@ -47,8 +47,8 @@ const LINE_POSITION_BUDGET: usize = 4;
 /// mid-line portion-shaped prose glyphs (e.g., `Foo (SOMETHING)
 /// bar` where `SOMETHING` happens to fuzzy-match a CAPCO token).
 /// Combined with the null filter (margin `2.5`), most single-letter
-/// portion glyphs that survived the null filter under PR1 priors
-/// alone are now suppressed by the additional position evidence.
+/// portion glyphs that would survive the null filter on prose priors
+/// alone are suppressed by the additional position evidence.
 const LINE_POSITION_PENALTY: f32 = -2.0;
 
 /// Positive log-odds delta added when a portion candidate's

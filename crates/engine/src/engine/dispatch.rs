@@ -6,19 +6,18 @@ use super::*;
 /// schemes are expected to stay in the same order of magnitude.
 pub(super) type Pass1Indices = SmallVec<[(usize, usize); 4]>;
 /// Pass-2 (WholeMarking) rule-index partition. Inline-32 covers the
-/// current 27-rule whole-marking subset; the SmallVec spills to the
-/// heap at the 33rd entry, leaving 5 entries of headroom. The
-/// rule-collapse trajectory (PR 3b retired 13 rules into walkers;
-/// end-state target ~10 across all 4 stages) means the count is
-/// contracting, so 32 stays comfortable. See [`Engine::pass2_rule_indices`]
-/// for the same rationale at greater length.
+/// current ~27-rule whole-marking subset; the SmallVec spills to the
+/// heap at the 33rd entry, leaving headroom. The rule count is
+/// contracting as rules collapse into declarative walkers, so 32 stays
+/// comfortable. See [`Engine::pass2_rule_indices`] for the same
+/// rationale at greater length.
 pub(super) type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 /// PageFinalization rule-index partition (issue #461). Inline-4 —
 /// PageFinalization is dispatched once per page (not per candidate),
 /// so the registered-rule count drives this, not call frequency. W004
 /// (issue #461) and S005 (issue #488) are today's consumers (two
-/// rules). Two scheduled follow-up PRs (S007, BannerMatchesProjectedRule)
-/// will add at most a handful more; if the count grows beyond inline
+/// rules). Further PageFinalization rules will add at most a handful
+/// more; if the count grows beyond inline
 /// capacity the SmallVec spills to the heap (one allocation at engine
 /// construction time — not on the hot path). 4 is a deliberate
 /// small-inline budget: this
@@ -43,13 +42,12 @@ pub(super) type FastPathSeverities = Box<[Box<[Severity]>]>;
 /// construction (`crates/capco/tests/post_3b_registration_pin.rs`).
 /// If a future scheme is added (CUI, NATO, …), this key shape MUST
 /// widen to `(scheme, predicate_id)` — e.g., `HashMap<RuleId, _>` —
-/// to disambiguate cross-scheme collisions. The T044 PM decision
-/// addendum (OD-7) lets users type wire-string keys
-/// (`"capco:predicate"`) in `.marque.toml`; canonicalization resolves
-/// those to the same `&'static str` predicate intern.
+/// to disambiguate cross-scheme collisions. Users may type wire-string
+/// keys (`"capco:predicate"`) in `.marque.toml`; canonicalization
+/// resolves those to the same `&'static str` predicate intern.
 pub(super) type EmittedIdOverrides = HashMap<&'static str, Severity>;
 
-/// Partition the registered rules by their declared [`Phase`] (FR-021).
+/// Partition the registered rules by their declared [`Phase`].
 ///
 /// Returns `(pass1, pass2, pass_finalization)` where each entry is a
 /// `(rule_set_index, rule_index_within_set)` pair indexing back into
@@ -71,12 +69,11 @@ pub(super) type EmittedIdOverrides = HashMap<&'static str, Severity>;
 ///
 /// Walked once at [`Engine::with_clock`] time and cached on the engine.
 /// Per-document `fix` dispatch reads `pass1_rule_indices` via
-/// [`TwoPassFixer::localized_rule_id_set`] (PR 7b); the walk does not
-/// re-run. `pass2_rule_indices` is stored against a deferred future
-/// migration that would switch pass-2 from the current
-/// complement-of-pass-1 dispatch to a positive whitelist (read off
-/// that field) for symmetry with pass-1. PR 7c retained the
-/// complement dispatch (implementer Decision #4); see
+/// [`TwoPassFixer::localized_rule_id_set`]; the walk does not re-run.
+/// `pass2_rule_indices` is stored against a future migration that
+/// would switch pass-2 from the current complement-of-pass-1 dispatch
+/// to a positive whitelist (read off that field) for symmetry with
+/// pass-1; today the complement dispatch is used. See
 /// [`Engine::pass2_rule_indices`] for the rationale and the
 /// deferred-migration framing. `pass_finalization_rule_indices` is
 /// the issue #461 third bucket — read directly by
@@ -124,14 +121,12 @@ pub(super) fn build_severity_tables(
     // (`rule.additional_emitted_ids()`). The override map's keys
     // canonicalize against this superset; everything not in it would
     // have been rejected by `canonicalize_rule_overrides`.
-    // T044: include both the wire-string form (Agent A's
-    // `additional_emitted_ids` first col, `bridge_emitted_rule_ids`
-    // first col) AND the predicate-id slice — the canonicalize step
-    // reduces wire strings to predicate-id at registration time, so
-    // the canonical intern stored in `overrides` is the predicate-id
-    // half. Both must appear in `known_ids` for the Pass 2 `.expect()`
-    // to hold across the transitional period while Agent A's
-    // `bridge_emitted_rule_ids` rename is mid-flight.
+    // Include both the wire-string form (`additional_emitted_ids` first
+    // col, `bridge_emitted_rule_ids` first col) AND the predicate-id
+    // slice — the canonicalize step reduces wire strings to predicate-id
+    // at registration time, so the canonical intern stored in
+    // `overrides` is the predicate-id half. Both must appear in
+    // `known_ids` for the Pass 2 `.expect()` to hold.
     let mut known_ids: HashSet<&'static str> = HashSet::new();
     for rule_set in rule_sets {
         for rule in rule_set.rules() {
@@ -264,9 +259,8 @@ pub(super) fn predicate_id_of_wire(s: &'static str) -> Option<&'static str> {
 /// `marque_capco::vocabulary` for the per-token name interns.
 pub(super) fn wire_string_of(id: marque_rules::RuleId) -> &'static str {
     // `format!("{}", id)` is infallible; `Box::leak` is infallible;
-    // the return type is `&'static str` directly per the rust-reviewer
-    // T044 MEDIUM-1 finding (the prior `Option<&'static str>` wrapper
-    // was dead — every call site immediately unwrapped).
+    // the return type is `&'static str` directly (an `Option` wrapper
+    // would be dead — every call site immediately unwraps).
     Box::leak(format!("{}", id).into_boxed_str())
 }
 
@@ -283,18 +277,16 @@ pub(super) fn canonicalize_rule_overrides(
     // `&'static str` (RuleId's inner slice, rule.name()), so the map's
     // keys and values are all `'static`.
     //
-    // Dispatcher walkers like `BannerMatchesProjectedRule` (T026a)
-    // register under one bookkeeping ID but emit diagnostics under
-    // per-row catalog IDs (E035 / E040 in addition to E031). The
-    // walker advertises those catalog (id, name) pairs through
-    // `Rule::additional_emitted_ids`; each pair becomes a self-
-    // canonical entry so a `.marque.toml` configuring the catalog ID
-    // (`E035 = "warn"`) is accepted instead of failing as
-    // `UnknownRuleOverride`. The per-emitted-id severity-override
-    // path at lint time then resolves the override against the
-    // diagnostic's emitted `rule` field.
-    // T044: the override key universe MUST cover three user-facing
-    // forms per PM-decisions OD-6 / OD-7:
+    // Dispatcher walkers like `BannerMatchesProjectedRule` register
+    // under one bookkeeping ID but emit diagnostics under per-row
+    // catalog IDs. The walker advertises those catalog (id, name) pairs
+    // through `Rule::additional_emitted_ids`; each pair becomes a self-
+    // canonical entry so a `.marque.toml` configuring the catalog ID is
+    // accepted instead of failing as `UnknownRuleOverride`. The
+    // per-emitted-id severity-override path at lint time then resolves
+    // the override against the diagnostic's emitted `rule` field.
+    //
+    // The override key universe MUST cover three user-facing forms:
     //   1. Wire-string form: `"capco:banner.banner-rollup.sar-portions-roll-up"`
     //      (what `Display` produces, what users type in
     //      `.marque.toml [rules]` keys).
@@ -323,11 +315,11 @@ pub(super) fn canonicalize_rule_overrides(
             // (`"<scheme>:<predicate_id>"`) the user types.
             let wire = wire_string_of(rule.id());
             known.insert(wire, predicate);
-            // Catalog IDs / names from dispatcher walkers — Agent A's
-            // pattern makes `catalog_id` the wire-string form
-            // (`"capco:banner..."`); we reduce it to its predicate-id
-            // half so config keys typed as the wire string resolve to
-            // the same intern as the runtime emit-site predicate id.
+            // Catalog IDs / names from dispatcher walkers — `catalog_id`
+            // is the wire-string form (`"capco:banner..."`); we reduce
+            // it to its predicate-id half so config keys typed as the
+            // wire string resolve to the same intern as the runtime
+            // emit-site predicate id.
             for (catalog_id, catalog_name) in rule.additional_emitted_ids() {
                 let canonical = predicate_id_of_wire(catalog_id).unwrap_or(catalog_id);
                 known.insert(catalog_id, canonical);
@@ -336,14 +328,12 @@ pub(super) fn canonicalize_rule_overrides(
             }
         }
     }
-    // Bridge-emitted IDs (post-T044: the catalog row's `name` field IS
-    // the predicate id — see the bridge no-op pass-through at
-    // `bridge_constraint_diagnostic`). `scheme.bridge_emitted_rule_ids`
-    // still returns `(legacy_capco_label, descriptive_alias)` pairs
-    // because Agent A's rename of that surface is mid-flight at PR
-    // authorship time; canonicalize accepts both via the same wire-
-    // string → predicate-id reduction so `.marque.toml` configs that
-    // already typed either form continue to resolve.
+    // Bridge-emitted IDs: the catalog row's `name` field IS the
+    // predicate id — see the bridge no-op pass-through at
+    // `bridge_constraint_diagnostic`. `scheme.bridge_emitted_rule_ids`
+    // returns `(capco_label, descriptive_alias)` pairs; canonicalize
+    // accepts both via the same wire-string → predicate-id reduction so
+    // `.marque.toml` configs that typed either form resolve.
     for (bridge_id, bridge_name) in scheme.bridge_emitted_rule_ids() {
         let canonical = predicate_id_of_wire(bridge_id).unwrap_or(bridge_id);
         known.insert(bridge_id, canonical);

@@ -25,14 +25,13 @@
 //! and re-renders the result via `render_portion`. The rewrite removes
 //! RELIDO from the portion, leaving `(S//NF)`.
 //!
-//! **Previous bench**: before PR 3c.B Commit 6 (form-bucket migration)
-//! retired E001, this bench used `SECRET//NF\n` with the E001
-//! `NF → NOFORN` expansion as the signal. Post-retirement the renderer
-//! absorbs that expansion by construction and no `AppliedFix` is produced,
-//! so the old invariant always panicked. E054 is the direct replacement:
-//! it still fires a deterministic confidence-0.95 fix on the strict path.
+//! The bench uses the RELIDO-conflicts-NOFORN rule (`E054` in the
+//! function names) because it fires a deterministic confidence-0.95 fix
+//! on the strict path. A portion-mark-in-banner expansion would not
+//! work here: the renderer absorbs that by construction and produces no
+//! `AppliedFix`.
 //!
-//! Marketing-facing number is `fix_single_e054_apply`: total wall-clock
+//! Headline number is `fix_single_e054_apply`: total wall-clock
 //! time to detect, promote, apply, and audit one fix on a one-portion
 //! input. The lint baseline contextualizes how much of that is detection
 //! vs the fix-specific work.
@@ -88,9 +87,9 @@ fn assert_bench_invariants(engine: &Engine) {
 
     // Exactly one fix applied total — extra fixes would change what the bench
     // is measuring (multiple rewrites, different pipeline branch).
-    // PR 3c.2.D fixup F-3: `applied_fixes()` returns `impl Iterator`; collect
-    // once into a local `Vec` so the indexed read at `applied[0]` is valid
-    // and the same fixes can be inspected for the assertion message.
+    // `applied_fixes()` returns `impl Iterator`; collect once into a
+    // local `Vec` so the indexed read at `applied[0]` is valid and the
+    // same fixes can be inspected for the assertion message.
     let applied: Vec<_> = fix_result.applied_fixes().collect();
     assert_eq!(
         applied.len(),
@@ -106,11 +105,10 @@ fn assert_bench_invariants(engine: &Engine) {
     );
 
     let e054_fix = applied[0];
-    // Post-T044: legacy "E054" → ("capco", "portion.dissem.relido-conflicts-noforn")
-    // per `legacy-rule-id-map.md` §1. The bench documents the deterministic
-    // strict-path FactRemove that auto-fixes RELIDO when NOFORN is also
-    // present in the same portion (§H.8 p145 + p154 — mutually exclusive).
-    // `e054_fix` retained as the variable name for archaeological context.
+    // The bench documents the deterministic strict-path FactRemove that
+    // auto-fixes RELIDO when NOFORN is also present in the same portion
+    // (§H.8 p145 + p154 — mutually exclusive). Rule predicate id:
+    // `portion.dissem.relido-conflicts-noforn`.
     assert_eq!(
         e054_fix.rule.predicate_id(),
         "portion.dissem.relido-conflicts-noforn",
@@ -141,8 +139,6 @@ fn assert_bench_invariants(engine: &Engine) {
     );
 
     let lint_result = engine.lint(SINGLE_FIX_INPUT);
-    // T044: legacy `E054` → predicate id
-    // `portion.dissem.relido-conflicts-noforn` per legacy-rule-id-map §2.
     let has_e054_diag = lint_result
         .diagnostics
         .iter()

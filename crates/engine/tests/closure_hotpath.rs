@@ -2,28 +2,25 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-D.2 closure-on-the-hot-path integration tests.
+//! Closure-on-the-hot-path integration tests.
 //!
-//! Exercises [`CapcoScheme::project(Scope::Page, ...)`] post-flip
-//! (PR 4b-D.2 Commit 3). The closure operator now runs between the
-//! per-axis lattice join and the declarative `PageRewrite` catalog;
-//! these tests pin end-to-end behavior through the production page
-//! projection — idempotence and monotonicity in the marking, plus
-//! correct composition with the `DissemSet` supersession overlay
-//! (§H.8 p145 NOFORN-dominates).
+//! Exercises [`CapcoScheme::project(Scope::Page, ...)`]. The closure
+//! operator runs between the per-axis lattice join and the declarative
+//! `PageRewrite` catalog; these tests pin end-to-end behavior through
+//! the production page projection — idempotence and monotonicity in the
+//! marking, plus correct composition with the `DissemSet` supersession
+//! overlay (§H.8 p145 NOFORN-dominates).
 //!
-//! **Post-#704 note**: the pre-#704 `CLOSURE_NOFORN_CAVEATED` Trio 1
-//! row and `CLOSURE_REL_TO_USA_NATO` row retired from close() and
-//! relocated to `marque_capco::scheme::default_fill` (they're "default
-//! if absent" rules, non-monotone by §-design per §B.3 paragraph b
-//! p19's "NOT MARKED PREVIOUSLY" gate). The end-to-end fact
-//! injection these tests assert is preserved through the
-//! close() + default_fill stack; the tests use `scheme.project()`
-//! (full pipeline) and so are unaffected by the close()/default_fill
-//! split.
+//! The `CLOSURE_NOFORN_CAVEATED` caveated row and the
+//! `CLOSURE_REL_TO_USA_NATO` row live in
+//! `marque_capco::scheme::default_fill` rather than close() — they are
+//! "default if absent" rules, non-monotone per §B.3 paragraph b p19's
+//! "NOT MARKED PREVIOUSLY" gate (#704). The end-to-end fact injection
+//! these tests assert is preserved through the close() + default_fill
+//! stack; the tests use `scheme.project()` (full pipeline) and so are
+//! unaffected by the close()/default_fill split.
 //!
-//! Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e) +
-//! §4.7.4 pipeline ordering. Default-fill per-row authorities at
+//! Default-fill per-row authorities at
 //! `marque_capco::scheme::default_fill::ROW0_CAVEATED_TRIGGERS` and
 //! sibling consts.
 
@@ -309,18 +306,16 @@ fn project_is_monotone_on_extending_facts() {
 // NOFORN-dominates-after-closure regression (§H.8 p145 + §B.3 Table 2 p21)
 // ---------------------------------------------------------------------------
 
-/// Direct test of the `apply_fact_add` NOFORN-supersession routing
-/// landed in PR 4b-D.2 (decisions.md D22). A synthetic PageRewrite
-/// emits `FactAdd { Cve(TOK_NOFORN), Scope::Page }` on a marking
-/// that carries DISPLAY ONLY; the post-fix path MUST strip
+/// Direct test of the `apply_fact_add` NOFORN-supersession routing. A
+/// synthetic PageRewrite emits `FactAdd { Cve(TOK_NOFORN), Scope::Page }`
+/// on a marking that carries DISPLAY ONLY; the post-fix path MUST strip
 /// DISPLAY ONLY via the §H.8 p145 supersession overlay at the
 /// injection site.
 ///
-/// Pre-fix the apply_fact_add path appended `Nf` to `dissem_us`
-/// without re-applying overlays, leaving the marking with
-/// `{Nf, Displayonly}` — invalid per §H.8 p145. Post-fix the
-/// `DissemSet::with_noforn_injected` routing strips dominated
-/// controls automatically.
+/// A naive apply_fact_add that appended `Nf` to `dissem_us` without
+/// re-applying overlays would leave the marking with `{Nf, Displayonly}`
+/// — invalid per §H.8 p145. The `DissemSet::with_noforn_injected`
+/// routing strips dominated controls automatically.
 ///
 /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
 /// RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
@@ -344,14 +339,12 @@ fn apply_fact_add_noforn_strips_displayonly_via_supersession() {
     };
 
     // Synthetic rewrite: when DISPLAY ONLY is present, inject NOFORN.
-    // The post-PR-4b-D.2 apply_fact_add NOFORN branch routes through
+    // The apply_fact_add NOFORN branch routes through
     // DissemSet::with_noforn_injected, which applies the §H.8 p145
     // overlay and strips DISPLAY ONLY at the injection site.
     let rewrite = PageRewrite {
         id: "test/displayonly-triggers-noforn-overlay",
-        // PR 10.A.1: typed Citation — anchor at §H.8 p145 (NOFORN-
-        // dominates rule); the "PR 4b-D.2 D22 test fixture" framing
-        // lived in the pre-migration string and is dropped here.
+        // Typed Citation anchored at §H.8 p145 (NOFORN-dominates rule).
         citation: marque_scheme::capco(marque_scheme::SectionLetter::H, 8, 145),
         trigger: CategoryPredicate::Custom(displayonly_present),
         action: CategoryAction::Intent(ReplacementIntent::FactAdd {
@@ -405,9 +398,7 @@ fn apply_fact_add_noforn_is_idempotent() {
 
     let rewrite = PageRewrite {
         id: "test/noforn-already-present",
-        // PR 10.A.1: typed Citation — anchor at §H.8 p145 (NOFORN-
-        // dominates rule). The "idempotence" annotation lived in the
-        // pre-migration string and is dropped here.
+        // Typed Citation anchored at §H.8 p145 (NOFORN-dominates rule).
         citation: marque_scheme::capco(marque_scheme::SectionLetter::H, 8, 145),
         trigger: CategoryPredicate::Contains {
             category: CAT_DISSEM,
@@ -449,39 +440,33 @@ fn apply_fact_add_noforn_is_idempotent() {
 // used with DISPLAY ONLY") on the `attrs.display_only_to` country
 // axis:
 //
-//   1. `apply_fact_add` (post-PR-4b-D.2 Copilot R2 #1): every direct
-//      FactAdd of NOFORN clears `display_only_to` at the injection
-//      site. Covers E021 / E038 / closure-driven injection paths.
-//      Pinned by tests in `crates/capco/tests/category_action_intent.rs`.
-//   2. `capco/noforn-clears-display-only-to` PageRewrite (PR 4b-D.2
-//      Copilot R1 #2): a defense-in-depth `Clear { CAT_DISPLAY_ONLY_TO }`
-//      action that fires whenever NOFORN ends up in `dissem_us` at
-//      the projection's PageRewrite phase. Pinned by the integration
-//      test below.
+//   1. `apply_fact_add`: every direct FactAdd of NOFORN clears
+//      `display_only_to` at the injection site. Covers the AEA-axis
+//      and closure-driven injection paths. Pinned by tests in
+//      `crates/capco/tests/category_action_intent.rs`.
+//   2. `capco/noforn-clears-display-only-to` PageRewrite: a
+//      defense-in-depth `Clear { CAT_DISPLAY_ONLY_TO }` action that
+//      fires whenever NOFORN ends up in `dissem_us` at the projection's
+//      PageRewrite phase. Pinned by the integration test below.
 //
-// Copilot R2 #2 surfaced that the prior `noforn_clears_display_only_to_via_cross_portion_join`
-// test didn't exercise layer #2: `expected_display_only` in PageContext
-// short-circuits to empty whenever ANY portion has NOFORN
-// (`crates/ism/src/page_context.rs:881-896`). When portion 1 was
-// NOFORN-bearing, `out.display_only_to` was empty at join time —
-// before the rewrite ran. The test passed whether or not the rewrite
-// existed.
-//
-// Post-Copilot-R2 the test pivots to a UCNI scenario where:
+// To exercise layer #2 the test must avoid `expected_display_only`'s
+// short-circuit-to-empty whenever ANY portion has NOFORN: if a portion
+// is NOFORN-bearing, `out.display_only_to` is empty at join time —
+// before the rewrite runs, so the test would pass whether or not the
+// rewrite existed. The test uses a UCNI scenario where:
 //   - Both portions have non-empty `display_only_to` (passes the row-19
 //     all-or-nothing gate in `expected_display_only`).
 //   - Neither portion has NOFORN at join time (passes the `any_noforn`
-//     short-circuit at line 894).
-//   - The Pattern-C `capco/dod-ucni-promotes-noforn-when-classified`
-//     rewrite injects NOFORN AFTER `display_only_to` has been
-//     populated.
+//     short-circuit).
+//   - The `capco/dod-ucni-promotes-noforn-when-classified` rewrite
+//     injects NOFORN AFTER `display_only_to` has been populated.
 //
-// With Item 1 (apply_fact_add clears country axes) in place, the
-// Pattern-C rewrite's FactAdd ALREADY clears `display_only_to` —
-// making the noforn-clears-display-only-to rewrite functionally
-// idempotent on this path. The integration test verifies BOTH layers
-// converge to the same correct output: post-`scheme.project`, NOFORN
-// is present and `display_only_to` is empty.
+// With layer #1 (apply_fact_add clears country axes) in place, that
+// rewrite's FactAdd ALREADY clears `display_only_to` — making the
+// noforn-clears-display-only-to rewrite functionally idempotent on this
+// path. The integration test verifies BOTH layers converge to the same
+// correct output: post-`scheme.project`, NOFORN is present and
+// `display_only_to` is empty.
 //
 // The rewrite is retained as defense-in-depth — a future refactor
 // that bypasses `apply_fact_add` or changes its clearing semantics
@@ -490,8 +475,7 @@ fn apply_fact_add_noforn_is_idempotent() {
 // Authority: CAPCO-2016 §H.8 p145 ("NOFORN ... Cannot be used with
 // REL TO / RELIDO / EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows
 // 1-2 (NOFORN dominates the FD&R family) + §H.6 p116 (DOD UCNI
-// strip-and-promote on classified). All re-verified 2026-05-18
-// against `crates/capco/docs/CAPCO-2016.md`.
+// strip-and-promote on classified).
 
 /// Cross-axis integration: a classified page where the Pattern-C
 /// `capco/dod-ucni-promotes-noforn-when-classified` rewrite injects

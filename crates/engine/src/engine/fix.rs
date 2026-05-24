@@ -5,7 +5,7 @@ use super::*;
 impl Engine {
     /// Lint and apply fixes. Returns fixed source and audit log.
     ///
-    /// Fix application order follows FR-016: `(span.end DESC, span.start DESC,
+    /// Fix application order is `(span.end DESC, span.start DESC,
     /// rule_id ASC, replacement ASC)` so reverse-byte application preserves
     /// earlier-span offsets and equal-span ties break deterministically.
     ///
@@ -103,10 +103,9 @@ impl Engine {
         threshold: f32,
         deadline: Option<Instant>,
     ) -> Result<FixResult, EngineError> {
-        // Five-line trampoline (PR 7b D-7.9). Every stage of the
-        // pipeline now lives on `TwoPassFixer`; this method exists
-        // to bind the public surface (`fix_with_options` ->
-        // `fix_inner`) to the new struct shape.
+        // Trampoline: every stage of the pipeline lives on
+        // `TwoPassFixer`; this method binds the public surface
+        // (`fix_with_options` -> `fix_inner`) to that struct.
         TwoPassFixer {
             engine: self,
             source,
@@ -117,7 +116,7 @@ impl Engine {
         .run()
     }
 
-    /// Apply pre-scanner text corrections (C001) from lint diagnostics and
+    /// Apply pre-scanner text corrections from lint diagnostics and
     /// return the corrected source + applied audit lines + dropped diagnostics.
     /// Used by `fix_inner` to produce an intermediate source the scanner
     /// can detect; the dropped diagnostics surface via
@@ -133,21 +132,21 @@ impl Engine {
         Vec<Diagnostic<CapcoScheme>>,
         Vec<AuditLine<CapcoScheme>>,
     ) {
-        // Mirror `fix_inner`'s suggest-channel exclusion: a C001
-        // diagnostic that the lint post-pass rewrote to
+        // Mirror `fix_inner`'s suggest-channel exclusion: a
+        // text-correction diagnostic that the lint post-pass rewrote to
         // `Severity::Suggest` (because its confidence fell below
         // threshold) must not be auto-applied here either.
         //
-        // Post Commit 10: text-correction diagnostics carry their
-        // canonical replacement bytes + provenance in
-        // `Diagnostic.text_correction` (a `TextCorrection` payload).
-        // The engine synthesizes `TextCorrectionProposal` records
-        // from those diagnostics and promotes them via
+        // Text-correction diagnostics carry their canonical replacement
+        // bytes + provenance in `Diagnostic.text_correction` (a
+        // `TextCorrection` payload). The engine synthesizes
+        // `TextCorrectionProposal` records from those diagnostics and
+        // promotes them via
         // `AppliedFix::__engine_promote_text_correction`. Provenance
         // (`source`, `confidence`, `migration_ref`) is preserved per
         // the rule's emission — the engine does NOT overwrite it,
-        // because C001 (corrections-map) and E006-shaped (deprecation
-        // migration) and other byte-substitution rules all share this
+        // because the corrections-map rule, the deprecation-migration
+        // rule, and other byte-substitution rules all share this
         // channel but carry distinct provenance.
         let mut text_fixes: Vec<TextCorrectionProposal> = lint
             .diagnostics
@@ -173,7 +172,7 @@ impl Engine {
             return (source.to_vec(), Vec::new(), Vec::new());
         }
 
-        // Sort and deduplicate using FR-016 order + C-1 overlap guard.
+        // Sort and deduplicate using confidence-then-span order + C-1 overlap guard.
         text_fixes.sort_by(|a, b| {
             b.span
                 .end
@@ -221,10 +220,11 @@ impl Engine {
         let mut buf = source.to_vec();
         let mut audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(kept.len());
         for fix in kept {
-            // PM-D-6 / G13: hash pre-correction bytes BEFORE the
-            // splice. `original_bytes` borrows from `source` for the
-            // hashing call only — never stored in an audit-record
-            // field. Order: hash → splice → audit, so the splice
+            // Hash pre-correction bytes BEFORE the splice (the audit
+            // record carries only the digest, never the bytes).
+            // `original_bytes` borrows from `source` for the hashing
+            // call only — never stored in an audit-record field. Order:
+            // hash → splice → audit, so the splice
             // doesn't invalidate `original_bytes` and the audit
             // captures the original-bytes digest.
             let original_bytes = &source[fix.span.start..fix.span.end];
@@ -278,9 +278,9 @@ pub(super) struct TwoPassFixer<'engine> {
 /// transient `Vec<u8>` never sits in freed memory unwiped.
 /// Tuple returned by [`TwoPassFixer::apply_kept_fixes`].
 ///
-/// Carries the post-pass output buffer + the `marque-1.0` audit-line
-/// stream + the `(rule_id, span)` keys of applied fixes. Post-cutover
-/// (PR 3c.2.D) `audit_lines` is the sole audit channel.
+/// Carries the post-pass output buffer + the audit-line stream + the
+/// `(rule_id, span)` keys of applied fixes. `audit_lines` is the sole
+/// audit channel.
 pub(super) type AppliedTuple = (
     Zeroizing<Vec<u8>>,
     HashSet<(RuleId, Span)>,
@@ -312,8 +312,8 @@ pub(super) type AppliedTuple = (
 /// freed.
 ///
 /// Trade-off: one additional `len`-byte allocation and memcpy per
-/// fix call (~1µs on 10KB inputs). Constitutional ceilings
-/// (SC-001 16ms p95 on 10KB) remain comfortable.
+/// fix call (~1µs on 10KB inputs). The interactive-latency ceiling
+/// (16ms p95 on 10KB) remains comfortable.
 ///
 /// Constitution Principle II — the single Zeroizing → SecretSlice
 /// transition for the public `FixResult.source` field. Engine-only
@@ -327,14 +327,14 @@ pub(super) fn into_secret_slice(z: Zeroizing<Vec<u8>>) -> SecretSlice<u8> {
     // helper) BEFORE the backing Vec frees its buffer.
 }
 
-/// Pre-pass-1 attribute cache entries (PR 7c / FR-023 / R-4).
+/// Pre-pass-1 attribute cache entries.
 ///
 /// One entry per marking whose span overlaps a pass-1 fix. The
 /// engine builds the cache before the pass-1 splice so the
 /// `CanonicalAttrs` snapshot reflects the bytes the rule originally
-/// matched against. Inline-4 matches the existing
-/// `Phase::Localized` rule cap (C001 / E006 / E007 / S004 — at most
-/// one fix per Localized rule per marking; the typical document
+/// matched against. Inline-4 matches the small `Phase::Localized` rule
+/// count (at most one fix per Localized rule per marking; the typical
+/// document
 /// has ≤4 reshape sites). Spills to heap on dense documents.
 ///
 /// The `Span` keys are the **marking spans** (i.e., scanner
@@ -466,9 +466,10 @@ impl<'engine> TwoPassFixer<'engine> {
             let key = (fix.rule, fix.span);
             applied_keys.insert(key);
 
-            // PM-D-6 / G13: hash pre-fix bytes for the
-            // `original_digest`. `original_bytes` borrows from
-            // `source_buf` for the lifetime of the hashing call only.
+            // Hash pre-fix bytes for the `original_digest` (the audit
+            // record carries only the digest, never the bytes).
+            // `original_bytes` borrows from `source_buf` for the
+            // lifetime of the hashing call only.
             let original_bytes = &source_buf[fix.span.start..fix.span.end];
 
             // Build the v2 Canonical<S> via EngineConstructor (the
@@ -538,12 +539,12 @@ impl<'engine> TwoPassFixer<'engine> {
         Ok((post_buffer, applied_keys, audit_lines))
     }
 
-    /// Collect the unique contributing pass-1 rule IDs in
-    /// FR-016-stable order (sort + dedup) for the R002 payload.
-    /// Capped at 4 entries to fit the `SmallVec<[RuleId; 4]>` inline
-    /// capacity exactly — pass-1 has at most 4 rule families today
-    /// (C001/E006/E007/S004), and a future Localized rule expansion
-    /// can lift the cap in lockstep with the inline-N bump.
+    /// Collect the unique contributing pass-1 rule IDs in a stable
+    /// (sorted, deduped) order for the R002 payload. Capped at 4 entries
+    /// to fit the `SmallVec<[RuleId; 4]>` inline capacity exactly —
+    /// pass-1 has a small number of Localized rule families, and a
+    /// future expansion can lift the cap in lockstep with the inline-N
+    /// bump.
     pub(super) fn contributing_pass1_rule_ids(
         &self,
         pass1_audit_lines: &[AuditLine<CapcoScheme>],
@@ -583,9 +584,9 @@ impl<'engine> TwoPassFixer<'engine> {
         lint: LintResult,
         r002: Diagnostic<CapcoScheme>,
     ) -> FixResult {
-        // Audit-line merge (PR 3c.2.D / D7). R002 is a remaining-
-        // diagnostic synthetic — it does NOT contribute an
-        // `AuditLine::AppliedFix` entry; only promoted fixes do. The
+        // Audit-line merge. R002 is a remaining-diagnostic synthetic —
+        // it does NOT contribute an `AuditLine::AppliedFix` entry; only
+        // promoted fixes do. The
         // R002 itself surfaces via `remaining_diagnostics` below.
         let mut all_audit_lines: Vec<AuditLine<CapcoScheme>> =
             Vec::with_capacity(pass0_audit_lines.len() + pass1.audit_lines.len());

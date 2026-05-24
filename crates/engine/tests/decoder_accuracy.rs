@@ -2,62 +2,50 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T057 — Decoder accuracy harness (SC-004 gate).
+//! Decoder accuracy harness.
 //!
 //! Walks `tests/fixtures/mangled/**/*.json`, runs each fixture's
-//! `observed` form through `DecoderRecognizer::recognize` (per the
-//! T057 spec — recognizer-level, not Engine-level), and pins the
-//! decoder's empirical accuracy against the fixture set.
+//! `observed` form through `DecoderRecognizer::recognize`
+//! (recognizer-level, not Engine-level), and pins the decoder's
+//! empirical accuracy against the fixture set. The accuracy gate is
+//! ≥85% resolution at recognition ≥0.85.
 //!
 //! ## Three gates, three purposes
 //!
-//! - `resolution_rate_at_0_85` — the literal SC-004 target.
-//!   Asserts ≥85% resolution rate at recognition ≥0.85. Always-on
-//!   as of issue #133 PR 9 (2026-04-26): the decoder cleared 85.8%
-//!   aggregate after REL TO structural repair landed, so this test
-//!   is no longer `#[ignore]`d and is the load-bearing SC-004 gate.
-//! - `resolution_rate_does_not_regress` — always-on aggregate
-//!   accuracy floor. Now pinned at the same 85% as the SC-004
-//!   target gate; both fail CI together if accuracy drops. Ratchet
-//!   below the new measured rate when subsequent PRs land further
-//!   accuracy gains.
-//! - `resolution_rate_per_class_does_not_regress` — always-on
-//!   *per-class* accuracy floors. Catches a regression in one
-//!   mangling class that another class's improvement would
-//!   otherwise mask in the aggregate (e.g., Reordering 100%→60%
-//!   offset by Typo 20%→40% leaves the aggregate flat). The floors
-//!   are pinned per-class against the current measured rates; see
-//!   `PER_CLASS_FLOORS` below.
+//! - `resolution_rate_at_0_85` — the literal accuracy target.
+//!   Asserts ≥85% resolution rate at recognition ≥0.85.
+//! - `resolution_rate_does_not_regress` — always-on aggregate accuracy
+//!   floor, pinned just under the current measured rate so a real drop
+//!   fails CI. Ratchet up as later work lands further accuracy gains.
+//! - `resolution_rate_per_class_does_not_regress` — *per-class*
+//!   accuracy floors. Catches a regression in one mangling class that
+//!   another class's improvement would otherwise mask in the aggregate
+//!   (e.g., Reordering 100%→60% offset by Typo 20%→40% leaves the
+//!   aggregate flat). The floors are pinned per-class against the
+//!   current measured rates; see `PER_CLASS_FLOORS` below.
 //!
 //! ## Why three gates and not one
 //!
-//! Landing T057 with a single ≥85%-gated test would either (a) fail
-//! historically and put CI in a known-bad state during the climb
-//! from ~53% aggregate to today's 85.8%, or (b) be silently lowered
-//! to a passing threshold and lose its meaning. The aggregate-floor
-//! split fixed (b); the per-class gate closes the residual hole that
-//! an aggregate gate cannot distinguish "every class held its rate"
-//! from "class A regressed and class B compensated". With the
-//! decoder now clearing 85% (issue #133 PR 9), all three gates are
-//! always-on and the SC-004 contract is enforced strictly.
+//! An aggregate gate alone cannot distinguish "every class held its
+//! rate" from "class A regressed and class B compensated"; the
+//! per-class gate closes that hole.
 //!
 //! ## Why recognizer-level, not Engine-level
 //!
-//! The task spec for T057 explicitly says "runs DecoderRecognizer
-//! with confidence ≥0.85". Going through `Engine::lint` would also
-//! exercise `StrictOrDecoderRecognizer`'s strict-first dispatch
-//! (`strict_parse_is_complete` short-circuits the decoder when
-//! strict parses cleanly), which would silently classify many
-//! mangled fixtures as "strict succeeded" and never measure the
-//! decoder. That is an interesting end-to-end metric, but it is not
-//! what SC-004 measures — SC-004 is the recognizer's accuracy
-//! claim.
+//! The gate measures `DecoderRecognizer` with confidence ≥0.85. Going
+//! through `Engine::lint` would also exercise
+//! `StrictOrDecoderRecognizer`'s strict-first dispatch
+//! (`strict_parse_is_complete` short-circuits the decoder when strict
+//! parses cleanly), which would silently classify many mangled
+//! fixtures as "strict succeeded" and never measure the decoder. That
+//! is an interesting end-to-end metric, but it is not the recognizer's
+//! accuracy claim.
 //!
 //! Per Constitution VII the harness lives in `marque-engine`, not
 //! `marque-capco`, because `DecoderRecognizer` and `StrictRecognizer`
 //! both live in `marque-engine` (the only crate where the
 //! `marque-core` parser surface and the `marque-capco` rule surface
-//! converge — see T058 / T059 placement notes in tasks.md).
+//! converge).
 //!
 //! ## What "resolution" means
 //!
@@ -69,14 +57,14 @@
 //! form by the strict recognizer. A `Parsed::Ambiguous` result —
 //! including the zero-candidate honesty signal — counts as
 //! unresolved regardless of how dense its candidate set is, because
-//! SC-004's claim is about *unambiguous* recovery (an operator who
+//! the accuracy claim is about *unambiguous* recovery (an operator who
 //! has to pick from a candidate list has not been resolved).
 //!
 //! Marking equality uses [`same_meaning`] which clears
 //! `token_spans` before comparison. The strict-attrs-on-canonical
-//! → decoder-attrs-on-mangled equality is what SC-004's
-//! "resolved to the expected canonical marking" wording asks for —
-//! semantic recovery, not source-byte round-trip.
+//! → decoder-attrs-on-mangled equality is what "resolved to the
+//! expected canonical marking" asks for — semantic recovery, not
+//! source-byte round-trip.
 //!
 //! ## Failure messages
 //!
@@ -102,11 +90,10 @@ use marque_scheme::recognizer::{ParseContext, Recognizer};
 use serde::Deserialize;
 
 /// Decoder confidence floor (per recognition score) at which a
-/// candidate counts as "resolved". Matches the spec's SC-004
-/// definition.
+/// candidate counts as "resolved".
 const RECOGNITION_FLOOR: f32 = 0.85;
 
-/// Aggregate SC-004 gate. ≥85% resolution across all fixtures.
+/// Aggregate accuracy gate. ≥85% resolution across all fixtures.
 const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 
 /// Aggregate regression floor. Pinned just under the current
@@ -135,20 +122,9 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 /// | WrongCase         | 280      | 344    |  81.4%  |
 /// | **Aggregate**     | **2944** | **4746** | **62.0%** |
 ///
-/// Movement from prior pin (issue #234 PR-B, 2026-04-28, 260
-/// fixtures): corpus expanded 260 → 4,746 (+4,486 fixtures from
-/// CAPCO-2016 manual). New fixtures include NATO/FGI/JOINT markings
+/// The corpus is 4,746 fixtures, including NATO/FGI/JOINT markings
 /// with vocabulary gaps (BOHEMIA, ATOMAL, NIS, etc. — tracked in
 /// issue #246) and non-standard CAPCO examples from the manual.
-///
-/// The decoder improvements landed in this PR lifted aggregate
-/// accuracy from the raw 37.2% baseline (no non-US reordering
-/// support) to 62.0% by adding:
-///   - FGI `{trigraph} {level}` segment classification
-///   - NATO/JOINT classification segment classification
-///   - Non-US classification prefix insertion (`try_add_non_us_prefix`)
-///   - Correct `is_non_us` detection in `try_canonical_reorder`
-///     (with "TOP" exclusion to prevent false positives on US markings)
 ///
 /// Remaining accuracy gaps:
 ///   - NATO codeword vocabulary (BOHEMIA, ATOMAL, NIS) — issue #246
@@ -157,10 +133,6 @@ const AGGREGATE_FLOOR_TARGET: f64 = 0.85;
 ///   - SAR program-nickname / identifier-internal typos — issue #180
 ///   - SCI compartment fuzzy — issue #186
 ///   - REL TO trigraph fuzzy — issue #186
-///
-/// SC-004 (≥85%) is not met on the 4,746-fixture corpus.
-/// `resolution_rate_at_0_85` is `#[ignore]`d until vocabulary gaps
-/// are addressed. See that test's comment for re-enable criteria.
 const AGGREGATE_FLOOR_REGRESSION: f64 = 0.62;
 
 /// Per-class regression floors. Pinned against the current measured
@@ -169,34 +141,27 @@ const AGGREGATE_FLOOR_REGRESSION: f64 = 0.62;
 /// "Reordering 100%→60% offset by Typo 20%→40%" hole that the
 /// aggregate gate cannot detect.
 ///
-/// Floor policy by class (ratcheted 2026-04-29, 4,746-fixture corpus):
+/// Floor policy by class (each floor sits a point or two below the
+/// measured rate so noise doesn't trip the gate but a real drop does):
 ///
-/// - **`GarbledDelimiter`** pinned at `0.79` (2pp below measured
-///   81.8%). Many garbled-delimiter fixtures involve NATO/FGI markings
-///   with remaining vocabulary gaps; floor absorbs noise while
-///   catching real regressions.
-/// - **`MissingDelimiter`** pinned at `0.58` (2pp below measured
-///   59.8%). Non-US markings with unknown vocabulary tokens can't be
-///   recovered by `try_insert_delimiter`. Ratchet as gaps close.
-/// - **`Reordering`** pinned at `0.70` (1pp below measured 70.7%).
-///   Remaining failures are CTS/BOHEMIA/NIS zero-candidate cases and
-///   multi-`//` non-US markings that need parser changes.
-/// - **`SupersededToken`** ratcheted to `0.81` (2pp below measured
-///   82.6%): compound/embedded COMINT substitution (issue #246) fixed
-///   in `fuzzy_correct_tokens` — COMINT-G → SI-G, UNCLASCOMINTFIED
-///   → UNCLASSIFIED, FRD-COMINTGMA → FRD-SIGMA, etc. 38/46 now pass.
-///   Prior floor `0.09` (5/46) is retired.
-/// - **`Typo`** ratcheted to `0.50` (1pp below measured 51.3%).
-///   NATO classification vocab (COSMIC, BOHEMIA, ATOMAL, BALK) added
-///   to the correction dictionary; tetragraph PR-A expanded to 4-char
-///   entries (FVEY/ISAF typos). Issue #246.
-/// - **`WrongCase`** pinned at `0.79` (2pp below measured 81.4%).
-///   Wrong-case non-US markings with missing vocabulary fall through;
-///   margin absorbs noise without gold-plating.
-///
-/// Last ratcheted (2026-04-29, issue #246 vocab fixes): SupersededToken
-/// 0.09→0.81, Typo 0.47→0.50, MissingDelimiter 0.58 (no change).
-/// Prior pin (2026-04-29, PR #243) superseded for those two classes.
+/// - **`GarbledDelimiter`** `0.79`. Many garbled-delimiter fixtures
+///   involve NATO/FGI markings with remaining vocabulary gaps; the
+///   floor absorbs noise while catching real regressions.
+/// - **`MissingDelimiter`** `0.58`. Non-US markings with unknown
+///   vocabulary tokens can't be recovered by `try_insert_delimiter`.
+///   Ratchet as gaps close.
+/// - **`Reordering`** `0.70`. Remaining failures are CTS/BOHEMIA/NIS
+///   zero-candidate cases and multi-`//` non-US markings that need
+///   parser changes.
+/// - **`SupersededToken`** `0.81`. Compound/embedded COMINT
+///   substitution (issue #246) is handled in `fuzzy_correct_tokens` —
+///   COMINT-G → SI-G, UNCLASCOMINTFIED → UNCLASSIFIED,
+///   FRD-COMINTGMA → FRD-SIGMA, etc.
+/// - **`Typo`** `0.50`. NATO classification vocab (COSMIC, BOHEMIA,
+///   ATOMAL, BALK) is in the correction dictionary; tetragraph entries
+///   cover 4-char FVEY/ISAF typos (issue #246).
+/// - **`WrongCase`** `0.79`. Wrong-case non-US markings with missing
+///   vocabulary fall through; the margin absorbs noise.
 const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("GarbledDelimiter", 0.79),
     ("MissingDelimiter", 0.58),
@@ -206,15 +171,15 @@ const PER_CLASS_FLOORS: &[(&str, f64)] = &[
     ("WrongCase", 0.79),
 ];
 
-/// SC-004 also pins the minimum fixture count at ≥200 (so the gate is
-/// not vacuously satisfied by deleting fixtures down to a handful that
-/// happen to pass). Mirrors the floor enforced at fixture-generation
-/// time in `tools/corpus-analysis/analyze.py`.
+/// The minimum fixture count is ≥200 (so the gate is not vacuously
+/// satisfied by deleting fixtures down to a handful that happen to
+/// pass). Mirrors the floor enforced at fixture-generation time in
+/// `tools/corpus-analysis/analyze.py`.
 const MIN_FIXTURE_COUNT: usize = 200;
 
 /// Fixture record schema, mirrored from `tests/fixtures/mangled/README.md`.
 /// `source_confidence` is loaded but unused by this harness — the
-/// SC-004 gate cares about decoder confidence on `observed`, not the
+/// gate cares about decoder confidence on `observed`, not the
 /// generator's confidence in the `(observed, expected)` pair.
 #[derive(Debug, Deserialize)]
 struct MangledFixture {
@@ -385,10 +350,10 @@ fn parse_expected(
 /// parsed from — those will always differ between the decoder's
 /// input (the mangled `observed`) and the strict parser's input (the
 /// canonical `expected`), even for fixtures where the decoder
-/// recovers the right marking. SC-004 ("resolved to the expected
-/// canonical marking") asks whether the *meaning* matches, not
-/// whether the source-byte-offset table round-trips. Token spans
-/// are diagnostic-presentation metadata, not identity.
+/// recovers the right marking. "Resolved to the expected canonical
+/// marking" asks whether the *meaning* matches, not whether the
+/// source-byte-offset table round-trips. Token spans are
+/// diagnostic-presentation metadata, not identity.
 fn same_meaning(a: &CanonicalAttrs, b: &CanonicalAttrs) -> bool {
     let mut left = a.clone();
     let mut right = b.clone();
@@ -402,7 +367,7 @@ fn same_meaning(a: &CanonicalAttrs, b: &CanonicalAttrs) -> bool {
 /// cleared its internal `UNAMBIGUOUS_LOG_MARGIN` threshold
 /// (1.6 nats ≈ 5x odds ratio between top and runner-up), but the
 /// decoder still exposes the actual softmax-derived recognition
-/// score via the marking's provenance. SC-004 must use that real
+/// score via the marking's provenance. The gate must use that real
 /// score for its external 0.85 floor — at the unambiguous
 /// threshold the softmax is ~0.832 (see
 /// `provenance.rs::recognition_softmax_at_unambiguous_threshold`),
@@ -420,7 +385,7 @@ fn same_meaning(a: &CanonicalAttrs, b: &CanonicalAttrs) -> bool {
 /// than silently fall back to a sentinel.
 ///
 /// The Ambiguous arm is treated as unresolved regardless of how
-/// dense its candidate set is, because SC-004's claim is about
+/// dense its candidate set is, because the accuracy claim is about
 /// *unambiguous* recovery — a candidate-list disambiguation step
 /// is not "resolved" to an operator.
 fn unambiguous_recognition_score(m: &CapcoMarking) -> f32 {
@@ -541,13 +506,11 @@ fn run_sweep() -> AccuracyReport {
     }
 }
 
-/// SC-004 literal target gate. The decoder must resolve ≥85% of
-/// fixtures at recognition ≥0.85.
+/// Literal target gate. The decoder must resolve ≥85% of fixtures at
+/// recognition ≥0.85.
 ///
-/// **Currently `#[ignore]`d**: issue #246 vocab fixes (COSMIC/BOHEMIA/
-/// ATOMAL/BALK correction vocab, compound COMINT substitution,
-/// tetragraph PR-A expansion) raised accuracy from 62.0% → 63.2%,
-/// but SC-004 requires 85%. Remaining gaps:
+/// **Currently `#[ignore]`d**: the corpus measures ~63%, below the 85%
+/// target. Remaining gaps:
 ///
 ///   - NIS / CTS reordering (zero-candidate): CTS and BOHEMIA in
 ///     reordering context produce zero candidates because the
@@ -583,7 +546,7 @@ fn resolution_rate_at_0_85() {
 }
 
 /// Always-on accuracy regression gate. Catches the decoder getting
-/// worse without blocking CI on the SC-004 target gap. Pinned just
+/// worse without blocking CI on the 85%-target gap. Pinned just
 /// under the current measured rate; ratchet up alongside measured
 /// improvements.
 #[test]

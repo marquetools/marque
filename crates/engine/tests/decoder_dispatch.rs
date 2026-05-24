@@ -8,7 +8,7 @@
 //! `crates/engine/src/decoder.rs::tests`; these tests exercise the
 //! dispatch layer — the default `StrictOrDecoderRecognizer` installed
 //! by [`Engine::new`], the explicit-strict opt-out via
-//! [`Engine::with_recognizer`], and the FR-015 zero-candidate path
+//! [`Engine::with_recognizer`], and the zero-candidate path
 //! through the full `Engine::lint` pipeline.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
@@ -76,7 +76,7 @@ fn explicit_strict_recognizer_never_invokes_the_decoder() {
 }
 
 // ---------------------------------------------------------------------------
-// FR-015 zero-candidate signal surfaces as diagnostics only, no fix.
+// Zero-candidate signal surfaces as diagnostics only, no fix.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -84,8 +84,8 @@ fn default_engine_on_unrecognized_bytes_emits_no_decoder_fix() {
     // `//FROBNITZ WIBBLE` is a scanner-detectable banner candidate
     // (leading `//` matches the scanner's prefix list) whose tokens
     // have no vocabulary overlap with any CAPCO CVE. The dispatcher
-    // runs; the decoder's candidate set stays empty (FR-015:
-    // zero-candidate is the "we see signal, can't resolve" signal).
+    // runs; the decoder's candidate set stays empty (zero-candidate is
+    // the "we see signal, can't resolve" signal).
     // No `DecoderPosterior` fix should appear.
     let engine = build_engine();
     let result = engine.lint(b"//FROBNITZ WIBBLE");
@@ -205,12 +205,9 @@ fn default_engine_recovers_single_letter_portion_after_whitespace() {
     // canonicalization test in
     // `decoder_canonicalizes_single_letter_when_preceded_by_whitespace`.
     //
-    // T044 (Copilot reviewer pass) — the pre-T044 form here had a
-    // legacy `predicate_id().starts_with('E')` heuristic stuffed into
-    // a `let saw_marking = ...; let _ = saw_marking;` no-op pattern.
-    // The heuristic was vacuous even pre-T044 (the variable was
-    // discarded); post-T044 it's also semantically wrong (predicate
-    // IDs are descriptive paths, not E### codes). Removed entirely.
+    // There is no `predicate_id().starts_with('E')`-style heuristic
+    // here: predicate IDs are descriptive paths, not E### codes, so any
+    // such check would be both vacuous and semantically wrong.
     assert!(
         result.candidates_processed >= 1,
         "engine must reach the recognizer for whitespace-preceded `(S)`, \

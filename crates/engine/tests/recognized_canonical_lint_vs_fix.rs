@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Issue #699 — cross-channel G13 asymmetry pin for
+//! Issue #699 — cross-channel content-ignorance asymmetry pin for
 //! `recognized_canonical`.
 //!
 //! The lint surface DOES carry the decoder-recognized canonical
@@ -10,13 +10,13 @@
 //! without running `marque fix` and diffing the output). The audit
 //! surface does NOT — it carries the BLAKE3 digest of the canonical
 //! bytes plus the structural `Recanonicalize` intent, never the
-//! bytes themselves (Constitution V Principle V / G13
-//! content-ignorance).
+//! bytes themselves (Constitution V Principle V —
+//! audit content-ignorance).
 //!
 //! This file pins the asymmetry. A regression that leaked
 //! `recognized_canonical` into the audit envelope (or that dropped
-//! it from the lint surface) trips this test, not the G13 canary
-//! corpus sweep alone.
+//! it from the lint surface) trips this test, not the content-ignorance
+//! canary corpus sweep alone.
 //!
 //! The CLI renderer (`marque::render::audit_line_to_json_v1_0`)
 //! lives in a `[[bin]]`-only crate that integration tests cannot
@@ -128,8 +128,8 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
     // assertion: a regression that adds the canonical bytes to the
     // audit envelope (a future careless field-add, a copy-paste of
     // the lint renderer into the audit renderer) makes the bytes
-    // literally appear in the rendered NDJSON line. The G13 canary
-    // corpus sweep catches the same regression on a wider corpus;
+    // literally appear in the rendered NDJSON line. The content-ignorance
+    // canary corpus sweep catches the same regression on a wider corpus;
     // this test catches it on the specific R001 surface in isolation.
     let input = b"(TS//SAR-fk)";
     let canonical: &[u8] = b"(TS//SAR-FK)";
@@ -150,7 +150,7 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
     let recognized = r001
         .recognized_canonical
         .as_ref()
-        // Principle II readout — lint-side G13 pin (issue #699).
+        // Principle II readout — lint-side content-ignorance pin (issue #699).
         // This call is the load-bearing "lint surface carries the
         // bytes" half of the cross-channel asymmetry; the negative
         // half (audit envelope contains only the digest) is asserted
@@ -200,7 +200,7 @@ fn lint_carries_recognized_canonical_fix_audit_does_not() {
     );
 
     // Negative guard: the canonical bytes themselves MUST NOT
-    // appear verbatim in the audit NDJSON. This is the G13
+    // appear verbatim in the audit NDJSON. This is the
     // content-ignorance pin specific to issue #699 — the lint
     // surface carries the bytes; the audit surface carries only
     // the digest + structural intent.

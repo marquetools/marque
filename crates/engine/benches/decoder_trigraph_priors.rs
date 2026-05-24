@@ -27,9 +27,9 @@
 //! candidate-expansion path is bounded.
 //!
 //! Reference baseline: x86_64 ≥ 3.0 GHz single-thread, warm cache,
-//! `--release` build, no tracing subscriber. Mirror of
-//! `lint_latency.rs` SC-002 shape so the two benches share the same
-//! 10KB-with-one-mangled-region model.
+//! `--release` build, no tracing subscriber. Mirror of the
+//! `lint_latency.rs` decoder-path shape so the two benches share the
+//! same 10KB-with-one-mangled-region model.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;

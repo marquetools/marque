@@ -108,10 +108,10 @@ where
 ///
 /// Returns the ordered list of `RewriteId`s. Rewrites that have no
 /// predecessor (neither read nor write a category another rewrite
-/// writes) retain their declaration order relative to each other
-/// (FR-007: declaration-order independence for *cycle-free*
-/// inputs — but for rewrites with no edge between them, the only
-/// stable answer is declaration order).
+/// writes) retain their declaration order relative to each other.
+/// Dataflow edges fully determine the order for cycle-free inputs; for
+/// rewrites with no edge between them, the only stable answer is
+/// declaration order.
 ///
 /// # Errors
 ///
@@ -463,7 +463,7 @@ mod tests {
         type Marking = StubMarking;
         type ParseError = ();
         type OpenVocabRef = core::convert::Infallible;
-        // PR 3c.2.A — see evaluator.rs for the binding rationale.
+        // See evaluator.rs for the binding rationale.
         type Parsed<'src> = ();
         type Canonical = ();
         fn name(&self) -> &str {

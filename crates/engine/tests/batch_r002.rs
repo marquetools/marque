@@ -2,21 +2,19 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7b — per-row `r002_fired` inspectability locks for `BatchEngine`.
+//! Per-row `r002_fired` inspectability locks for `BatchEngine`.
 //!
-//! Pins the consumer-surface contract from D-7.15 / architect
-//! pre-flight §7: per-row `FixResult.r002_fired` is individually
-//! inspectable inside a batch run, regardless of whether other rows
-//! triggered R002 or not. The batch exit-code aggregation lives in
-//! the CLI loop (NOT in `BatchEngine`); this test verifies the
-//! per-row field is readable so the CLI aggregation can rely on it.
+//! Per-row `FixResult.r002_fired` is individually inspectable inside a
+//! batch run, regardless of whether other rows triggered R002 or not.
+//! The batch exit-code aggregation lives in the CLI loop (NOT in
+//! `BatchEngine`); this test verifies the per-row field is readable so
+//! the CLI aggregation can rely on it.
 //!
-//! R002 itself is not exercised here because no production
-//! Localized rule emits a `FixIntent`-shape fix today, so R002 is
-//! structurally unreachable through the existing CAPCO ruleset
-//! (architect pre-flight §1). The test pins the per-row INSPECTABILITY
-//! property — the load-bearing piece for the CLI aggregation —
-//! and not the R002 trigger condition itself.
+//! R002 itself is not exercised here because no production Localized
+//! rule emits a `FixIntent`-shape fix today, so R002 is structurally
+//! unreachable through the existing CAPCO ruleset. The test pins the
+//! per-row INSPECTABILITY property — the load-bearing piece for the CLI
+//! aggregation — and not the R002 trigger condition itself.
 
 #![cfg(feature = "batch")]
 

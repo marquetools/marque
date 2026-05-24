@@ -2,37 +2,35 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7c — property tests for the two-pass fix pipeline's reshape-aware
-//! invariants (FR-022 / FR-023 / I-18 / I-19).
+//! Property tests for the two-pass fix pipeline's reshape-aware
+//! invariants.
 //!
 //! These tests target the engine-level guarantees, not specific rules.
 //! The fixtures are valid (or near-valid) CAPCO markings that exercise
-//! both the pass-1 Localized rule path (C001 corrections, E006
-//! deprecated-marking migration) and the pass-2 WholeMarking path
-//! (banner roll-up, FD&R precedence).
+//! both the pass-1 Localized rule path (corrections-map, deprecated-
+//! marking migration) and the pass-2 WholeMarking path (banner roll-up,
+//! FD&R precedence).
 //!
 //! Invariants exercised:
 //!
-//! - **FR-022 / I-18 non-overlap**: no two `AppliedFix.span`s overlap.
-//!   The pass-1 and pass-2 partitions are disjoint by rule phase, and
-//!   the engine's I-18 overlap demotion (PR 7c) converts any pass-2
-//!   diagnostic that would have collided with a pass-1 span into
-//!   `Severity::Suggest` — preventing promotion. Both arms are
-//!   exercised by varying source shapes.
-//! - **FR-023 / I-19 reshape-aware no-double-fire**: the same
-//!   `(rule_id, span)` MUST NOT appear twice across the merged
-//!   `pass1_applied + pass2_applied` audit stream. FR-023 disambiguation
-//!   drops a pass-2 diagnostic whose `(rule, candidate_span)` matches a
-//!   pass-1 promoted fix; the partition by phase already guarantees
-//!   rule-disjoint sets, so the cross-pass uniqueness check is the
-//!   stronger statement.
+//! - **Non-overlap**: no two `AppliedFix.span`s overlap. The pass-1 and
+//!   pass-2 partitions are disjoint by rule phase, and the engine's
+//!   overlap demotion converts any pass-2 diagnostic that would have
+//!   collided with a pass-1 span into `Severity::Suggest` — preventing
+//!   promotion. Both arms are exercised by varying source shapes.
+//! - **Reshape-aware no-double-fire**: the same `(rule_id, span)` MUST
+//!   NOT appear twice across the merged `pass1_applied + pass2_applied`
+//!   audit stream. Disambiguation drops a pass-2 diagnostic whose
+//!   `(rule, candidate_span)` matches a pass-1 promoted fix; the
+//!   partition by phase already guarantees rule-disjoint sets, so the
+//!   cross-pass uniqueness check is the stronger statement.
 //!
 //! # Proptest budget
 //!
 //! Cases bounded at 64 per property (well below the proptest default
-//! of 256) so the suite runs in under a second on the SC-001 budget.
-//! Shrinking is bounded by the small `Strategy` ranges below — every
-//! generator produces ≤300 B of input.
+//! of 256) so the suite runs in under a second on the interactive-
+//! latency budget. Shrinking is bounded by the small `Strategy` ranges
+//! below — every generator produces ≤300 B of input.
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
@@ -112,13 +110,12 @@ fn spans_overlap(a_start: usize, a_end: usize, b_start: usize, b_end: usize) -> 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
 
-    /// FR-022 / I-18: across `Engine::fix(Apply)`, no two
-    /// `AppliedFix.span`s overlap.
+    /// Across `Engine::fix(Apply)`, no two `AppliedFix.span`s overlap.
     ///
     /// The engine's two-pass orchestrator guarantees pass-1 fixes
     /// land first in disjoint span windows (C-1 dedup within
     /// pass-1), then pass-2 dispatches against the post-pass-1
-    /// buffer with I-18 overlap demotion: any pass-2 diagnostic
+    /// buffer with overlap demotion: any pass-2 diagnostic
     /// whose span overlaps a pass-1 promoted span is demoted to
     /// `Severity::Suggest`, which excludes it from auto-apply. The
     /// invariant verified here is the OBSERVABLE outcome — the
@@ -144,8 +141,7 @@ proptest! {
         }
     }
 
-    /// FR-023 / I-19: no `(rule_id, span)` pair appears twice across
-    /// the audit stream.
+    /// No `(rule_id, span)` pair appears twice across the audit stream.
     ///
     /// Same span + same rule across pass-1 + pass-2 is what
     /// reshape-aware disambiguation forbids. The pass partition is
@@ -168,12 +164,12 @@ proptest! {
         }
     }
 
-    /// FR-023 / I-19 (cross-pass refinement): when pass-1 promoted
-    /// any fix, no pass-2 promoted fix shares its candidate-anchored
-    /// (rule, span). The check here cross-references the applied
-    /// stream against itself: the engine's pass-1 / pass-2 partition
-    /// is internal, so we verify the observable property — every
-    /// (rule_id, span) key appears at most once.
+    /// Cross-pass refinement: when pass-1 promoted any fix, no pass-2
+    /// promoted fix shares its candidate-anchored (rule, span). The
+    /// check here cross-references the applied stream against itself:
+    /// the engine's pass-1 / pass-2 partition is internal, so we verify
+    /// the observable property — every (rule_id, span) key appears at
+    /// most once.
     ///
     /// This is the dual of i19_no_duplicate_rule_span_pairs: that
     /// test pins HashSet uniqueness; this one pins the property
@@ -197,13 +193,12 @@ proptest! {
         }
     }
 
-    /// Idempotency under successive `fix` calls (Layer-3 I-2 dual):
-    /// applying the same engine twice must converge. The first
-    /// `fix` produces a buffer; linting that buffer must yield
-    /// fewer-or-equal diagnostics than the original (no new defects
-    /// surface from pass-2's reshape work).
+    /// Idempotency under successive `fix` calls: applying the same
+    /// engine twice must converge. The first `fix` produces a buffer;
+    /// linting that buffer must yield fewer-or-equal diagnostics than
+    /// the original (no new defects surface from pass-2's reshape work).
     ///
-    /// This guards against a subtle FR-023 regression: if the
+    /// This guards against a subtle disambiguation regression: if the
     /// engine forgot to drop a same-(rule, span) pass-2 diagnostic,
     /// the post-fix lint would still surface it as a remaining
     /// diagnostic.

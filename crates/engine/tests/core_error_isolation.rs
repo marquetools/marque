@@ -82,17 +82,15 @@ const CANARY: &str = "leak-canary-x9z7q3-content-bytes";
 /// dispatcher (which would also exercise decoder-side leak channels —
 /// real but separately scoped issues, not the one this file gates).
 fn test_engine() -> Engine {
-    // PR 3c.2.D / D8 — the #257 strict-recognizer masking pin
-    // (tracks "decoder canonicalization leaks input bytes into
-    // AppliedFix") retired here. The T055 G13 content-ignorance
-    // canary at `crates/engine/tests/audit_g13_canary.rs`
-    // structurally closes the leak channel: marking-side audit
-    // records carry a sealed `Canonical<S>` payload (no free-form
-    // string surface), text-correction records carry only corpus-
-    // derived `SmolStr` replacements (on Constitution V's permitted-
-    // identifier list), and the audit-emit shape is wire-format-pinned
-    // to a closed JSON projection. Strict-recognizer pin no longer
-    // needed; the dispatcher default (`StrictOrDecoderRecognizer`)
+    // No strict-recognizer pin is needed here (#257): the audit
+    // content-ignorance canary at
+    // `crates/engine/tests/audit_g13_canary.rs` structurally closes the
+    // decoder leak channel — marking-side audit records carry a sealed
+    // `Canonical<S>` payload (no free-form string surface),
+    // text-correction records carry only corpus-derived `SmolStr`
+    // replacements (on Constitution V's permitted-identifier list), and
+    // the audit-emit shape is wire-format-pinned to a closed JSON
+    // projection. The dispatcher default (`StrictOrDecoderRecognizer`)
     // applies.
     Engine::new(
         Config::default(),
@@ -202,9 +200,9 @@ fn lint_does_not_leak_core_error_content() {
 
         // Walk every text-bearing field of LintResult.
         for diag in &result.diagnostics {
-            // PR 3c.2.C C5: `Diagnostic.message` is closed-template
-            // `Message`; document text (including the `CANARY` byte
-            // sequence) cannot reach this field by type. Scan the
+            // `Diagnostic.message` is closed-template `Message`;
+            // document text (including the `CANARY` byte sequence)
+            // cannot reach this field by type. Scan the
             // closed-enum template label as the structural-pin
             // equivalent of the prior `contains()` check — if a
             // future refactor reintroduces a free-form string channel
@@ -216,8 +214,8 @@ fn lint_does_not_leak_core_error_content() {
                  {template_label} (input was {input:?})",
                 input = String::from_utf8_lossy(&input),
             );
-            // Post Commit 10: `Diagnostic.fix` carries a structural
-            // FixIntent with no byte payload. The diagnostic's
+            // `Diagnostic.fix` carries a structural FixIntent with no
+            // byte payload. The diagnostic's
             // `text_correction` field is the only string-bearing
             // channel; assert it doesn't contain the canary.
             if let Some(tc) = diag.text_correction.as_ref() {
@@ -237,13 +235,13 @@ fn fix_does_not_leak_core_error_content() {
         let result = engine.fix(&input, FixMode::Apply);
 
         // Every applied audit line — the bytes that flow into the
-        // audit record. This is the same surface T056 covers in
-        // `audit.rs`, but with input designed to trip CoreError
-        // rather than to embed prose.
+        // audit record. This is the same surface the content-ignorance
+        // tests in `audit.rs` cover, but with input designed to trip
+        // CoreError rather than to embed prose.
         //
-        // Post PR 3c.2.D the marking-side `AuditLine::AppliedFix`
-        // arm carries a sealed `Canonical<S>` payload — no free-form
-        // string surface to scan. The `AuditLine::TextCorrection`
+        // The marking-side `AuditLine::AppliedFix` arm carries a sealed
+        // `Canonical<S>` payload — no free-form string surface to scan.
+        // The `AuditLine::TextCorrection`
         // arm carries a corpus-derived `replacement: SmolStr`;
         // that's the channel a leak would surface on.
         for line in &result.audit_lines {
@@ -258,9 +256,9 @@ fn fix_does_not_leak_core_error_content() {
         // Remaining diagnostics — what `marque check` and the lint
         // re-run after fix would emit. Same content-ignorance contract.
         for diag in &result.remaining_diagnostics {
-            // PR 3c.2.C C5: scan the closed-template label, per the
-            // companion `lint_does_not_leak_core_error_content`
-            // structural-pin explanation above.
+            // Scan the closed-template label, per the companion
+            // `lint_does_not_leak_core_error_content` structural-pin
+            // explanation above.
             let template_label = diag.message.template().as_str();
             assert!(
                 !template_label.contains(CANARY),
