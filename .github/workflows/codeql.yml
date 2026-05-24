@@ -22,8 +22,6 @@ on:
   schedule:
     - cron: '20 20 * * 6'
 
-permissions:
-  contents: write
 
 jobs:
   analyze:
@@ -60,6 +58,7 @@ jobs:
 
       - name: Set up environment
         uses: jdx/mise-action@1c5f70fd400ce6c745085c93ea80026272f8d346
+        if: matrix.language != 'actions'
         with:
           install: true
           experimental: true
