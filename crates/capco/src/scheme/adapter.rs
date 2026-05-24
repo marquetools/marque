@@ -30,8 +30,7 @@ use marque_scheme::{Category, Constraint, FactRef, ReplacementIntent, Scope, Tem
 /// CAPCO's implementation of `MarkingScheme`.
 ///
 /// Stateless; construct with `CapcoScheme::new()` and pass into the
-/// engine. Phase A's engine doesn't consume the trait yet — this impl
-/// exists so the equivalence tests can run.
+/// engine.
 ///
 /// A manual `Debug` impl is provided so generic types parameterized
 /// over the scheme (`Diagnostic<S>`, `AppliedFix<S>`, `LintResult` /
@@ -69,7 +68,7 @@ impl CapcoScheme {
         Self {
             categories: constraints::build_categories(),
             constraints: constraints::build_constraints(),
-            templates: Vec::new(), // Phase A does not model templates yet
+            templates: Vec::new(), // templates not modeled yet
             page_rewrites: rewrites::build_page_rewrites(),
         }
     }
@@ -123,16 +122,15 @@ impl CapcoScheme {
 
 /// Parse errors surfaced by `CapcoScheme::parse`.
 ///
-/// Phase A does not actually parse through the trait — callers continue
-/// to use `marque_core::Parser` directly — so `parse()` unconditionally
-/// returns [`CapcoParseError::NotImplemented`]. Phase B/E will wrap
+/// `CapcoScheme::parse` does not parse through the trait — callers use
+/// `marque_core::Parser` directly — so it unconditionally returns
+/// [`CapcoParseError::NotImplemented`]. A future change will wrap
 /// `marque-core`'s `CoreError` here once parsing is routed through the
-/// scheme trait (and the `(C)` ambiguity surface lands).
+/// scheme trait (and the ambiguity surface lands).
 #[derive(Debug)]
 pub enum CapcoParseError {
-    /// `CapcoScheme::parse` is intentionally unimplemented in Phase A.
-    /// Use `marque_core::Parser` for actual parsing until Phase B/E
-    /// routes it through the scheme trait.
+    /// `CapcoScheme::parse` is intentionally unimplemented. Use
+    /// `marque_core::Parser` for actual parsing.
     NotImplemented,
 }
 
@@ -157,19 +155,15 @@ impl CapcoScheme {
     /// # Why scheme-side, not on `ConstraintViolation`
     ///
     /// [`FixIntent<S>`] lives in `marque-rules`, and `marque-rules`
-    /// depends on `marque-scheme` (Constitution VII Appendix D —
-    /// post-PR-3c.A graph). Attaching a `fix_intent: Option<FixIntent<S>>`
-    /// field to `ConstraintViolation` (in `marque-scheme`) would invert
-    /// the graph and create a cycle. The bridge instead reconstructs
-    /// the [`FixIntent`] from the row name on the way out — this is
-    /// the side-table pattern the now-retired walker rules
-    /// (`DeclarativeClassFloorRule` retired in PR 3c.B Commit 7.3;
-    /// `DeclarativeSciPerSystemRule` retired in PR 3c.B Commit 7.4)
-    /// used internally.
+    /// depends on `marque-scheme` (Constitution VII). Attaching a
+    /// `fix_intent: Option<FixIntent<S>>` field to `ConstraintViolation`
+    /// (in `marque-scheme`) would invert the graph and create a cycle.
+    /// The bridge instead reconstructs the [`FixIntent`] from the row
+    /// name on the way out — the side-table pattern.
     ///
     /// # Current contract
     ///
-    /// PR #578 wired this method to synthesize `FixIntent` values
+    /// This method synthesizes `FixIntent` values
     /// for the 15 declarative wrappers it retired into the bridge.
     /// The method returns `Some(FixIntent { ... })` for the
     /// following catalog row names and `None` otherwise:
@@ -363,7 +357,7 @@ impl CapcoScheme {
     /// `e038_dos_dissem_requires_noforn`, `class_floor_emit`, etc.)
     /// and the generic evaluator never touches their `message` field.
     ///
-    /// # Rows covered (PR #578 / issue-fix follow-up; post-T044 names)
+    /// # Rows covered
     ///
     /// - `"portion.classification.non-us-requires-dissem"` — non-US
     ///   classification requires an explicit dissemination control
@@ -379,18 +373,18 @@ impl CapcoScheme {
     /// - `"portion.dissem.relido-conflicts-noforn"` — RELIDO cannot
     ///   be used with NOFORN per CAPCO-2016 §H.8 p154.
     ///
-    /// # Class-floor and SCI-per-system catalog rows (PR 3c.2.C C7)
+    /// # Class-floor and SCI-per-system catalog rows
     ///
-    /// PR 3c.2.C C7 (reviewer R-C1) extended the dispatch to cover the
-    /// 27 class-floor catalog rows (now `banner.<axis>.<floor|ceiling>-*`
-    /// predicate IDs post-T044) and the 5 SCI-per-system catalog rows
-    /// (now `marking.sci.*` predicate IDs). Both groups route through
+    /// The dispatch covers the 27 class-floor catalog rows
+    /// (`banner.<axis>.<floor|ceiling>-*` predicate IDs) and the 5
+    /// SCI-per-system catalog rows (`marking.sci.*` predicate IDs). Both
+    /// groups route through
     /// [`find_class_floor_row`](Self::find_class_floor_row) /
     /// [`find_sci_per_system_row`](Self::find_sci_per_system_row)
     /// label lookups so the per-row [`MessageTemplate`] +
     /// [`Citation`] are read from the catalog rather than synthesized
-    /// at the bridge. Without this, the bridge fell back to a generic
-    /// `ConflictsWith` template + `[engine-internal]` citation
+    /// at the bridge. Without this, the bridge would fall back to a
+    /// generic `ConflictsWith` template + `[engine-internal]` citation
     /// sentinel.
     ///
     /// [`fix_intent_by_name`]: Self::fix_intent_by_name
@@ -403,25 +397,19 @@ impl CapcoScheme {
         _marking_type: MarkingType,
     ) -> Option<marque_rules::Message> {
         use marque_rules::{Message, MessageArgs, MessageTemplate};
-        // typed `Message` return per PM-C-1. Each
-        // arm maps the constraint label to a closed-template +
-        // closed-args record. Runtime byte text is dropped per G13;
-        // the narrative descriptions live in the legacy `&str` arms
-        // (preserved in git history) and the bridge's renderer
-        // re-derives display text from `(template, args, source, span)`.
+        // Each arm maps the constraint label to a closed-template +
+        // closed-args record. Runtime byte text is dropped (audit
+        // content-ignorance); the bridge's renderer re-derives display
+        // text from `(template, args, source, span)`.
 
-        // PR 3c.2.C C7 (R-C1): class-floor catalog rows. The 27
-        // rows in CLASS_FLOOR_CATALOG all carry the
-        // ClassificationFloorViolated template; the per-row category
-        // axis is inferred from the row's `primary_kind` so the audit
-        // record carries the right category. Per-row §-citations
+        // Class-floor catalog rows. The 27 rows in CLASS_FLOOR_CATALOG
+        // all carry the ClassificationFloorViolated template; the per-row
+        // category axis is inferred from the row's `primary_kind` so the
+        // audit record carries the right category. Per-row §-citations
         // resolve via citation_by_name (kept in lockstep with this
-        // function for the same label set).
-        //
-        // Post-T044: catalog row names migrated from the
-        // `class-floor/` / `E058/` slash-form to the predicate-ID
-        // `banner.<axis>.<floor|ceiling>-<marking>` form. The
-        // discriminator is the `.floor-` / `.ceiling-` substring.
+        // function for the same label set). The catalog row name is the
+        // predicate-ID `banner.<axis>.<floor|ceiling>-<marking>` form;
+        // the discriminator is the `.floor-` / `.ceiling-` substring.
         if name.contains(".floor-") || name.contains(".ceiling-") {
             // Row lookup is O(27); cheap. Avoids re-encoding the
             // dispatch in two places.
@@ -445,15 +433,13 @@ impl CapcoScheme {
             // Unknown class-floor row label — fall through to generic.
         }
 
-        // PR 3c.2.C C7 (R-C1): sci-per-system catalog rows. The 5
-        // rows in SCI_PER_SYSTEM_CATALOG all carry RequiredByPresence
-        // semantics (CompanionRequired forbids absence of a required
-        // companion; Custom rows enforce companion presence + forbid
-        // conflict). Audit category is CAT_SCI.
-        // Post-T044: SCI per-system catalog rows migrated from
-        // `sci-per-system/*` slash-form to `marking.sci.*` predicate-ID
-        // form (unique to this catalog; `portion.sci.*` is reserved for
-        // standalone SCI rules like E061/E062/E063/W034/E065).
+        // SCI-per-system catalog rows. The 5 rows in
+        // SCI_PER_SYSTEM_CATALOG all carry RequiredByPresence semantics
+        // (CompanionRequired forbids absence of a required companion;
+        // Custom rows enforce companion presence + forbid conflict).
+        // Audit category is CAT_SCI. The catalog row name is the
+        // `marking.sci.*` predicate-ID form (unique to this catalog;
+        // `portion.sci.*` is reserved for standalone SCI rules).
         if name.starts_with("marking.sci.") && self.find_sci_per_system_row(name).is_some() {
             return Some(Message::new(
                 MessageTemplate::RequiredByPresence,
@@ -518,15 +504,11 @@ impl CapcoScheme {
         }
     }
 
-    // PR 10.A.1: `citation_by_name` was the bridge fallback for
-    // converting `ConstraintViolation.citation: &'static str` → typed
-    // `Diagnostic.citation: Citation`. With typed citations end-to-end
-    // (`Constraint.label: Citation` flows verbatim through the
-    // evaluator into `ConstraintViolation.citation: Citation`), the
-    // lookup is dead weight and was retired. Per-row citations on
-    // `ClassFloorRow` and `SciPerSystemRow` are now `Citation` directly
-    // (no `citation_typed` companion field) and the engine bridge does
-    // a direct copy.
+    // Citations are typed end-to-end: `Constraint.label: Citation` flows
+    // verbatim through the evaluator into
+    // `ConstraintViolation.citation: Citation`, and per-row citations on
+    // `ClassFloorRow` / `SciPerSystemRow` are `Citation` directly, so the
+    // engine bridge does a direct copy with no per-name lookup.
 
     /// O(27) linear lookup for a `ClassFloorRow` by `name`. The
     /// catalog has 27 rows; the linear scan is faster than a
@@ -534,18 +516,15 @@ impl CapcoScheme {
     /// [`message_by_name`](Self::message_by_name) — the bridge hook
     /// from `marque-engine`'s `bridge_constraint_diagnostic` — to
     /// surface per-row [`MessageTemplate`](marque_rules::MessageTemplate)
-    /// on emission. (PR 10.A.1 retired the companion
-    /// `citation_by_name` lookup: typed
-    /// [`Citation`](marque_scheme::Citation) now flows verbatim from
+    /// on emission. (There is no companion `citation_by_name` lookup:
+    /// typed [`Citation`](marque_scheme::Citation) flows verbatim from
     /// the catalog row through the evaluator into
-    /// `ConstraintViolation.citation`, so a per-name citation lookup
-    /// is no longer needed.)
+    /// `ConstraintViolation.citation`.)
     ///
     /// Returns `None` when `name` doesn't match any row — typically
     /// indicates a stale label in the engine's constraint catalog
     /// or a typo in a new row's `name` field. The bridge falls back
-    /// to a generic template in that case (the pre-PR-3c.2.C-C7
-    /// behavior).
+    /// to a generic template in that case.
     fn find_class_floor_row(&self, name: &str) -> Option<&'static super::ClassFloorRow> {
         super::CLASS_FLOOR_CATALOG.iter().find(|r| r.name == name)
     }
@@ -568,23 +547,18 @@ impl CapcoScheme {
     /// per-candidate `CapcoMarking::from(attrs.clone())` allocation —
     /// when no catalog row could possibly fire.
     ///
-    /// # Why a static `true` now (PR 3c.B Commit 7.3)
+    /// # Why a static `true`
     ///
-    /// PR 3c.B Commit 7.3 retired `DeclarativeClassFloorRule` (E058)
-    /// and rewired its 27 class-floor catalog rows to populate
-    /// `ConstraintViolation::span` (via [`class_floor_anchor_span`])
-    /// and `::severity` (from `ClassFloorRow::severity`) directly in
-    /// [`class_floor_emit`]. The bridge is the sole emitter for the
-    /// class-floor rule set as of this commit; the previous walker
-    /// path no longer exists. PR 3c.B Commit 7.4 retired
-    /// `DeclarativeSciPerSystemRule` (E059) via a separate
-    /// direct-path mechanism — `bridge_sci_per_system_diagnostics`
-    /// — that does NOT participate in the `validate()` /
-    /// `ConstraintViolation` envelope flow (decision record
-    /// Amendment 6). The 5 SCI per-system rows therefore do not
-    /// contribute to this predicate's value; it stays `true`
-    /// because the 27 class-floor rows from 7.3 already require
-    /// the bridge walk.
+    /// The 27 class-floor catalog rows populate
+    /// `ConstraintViolation::span` (via [`class_floor_anchor_span`]) and
+    /// `::severity` (from `ClassFloorRow::severity`) directly in
+    /// [`class_floor_emit`]; the bridge is the sole emitter for the
+    /// class-floor rule set. The 5 SCI per-system rows emit via a
+    /// separate direct-path mechanism (`bridge_sci_per_system_diagnostics`)
+    /// that does NOT participate in the `validate()` /
+    /// `ConstraintViolation` envelope flow, so they don't contribute to
+    /// this predicate's value; it stays `true` because the class-floor
+    /// rows already require the bridge walk.
     ///
     /// # Why static (not derived from the catalog at runtime)
     ///
@@ -592,12 +566,9 @@ impl CapcoScheme {
     /// lifetime — `build_constraints()` is invoked once at
     /// `CapcoScheme::new()` and never mutated. A runtime walk over
     /// `self.constraints` to look for "any Custom row that produces
-    /// span/severity" would itself defeat the optimization (the data
-    /// we're avoiding fetching is the per-candidate walk's output;
-    /// learning that the catalog has zero such rows shouldn't itself
-    /// require a per-candidate walk). The constant `true` here
-    /// reflects the post-7.3 catalog state and is a one-line override
-    /// for any future scheme that wires no diagnostic-shape rows.
+    /// span/severity" would itself defeat the optimization. The constant
+    /// `true` is a one-line override point for any future scheme that
+    /// wires no diagnostic-shape rows.
     pub fn has_diagnostic_constraints(&self) -> bool {
         true
     }
@@ -615,22 +586,19 @@ impl CapcoScheme {
     /// Both fields are user-facing config keys: `canonicalize_rule_overrides`
     /// inserts the `rule_id` and the `name` into the known-key map,
     /// aliasing both to the canonical ID. The first column is the
-    /// canonical wire-string form (`<scheme>:<predicate_id>`) per OD-7
-    /// of the T044 PM decisions; the second column is a descriptive
-    /// alias. A `.marque.toml` entry `[rules] frd-tfni-precedence = "off"`
-    /// is silently accepted as an alias for
-    /// `[rules] "capco:portion.aea.frd-tfni-precedence" = "off"`.
+    /// canonical wire-string form (`<scheme>:<predicate_id>`); the second
+    /// column is a descriptive alias. A `.marque.toml` entry
+    /// `[rules] frd-tfni-precedence = "off"` is silently accepted as an
+    /// alias for `[rules] "capco:portion.aea.frd-tfni-precedence" = "off"`.
     /// This convention parallels the `id-or-name` aliasing every
     /// registered `Rule` already accepts.
     ///
-    /// # Post-T044 (OD-8.A): one entry per bridge-emitted catalog row
+    /// # One entry per bridge-emitted catalog row
     ///
-    /// The retired `DeclarativeClassFloorRule` (E058) and
-    /// `DeclarativeSciPerSystemRule` (E059) walkers no longer fold the
-    /// per-row catalog labels to a single ID. Each catalog row emits
-    /// its own predicate ID directly via the bridge no-op pass-through;
-    /// the per-row predicates appear here so users can configure them
-    /// individually via `.marque.toml [rules]`.
+    /// Each catalog row emits its own predicate ID directly via the
+    /// bridge no-op pass-through (no folding of per-row labels to a
+    /// single ID); the per-row predicates appear here so users can
+    /// configure them individually via `.marque.toml [rules]`.
     pub fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
         &[
             // ---- Core catalog (15 dyadic / Custom rows) ----
@@ -798,17 +766,15 @@ impl CapcoScheme {
     }
 
     /// Walk the SCI per-system catalog and return one `Diagnostic` per
-    /// firing emit-branch, with the row's `FixProposal` attached
-    /// (matching the retired `DeclarativeSciPerSystemRule` walker's
-    /// output byte-for-byte).
+    /// firing emit-branch, with the row's `FixProposal` attached.
     ///
     /// # Why this bypasses the `ConstraintViolation` envelope
     ///
-    /// The class-floor catalog (PR 3c.B Commit 7.3) emits diagnostics
-    /// through the standard `MarkingScheme::validate()` →
-    /// `Vec<ConstraintViolation>` → engine bridge path because its
-    /// rows produce no fixes (every class-floor violation requires
-    /// human review). The SCI per-system catalog rows DO produce
+    /// The class-floor catalog emits diagnostics through the standard
+    /// `MarkingScheme::validate()` → `Vec<ConstraintViolation>` →
+    /// engine bridge path because its rows produce no fixes (every
+    /// class-floor violation requires human review). The SCI per-system
+    /// catalog rows DO produce
     /// fixes — companion-insertion at the dissem-block anchor and
     /// `ORCON-USGOV → ORCON` token replacement — and a single row
     /// can emit multiple diagnostics (HCS-O missing ORCON AND
@@ -824,25 +790,24 @@ impl CapcoScheme {
     /// through the bridge for disambiguation, the SCI per-system
     /// rows take the direct path: this method returns full
     /// `Diagnostic` values straight from `sci_per_system_emit`, the
-    /// engine bridge invokes it once per candidate (gated on
-    /// `[rules] E059 != "off"`), and the existing fix-promotion
-    /// path treats each diagnostic identically to a registered
-    /// `Rule` impl's output.
+    /// engine bridge invokes it once per candidate, and the existing
+    /// fix-promotion path treats each diagnostic identically to a
+    /// registered `Rule` impl's output.
     ///
     /// # Severity override handling
     ///
     /// Per-row severity override resolution: the caller passes the
     /// engine's pre-resolved `emitted_id_overrides` table
     /// (`&'static str → Severity`), and this method looks up each
-    /// row's `name` (the row's predicate ID post-T044) independently.
-    /// Each catalog row is independently overridable through its own
+    /// row's `name` (the row's predicate ID) independently. Each catalog
+    /// row is independently overridable through its own
     /// `.marque.toml [rules]` wire-string key (e.g.,
-    /// `"capco:marking.sci.hcs-o-companions" = "off"`), matching the
-    /// T044 OD-8.A design intent — the catalog row's `name` IS the
-    /// predicate ID, with no walker-level "E059" key behind it.
+    /// `"capco:marking.sci.hcs-o-companions" = "off"`) — the catalog
+    /// row's `name` IS the predicate ID, with no walker-level key behind
+    /// it.
     ///
     /// `Severity::Off` on a row suppresses every diagnostic that row
-    /// would otherwise emit (FR-008: an `Off`-severity diagnostic is
+    /// would otherwise emit (an `Off`-severity diagnostic is
     /// unrepresentable). A non-`Off` override replaces each emitted
     /// diagnostic's severity uniformly for that row.
     pub fn bridge_sci_per_system_diagnostics(
@@ -861,17 +826,14 @@ impl CapcoScheme {
         }
         let mut out = Vec::new();
         for row in SCI_PER_SYSTEM_CATALOG {
-            // T044 OD-8.A: each row is independently severity-
-            // overridable via its `name` (= the row's predicate ID
-            // post-T044). Resolve per-row so the user can
-            // `[rules] "capco:marking.sci.hcs-o-companions" = "off"`
-            // without suppressing the other 4 rows. Drops the stale
-            // walker-level "E059" hoist that always returned None
-            // post-T044 (`emitted_id_overrides` is keyed by predicate
-            // ID; "E059" was never a key).
+            // Each row is independently severity-overridable via its
+            // `name` (= the row's predicate ID). Resolve per-row so the
+            // user can `[rules] "capco:marking.sci.hcs-o-companions" =
+            // "off"` without suppressing the other 4 rows.
+            // `emitted_id_overrides` is keyed by predicate ID.
             let row_override = emitted_id_overrides.get(row.name).copied();
-            // FR-008 per-row early-out — `Off` suppresses just this
-            // row's diagnostics.
+            // Per-row early-out — `Off` suppresses just this row's
+            // diagnostics.
             if matches!(row_override, Some(marque_rules::Severity::Off)) {
                 continue;
             }
