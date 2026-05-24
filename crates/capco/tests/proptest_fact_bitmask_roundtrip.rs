@@ -5,15 +5,13 @@
 //! Round-trip proptests for `marque_capco::fact_bitmask`'s `derive_bits`
 //! and `apply_closed_bits_to` projection helpers.
 //!
-//! PR-B scope: this file asserts the projection's algebraic properties
-//! before PR-C lands the `CLOSURE_TABLE` and PR-D rewires
-//! `CapcoScheme::closure` to use it. The closure-table laws
-//! (idempotence, extensivity, monotonicity, convergence-bound — plan
-//! §6 P1–P4) live in `proptest_closure_table.rs` in PR-C; the
-//! cross-path parity gate against `scheme.closure(marking)` (plan §6
-//! P5) lives in PR-D.
+//! This file asserts the projection's algebraic properties. The
+//! closure-table laws (idempotence, extensivity, monotonicity,
+//! convergence-bound) live in `proptest_closure_table.rs`; the
+//! cross-path parity gate against `scheme.closure(marking)` lives
+//! alongside it.
 //!
-//! The properties covered here are the load-bearing PR-B invariants:
+//! The properties covered here:
 //!
 //! - **Deterministic projection.** `derive_bits(attrs) ==
 //!   derive_bits(attrs.clone())`.
@@ -154,10 +152,9 @@ fn arb_rel_to() -> impl Strategy<Value = Vec<CountryCode>> {
 /// Optionally generate a single SCI marking exercising the six
 /// compartment sentinels (SI-G, HCS-O, HCS-P[sub], TK-BLFH, TK-IDIT,
 /// TK-KAND) plus a "no SCI" arm. Loaded into `CanonicalAttrs::sci_markings`
-/// so `apply_preserves_non_cone_axes` actually exercises the
-/// preservation property non-vacuously (a Copilot review finding —
-/// the previous default-empty strategy made the sci_markings
-/// assertion trivially true).
+/// so `apply_preserves_non_cone_axes` exercises the preservation
+/// property non-vacuously (a default-empty strategy would make the
+/// sci_markings assertion trivially true).
 fn arb_sci_markings() -> impl Strategy<Value = Vec<marque_ism::SciMarking>> {
     use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
 
@@ -183,7 +180,7 @@ fn arb_sci_markings() -> impl Strategy<Value = Vec<marque_ism::SciMarking>> {
 
 /// Optionally generate a SAR marking — exercises `SAR_PRESENT` and
 /// keeps `apply_preserves_non_cone_axes`'s `sar_markings` assertion
-/// non-vacuous (Copilot review finding).
+/// non-vacuous.
 fn arb_sar_markings() -> impl Strategy<Value = Option<marque_ism::SarMarking>> {
     use marque_ism::{SarIndicator, SarMarking, SarProgram};
 
@@ -197,9 +194,9 @@ fn arb_sar_markings() -> impl Strategy<Value = Option<marque_ism::SarMarking>> {
 }
 
 /// A focused strategy generating realistic `CanonicalAttrs` shapes
-/// from the closed-vocab axes the bitmask reads. Per the Copilot
-/// PR review, the SCI and SAR axes are now populated some of the
-/// time so `apply_preserves_non_cone_axes`' assertions on
+/// from the closed-vocab axes the bitmask reads. The SCI and SAR axes
+/// are populated some of the time so
+/// `apply_preserves_non_cone_axes`' assertions on
 /// `sci_markings` / `sar_markings` are non-vacuous — the strategies
 /// produce non-empty values in roughly 3/4 of cases for SCI and
 /// 1/2 for SAR.
@@ -432,10 +429,10 @@ proptest! {
     /// closed bitmask AND the apply path adds it, the resulting
     /// `attrs` must satisfy the dominance rule — no `Rel`, `Relido`,
     /// `Displayonly`, `Eyes` in `dissem_us`; empty `rel_to`; empty
-    /// `display_only_to`. Catches the Copilot-flagged hole: PR-C's
-    /// unconditional per-marking NOFORN rows (HCS-O / HCS-P[sub] /
-    /// TK-BLFH/IDIT/KAND) have no suppressors and can fire on
-    /// portions with pre-existing FD&R tokens.
+    /// `display_only_to`. Catches the hole where unconditional
+    /// per-marking NOFORN rows (HCS-O / HCS-P[sub] / TK-BLFH/IDIT/KAND)
+    /// with no suppressors fire on portions with pre-existing FD&R
+    /// tokens.
     ///
     /// Authority: §H.8 p145 + §D.2 Table 3 rows 1-2.
     #[test]
