@@ -38,7 +38,7 @@ jobs:
         run: cargo fmt --check
 
       - name: typos
-        uses: crate-ci/typos@7c572958218557a3272c2d6719629443b5cc26fd
+        uses: crate-ci/typos@7b04f660f4ee4f048d18fd341887cf28dfbedfe2
 
       # T138a — FR-037 absence-check (006 polish phase, PR 10.B).
       # Asserts the clean-break audit-schema cutover (marque-mvp-3 →
