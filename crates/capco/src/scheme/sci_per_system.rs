@@ -5,12 +5,9 @@
 //! SCI per-system catalog — `CompanionForm` + `SciPerSystemKind` +
 //! `SciPerSystemRow` + the 5-row `SCI_PER_SYSTEM_CATALOG`.
 //!
-//! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
-//! (issue #466). Module contents are byte-identical to the pre-split
-//! source — imports adjusted to reach the `presence_*` helpers via
-//! `super::predicates::*`, the `emit_*_companions` closures via
-//! `super::actions::*`, and the `CapcoScheme` type via `super::*`
-//! (the parent module's `pub use self::adapter::CapcoScheme` re-export).
+//! Reaches the `presence_*` helpers via `super::predicates::*`, the
+//! `emit_*_companions` closures via `super::actions::*`, and the
+//! `CapcoScheme` type via `super::*`.
 //!
 //! The bridge is a no-op pass-through — each row's `name` IS the
 //! canonical predicate ID, and emit functions construct
@@ -24,12 +21,11 @@ use crate::fact_bitmask::fact_bit;
 use marque_scheme::{SectionLetter, capco};
 
 // ===========================================================================
-// PR 3b.E (T026e) — SCI per-system catalog (§H.4)
+// SCI per-system catalog (§H.4)
 // ===========================================================================
 //
 // `sci_per_system_catalog_eval` is the static-table dispatcher for the 5
-// `Constraint::Custom` rows declared by `build_constraints` under the
-// "PR 3b.E (T026e) — SCI per-system catalog (§H.4)" section header.
+// `Constraint::Custom` SCI per-system rows declared by `build_constraints`.
 //
 // Each row's predicate has a uniform shape: "if SCI marking M is present in
 // `attrs`, the portion's IC dissem block must satisfy F(M)" where F(M) is
@@ -38,7 +34,7 @@ use marque_scheme::{SectionLetter, capco};
 // USGOV forbidden, etc.). The table stores one entry per row carrying:
 //
 //   - `name`: catalog row identifier (matches `Constraint::Custom { name }`,
-//      and starts with the `sci-per-system/` prefix)
+//      and starts with the `marking.sci.` prefix)
 //   - `marking_label`: human-readable marking name for the diagnostic
 //   - `presence`: predicate `fn(&CanonicalAttrs) -> bool` checking whether
 //      the family pattern is present
@@ -60,17 +56,17 @@ use marque_scheme::{SectionLetter, capco};
 //
 // The catalog is consumed by `CapcoScheme::bridge_sci_per_system_diagnostics`
 // (in `adapter.rs`), which is the engine's direct emit path for these
-// diagnostics + fixes. The direct bridge lets the catalog's per-row fixes (companion-insertion at the dissem-block
-// anchor and `ORCON-USGOV → ORCON` token replacement) could ride
-// alongside the diagnostics without threading a fix table through the
+// diagnostics + fixes. The direct bridge lets the catalog's per-row
+// fixes (companion-insertion at the dissem-block anchor and
+// `ORCON-USGOV → ORCON` token replacement) ride alongside the
+// diagnostics without threading a fix table through the
 // `ConstraintViolation` envelope.
 //
 // Once `marque-scheme` exposes `Constraint::CompanionRequired<Set>` /
 // `Forbid<Set>` primitives (or equivalent ImplTable / closure-operator
 // machinery), these rows can re-classify from
 // `Constraint::Custom` to a primitive form without changing per-row
-// semantics. See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`
-// §1 for the architectural rationale.
+// semantics.
 
 /// Companion form (abbreviated vs full) inferred from the dissem-token
 /// text observed on a portion. Used to keep the inserted token's surface
@@ -93,8 +89,7 @@ pub(crate) enum SciPerSystemKind {
     /// Single dissem-control insertion. The row encodes "if marking M is
     /// present, dissem control D must appear; if absent, emit a
     /// zero-width insertion fix at the end of the IC dissem block." The
-    /// only PR-E rows using this kind are the NOFORN-only rows (#2 and
-    /// #5).
+    /// only rows using this kind are the NOFORN-only rows (#2 and #5).
     CompanionRequired {
         /// The dissem control whose presence is required.
         dissem: marque_ism::DissemControl,
@@ -155,7 +150,7 @@ pub(crate) struct SciPerSystemRow {
     pub(crate) kind: SciPerSystemKind,
     /// Default severity (typically `Warn`).
     pub(crate) severity: marque_rules::Severity,
-    /// Tier-3 bitmask trigger (PR-H / issue #371).
+    /// Tier-3 bitmask trigger (issue #371).
     ///
     /// `Some(mask)` when the row has a closed-atom trigger: the
     /// `sci_per_system_catalog_eval` fast path returns empty immediately

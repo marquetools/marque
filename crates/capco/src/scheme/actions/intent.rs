@@ -4,9 +4,7 @@
 
 //! `ReplacementIntent` dispatch into per-axis fact mutators:
 //! [`apply_intent_to_marking`] + private [`apply_fact_add`] /
-//! [`apply_fact_remove`]. Lifted from the monolithic `actions.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! [`apply_fact_remove`].
 
 use marque_ism::CountryCode;
 use marque_scheme::{ApplyIntentError, CategoryId, FactRef, MarkingScheme, ReplacementIntent};
@@ -180,12 +178,9 @@ fn apply_fact_add(
             // CVE-side TOK_USA is mapped to `CountryCode::USA` for
             // back-compat with E002 (`crates/capco/src/rules.rs:559`),
             // which emits `FactAdd { token: Cve(TOK_USA), scope }` to
-            // ensure USA appears in REL TO. Before this arm existed,
-            // E002's FactAdd silently no-op'd through the CAT_REL_TO
-            // fall-through (returning `IntentInapplicable`) and the
-            // dual-population legacy `FixProposal` did the real work;
-            // post-PR-3c.B-Sub-PR-8.D.4 the open-vocab path is wired and
-            // we honor the existing CVE emission too. Mapping is safe
+            // ensure USA appears in REL TO. The open-vocab path is
+            // wired and the existing CVE emission is honored too. Mapping
+            // is safe
             // because `CountryCode::USA` is a `const` literal validated
             // against `try_new` at compile time.
             FactRef::Cve(id) if *id == TOK_USA => marque_ism::CountryCode::USA,
@@ -489,10 +484,10 @@ fn apply_fact_remove(
         // `capco/sbu-evicted-by-classified` rows. #541 extended the
         // dispatch with TOK_SBU_NF for `capco/sbu-nf-evicted-by-
         // classified` (§H.9 p178 Commingling Rule(s) Within a
-        // Portion) — see §3.5 carve-out note below.
+        // Portion) — see the carve-out note below.
         //
         // **§3.5 compound-NF guard (revised #541)**: the original
-        // §3.5 invariant said Pattern-C strip rows MUST NOT touch
+        // The compound-NF invariant: Pattern-C strip rows MUST NOT touch
         // SbuNf / LesNf "because the parallel implies-noforn
         // rewrites carry NF identity separately." That phrasing was
         // correct for LesNf — §H.9 p185 (LES NOFORN Precedence

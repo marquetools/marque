@@ -22,14 +22,14 @@ use marque_scheme::{
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Rule: S008 — RELIDO implied by closure (byte-surfacing twin of
-//              CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS).
+// Rule: RELIDO implied by closure (byte-surfacing twin of
+//       CLOSURE_RELIDO_SCI / CLOSURE_RELIDO_US_CLASS).
 //
-// C1 per #559 close-out (PM decision 2026-05-19). The lattice-layer
-// closures `CLOSURE_RELIDO_SCI` (§H.8 p154; CAT_SCI implies RELIDO
-// absent FD&R suppressors) and `CLOSURE_RELIDO_US_CLASS` (issue #524
-// Phase 3; US collateral classified implies RELIDO absent FD&R
-// suppressors) already propagate the RELIDO fact at the lattice
+// (#559). The lattice-layer closures `CLOSURE_RELIDO_SCI` (§H.8 p154;
+// CAT_SCI implies RELIDO absent FD&R suppressors) and
+// `CLOSURE_RELIDO_US_CLASS` (issue #524; US collateral classified
+// implies RELIDO absent FD&R suppressors) already propagate the RELIDO
+// fact at the lattice
 // layer. This rule is the byte-level twin: when the closure would
 // inject RELIDO into a portion that doesn't currently carry it, S008
 // fires a `Severity::Suggest` diagnostic with a `FactAdd(RELIDO,

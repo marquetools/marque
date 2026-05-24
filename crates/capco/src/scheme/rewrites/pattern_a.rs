@@ -4,9 +4,7 @@
 
 //! Pattern-A NOFORN-supremacy rows: `capco/nodis-implies-noforn`,
 //! `capco/exdis-implies-noforn`, `capco/sbu-nf-implies-noforn`,
-//! `capco/les-nf-implies-noforn`. Lifted from the monolithic
-//! `rewrites.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! `capco/les-nf-implies-noforn`.
 //!
 //! Row declaration order preserved verbatim from the pre-split
 //! catalog — DAG-sibling rows whose declaration order seeds Kahn's

@@ -5,10 +5,7 @@
 //! Span lookups + companion-form inference used by SCI per-system
 //! emit helpers and the action layer ([`first_sci_span`],
 //! [`dissem_token_span`], [`us_level`], [`infer_companion_form`],
-//! [`dissem_token_id_for_form`]). Lifted
-//! from the monolithic `predicates.rs` per the issue #466 Stage 2
-//! PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! [`dissem_token_id_for_form`]).
 
 use marque_ism::{Classification, TokenKind};
 use marque_scheme::{TokenId, TokenRef};

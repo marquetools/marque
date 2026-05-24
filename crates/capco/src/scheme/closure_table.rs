@@ -5,9 +5,9 @@
 //! Static `(trigger_mask, cone_mask)` closure-rule catalog over
 //! [`FactBitmask`] + bitwise Kleene fixpoint [`close`].
 //!
-//! PR-C of the FactBitmask refactor (issue #371). This module owns the
-//! data + dispatch shape; PR-D rewires [`CapcoScheme::closure`] to call
-//! into it on the hot path.
+//! Part of the FactBitmask refactor (issue #371). This module owns the
+//! data + dispatch shape; [`CapcoScheme::closure`] calls into it on the
+//! hot path.
 //!
 //! # Post-#704 architecture
 //!
@@ -112,7 +112,7 @@ use crate::fact_bitmask::fact_bit;
 /// Row 7 (`capco/rel-to-usa-nato-if-nato-classification`) is the only
 /// hybrid row in the catalog: its closed-vocab cone lives here
 /// (`REL_TO_USA` bit), but its open-vocab NATO tetragraph cone is
-/// applied by PR-D's `closure()` body via the
+/// applied by the `closure()` body via the
 /// [`marque_scheme::ClosureRule::cone_derived`] fn-pointer on the
 /// corresponding [`CAPCO_CLOSURE_RULES`](super::closure) entry.
 ///
@@ -151,13 +151,13 @@ use crate::fact_bitmask::fact_bit;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ClosureRow {
     pub name: &'static str,
-    /// Human-readable display label for inventory surfaces. PR 10.A.1
+    /// Human-readable display label for inventory surfaces. Migrated
     /// split the pre-existing `label: &'static str` field into two
     /// parts so the typed Citation can stand alone on `citation` while
     /// inventory consumers still get a human-facing string here.
     pub display_label: &'static str,
     /// Typed authoritative-source citation (migrated from `&'static str`
-    /// to [`Citation`] in PR 10.A.1 — mirrors `ClosureRule.label` on the
+    /// to [`Citation`] — mirrors `ClosureRule.label` on the
     /// trait side; both feed the same `AuditNote.citation` field at
     /// firing time).
     pub label: Citation,
@@ -321,9 +321,10 @@ pub const MAX_CLOSURE_ITERATIONS: usize = marque_scheme::MAX_CLOSURE_ITERATIONS;
 ///
 /// # Hot-path note
 ///
-/// PR-C does NOT call [`close`] on the production path. PR-D rewires
+/// This data module does NOT call [`close`] on the production path; the
+/// `closure()` body
 /// [`CapcoScheme::closure`] to invoke it after a HOT-1 early-exit
-/// against [`ALL_TRIGGER_MASK`]. The bench impact is measured in PR-F.
+/// against [`ALL_TRIGGER_MASK`].
 #[must_use]
 pub fn close(input: FactBitmask) -> FactBitmask {
     let mut bits = input.bits();
@@ -361,7 +362,7 @@ pub fn close(input: FactBitmask) -> FactBitmask {
 
 /// Union of every row's `trigger_mask` in [`CLOSURE_TABLE`].
 ///
-/// PR-D's `closure()` rewire uses this as the HOT-1 early-exit gate:
+/// The `closure()` body uses this as the HOT-1 early-exit gate:
 /// if `(derive_bits(attrs).bits() & ALL_TRIGGER_MASK) == 0`, no row
 /// can fire and the bitmask projection / Kleene loop / inverse
 /// projection are skipped entirely. Computed at compile time.

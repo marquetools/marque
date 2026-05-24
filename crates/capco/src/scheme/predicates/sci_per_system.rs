@@ -2,11 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR-E SCI per-system catalog presence predicates plus the
+//! SCI per-system catalog presence predicates plus the
 //! trait-path catalog walker (`sci_per_system_catalog_eval`).
-//! Lifted from the monolithic `predicates.rs` per the issue #466
-//! Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use super::super::constraints::sci_per_system_emit;
 use super::super::*;
@@ -14,7 +11,7 @@ use super::presence::{anchors_on, compartment_has_sub, has_compartment, is_tk_no
 use crate::fact_bitmask::fact_bit;
 
 // ---------------------------------------------------------------------------
-// Family-presence predicates (one per PR-E catalog row)
+// Family-presence predicates (one per catalog row)
 // ---------------------------------------------------------------------------
 
 /// HCS-O — any HCS-anchored marking carrying the "O" compartment.
@@ -82,7 +79,7 @@ pub(crate) fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs)
 /// [`sci_per_system_catalog_eval`]. Used by `evaluate_custom_by_attrs`
 /// to route on the table.
 ///
-/// Post-T044: O(1) prefix check on the canonical predicate-ID form —
+/// O(1) prefix check on the canonical predicate-ID form —
 /// every catalog row's `name` MUST start with `marking.sci.`. This
 /// prefix is uniquely scoped to the per-system catalog
 /// (`portion.sci.*` is reserved for standalone SCI rules). The
@@ -108,7 +105,7 @@ pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSy
 /// [`marque_scheme::constraint::evaluate`] when the catalog row's
 /// `Constraint::Custom` arm fires.
 ///
-/// Note: PR-E rows produce `FixProposal` values on the walker path,
+/// Note: these rows produce `FixProposal` values on the walker path,
 /// but `ConstraintViolation` doesn't carry a fix — the trait/validate
 /// path drops the fix (this is the same divergence PR D's class-floor
 /// catalog has). The engine path is the only path that produces
@@ -194,7 +191,7 @@ pub(crate) fn sci_per_system_catalog_eval(
     .into_iter()
     .map(|d| ConstraintViolation {
         constraint_label: row.name,
-        // Bridge layer per PM-C-1: render the typed `Diagnostic.message:
+        // Bridge layer: render the typed `Diagnostic.message:
         // Message` to a `String` for the ConstraintViolation
         // (marque-scheme, graph-leaf) carrier. The audit consumer reads
         // the structured form via the engine's bridge_constraint_diagnostic,

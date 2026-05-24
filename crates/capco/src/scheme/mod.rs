@@ -15,24 +15,16 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-// Mod.rs re-imports the post-split common surface so the
-// `use super::*` / `use super::super::*` glob in sibling modules and
-// in `tests.rs` continues to find every identifier the pre-split
-// monolithic `mod.rs` made available. After the Stage 2 PR B split,
-// mod.rs itself uses only a small subset of these for its ID-constant
-// declarations and re-exports; the rest are kept in scope so the leaf
-// + test glob pattern stays one-line.
+// Mod.rs re-imports the common surface so the `use super::*` /
+// `use super::super::*` glob in sibling modules and in `tests.rs` finds
+// every identifier they need. mod.rs itself uses only a small subset
+// (for its ID-constant declarations and re-exports); the rest are kept
+// in scope so the leaf + test glob pattern stays one-line.
 //
-// `Classification` + a wide marque_scheme set are imported here even
-// though mod.rs's own body only references `CategoryId` and `TokenId`
-// (for the `CAT_*` / `TOK_*` constant declarations below). The leaf-
-// glob pattern (`use super::super::*;` in `actions/`, `constraints/`,
-// `predicates/`, `rewrites/`) and `tests.rs`'s `use super::*;` both
-// pick up these names through the parent namespace. The
-// `#[allow(unused_imports)]` attribute is required because the `lib`
-// build of mod.rs alone doesn't see the leaf / test consumers and
-// the compiler can't prove the imports are load-bearing from this
-// vantage point — the `lib test` build does see them used. Both
+// The `#[allow(unused_imports)]` attribute is required because the `lib`
+// build of mod.rs alone doesn't see the leaf / test consumers and the
+// compiler can't prove the imports are load-bearing from this vantage
+// point — the `lib test` build does see them used. Both
 // `clippy -- -D warnings` and the un-suffixed `lib` build need the
 // allow.
 #[allow(unused_imports)]
@@ -44,35 +36,19 @@ use marque_scheme::{
 };
 
 // ---------------------------------------------------------------------------
-// Sibling-module declarations (issue #466)
+// Sibling-module declarations
 // ---------------------------------------------------------------------------
 //
-// The body of the original monolithic `scheme.rs` was carved into sibling
-// files in two stages:
-//
-//   Stage 1 (PR #479) — top-level lift into `actions.rs`, `constraints.rs`,
-//   `predicates.rs`, `rewrites.rs`, `shared.rs`.
-//
-//   Stage 2 PR A (PR #483) — the four large leaves above sub-split into
-//   per-axis directories (`actions/`, `constraints/`, `predicates/`,
-//   `rewrites/`).
-//
-//   Stage 2 PR B (this PR) — `mod.rs` itself split into per-section
-//   sibling files: `marking.rs` (the `CapcoMarking` type + impls + the
-//   `join_via_lattice` lattice-path composer), `adapter.rs`
-//   (`CapcoScheme` + ctors + `CapcoParseError` + the
-//   `fix_intent_by_name` / `message_by_name` /
-//   `has_diagnostic_constraints` / `bridge_emitted_rule_ids` /
-//   `bridge_sci_per_system_diagnostics` block),
-//   `marking_scheme_impl.rs` (`impl MarkingScheme for CapcoScheme`),
-//   `closure.rs` (`FDR_DOMINATORS` + the closure-rule catalog),
-//   `render.rs` (`AxisRenderRow` + `RENDER_TABLE`), `class_floor.rs`
-//   (the class-floor catalog), and `sci_per_system.rs` (the SCI
-//   per-system catalog).
-//
-// After Stage 2, every sibling is ≤ 800 LOC and `mod.rs` is reduced to
-// the hub of module declarations, public re-exports, and the `CAT_*` /
-// `TOK_*` ID constants.
+// `CapcoScheme`'s implementation is split across per-section sibling
+// files: `marking.rs` (the `CapcoMarking` type + impls + the
+// `join_via_lattice` lattice-path composer), `adapter.rs` (`CapcoScheme`
+// + ctors + `CapcoParseError` + the bridge methods),
+// `marking_scheme_impl.rs` (`impl MarkingScheme for CapcoScheme`),
+// `closure.rs` (`FDR_DOMINATORS` + the closure-rule catalog),
+// `render.rs` (`AxisRenderRow` + `RENDER_TABLE`), `class_floor.rs` (the
+// class-floor catalog), and `sci_per_system.rs` (the SCI per-system
+// catalog). `mod.rs` is the hub of module declarations, public
+// re-exports, and the `CAT_*` / `TOK_*` ID constants.
 
 pub(crate) mod actions;
 pub(crate) mod adapter;
@@ -85,9 +61,8 @@ pub(crate) mod default_fill;
 // re-export at `lib.rs` — which requires the module be `pub` at this
 // level for the re-export to compile. The `#[doc(hidden)]` keeps it
 // out of rustdoc; signals "internal API, do not consume from outside
-// the crate". PR-D wires the production consumer in
-// `CapcoScheme::closure`; PR-F tightens visibility back to
-// `pub(crate)` once integration tests migrate to observing through
+// the crate". Visibility can tighten back to `pub(crate)` once
+// integration tests migrate to observing through
 // `MarkingScheme::closure`.
 #[doc(hidden)]
 pub mod closure_table;
@@ -105,9 +80,8 @@ pub(crate) mod shared;
 mod tests;
 
 // Public-within-crate re-exports for items that other crate modules
-// (vocabulary.rs, lattice/, rules/) referenced
-// at `crate::scheme::<name>` before the Stage-1 split. These re-exports
-// preserve the pre-split paths so no external file needs to learn about
+// (vocabulary.rs, lattice/, rules/) reach at `crate::scheme::<name>`.
+// These re-exports keep that path so no external file needs to learn
 // the sibling-module layout.
 pub(crate) use self::predicates::capco_token_category;
 // `is_fdr_dominator` and `is_orcon_family` are public crate API;
@@ -115,24 +89,19 @@ pub(crate) use self::predicates::capco_token_category;
 // `marque_capco::scheme::is_fdr_dominator` for downstream callers.
 pub use self::predicates::{is_fdr_dominator, is_orcon_family};
 
-// Stage 2 PR B (issue #466) — re-exports for the new sibling modules
-// carved out of the pre-split monolithic `mod.rs`. Each `pub use`
-// preserves the canonical `marque_capco::scheme::<name>` path of every
-// symbol that was reachable at that path before the split, AND keeps
-// the leaf-glob pattern (`use super::super::*;` in `actions/`,
+// Re-exports for the sibling modules. Each `pub use` keeps the
+// canonical `marque_capco::scheme::<name>` path of every symbol AND
+// keeps the leaf-glob pattern (`use super::super::*;` in `actions/`,
 // `constraints/`, `predicates/`, `rewrites/`) finding the symbol by
-// its established name. The split is purely structural — no public-API
-// surface change.
+// its established name.
 pub use self::adapter::{CapcoParseError, CapcoScheme};
 pub use self::marking::{CapcoMarking, CapcoOpenVocabRef};
 
-// `FDR_DOMINATORS` and `CAPCO_CLOSURE_RULES` were `pub(crate)` /
-// private respectively in the pre-split `mod.rs`. Re-export both into
-// the parent namespace at `pub(crate)` so the `use super::super::*;`
-// glob in PR-A leaf modules continues to find `FDR_DOMINATORS`, AND so
-// `crate::scheme::FDR_DOMINATORS` continues to resolve for the
-// `vocabulary.rs` consumer that hard-references it. `CAPCO_CLOSURE_RULES`
-// stays at `pub(super)` in its sibling file but is re-bridged here so
+// Re-export `FDR_DOMINATORS` into the parent namespace at `pub(crate)`
+// so the `use super::super::*;` glob in the leaf modules finds it, AND
+// so `crate::scheme::FDR_DOMINATORS` resolves for the `vocabulary.rs`
+// consumer that hard-references it. `CAPCO_CLOSURE_RULES` stays
+// `pub(super)` in its sibling file but is re-bridged here so
 // `marking_scheme_impl.rs` can name it via the parent module's glob.
 pub(crate) use self::closure::FDR_DOMINATORS;
 // Render dispatch surface — pulled into the parent namespace at
@@ -451,7 +420,7 @@ pub const TOK_FGI_CLASS: TokenId = TokenId(149);
 // Routed to `CAT_SCI` via `capco_token_category` (mirrors
 // `TOK_HCS`/`TOK_BALK`/`TOK_BOHEMIA`). Phase 2 (issue #524 follow-up)
 // will consume these as triggers of the per-marking unconditional
-// implication rows; the sentinels land in Phase 1 because the
+// implication rows; the sentinels exist because the
 // introduction is itself a substantial change to the predicate /
 // routing / vocabulary surface and merits its own review window.
 //
@@ -482,7 +451,7 @@ pub const TOK_TK_KAND: TokenId = TokenId(155);
 // [SUB-COMPARTMENT]) shows `TOP SECRET//HCS-P JJJ//ORCON/NOFORN`
 // (ORCON + NOFORN). The two markings carry different per-marking
 // unconditional implications, so the closure operator needs to
-// distinguish them at the trigger level. The Phase 1 sentinel
+// distinguish them at the trigger level. The sentinel
 // `TOK_HCS_P` fires for both bare and sub-compartmented forms (it
 // witnesses the HCS-P compartment), and per the structural-witness
 // design that semantic is correct; `TOK_HCS_P_SUB` is the
@@ -540,5 +509,5 @@ pub const TOK_HCS_P_SUB: TokenId = TokenId(156);
 // reliant on a suppressor list to enforce the Unclassified
 // carve-out. A future opt-in agency-style rule can re-enable
 // U → RELIDO for organizations whose policy requires it (see
-// follow-up issue tracked in the Phase 3 PR description).
+// follow-up).
 pub const TOK_US_COLLATERAL_CLASSIFIED: TokenId = TokenId(157);

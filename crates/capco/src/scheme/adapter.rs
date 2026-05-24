@@ -13,13 +13,10 @@
 //! that hosts the scheme-private predicate helpers for the engine
 //! bridge.
 //!
-//! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
-//! (issue #466). Module contents are byte-identical to the pre-split
-//! source — imports adjusted to reach helpers via `super::constraints`
-//! / `super::predicates::*` / `super::rewrites`, with the
-//! `SCI_PER_SYSTEM_CATALOG` and `sci_per_system_emit` symbols crossing
-//! over from the new `sci_per_system.rs` / `constraints/helpers.rs`
-//! homes (re-exported through `mod.rs`).
+//! Reaches helpers via `super::constraints` / `super::predicates::*` /
+//! `super::rewrites`; `SCI_PER_SYSTEM_CATALOG` and `sci_per_system_emit`
+//! come from `sci_per_system.rs` / `constraints/helpers.rs`
+//! (re-exported through `mod.rs`).
 
 use super::constraints::{self, sci_per_system_emit};
 use super::*;

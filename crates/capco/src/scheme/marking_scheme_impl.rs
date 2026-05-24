@@ -4,12 +4,8 @@
 
 //! `impl MarkingScheme for CapcoScheme` — the 22-method trait body.
 //!
-//! Hosts the entire `impl MarkingScheme for CapcoScheme` block lifted
-//! from `scheme/mod.rs` per the Stage 2 PR B hub-split (issue #466).
-//! Method bodies are byte-identical to the pre-split source — imports
-//! adjusted to reach helpers via `super::actions::*` /
-//! `super::predicates::*` (the same glob pattern `mod.rs` used pre-
-//! split) plus explicit named imports of scheme-internal symbols
+//! Reaches helpers via `super::actions::*` / `super::predicates::*`
+//! plus explicit named imports of scheme-internal symbols
 //! (`RENDER_TABLE`, `DissemFamilyMembership`, `CAPCO_CLOSURE_RULES`,
 //! the CAT_*/TOK_* constants, the `CapcoMarking` / `CapcoScheme` /
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
@@ -27,7 +23,7 @@ use super::closure::CAPCO_CLOSURE_RULES;
 use super::predicates::*;
 use super::*;
 
-// HOT-1 axis-flag scaffolding retired in PR-D of the FactBitmask
+// HOT-1 axis-flag scaffolding retired in the FactBitmask
 // refactor (issue #371). The structural `ClosureAxisFlags` snapshot
 // + `working_has_caveated_dissem_trigger` + `capco_rule_axis_present`
 // per-rule guard were replaced by the single `ALL_TRIGGER_MASK`
@@ -537,8 +533,7 @@ impl MarkingScheme for CapcoScheme {
     ///
     /// Used by the closure operator to route cone tokens to the correct
     /// marking axis when adding facts during implicit-fact propagation.
-    /// Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
-    /// §2 finding F1, this is the scheme-layer hook required because
+    /// This is the scheme-layer hook required because
     /// [`Self::category_of`] is keyed by `FactRef<S>` (a `marque-rules`
     /// type) and unavailable at the scheme layer.
     ///
@@ -645,10 +640,10 @@ impl MarkingScheme for CapcoScheme {
     /// CAPCO closure operator — bitwise Kleene fixpoint over
     /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
     ///
-    /// Implements the section 4.7 implicit-fact propagation per
-    /// `docs/plans/2026-05-01-lattice-design.md` section 3 (e).
+    /// Implements implicit-fact propagation (the algebraic closure
+    /// operator).
     ///
-    /// # Algorithm (post-#704)
+    /// # Algorithm
     ///
     /// 1. **Project** the input `CanonicalAttrs` to a `u128`
     ///    `FactBitmask` via [`derive_bits`]. Closed-vocab atoms (SAR
@@ -834,7 +829,7 @@ impl CapcoScheme {
     /// Retained as a test-only helper for assertions that need to
     /// inspect trigger-firing without running the full closure pipeline.
     /// Suppression is NOT consulted: a trigger-firing-but-suppressed
-    /// row still returns `true` here, matching the pre-PR-D fn-pointer
+    /// row still returns `true` here, matching the fn-pointer
     /// walker's behavior.
     ///
     /// [`ALL_TRIGGER_MASK`]: crate::scheme::closure_table::ALL_TRIGGER_MASK
@@ -1095,9 +1090,8 @@ impl CapcoScheme {
             if raw != raw_snapshot.as_slice() {
                 panic!(
                     "closure() mutated the per-portion CanonicalAttrs slice \
-                     ({} portion(s) before vs {} after) — violates PageRewrite \
-                     read-only-attrs invariant \
-                     (docs/plans/2026-05-01-lattice-design.md §3 (e.1))",
+                     ({} portion(s) before vs {} after) — violates the \
+                     PageRewrite read-only-attrs invariant",
                     raw_snapshot.len(),
                     raw.len(),
                 );

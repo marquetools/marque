@@ -4,9 +4,6 @@
 
 //! Core constraint rows: dyadic Conflicts / Requires / Custom rows
 //! covering E010 through E057 (plus `capco/joint-requires-usa`).
-//! Lifted from the monolithic `constraints.rs` per the issue #466
-//! Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 //!
 //! Row order is load-bearing for the predicate evaluator's
 //! tiebreakers; the entries below preserve the exact pre-split

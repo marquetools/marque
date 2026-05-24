@@ -75,7 +75,7 @@ use crate::scheme::CapcoScheme;
 /// - `AUT` → S004 fires, suggesting `AUS`.
 ///   `log_prior(AUS) - log_prior(AUT)` ≈ 4.36 nats, above
 ///   [`SUGGEST_LOG_MARGIN`].
-/// - `ASU` → decoder PR-A handles. ASU is not a trigraph; never
+/// - `ASU` → the decoder handles. ASU is not a trigraph; never
 ///   reaches `attrs.rel_to`.
 /// - `SA` → 2-character non-trigraph; same as USB / ASU, not in
 ///   `attrs.rel_to`. Decoder/parser path.

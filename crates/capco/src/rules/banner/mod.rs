@@ -109,8 +109,8 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
-        // Marking-type guard (≤3 branches per D13). CABs carry only
-        // authority fields (Classified By / Derived From / Declassify
+        // Marking-type guard. CABs carry only authority fields
+        // (Classified By / Derived From / Declassify
         // On) — they have no classification, SCI, dissem, or FGI
         // blocks — so every row evaluator would spuriously fire
         // "banner missing X block" with a placeholder (0,0) span.

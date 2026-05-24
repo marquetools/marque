@@ -5,10 +5,7 @@
 //! Class-floor catalog — `ClassFloorPolicy` + `ClassFloorRow` + the
 //! 27-row `CLASS_FLOOR_CATALOG`.
 //!
-//! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
-//! (issue #466). Module contents are byte-identical to the pre-split
-//! source — imports adjusted to pick up the `presence_*` helpers from
-//! `super::predicates::*` (the same glob `mod.rs` used pre-split) and
+//! Imports the `presence_*` helpers from `super::predicates::*` and
 //! the `Classification` / `TokenKind` types directly from `marque_ism`.
 
 use marque_ism::{Classification, TokenKind};

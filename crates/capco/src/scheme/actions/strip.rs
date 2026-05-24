@@ -4,22 +4,20 @@
 
 //! Pattern-C strip-action bodies (`strip_dod_ucni_action`,
 //! `strip_doe_ucni_action`) and the [`noop_action`] used by Phase-3
-//! stub `PageRewrite` rows. Lifted from the monolithic `actions.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! stub `PageRewrite` rows.
 
 use super::super::*;
 
 /// No-op [`CategoryAction::Custom`] body for Phase-3 stub
 /// `PageRewrite` rows whose action would otherwise need a multi-axis
 /// or within-axis transform that the Phase-3 declarative surface
-/// can't express cleanly (e.g., the §3.4.1 transmutations).
+/// can't express cleanly (e.g., the cross-axis transmutations).
 ///
 /// Runtime page-rewrite dispatch stays in
-/// `CapcoScheme::project_attrs_pipeline` until Phase D / Phase E
+/// `CapcoScheme::project_attrs_pipeline` until they
 /// lands real rewrite bodies; until then the action body is a no-op
 /// and only the row's `reads` / `writes` axis annotations are
-/// consumed (by the engine's topological scheduler, T031–T032).
+/// consumed (by the engine's topological scheduler).
 /// Pairs with [`never_fires`] for triggers.
 pub(crate) fn noop_action(_marking: &mut CapcoMarking) {}
 

@@ -24,8 +24,8 @@
 // `fact_bitmask` is internal API — `#[doc(hidden)]` keeps it out of
 // rustdoc; `pub` is required because integration tests in `tests/`
 // link against the crate as an external dependency and need access
-// to the projection helpers. PR-C ships the production consumer
-// (`CLOSURE_TABLE`); PR-D wires `CapcoScheme::closure`. At that
+// to the projection helpers. The production consumer (`CLOSURE_TABLE`)
+// and `CapcoScheme::closure` are wired separately. At that
 // point this visibility tightens to `pub(crate)` and the doc-hidden
 // attribute is unnecessary.
 #[doc(hidden)]
@@ -47,9 +47,9 @@ pub mod build_inputs;
 // `closure_table` lives under `scheme/` but is re-exported here at
 // `#[doc(hidden)] pub` so integration tests in `tests/` can reach
 // `CLOSURE_TABLE` / `close` / `ALL_TRIGGER_MASK` /
-// `MAX_CLOSURE_ITERATIONS` for the PR-C equivalence cross-check and
-// the P1-P4 proptests. PR-D consumes it from `CapcoScheme::closure`
-// directly through the `scheme::closure_table::*` path; PR-D + PR-F
+// `MAX_CLOSURE_ITERATIONS` for the equivalence cross-check and the
+// proptests. `CapcoScheme::closure` consumes it directly through the
+// `scheme::closure_table::*` path; the latency gate
 // tighten this visibility back to `pub(crate)` once the integration
 // tests migrate to consuming through `MarkingScheme::closure`'s
 // observable behavior.
@@ -77,7 +77,7 @@ pub use marque_ism::CapcoTokenSet;
 pub use provenance::DecoderProvenance;
 pub use rules::CapcoRuleSet;
 pub use scheme::{CapcoMarking, CapcoOpenVocabRef, CapcoScheme};
-// PR 3d.3: surface the active-sentinel-set count so integration
+// Surface the active-sentinel-set count so integration
 // tests (notably `vocabulary_forms.rs`) can pin EXPECTED_FORMS
 // against the authoritative size without coupling to private
 // `vocabulary` module internals.

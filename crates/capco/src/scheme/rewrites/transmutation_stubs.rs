@@ -3,12 +3,11 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Transmutation stubs (8 rows) from the transmutation
-//! roster in `marque-applied.md`. Each row declares
+//! transmutation roster. Each row declares
 //! `Custom(never_fires)` + `Custom(noop_action)`; only the
 //! `reads` / `writes` axis annotations are consumed today
 //! (by the Kahn scheduler). Lifted from the monolithic
 //! `rewrites.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_scheme::{CategoryAction, CategoryPredicate, PageRewrite, SectionLetter, capco};
 
@@ -127,8 +126,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // RD-SIGMA atom. The `lattice::AeaSet` `Product`
         // composition implements this as the union of axis 3
         // (SIGMA numbers) when axis 1's supersession join lands
-        // on `Rd`; see `docs/plans/2026-05-01-lattice-design.md`
-        // §7.5 Example 1 for the worked end-to-end case.
+        // on `Rd`.
         //
         // This row cites BOTH
         // §H.6 p108-109 and §H.6 p113 in this comment so future

@@ -8,7 +8,6 @@
 //! and [`collect_present_tokens`] (the `ConflictsWithFamily`
 //! emission helper). Lifted from the monolithic `predicates.rs` per
 //! the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::{Classification, CountryCode};
 use marque_scheme::TokenRef;
@@ -21,7 +20,7 @@ use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
 use super::joint_hcs::{hcs_system_constraints, joint_requires_usa};
 use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catalog_eval};
 // PR-E (#371): tier-1 mask-compiled predicates replace the structural
-// slice walks that lived in `constraints/helpers.rs` pre-PR-E. The
+// slice walks that lived in `constraints/helpers.rs`. The
 // helpers were retired in the same commit per project memory
 // `feedback_pre_users_no_deprecation_phasing.md` — marque is
 // pre-users; the alias surface and re-exports go with the helpers.
@@ -153,7 +152,7 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     SciControlSystem::NatoSap(marque_ism::NatoSap::Bohemia)
                 )
             }),
-            // Issue #524 (Phase 1): per-compartment SCI sentinels.
+            // Issue #524: per-compartment SCI sentinels.
             //
             // Each arm scans `attrs.sci_markings` for a marking whose
             // `system` anchors on the matching `SciControlBare` AND
@@ -181,7 +180,7 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 super::presence::anchors_on(m, SciControlBare::Hcs)
                     && super::presence::has_compartment(m, "P")
             }),
-            // Issue #524 (Phase 2): grammar-shape sentinel fires only
+            // Issue #524: grammar-shape sentinel fires only
             // when HCS-P additionally carries at least one sub-
             // compartment. §H.4 p66 (bare HCS-P) implies NOFORN only;
             // §H.4 p68 (HCS-P [SUB]) implies NOFORN + ORCON. See
@@ -396,19 +395,16 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
             CAT_DISSEM => attrs.dissem_iter().next().is_some() || !attrs.rel_to.is_empty(),
-            // Issue #524 Phase 3 gap fix: `CAT_NON_IC_DISSEM` was
-            // previously unreachable (fell through to `_ => false`),
-            // silently making `TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)`
-            // a dead reference for any closure / constraint that needed
+            // `CAT_NON_IC_DISSEM` must be reachable here (issue #524) so
+            // `TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)` is not a dead
+            // reference for any closure / constraint that needs
             // category-level non-IC-dissem dispatch. No current consumer
-            // in `CapcoScheme`'s `closure_rules()` — the Phase 3 design
-            // initially wired it into `CLOSURE_RELIDO_US_CLASS`'s
-            // suppressor list, then moved the "no other dissem" gate
-            // from anti-monotone suppressors to composition-via-Trio-1
-            // per the #544 monotonicity review. The arm remains live
-            // for future consumers (e.g., a `ConflictsWithFamily`
-            // constraint dispatching on category-level non-IC-dissem
-            // presence).
+            // in `CapcoScheme`'s `closure_rules()` — the "no other
+            // dissem" gate composes via `CLOSURE_NOFORN_CAVEATED` rather
+            // than anti-monotone suppressors (#544 monotonicity review).
+            // The arm remains live for future consumers (e.g., a
+            // `ConflictsWithFamily` constraint dispatching on
+            // category-level non-IC-dissem presence).
             CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
             CAT_REL_TO => !attrs.rel_to.is_empty(),
             CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
@@ -601,7 +597,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             tokens.push(TokenRef::Token(id));
         }
     }
-    // Issue #524 Phase 3: emit `AnyInCategory(CAT_NON_IC_DISSEM)` when
+    // Issue #524: emit `AnyInCategory(CAT_NON_IC_DISSEM)` when
     // any non-IC dissem token is present. Mirrors the SCI / SAR /
     // REL TO category-level emission pattern. Closes a latent
     // asymmetry where the category form was unreachable via
@@ -643,7 +639,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
         tokens.push(TokenRef::AnyInCategory(CAT_SCI));
     }
 
-    // Issue #524 (Phase 1): per-compartment SCI sentinel emission.
+    // Issue #524: per-compartment SCI sentinel emission.
     //
     // Mirrors the FGI dual-emit pattern (`TOK_FGI_MARKER` +
     // `TOK_FGI_CLASS` at lines above): a marking with `SI-G` present
@@ -677,7 +673,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
                 _ => continue,
             };
             tokens.push(TokenRef::Token(sentinel));
-            // Issue #524 (Phase 2): HCS-P with at least one sub-
+            // Issue #524: HCS-P with at least one sub-
             // compartment emits the additional grammar-shape sentinel
             // `TOK_HCS_P_SUB`. §H.4 p68 implies NOFORN + ORCON for the
             // sub-compartmented form, distinct from the bare HCS-P
@@ -704,7 +700,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod sci_compartment_sentinels_pin {
-    //! Issue #524 (Phase 1) — per-compartment SCI sentinel pin.
+    //! Issue #524 — per-compartment SCI sentinel pin.
     //!
     //! Verifies the six new sentinels (`TOK_SI_G`, `TOK_HCS_O`,
     //! `TOK_HCS_P`, `TOK_TK_BLFH`, `TOK_TK_IDIT`, `TOK_TK_KAND`)
@@ -1021,7 +1017,7 @@ mod sci_compartment_sentinels_pin {
             (TOK_TK_BLFH, CAT_SCI),
             (TOK_TK_IDIT, CAT_SCI),
             (TOK_TK_KAND, CAT_SCI),
-            // Issue #524 Phase 2: grammar-shape sentinel for HCS-P
+            // Issue #524: grammar-shape sentinel for HCS-P
             // with at least one sub-compartment. Same category routing
             // as the rest of the SCI sentinels.
             (crate::scheme::TOK_HCS_P_SUB, CAT_SCI),
@@ -1035,7 +1031,7 @@ mod sci_compartment_sentinels_pin {
         }
     }
 
-    /// Phase 2: `TOK_HCS_P_SUB` discriminates bare HCS-P from
+    /// `TOK_HCS_P_SUB` discriminates bare HCS-P from
     /// HCS-P + at least one sub-compartment.
     ///
     /// - Bare HCS-P (no sub) emits TOK_HCS_P but NOT TOK_HCS_P_SUB.
@@ -1122,15 +1118,14 @@ mod sci_compartment_sentinels_pin {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod cat_non_ic_dissem_arm_pin {
-    //! Issue #524 Phase 3 — `AnyInCategory(CAT_NON_IC_DISSEM)`
-    //! reachability + emission pins.
+    //! Issue #524 — `AnyInCategory(CAT_NON_IC_DISSEM)` reachability +
+    //! emission pins.
     //!
-    //! Phase 3 added two new code paths that are not yet exercised
-    //! by any catalog row in production (the `RELIDO_US_CLASS_SUPPRESSORS`
-    //! slice contains only direct token / `CAT_REL_TO` entries, not
+    //! Two code paths are not exercised by any catalog row in
+    //! production (the `RELIDO_US_CLASS_SUPPRESSORS` slice contains only
+    //! direct token / `CAT_REL_TO` entries, not
     //! `AnyInCategory(CAT_NON_IC_DISSEM)`). Without these tests, the
-    //! two arms below land in the coverage report as uncovered diff
-    //! lines.
+    //! two arms below land in the coverage report as uncovered lines.
     //!
     //!   1. `satisfies_attrs`'s `CAT_NON_IC_DISSEM` arm — was
     //!      previously falling through to `_ => false` (the "gap fix"
@@ -1139,7 +1134,7 @@ mod cat_non_ic_dissem_arm_pin {
     //!      re-introduces the silent fall-through.
     //!   2. `collect_present_tokens`'s `AnyInCategory(CAT_NON_IC_DISSEM)`
     //!      emission — was silently asymmetric with the `satisfies_attrs`
-    //!      resolution prior to Phase 3.
+    //!      resolution.
     //!
     //! Authority: CAPCO-2016 §H.9 p169 (Non-IC Dissemination Control
     //! Markings) — LIMDIS / EXDIS / NODIS / SBU / SBU-NF / LES /
@@ -1233,7 +1228,7 @@ mod cat_non_ic_dissem_arm_pin {
     /// for each §H.9 p169 catalog entry plus NNPI. Mirrors the
     /// `cat_non_ic_dissem_resolves_true_on_each_variant` resolution
     /// pin so the two paths stay in lockstep (the same asymmetry
-    /// this Phase 3 emission closes).
+    /// this emission closes).
     #[test]
     fn collect_present_tokens_emits_non_ic_dissem_for_each_variant() {
         let variants: &[NonIcDissem] = &[
@@ -1262,9 +1257,9 @@ mod cat_non_ic_dissem_arm_pin {
     /// Emission + resolution round-trip: any token list emitted by
     /// `collect_present_tokens` for a non-empty `non_ic_dissem` axis
     /// must resolve true under `satisfies_attrs` on the same attrs.
-    /// This closes the symmetry contract that the Phase 3 diff
+    /// This closes the symmetry contract that the gap fix
     /// established (the emit-side mirrors the resolve-side; a future
-    /// PR that breaks one without the other gets caught here).
+    /// change that breaks one without the other gets caught here).
     #[test]
     fn cat_non_ic_dissem_emit_resolve_round_trip() {
         let mut a = CanonicalAttrs::default();
@@ -1283,7 +1278,7 @@ mod cat_non_ic_dissem_arm_pin {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod us_collateral_classified_arm_pin {
-    //! Issue #524 Phase 3 — `TOK_US_COLLATERAL_CLASSIFIED` resolution
+    //! Issue #524 — `TOK_US_COLLATERAL_CLASSIFIED` resolution
     //! edge cases (non-Us / non-Conflict classification systems and
     //! the Conflict-with-Unclassified-US carve-out).
     //!

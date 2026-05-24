@@ -5,9 +5,7 @@
 //! JOINT REL TO + HCS-system-constraints predicate bodies. Both are
 //! `Constraint::Custom` handlers that need richer-than-`Conflicts`
 //! semantics (USA dual-presence for JOINT; per-compartment
-//! classification with companion logic for HCS). Lifted from the
-//! monolithic `predicates.rs` per the issue #466 Stage 2 PR A leaf
-//! split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! classification with companion logic for HCS).
 
 use marque_ism::{Classification, CountryCode};
 use marque_scheme::{SectionLetter, Severity, TokenRef, capco};

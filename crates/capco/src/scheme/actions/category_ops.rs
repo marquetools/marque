@@ -4,9 +4,7 @@
 
 //! `CategoryPredicate::Contains` / `CategoryPredicate::Empty` and
 //! `CategoryAction::Clear` / `CategoryAction::Replace` dispatch
-//! against `CapcoMarking`. Lifted from the monolithic `actions.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! against `CapcoMarking`.
 
 use marque_ism::MarkingClassification;
 use marque_scheme::{CategoryId, TokenId};

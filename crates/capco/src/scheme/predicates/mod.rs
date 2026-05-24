@@ -2,17 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `CapcoScheme` predicate helpers. Lifted from the monolithic `scheme.rs`
-//! per the issue #466 split plan
-//! (`claudedocs/refactor-466/split_proposal.md`).
+//! `CapcoScheme` predicate helpers.
 //!
 //! Covers presence predicates, satisfaction evaluators, class-floor and
 //! SCI-per-system catalog dispatchers, and FD&R-family membership helpers.
 //!
-//! Stage 2 PR A (issue #466) sub-split this leaf into focused files
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`). Public-API names
-//! continue to resolve at `super::predicates::NAME` via the re-exports
-//! below; sub-module boundaries are an internal organization detail.
+//! Public-API names resolve at `super::predicates::NAME` via the
+//! re-exports below; sub-module boundaries are an internal
+//! organization detail.
 //! Only names that are referenced from outside the `predicates/`
 //! directory are re-exported here — sub-modules that need each other
 //! import directly via `super::<sub>::NAME` (e.g.

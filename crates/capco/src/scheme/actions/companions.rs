@@ -8,7 +8,6 @@
 //! the row-specific bodies for HCS-O / HCS-P-sub / SI-G companions
 //! (rows 1/3/4). Lifted from the monolithic `actions.rs` per the
 //! issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use super::super::predicates::{
     dissem_token_id_for_form, dissem_token_span, first_sci_span, infer_companion_form, us_level,
@@ -125,7 +124,7 @@ pub(crate) fn emit_hcs_o_companions(
     let form = infer_companion_form(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
-    // T044 OD-8.A: the catalog row's `name` IS the predicate ID;
+    // The catalog row's `name` IS the predicate ID;
     // construct the audit RuleId from `row.name` directly with no
     // walker-shared `RULE_E059` indirection.
     let rule = marque_rules::RuleId::new("capco", row.name);
@@ -211,7 +210,7 @@ pub(crate) fn emit_hcs_p_sub_companions(
     let form = infer_companion_form(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
-    // T044 OD-8.A: row.name IS the predicate ID.
+    // row.name IS the predicate ID.
     let rule = marque_rules::RuleId::new("capco", row.name);
 
     if !has_orcon {
@@ -278,7 +277,7 @@ pub(crate) fn emit_si_g_companions(
     let form = infer_companion_form(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
-    // T044 OD-8.A: row.name IS the predicate ID.
+    // row.name IS the predicate ID.
     let rule = marque_rules::RuleId::new("capco", row.name);
 
     if !has_orcon {
@@ -380,7 +379,7 @@ pub(crate) fn emit_companion_required(
     let companion_text = match dissem {
         marque_ism::DissemControl::Nf => form.noforn(),
         marque_ism::DissemControl::Oc => form.orcon(),
-        // PR-E rows do not currently use other dissem controls; fall
+        // These rows do not currently use other dissem controls; fall
         // back to the abbreviated CVE form for symmetry.
         _ => dissem.as_str(),
     };
@@ -393,7 +392,7 @@ pub(crate) fn emit_companion_required(
         marque_rules::MessageArgs::default(),
     );
 
-    // T044 OD-8.A: row.name IS the predicate ID.
+    // row.name IS the predicate ID.
     let rule = marque_rules::RuleId::new("capco", row.name);
 
     vec![emit_companion_insert(
