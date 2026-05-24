@@ -186,8 +186,8 @@ fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {
             deduped.dedup_by_key(|c| c.as_str().to_owned());
             // The 0-length sample is the lawful source-concealed FGI banner
             // form (CAPCO §H.7 p122); non-empty samples are source-
-            // acknowledged. Post-FR-017 these are distinct enum variants,
-            // not a shared shape, so the lattice strategy reflects that.
+            // acknowledged. These are distinct enum variants, not a
+            // shared shape, so the lattice strategy reflects that.
             match FgiMarker::acknowledged(deduped) {
                 Some(m) => FgiSet::from_marker(Some(&m)),
                 None => FgiSet::from_marker(Some(&FgiMarker::SourceConcealed)),
@@ -334,10 +334,9 @@ proptest! {
 
     #[test]
     fn fgi_bottom_is_join_identity(a in arb_fgi_set()) {
-        // B-1 (PR 4b-B 8th-pass): FgiSet no longer implements
-        // `BoundedLattice` (open-vocab CountryCode axis). Use the
-        // `empty()` constructor for the lattice bottom; semantically
-        // identical to the retired `BoundedLattice::bottom()` call.
+        // FgiSet does not implement `BoundedLattice` (open-vocab
+        // CountryCode axis). Use the `empty()` constructor for the
+        // lattice bottom.
         let bot = FgiSet::empty();
         prop_assert_eq!(a.join(&bot), a.clone());
         prop_assert_eq!(bot.join(&a), a);
@@ -355,11 +354,11 @@ proptest! {
 
     #[test]
     fn fgi_bottom_absorbs_meet(a in arb_fgi_set()) {
-        // B-1: use `empty()` after `BoundedLattice` retirement.
+        // `FgiSet` does not implement `BoundedLattice`; use `empty()`.
         prop_assert_eq!(a.meet(&FgiSet::empty()), FgiSet::empty());
     }
 
-    // `fgi_top_propagates_join` retired in B-1 (PR 4b-B 8th-pass).
+    // There is no `fgi_top_propagates_join` test.
     // `SourceConcealed` IS a syntactic supersession-top for the join
     // operation, but `FgiSet` no longer implements `BoundedLattice` per
     // the open-vocab `CountryCode` precedent — see the doc comment on
@@ -426,17 +425,14 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// RelToBlock laws (PR 4b-D.2 Copilot R1 / D24)
+// RelToBlock laws
 //
-// The Copilot R1 review (decisions.md D24) flagged that `CapcoMarking`'s
-// prior `JoinSemilattice` impl violated structural-`Eq` idempotence
-// whenever `RelToBlock`'s tetragraph expansion fired. The lattice
-// consultant verdict: `RelToBlock` IS a sound lattice on its native
-// post-expansion domain (BTreeSet over trigraphs); the unsoundness was
-// the cross-axis fold (`CapcoMarking`) claiming the law on a
-// representation-finer structural `Eq`. PR 4b-D.2 drops the
-// cross-axis claim and pins the per-axis claim with these proptests —
-// which had no `RelToBlock` coverage before this PR.
+// A `CapcoMarking` `JoinSemilattice` impl would violate structural-`Eq`
+// idempotence whenever `RelToBlock`'s tetragraph expansion fired.
+// `RelToBlock` IS a sound lattice on its native post-expansion domain
+// (BTreeSet over trigraphs); the unsoundness was a cross-axis fold
+// (`CapcoMarking`) claiming the law on a representation-finer
+// structural `Eq`. These proptests pin the per-axis claim.
 //
 // Strategy: build `Lattice { countries }` over a small CountryCode
 // pool, plus `Bottom`, `Empty`, and `NofornSuperseded` as absorbing /
@@ -523,11 +519,10 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// DisplayOnlyBlock laws (PR 4b-E review fix-up — rust-reviewer H-2 +
-// lattice-consultant L-5)
+// DisplayOnlyBlock laws
 //
-// `DisplayOnlyBlock` is a new `JoinSemilattice` implementor introduced
-// in PR 4b-E. The inline `#[cfg(test)]` suite in
+// `DisplayOnlyBlock` is a `JoinSemilattice` implementor. The inline
+// `#[cfg(test)]` suite in
 // `crates/capco/src/lattice/display_only.rs` covers
 // associativity, identity-with-bottom, empty-absorbs, and
 // NofornSuperseded-absorbs at fixed samples; the proptest suite below
@@ -556,9 +551,8 @@ fn arb_display_only_block() -> impl Strategy<Value = DisplayOnlyBlock> {
 
 proptest! {
     // Join laws — commutativity, idempotence, associativity, identity-
-    // with-bottom. The H-1 root-cause (non-commutative `join` body)
-    // would surface immediately under `display_only_block_join_commutative`
-    // if it ever recurs.
+    // with-bottom. A non-commutative `join` body would surface
+    // immediately under `display_only_block_join_commutative`.
     #[test]
     fn display_only_block_join_idempotent(a in arb_display_only_block()) {
         prop_assert_eq!(a.join(&a), a);
@@ -590,12 +584,11 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// FgiSet::from_attrs_iter — proptest coverage of the new constructor
-// (PR 4b-E review fix-up — rust-reviewer H-2)
+// FgiSet::from_attrs_iter — proptest coverage of the constructor
 //
-// The existing `fgi_join_*` proptests use `FgiSet::from_marker` and
-// only exercise the `FgiSet` algebra in isolation. PR 4b-E introduced
-// `FgiSet::from_attrs_iter` as the production page-rollup constructor.
+// The `fgi_join_*` proptests use `FgiSet::from_marker` and only
+// exercise the `FgiSet` algebra in isolation. `FgiSet::from_attrs_iter`
+// is the production page-rollup constructor.
 // The proptests below pin (a) "bulk construction agrees with iterated
 // per-portion construction" and (b) "concealment dominates" over
 // arbitrary multi-portion inputs — extending the `FgiSet` coverage to
