@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Commit 5 — per-axis golden-output fixtures.
+//! Per-axis golden-output fixtures.
 //!
 //! Each axis renderer in `crates/capco/src/render/` ships ~5 golden
 //! fixtures: an in-code `CapcoMarking` constructed by direct lattice
@@ -46,9 +46,8 @@ fn render(attrs: CanonicalAttrs, scope: Scope) -> String {
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
     let mut out = String::new();
-    // PR 3c.2.A: construct a RenderContext at every render_canonical
-    // call site per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-    // PM-9 — Auto + MarqueMvp3 preserves the pre-3c.2 byte-identity.
+    // Construct a RenderContext at every render_canonical call site —
+    // Auto + MarqueMvp3 preserves byte-identity.
     let ctx = marque_scheme::RenderContext::new(
         scope,
         marque_scheme::EmissionForm::Auto,
@@ -785,9 +784,8 @@ fn display_only_parse_canonical_render_round_trip() {
     let parsed = parser
         .parse(&candidate, src.as_bytes())
         .expect("parse should succeed");
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): reuse the already-constructed
-    // scheme (moved one line up) for the canonicalize call — zero new
-    // allocation cost.
+    // Reuse the already-constructed scheme for the canonicalize call —
+    // zero new allocation cost.
     let scheme = CapcoScheme::new();
     let canonical = scheme.canonicalize(parsed.attrs);
     let marking = CapcoMarking::from(canonical);
@@ -828,9 +826,8 @@ fn display_only_h8_p165_commingled_portion_round_trip() {
     let parsed = parser
         .parse(&candidate, src.as_bytes())
         .expect("parse should succeed");
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): reuse the already-constructed
-    // scheme (moved one line up) for the canonicalize call — zero new
-    // allocation cost.
+    // Reuse the already-constructed scheme for the canonicalize call —
+    // zero new allocation cost.
     let scheme = CapcoScheme::new();
     let canonical = scheme.canonicalize(parsed.attrs);
     let marking = CapcoMarking::from(canonical);
