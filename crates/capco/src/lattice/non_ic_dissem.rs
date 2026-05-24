@@ -89,24 +89,21 @@ use std::collections::BTreeSet;
 ///
 /// **`Default`** is the bottom: empty set, `needs_nf = false`.
 ///
-/// **Projection helper, NOT a `JoinSemilattice`.** Earlier review
-/// passes flagged the missing trait impl (rust-reviewer H-3); the
-/// lattice-consultant verdict was that the missing impl is the
-/// architecturally correct shape, not a gap. The classified-context
-/// SBU-NF / LES-NF transformations are gated on the page-level
+/// **Projection helper, NOT a `JoinSemilattice`.** The missing trait
+/// impl is the architecturally correct shape, not a gap. The
+/// classified-context SBU-NF / LES-NF transformations are gated on the
+/// page-level
 /// `is_classified` predicate, which depends on the OUTER
 /// classification axis being known. A pure per-axis `join` cannot
 /// read the classification axis; implementing the trait would
 /// silently produce wrong output on any cross-axis composition path.
 /// Production consumers use [`Self::from_attrs_iter`] directly. See
-/// [`super::declass_exemption::DeclassExemptionAccumulator`] (which
-/// retired its `JoinSemilattice` impl in PR 4b-E review for the dual
-/// reason: a commutativity violation) for the same precedent. The
-/// structural template is **"don't claim a trait when the laws can't
-/// hold."**
+/// [`super::declass_exemption::DeclassExemptionAccumulator`], which
+/// omits its `JoinSemilattice` impl for the dual reason (a
+/// commutativity violation), for the same precedent. The structural
+/// template is **"don't claim a trait when the laws can't hold."**
 ///
-/// §-authority (verified 2026-05-18 against
-/// `crates/capco/docs/CAPCO-2016.md`):
+/// §-authority (`crates/capco/docs/CAPCO-2016.md`):
 /// - §H.9 p172 (EXDIS — REL TO not authorized in banner; NOFORN
 ///   conveys).
 /// - §H.9 p174 (NODIS — same).

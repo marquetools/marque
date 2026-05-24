@@ -19,8 +19,7 @@ use std::collections::BTreeSet;
 /// CAPCO-2016 §H.8 pp150-151 REL TO grammar + §D.2 Table 3 rows
 /// 9-13 supersession behavior. The four variants distinguish the
 /// "no portions seen" identity from the "intersected to empty"
-/// absorbing state so the join lattice stays **associative** — see
-/// C-2 in the PR 4b-B follow-up triage.
+/// absorbing state so the join lattice stays **associative**.
 ///
 /// - `Bottom`: no REL TO portions observed. Lattice **identity**:
 ///   `Bottom ⊔ x = x` for every `x`. This is the only state that
@@ -58,13 +57,12 @@ use std::collections::BTreeSet;
 /// over already-canonical trigraphs.
 ///
 /// `BoundedLattice` is NOT implemented — CountryCode vocabulary is
-/// open-extensible. The SciSet/SarSet/FgiSet/AeaSet precedent applies
-/// (`FgiSet` retired its `BoundedLattice` impl in B-1, PR 4b-B 8th-pass —
-/// see the §6 "Note on `BoundedLattice`" block in `FgiSet` for the
-/// open-vocab rationale; both FgiSet and RelToBlock share the same
-/// `CountryCode` open-vocab axis).
+/// open-extensible. The SciSet/SarSet/FgiSet/AeaSet precedent applies;
+/// see the "Note on `BoundedLattice`" block in `FgiSet` for the
+/// open-vocab rationale (both `FgiSet` and `RelToBlock` share the same
+/// `CountryCode` open-vocab axis, and neither implements `BoundedLattice`).
 ///
-/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// **`#[non_exhaustive]`**: the
 /// four-variant state space is closed today, but future CAPCO
 /// extensions (e.g., a `PartialIntersection` variant for partial-
 /// decoder REL TO recovery) may add states without breaking the
@@ -134,7 +132,7 @@ impl RelToBlock {
 
         // Gather only portions with a non-empty REL TO list. Inline-8
         // covers the typical per-page REL-TO portion count; pages with
-        // 9+ REL TO portions spill to heap cleanly (LA-4).
+        // 9+ REL TO portions spill to heap cleanly.
         let rel_to_portions: SmallVec<[&CanonicalAttrs; 8]> =
             portions.iter().filter(|a| !a.rel_to.is_empty()).collect();
 
@@ -144,7 +142,7 @@ impl RelToBlock {
 
         // Expand each portion's REL TO into a set of trigraph
         // strings, resolving tetragraphs to constituents. Inline-8
-        // mirrors `rel_to_portions` capacity (LA-4).
+        // mirrors `rel_to_portions` capacity.
         let expanded: SmallVec<[BTreeSet<&str>; 8]> = rel_to_portions
             .iter()
             .map(|a| {
@@ -288,8 +286,8 @@ impl RelToBlock {
     /// lattice round-trip would be wasted work). The method stays
     /// as the typed surface for in-crate lattice-test fixtures +
     /// future refactors that operate on `RelToBlock` values
-    /// directly; `pub(crate)` keeps the FR-049 stability freeze
-    /// surface honest by not exporting an untested-in-production
+    /// directly; `pub(crate)` keeps the public stability surface
+    /// honest by not exporting an untested-in-production
     /// API. `#[allow(dead_code)]` is required because the
     /// `#[cfg(test)]` inline test module's calls are the only
     /// callers today — without the allow, the stable-clippy
@@ -350,11 +348,10 @@ impl MeetSemilattice for RelToBlock {
         // on the page forces banner NOFORN per §H.8 p145 + §D.2 Table 3
         // row 9"). Symmetrically, `meet(NofornSuperseded, x) = x` —
         // `NofornSuperseded` as join-top means the GLB with any state x
-        // is x itself. The prior arm `(N, _) | (_, N) => N` treated N
-        // as meet-bottom, which violated dual absorption: for any
-        // `a ≠ N`, `a ⊓ (a ⊔ N) = a ⊓ N` should equal `a` but
-        // returned `N` instead (11th-pass lattice-consultant HIGH defect,
-        // fixed here; isomorphic to C-9 on `ClassificationLattice`).
+        // is x itself. Treating N as meet-bottom (an arm like
+        // `(N, _) | (_, N) => N`) would violate dual absorption: for any
+        // `a ≠ N`, `a ⊓ (a ⊔ N) = a ⊓ N` must equal `a`, not `N`. This
+        // is isomorphic to the join/meet split on `ClassificationLattice`.
         //
         // `Bottom` is the meet-absorbing element (bottom of the meet
         // semilattice). `Empty` (intersected-to-empty REL TO) meets

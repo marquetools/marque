@@ -24,11 +24,10 @@ use std::collections::{BTreeMap, BTreeSet};
 ///
 /// Single named site so the compiler emits exactly one
 /// `slice::sort::stable::quicksort::quicksort<&SmolStr, _>` instantiation
-/// regardless of how many call sites use it (per PR 4b-perf LA-1 follow-up
-/// — issue #585). Previously each `.sort_by(|a, b| sar_sort_key(a)…)` call
-/// emitted a distinct ~15.6 KiB monomorphization; consolidating the 4
-/// `&SmolStr` sites + 1 tuple site (refactored to sort keys-first) collapses
-/// 5 monos to 1.
+/// regardless of how many call sites use it (issue #585). Each separate
+/// `.sort_by(|a, b| sar_sort_key(a)…)` call site would otherwise emit a
+/// distinct ~15.6 KiB monomorphization; consolidating the `&SmolStr` sites
+/// + the tuple site (sorting keys-first) collapses them to one.
 ///
 /// Deliberately NOT `#[inline]`: the closure here has a single anonymous type
 /// (`sort_smolstrs_by_sar::{closure#0}`) regardless of inlining decisions, so
@@ -216,32 +215,24 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
     ///
     /// Inline-4 covers the typical outer-key count (SCI: SI/TK/HCS/G;
     /// SAR: ≤4 programs per portion in ordinary documents) so the sorted
-    /// scratch buffer stays on the stack on the hot path (LA-4 fix per
-    /// PR 614 — inline capacity tuning in `to_markings` / `to_marking`).
-    #[allow(clippy::type_complexity)] // Inline-4 SmallVec is load-bearing (LA-4); a type alias would hide the capacity.
+    /// scratch buffer stays on the stack on the hot path.
+    #[allow(clippy::type_complexity)] // Inline-4 SmallVec is load-bearing; a type alias would hide the capacity.
     pub(super) fn sorted_entries(
         &self,
         key_text: impl Fn(&K) -> &str,
     ) -> SmallVec<[(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>); 4]> {
         let mut entries: SmallVec<[_; 4]> = self.inner.iter().collect();
-        // R1 (issue #689) NB: an earlier in-scope extraction of this
-        // closure body to a named `fn`-item `cmp_sar_key_with_lex_tiebreak`
-        // **regressed** the WASM bundle by ~6.2 KB on the
-        // `release-web` profile. Pre-refactor, LTO + ICF folded the
-        // two `K`-instantiations of this closure (`K = SystemKey` for
+        // Keep this comparator closure inline (issue #689). Extracting
+        // its body to a named `fn`-item regresses the WASM bundle by
+        // ~6.2 KB on the `release-web` profile: LTO + ICF fold the two
+        // `K`-instantiations of the inline closure (`K = SystemKey` for
         // `SciSet::to_markings`, `K = SmolStr` for `SarSet::to_marking`)
-        // into one code-gen via byte-identity merging of the inline
-        // closure bodies — the SystemKey instance's quicksort row
-        // came in at ~2.8 KB pre-refactor vs ~9 KB post-refactor in
-        // twiggy. Extracting the body to a named fn replaced byte-
-        // identical inlined sequences with an external call site;
-        // LLVM ICF can't fold across the call boundary, and the
-        // SystemKey instance went from heavily-shared to fully-resident.
-        // The closure stays inline here. Mono-collapse is achievable for
-        // the closure-axis at sites where the slice element type appears
-        // at multiple callsites (the `&str` collapse in `render/mod.rs`
-        // worked exactly as predicted, -6 KB), but per-`K` generic sites
-        // are best left to LTO.
+        // into one code-gen via byte-identity merging, but a named fn
+        // introduces a call boundary that LLVM ICF cannot fold across,
+        // leaving the `SystemKey` instance fully resident. Mono-collapse
+        // works for the closure-axis where the slice element type repeats
+        // across callsites (the `&str` collapse in `render/mod.rs`), but
+        // per-`K` generic sites are best left to LTO.
         entries.sort_by(|a, b| {
             let ta = key_text(a.0);
             let tb = key_text(b.0);
@@ -259,18 +250,18 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
 /// helper for [`super::sci::SciSet::to_markings`] and
 /// [`super::sar::SarSet::to_marking`].
 ///
-/// Inline capacities (LA-4 fix per PR 614):
+/// Inline capacities:
 /// - `comp_keys` scratch: inline-8 covers the typical SCI compartment
 ///   count (the `NF/PR/OC/REL/IMCON/RS` shape and similar) plus headroom;
 ///   SAR compartment counts are typically ≤4 per program but inline-8 is
 ///   a stack-only ceiling, no waste on the heap path.
 /// - per-compartment `subs` scratch: inline-4 covers the typical
 ///   sub-compartment count for both SCI and SAR.
-/// - returned vec: inline-8 matches PR 614's `compartments` capacity for
-///   the SCI rendering path; callers consume via `into_iter` so the
+/// - returned vec: inline-8 matches the SCI `compartments` capacity for
+///   the rendering path; callers consume via `into_iter` so the
 ///   inline storage is dropped at the end of the iteration without an
 ///   additional Box round-trip.
-#[allow(clippy::type_complexity)] // Inline-8 SmallVec is load-bearing (LA-4); a type alias would hide the capacity.
+#[allow(clippy::type_complexity)] // Inline-8 SmallVec is load-bearing; a type alias would hide the capacity.
 pub(super) fn sorted_compartment_items(
     comp_map: &BTreeMap<SmolStr, BTreeSet<SmolStr>>,
 ) -> SmallVec<[(&SmolStr, Box<[SmolStr]>); 8]> {

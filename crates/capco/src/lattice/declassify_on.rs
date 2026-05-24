@@ -31,27 +31,21 @@ use marque_scheme::{JoinSemilattice, MeetSemilattice};
 /// `Date(2003, 6, 15)` for the MaxDate lattice's most-conservative-
 /// interpretation contract.
 ///
-/// **Note** (CV-1, PR 4b-B 8th-pass follow-up): pre-CV-1 this doc
-/// comment cited §H.6 p104 ("RD precedence rule applies to declass
-/// dates by extension"). §H.6 p104 is about RD/FRD/TFNI banner
-/// roll-up — its actual relevant rule for declass dates is the
-/// opposite ("Automatic declassification of documents containing RD
-/// information is prohibited") which forbids a declass-date on RD
-/// documents entirely. The pre-CV-1 citation was a Constitution VIII
-/// stretch; §E.3 p32 is the proper authority for date aggregation.
+/// **Authority note**: §E.3 p32 is the proper authority for declass-date
+/// aggregation, NOT §H.6 p104. §H.6 p104 is about RD/FRD/TFNI banner
+/// roll-up; its rule for declass dates is the opposite ("Automatic
+/// declassification of documents containing RD information is prohibited"),
+/// which forbids a declass-date on RD documents entirely.
 ///
 /// **`BoundedLattice` deliberately not implemented.** Dates are
 /// open-vocab — no finite "top" date is realizable. Per the
 /// `AeaSet` / `SciSet` / `SarSet` precedent in this module, the
 /// established pattern for "no BoundedLattice when range is open"
 /// is "implement `Lattice`, provide `empty()` / `default()` for
-/// the bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
-/// `FgiSet` was previously listed in this precedent; B-1 PR 4b-B
-/// 8th-pass retired `FgiSet`'s `BoundedLattice` impl — `FgiSet`
-/// does NOT implement `BoundedLattice`. Removed from precedent list
-/// to avoid misattribution.)
+/// the bottom, leave `top()` undefined." `FgiSet` is NOT part of this
+/// precedent — it does not implement `BoundedLattice` at all.
 ///
-/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// §-authority (CAPCO-2016.md):
 /// - §E.3 p32 (Multiple Sources and the Declassify On Line Hierarchy
 ///   — "single declassification value that provides the longest
 ///   classification duration of any of the sources").

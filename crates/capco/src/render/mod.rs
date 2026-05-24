@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Commit 5 — per-axis canonical renderers for [`CapcoScheme`].
+//! Per-axis canonical renderers for [`CapcoScheme`].
 //!
 //! This module hosts the per-axis renderer functions that
 //! [`crate::scheme::RENDER_TABLE`] dispatches over. Each file owns one
@@ -13,10 +13,8 @@
 //!
 //! # Design
 //!
-//! Per the architecture restatement
-//! (`specs/006-engine-rule-refactor/architecture.md` §"What this commits
-//! us to"): the renderer is the single source of canonical form. Form
-//! rules retire into it. The dispatch table walks per-axis renderers in
+//! The renderer is the single source of canonical form; form rules
+//! retire into it. The dispatch table walks per-axis renderers in
 //! `Category::ordering_rank` order, inserting `//` between major
 //! categories (per CAPCO-2016 §A.6 p15-17 Figure 2). Each axis renderer
 //! writes ONLY its own bytes — never the leading `//` separator.
