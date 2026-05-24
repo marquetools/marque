@@ -378,7 +378,6 @@ def parse_file(path: Path) -> dict:
                 signature = raw_line.strip()
             else:
                 vis_raw = (mo.group("vis") or "").strip()
-                vis = vis_raw if vis_raw else "private"
                 kw = mo.group("kw").strip()
 
                 if kw == "use":
