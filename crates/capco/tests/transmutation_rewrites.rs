@@ -63,9 +63,9 @@ fn lookup_rewrite<'a>(scheme: &'a CapcoScheme, id: &str) -> &'a PageRewrite<Capc
 fn assert_predicate_is_custom(rw: &PageRewrite<CapcoScheme>) {
     assert!(
         matches!(rw.trigger, CategoryPredicate::Custom(_)),
-        "rewrite {} must use CategoryPredicate::Custom (Phase-3 stub) — \
+        "rewrite {} must use CategoryPredicate::Custom (stub) — \
          the trigger is `never_fires` because runtime dispatch stays in \
-         PageContext until Phase D / E. Got: {:?}",
+         PageContext for now. Got: {:?}",
         rw.id,
         rw.trigger,
     );
@@ -74,9 +74,9 @@ fn assert_predicate_is_custom(rw: &PageRewrite<CapcoScheme>) {
 fn assert_action_is_custom(rw: &PageRewrite<CapcoScheme>) {
     assert!(
         matches!(rw.action, CategoryAction::Custom(_)),
-        "rewrite {} must use CategoryAction::Custom (Phase-3 stub) — \
+        "rewrite {} must use CategoryAction::Custom (stub) — \
          the action body is `noop_action` because runtime dispatch \
-         stays in PageContext until Phase D / E. Got: {:?}",
+         stays in PageContext for now. Got: {:?}",
         rw.id,
         rw.action,
     );
@@ -228,9 +228,9 @@ fn entry_6b_les_nf_transmutes_is_correctly_authored() {
     let rw = lookup_rewrite(&scheme, "capco/les-nf-transmutes-on-classified-contact");
 
     // Assert — narrow-form reads (CLASS only); see Entry 5 note.
-    // Distinct citation from Entry 6a (D13: the consultant's
+    // Distinct citation from Entry 6a: the consultant's
     // §3.4.1 Entry 6 is split into 6a/6b so each row has exactly
-    // one §-citation).
+    // one §-citation.
     assert_eq!(rw.id, "capco/les-nf-transmutes-on-classified-contact");
     assert_eq!(rw.citation, capco(SectionLetter::H, 9, 185));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);

@@ -218,8 +218,8 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// for unified discovery without going through this slice.
 ///
 /// The slice stays as an empty `&[]` to preserve the
-/// `MarkingScheme::closure_rules` trait surface (per `decisions.md`
-/// Every scheme owns a `closure_rules()` method even when it
+/// `MarkingScheme::closure_rules` trait surface (every scheme owns a
+/// `closure_rules()` method even when it
 /// has none) and to keep a stable expansion seam: if a future CAPCO
 /// rule ships an open-vocab cone that does not project onto a
 /// closed-vocab bit (the original purpose of the fn-pointer surface),

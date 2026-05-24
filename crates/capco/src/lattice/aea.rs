@@ -379,7 +379,6 @@ impl AeaSet {
 }
 
 impl JoinSemilattice for AeaSet {
-    /// `docs/plans/2026-05-01-lattice-design.md` §7.5.
     fn join(&self, other: &Self) -> Self {
         Self {
             // Axis 1: SupersessionSet — max under Tfni ⊏ Frd ⊏ Rd.

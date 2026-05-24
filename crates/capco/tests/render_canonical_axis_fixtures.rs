@@ -722,7 +722,7 @@ fn display_only_rel_to_commingling_uses_single_slash() {
     // `(S//REL TO USA, IRQ/DISPLAY ONLY AFG)`. REL TO and DISPLAY
     // ONLY are both in the §G.1 Table 4 row 8 dissem category;
     // when commingled in the same dissem slot they MUST be
-    // `/`-separated, not `//`-separated. Copilot review on PR #445
+    // `/`-separated, not `//`-separated. #445
     // caught that the previous dispatch loop unconditionally
     // inserted `//`, so this combination rendered as
     // `//REL TO USA, IRQ//DISPLAY ONLY AFG` (wrong).
@@ -765,7 +765,7 @@ fn display_only_followed_by_non_ic_uses_double_slash() {
 #[test]
 fn display_only_parse_canonical_render_round_trip() {
     // Locks the full pipeline: parse (marque-core) → CanonicalAttrs
-    // → render (marque-capco). Copilot review on PR #445 caught
+    // → render (marque-capco). #445 caught
     // that the new `display_only_to` axis on `CanonicalAttrs`
     // initially had no renderer hook — parse → canonical → render
     // would silently drop the DISPLAY ONLY block. This test pins
@@ -966,7 +966,7 @@ fn full_composition_class_sci_aea_dissem_relto() {
     // controls." ORCON, NOFORN, and REL TO are ALL in the §G.1
     // Table 4 row 8 dissem category, so they MUST be `/`-separated.
     // The pre-fix `//REL TO` separator was an implementation bug
-    // in the render dispatch loop (Copilot review on PR #445);
+    // in the render dispatch loop (#445);
     // the canonical form per §A.6 is `/REL TO` here.
     assert_eq!(
         render_banner(a),

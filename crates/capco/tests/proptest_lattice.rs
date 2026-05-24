@@ -9,7 +9,7 @@
 //! larger space of compartment-tree combinations that the fixed samples can't
 //! reach.
 //!
-//! # Audit coverage (decisions.md D24 follow-up)
+//! # Audit coverage
 //!
 //! In addition to the original `SciSet`, `SarSet`, `FgiSet`, and `RelToBlock`
 //! tests, this file covers the three per-axis types identified by the
@@ -678,7 +678,7 @@ proptest! {
     }
 }
 // ---------------------------------------------------------------------------
-// DissemSet strategies and join-law tests (D24 follow-up audit)
+// DissemSet strategies and join-law tests
 //
 // `DissemSet` carries `relido_observed_unanimous: bool` — a join-side
 // aggregation flag that tracks whether every contributing portion carried
@@ -737,7 +737,7 @@ fn arb_dissem_set() -> impl Strategy<Value = DissemSet> {
 }
 
 proptest! {
-    // --- D24 audit: DissemSet join semilattice laws ---
+    // --- DissemSet join semilattice laws ---
 
     /// `join(a, a) == a` under structural `Eq` (compares both `set` and
     /// `relido_observed_unanimous`). Confirms the overlay is idempotent on
@@ -770,7 +770,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// JointSet strategies and join-law tests (D24 follow-up audit)
+// JointSet strategies and join-law tests
 //
 // `JointSet` carries two variants with observational state:
 //   - `DisunityCollapse { highest_level, union_non_us_producers }` — the
@@ -844,7 +844,7 @@ fn arb_joint_set() -> impl Strategy<Value = JointSet> {
 }
 
 proptest! {
-    // --- D24 audit: JointSet join semilattice laws ---
+    // --- JointSet join semilattice laws ---
 
     /// `join(a, a) == a` for every reachable JointSet state:
     /// - `Bottom ⊔ Bottom = Bottom` ✓
@@ -879,7 +879,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// SupersessionSet<TestTok> strategies and join-law tests (D24 follow-up audit)
+// SupersessionSet<TestTok> strategies and join-law tests
 //
 // `SupersessionSet` implements only `JoinSemilattice` (not `MeetSemilattice`).
 // The join applies the supersession overlay post-union: tokens that are
@@ -915,7 +915,7 @@ fn arb_supersession_set() -> impl Strategy<Value = SupersessionSet<TestTok>> {
 }
 
 proptest! {
-    // --- D24 audit: SupersessionSet join semilattice laws ---
+    // --- SupersessionSet join semilattice laws ---
 
     /// `join(a, a) == a` — the post-join overlay re-application on an
     /// already-canonical input is a no-op (dominated tokens were already

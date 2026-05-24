@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! R1 — byte-identity tests pinning sort behavior across the
-//! `marque-capco` sort-consolidation WASM-cut refactor (issue #689,
-//! synthesis brief `/tmp/r1-synthesis-brief.md`).
+//! Byte-identity tests pinning sort behavior across the
+//! `marque-capco` sort-consolidation WASM-cut refactor (issue #689).
 //!
 //! These tests MUST pass on pre-refactor code and again on post-refactor
 //! code. The refactor replaces inline `.sort_by(|a, b| ...)` closures

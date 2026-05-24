@@ -56,7 +56,7 @@ pub(crate) fn render_non_ic_dissem(
     // ceiling on simultaneous non-IC dissem tokens.
     //
     // Named `fn`-item key adapter (`rank_non_ic`) for closure-axis
-    // monomorphization collapse — R1 WASM-cut per issue #689 and the
+    // monomorphization collapse — WASM-cut per issue #689 and the
     // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     let mut sorted: SmallVec<[&NonIcDissem; 4]> = m.0.non_ic_dissem.iter().collect();
     sorted.sort_by_key(rank_non_ic);
@@ -114,7 +114,7 @@ fn register_rank(n: &NonIcDissem) -> u8 {
 /// `sort_by_key` adapter — `slice::sort_by_key` over `&[&NonIcDissem]`
 /// invokes its key fn with `&&NonIcDissem`; [`register_rank`] takes
 /// `&NonIcDissem`. Named `fn`-item (not closure) for closure-axis
-/// monomorphization collapse per R1 / issue #689. The `&&NonIcDissem
+/// monomorphization collapse per issue #689. The `&&NonIcDissem
 /// → &NonIcDissem` reduction is auto-deref'd inside the adapter body.
 fn rank_non_ic(n: &&NonIcDissem) -> u8 {
     register_rank(n)

@@ -365,8 +365,8 @@ fn project_preserves_orcon_plus_eyes_input() {
 /// Authority: CAPCO-2016 §H.7 p127 Notional Example Page 2 worked
 /// example `(//CTS//BOHEMIA//REL TO USA, NATO)` (example-derived
 /// inference per the `CLOSURE_REL_TO_USA_NATO` doc comment) +
-/// §G.2 Table 5 p40 alliance-reciprocity ARH grounding. Per D20:
-/// the closure row fires at `Severity::Info` (silent lattice-layer
+/// §G.2 Table 5 p40 alliance-reciprocity ARH grounding.
+/// The closure row fires at `Severity::Info` (silent lattice-layer
 /// fact propagation); S007 owns the text-layer `Severity::Suggest`
 /// byte diff. This test reads the post-closure marking state, not
 /// any audit output.
@@ -1247,17 +1247,17 @@ fn project_resolves_orcon_plus_noforn_no_relido() {
     assert_eq!(out.0.dissem_us.len(), m.0.dissem_us.len());
 }
 
-/// R2-1 regression: end-to-end project() with input dissem_us = [Oc,
+/// Overlay-1 regression: end-to-end project() with input dissem_us = [Oc,
 /// OcUsgov] strips OcUsgov per §H.8 p140 Overlay 1, end-to-end.
 ///
-/// Pre-#704-R2-1 the `apply_supersession_overlays` step gated its
+/// Formerly (#704) the `apply_supersession_overlays` step gated its
 /// dissem-axis rebuild on `has_noforn`. The bug was structural: any
 /// close()/default_fill row that ADDED `Oc` to an `OcUsgov`-bearing
 /// post-close state (or vice versa) would have silently failed to
 /// strip the OcUsgov because the outer NOFORN gate prevented the
 /// rebuild from re-running. No current CAPCO row exposes the bug
 /// in production (the join layer already strips OcUsgov during
-/// `DissemSet::from_attrs_iter`), but post-R2-1 the rebuild runs
+/// `DissemSet::from_attrs_iter`), but the rebuild now runs
 /// unconditionally — this test pins end-to-end the §H.8 p140
 /// contract that OC > OC-USGOV holds regardless of NOFORN status.
 ///

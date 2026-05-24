@@ -41,8 +41,8 @@
 //! # Authority
 //!
 //! CAPCO-2016 §H.5 p101 (SAR roll-up rule + the hierarchy-optional
-//! carve-out — both rules live at the same page anchor per PR
-//! 10.A.1 / D13 single-citation discipline). Re-verified against
+//! carve-out — both rules live at the same page anchor under the
+//! single-citation discipline). Re-verified against
 //! `crates/capco/docs/CAPCO-2016.md` at authorship per Constitution
 //! VIII.
 
@@ -190,8 +190,8 @@ fn e031_does_not_fire_when_banner_omits_portion_sub_compartment() {
 ///
 /// Pre-cutover the test asserted on two message-content invariants
 /// (`"missing an SAR block"` vs `"SAR block is missing programs"` —
-/// distinct-wording pin from PR #101 review). Post-G13 the message
-/// template is shared; the distinction is now structural (severity
+/// distinct-wording pin from PR #101 review). The message
+/// template is now shared; the distinction is structural (severity
 /// + fix.is_none()) rather than prose-substring.
 #[test]
 fn e031_fires_error_no_fix_when_banner_has_no_sar_block() {

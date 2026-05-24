@@ -74,7 +74,7 @@ fn render_canonical_portion_matches_render_portion() {
         canon, portion,
         "Scope::Portion render_canonical output must be byte-identical to render_portion"
     );
-    // Sanity: the Phase A renderer emits "S" for a Secret portion. If
+    // Sanity: the renderer emits "S" for a Secret portion. If
     // this assertion fires, the renderer's classification axis
     // changed — that's a real regression, not a flake.
     assert_eq!(portion, "S");

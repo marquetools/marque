@@ -221,8 +221,8 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //
         // Note: §H.9 p172 specifies "EXDIS and NODIS markings cannot
         // be used together." — the NODIS ⊥ EXDIS conflict is already
-        // enforced by E037 (stays registered per design spec §5 Option
-        // R2). Under malformed input where both appear simultaneously,
+        // enforced by E037 (stays registered by design). Under malformed
+        // input where both appear simultaneously,
         // both rewrites fire; the second FactAdd hits the idempotence
         // no-op path (NOFORN already present), producing exactly one
         // NOFORN with no panic.

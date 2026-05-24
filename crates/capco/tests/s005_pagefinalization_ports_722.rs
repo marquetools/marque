@@ -106,14 +106,13 @@ fn s005_does_not_fire_when_portions_without_x_have_disjoint_atoms() {
 
 /// S005 conscious-defer symmetry pin. The Stage-4 target is the
 /// "admonition channel" (the rule surfaces an unresolvable REL TO
-/// uncertainty; the engine declines to guess at a fix). Per
-/// `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md`
-/// the channel does not yet exist; S005 emits neither `fix` nor
+/// uncertainty; the engine declines to guess at a fix). That
+/// channel does not yet exist; S005 emits neither `fix` nor
 /// `text_correction`.
 ///
-/// Pre-PR-3c.B-Commit-10 the assertion was dual-field
-/// (`fix.is_none() && fix_intent.is_none()`). Post-cutover the
-/// `Diagnostic` has a single `fix: Option<FixIntent<S>>` plus
+/// The assertion was formerly dual-field
+/// (`fix.is_none() && fix_intent.is_none()`). The
+/// `Diagnostic` now has a single `fix: Option<FixIntent<S>>` plus
 /// `text_correction`; the dual-field assertion collapses to
 /// "neither `fix` nor `text_correction` is populated".
 #[test]

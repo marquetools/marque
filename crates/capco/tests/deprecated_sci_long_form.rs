@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T135a (issue #307 Group D) — deprecated SCI long-form canonicalization
+//! Deprecated SCI long-form canonicalization (issue #307) —
 //! walker integration tests.
 //!
 //! Exercises the end-to-end engine flow for the deprecated SCI

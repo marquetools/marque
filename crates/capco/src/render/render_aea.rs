@@ -64,7 +64,7 @@ pub(crate) fn render_aea(m: &CapcoMarking, scope: Scope, out: &mut dyn fmt::Writ
     // the AEA variants (RD/FRD/TFNI/DCNI/UCNI) on a single marking.
     //
     // Named `fn`-item key adapter (`rank_aea`) for closure-axis
-    // monomorphization collapse — R1 WASM-cut per issue #689 and the
+    // monomorphization collapse — WASM-cut per issue #689 and the
     // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     let mut sorted: SmallVec<[&AeaMarking; 4]> = m.0.aea_markings.iter().collect();
     sorted.sort_by_key(rank_aea);
@@ -153,7 +153,7 @@ fn write_aea(aea: &AeaMarking, portion: bool, out: &mut dyn fmt::Write) -> fmt::
 /// `sort_by_key` adapter — `slice::sort_by_key` over `&[&AeaMarking]`
 /// invokes its key fn with `&&AeaMarking`; [`register_rank`] takes
 /// `&AeaMarking`. Named `fn`-item (not closure) for closure-axis
-/// monomorphization collapse per R1 / issue #689. The `&&AeaMarking
+/// monomorphization collapse per issue #689. The `&&AeaMarking
 /// → &AeaMarking` reduction is auto-deref'd inside the adapter body.
 fn rank_aea(a: &&AeaMarking) -> u8 {
     register_rank(a)

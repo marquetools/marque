@@ -525,7 +525,7 @@ fn apply_intent_multi_intent_batch_applies_atomically() {
     assert_eq!(out.0.dissem_us.as_ref(), &[DissemControl::Nf]);
 }
 
-/// Idempotence/commutativity invariant pin — Copilot review on PR #369.
+/// Idempotence/commutativity invariant pin (#369).
 ///
 /// A redundant intent within a batch (e.g., two rules emit the
 /// same `FactRemove`, or one intent in the batch removes a token

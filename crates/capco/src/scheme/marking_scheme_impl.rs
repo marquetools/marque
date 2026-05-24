@@ -883,11 +883,11 @@ impl CapcoScheme {
     ///    - Overlay 3: NOFORN-dominates supersession (§H.8 p145 +
     ///      §B.3.a p19 + §D.2 Table 3 rows 1-2). NOFORN-dependent.
     ///
-    ///    Pre-R2-1 this step was gated on `has_noforn` because it
+    ///    This step was formerly gated on `has_noforn` because it
     ///    was framed as just the §H.8 p145 strip. The misframing
     ///    silently disabled Overlays 1 + 2 for inputs whose
     ///    close() / default_fill outputs would have triggered them.
-    ///    Post-R2-1 the step runs unconditionally; the
+    ///    The step now runs unconditionally; the
     ///    `has_noforn` gate moved to Step 2 (the only NOFORN-
     ///    dependent action).
     ///
@@ -918,10 +918,10 @@ impl CapcoScheme {
 
         // Step 1 — dissem-axis overlay re-application.
         //
-        // **Runs unconditionally** post-#704 R2-1. Pre-R2-1 this
-        // step was gated on `has_noforn` because it was framed as
-        // "the §H.8 p145 NOFORN-dominates strip." Copilot R2's
-        // structural review caught the misframing: `DissemSet`
+        // **Runs unconditionally** (#704). This step was formerly
+        // gated on `has_noforn` because it was framed as
+        // "the §H.8 p145 NOFORN-dominates strip." Structural review
+        // caught the misframing: `DissemSet`
         // carries THREE overlays (`apply_overlays` →
         // `with_all_overlays_reapplied`), only one of which is
         // NOFORN-dependent:
@@ -937,7 +937,7 @@ impl CapcoScheme {
         //   + §D.2 Table 3 rows 1-2). NOFORN-dependent: only
         //   fires when `Nf` is in the set.
         //
-        // The pre-R2-1 `has_noforn` gate prevented Overlays 1 + 2
+        // The former `has_noforn` gate prevented Overlays 1 + 2
         // from re-running when close() / default_fill added an
         // Overlay-1- or Overlay-2-relevant bit that interacts with
         // input bits. No production CAPCO row exposes the gap

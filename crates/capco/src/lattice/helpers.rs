@@ -48,7 +48,7 @@ pub(super) fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
 /// extraction does NOT save WASM bytes** — it is justified by
 /// reviewability (sort semantic reviewable separately from the
 /// cross-axis lattice machinery) and pattern consistency with the
-/// other R1 helpers (issue #689 / PR #585 precedent).
+/// other comparator helpers (issue #689 / PR #585 precedent).
 pub(super) fn cmp_country_code_trigraph_first(
     a: &CountryCode,
     b: &CountryCode,

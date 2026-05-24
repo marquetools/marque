@@ -6,8 +6,8 @@
 //!
 //! Locks the exact set of [`JoinSemilattice`] / [`MeetSemilattice`] /
 //! [`BoundedJoinSemilattice`] / [`BoundedMeetSemilattice`] impls on
-//! `marque-capco` lattice types. Catches the D3 drift class (silently
-//! adding or removing a trait impl) at build time, complementing the
+//! `marque-capco` lattice types. Catches the trait-bound drift class
+//! (silently adding or removing a trait impl) at build time, complementing the
 //! runtime exact-set pin at
 //! `crates/capco/tests/post_4b_lattice_inventory_pin.rs`.
 //!
@@ -20,7 +20,7 @@
 //! ("row renamed at the same count" / "row swapped at the same
 //! count") that the type system cannot see.
 //!
-//! ## Join-only invariant (issue #456 / PR #502 split + PR #538 audit)
+//! ## Join-only invariant (issue #456 / PR #502 split)
 //!
 //! Three types — [`DissemSet`], [`JointSet`], [`DisplayOnlyBlock`] —
 //! implement only [`JoinSemilattice`]. The reasons differ but the
@@ -45,12 +45,10 @@
 //!
 //! ## Authority
 //!
-//! - Lattice-split addendum (issue #456 / PR #502):
-//!   `docs/plans/2026-05-01-lattice-design.md` §12.
-//! - PR #538 observational-state-lattice audit (memory
+//! - Lattice-split addendum (issue #456 / PR #502).
+//! - The observational-state-lattice audit (memory
 //!   `project_pr538_observational_lattice_audit`).
-//! - Per-row §-citations live in the originating sub-PR's plan and
-//!   in the lattice type's own doc-comment in
+//! - Per-row §-citations live in the lattice type's own doc-comment in
 //!   `crates/capco/src/lattice/` (per-type submodule).
 
 use marque_capco::lattice::{

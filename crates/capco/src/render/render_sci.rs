@@ -76,7 +76,7 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
     // The three sorts below pass named `fn`-item comparators
     // (`cmp_sci_marking_system` file-local; `super::cmp_sci_compartment_ident`
     // and `super::cmp_str_numeric_then_alpha` shared) for closure-axis
-    // monomorphization collapse — R1 WASM-cut per issue #689 and the
+    // monomorphization collapse — WASM-cut per issue #689 and the
     // PR #585 precedent at `crate::lattice::helpers::sort_smolstrs_by_sar`.
     // `cmp_sci_marking_system` stays file-local because it reaches into
     // `system_text`, which is the SCI-axis private encoding of the
@@ -117,7 +117,7 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
 /// File-local — reaches into [`system_text`], the SCI-axis encoding
 /// of the `SciControlSystem` variant tag, which is not shared across
 /// axes. Named `fn`-item (not closure) for closure-axis mono collapse
-/// per R1 / issue #689. Mirrors the cross-file shape of the
+/// per issue #689. Mirrors the cross-file shape of the
 /// `super::cmp_*_ident` family.
 fn cmp_sci_marking_system(a: &&SciMarking, b: &&SciMarking) -> core::cmp::Ordering {
     super::numeric_then_alpha_cmp(system_text(&a.system), system_text(&b.system))
@@ -147,7 +147,7 @@ fn system_text(system: &SciControlSystem) -> &str {
 
 // Shared named-fn-item comparators imported from `super` — see the
 // "Named-fn-item comparators" section of `crate::render::mod` for the
-// R1 mono-collapse rationale (issue #689; extends PR #585's
+// mono-collapse rationale (issue #689; extends PR #585's
 // `sort_smolstrs_by_sar`).
 //
 // `numeric_then_alpha_cmp` is accessed via the `super::` path inside

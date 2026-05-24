@@ -1060,7 +1060,7 @@ mod tests {
     /// `display_only_to` — must light `fact_bit::DISPLAY_ONLY`.
     /// Mirrors `satisfies_attrs(TOK_DISPLAY_ONLY)` in
     /// `crates/capco/src/scheme/predicates/satisfies.rs`. Closes the
-    /// Copilot-flagged hole where the pre-#704 `MASK_FDR_DOMINATORS`
+    /// hole where the pre-#704 `MASK_FDR_DOMINATORS`
     /// would have
     /// missed a `DISPLAY ONLY USA GBR` portion (populated
     /// `display_only_to`, no `Displayonly` dissem variant) and

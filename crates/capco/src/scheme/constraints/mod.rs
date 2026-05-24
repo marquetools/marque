@@ -58,7 +58,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
 /// 2. [`class_floor_catalog::class_floor_constraints`] — per-marking
 ///    class-floor rows.
 /// 3. [`sci_per_system_catalog::sci_per_system_constraints`] —
-///    PR 3b.E §H.4 SCI per-system rows.
+///    §H.4 SCI per-system rows.
 pub(crate) fn build_constraints() -> Vec<Constraint> {
     let mut out = core_catalog::core_constraints();
     out.extend(class_floor_catalog::class_floor_constraints());
