@@ -170,7 +170,7 @@ wasm-opt = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# `blake3::Hash` is the wire type for the `marque-1.0` audit-record
+# `blake3::Hash` is the wire type for the current audit-record schema
 # `original_digest` / `bytes_digest` fields. The WASM renderer formats
 # `blake3:<hex>` byte-identical to the CLI surface. The workspace pin
 # carries `default-features = false, features = ["pure"]` so the WASM

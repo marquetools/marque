@@ -150,7 +150,7 @@ pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<
 }
 
 // ---------------------------------------------------------------------------
-// `marque-1.0` audit-record JSON projection
+// `marque-2.0` audit-record JSON projection
 //
 // Mirrors the CLI's `marque/src/render.rs` v1.0 surface — CLI and WASM
 // emit byte-identical NDJSON. The struct shapes are duplicated verbatim
