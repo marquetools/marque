@@ -1,0 +1,485 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+sections:
+  - end_page: 17
+    name: INTRODUCTION
+    section: A
+    start_page: 12
+    subsections:
+    - end_page: 12
+      name: Authority
+      section: A.1
+      start_page: 12
+    - end_page: 12
+      name: Purpose
+      section: A.2
+      start_page: 12
+    - end_page: 13
+      name: Applicability
+      section: A.3
+      start_page: 13
+    - end_page: 13
+      name: IC Markings System Structure
+      section: A.4
+      start_page: 13
+    - end_page: 14
+      name: Marking Categories
+      section: A.5
+      start_page: 14
+    - end_page: 16
+      name: Formatting
+      section: A.6
+      start_page: 15
+    - end_page: 17
+      name: Resources
+      section: A.7
+      start_page: 17
+  - end_page: 24
+    name: GENERAL MARKINGS GUIDANCE
+    section: B
+    start_page: 18
+    subsections:
+    - end_page: 18
+      name: Marking Requirements
+      section: B.1
+      start_page: 18
+    - end_page: 19
+      name: Classified Information Used as a Derivative Source
+      section: B.2
+      start_page: 19
+    - end_page: 21
+      name: Foreign Disclosure and Release Markings
+      section: B.3
+      start_page: 19
+    - end_page: 22
+      name: Marking Electronic Information
+      section: B.4
+      start_page: 22
+    - end_page: 23
+      name: Markings and System Waivers
+      section: B.5
+      start_page: 23
+    - end_page: 23
+      name: Change Requests (CR)
+      section: B.6
+      start_page: 23
+    - end_page: 23
+      name: Classification by Compilation
+      section: B.7
+      start_page: 23
+    - end_page: 24
+      name: Classification Marking Elements
+      section: B.8
+      start_page: 23
+    - end_page: 24
+      name: Marking Challenges
+      start_page: 24
+      section: B.9
+  - end_page: 26
+    name: PORTION MARKS
+    section: C
+    start_page: 25
+    subsections:
+    - end_page: 25
+      name: Syntax Rules
+      section: C.1
+      start_page: 25
+    - end_page: 26
+      name: Portion Marking Waivers
+      section: C.2
+      start_page: 26
+  - end_page: 30
+    name: BANNER LINE
+    section: D
+    start_page: 27
+    subsections:
+    - end_page: 27
+      name: Syntax Rules
+      section: D.1
+      start_page: 27
+    - end_page: 30
+      name: Banner Line "Roll-Up" Rules
+      section: D.2
+      start_page: 28
+  - end_page: 34
+    name: CLASSIFICATION AUTHORITY BLOCK
+    section: E
+    start_page: 31
+    subsections:
+    - end_page: 31
+      name: Original Classification Authority
+      section: E.1
+      start_page: 31
+    - end_page: 32
+      name: Derivative Classification Authority
+      section: E.2
+      start_page: 32
+    - end_page: 32
+      name: Multiple Sources and the Declassify On Line Hierarchy
+      section: E.3
+      start_page: 32
+    - end_page: 33
+      name: Commingling Classified National Security Information (NSI) and Atomic Energy Act (AEA) Information
+      section: E.4
+      start_page: 33
+    - end_page: 33
+      name: Commingling Classified NSI and NATO Information
+      section: E.5
+      start_page: 33
+    - end_page: 34
+      name: Retired or Invalid Declassify On Values
+      section: E.6
+      start_page: 33
+  - end_page: 35
+    name: LEGACY CONTROL MARKINGS
+    section: F
+    start_page: 35
+  - end_page: 45
+    name: IC MARKINGS SYSTEM REGISTER
+    section: G
+    start_page: 36
+    subsections:
+    - end_page: 38
+      name: Registered Markings
+      section: G.1
+      start_page: 36
+    - end_page: 45
+      name: Registered Markings Access Rights and Handling (ARH)
+      section: G.2
+      start_page: 36
+  - end_page: 191
+    name: IC MARKINGS SYSTEM MANUAL
+    section: H
+    start_page: 46
+    subsections:
+    - end_page: 54
+      name: U.S. CLASSIFICATION MARKINGS
+      section: H.1
+      start_page: 46
+      subsections:
+      - end_page: 47
+        name: TOP SECRET
+        section: 'H.1: TOP SECRET'
+        start_page: 47
+      - end_page: 48
+        name: SECRET
+        section: 'H.1: SECRET'
+        start_page: 48
+      - end_page: 50
+        name: CONFIDENTIAL
+        section: 'H.1: CONFIDENTIAL'
+        start_page: 50
+      - end_page: 54
+        name: UNCLASSIFIED
+        section: 'H.1: UNCLASSIFIED'
+        start_page: 51
+    - end_page: 55
+      name: NON-US PROTECTIVE MARKINGS (REFER TO THE IC MARKINGS SYSTEM MANUAL APPENDICES A, B, AND C)
+      section: H.2
+      start_page: 55
+    - end_page: 59
+      name: JOINT CLASSIFICATION MARKINGS
+      section: H.3
+      start_page: 55
+      subsections:
+      - end_page: 59
+        name: JOINT
+        section: 'H.3: JOINT'
+        start_page: 56
+    - end_page: 98
+      name: SENSITIVE COMPARTMENTED INFORMATION (SCI) CONTROL SYSTEM MARKINGS
+      section: H.4
+      start_page: 60
+      subsections:
+      - end_page: 69
+        name: HCS
+        section: 'H.4: HCS'
+        start_page: 62
+        subsections:
+        - end_page: 65
+          name: HCS-OPERATIONS (HCS-O)
+          section: 'H.4: OPERATIONS'
+          start_page: 64
+        - end_page: 69
+          name: HCS-PRODUCT (HCS-P)
+          section: 'H.4: PRODUCT'
+          start_page: 66
+          subsections:
+          - end_page: 69
+            name: HCS-PRODUCT [SUB-COMPARTMENT] (HCS-P [SUB-COMPARTMENT])
+            section: 'H.4: PRODUCT [SUB-COMPARTMENT]'
+            start_page: 68
+      - end_page: 73
+        name: RESERVE (RSV)
+        section: 'H.4: RESERVE'
+        start_page: 70
+        subsections:
+        - end_page: 73
+          name: RESERVE-[COMPARTMENT] (RSV-[COMPARTMENT])
+          section: 'H.4: RESERVE-[COMPARTMENT]'
+          start_page: 72
+      - end_page: 84
+        name: SI
+        section: 'H.4: SI'
+        start_page: 74
+        subsections:
+        - end_page: 77
+          name: SI-[COMPARTMENT]
+          section: 'H.4: SI-[COMPARTMENT]'
+          start_page: 76
+        - end_page: 79
+          name: SI-ECRU
+          section: 'H.4: ECRU'
+          start_page: 78
+        - end_page: 82
+          name: SI-GAMMA
+          section: 'H.4: GAMMA'
+          start_page: 80
+          subsections:
+          - end_page: 82
+            name: SI-GAMMA [SUB-COMPARTMENT]
+            section: 'H.4: GAMMA [SUB-COMPARTMENT]'
+            start_page: 81
+        - end_page: 84
+          name: SI-NONBOOK
+          section: 'H.4: NONBOOK'
+          start_page: 83
+      - end_page: 98
+        name: TALENT KEYHOLE (TK)
+        section: 'H.4: TALENT KEYHOLE'
+        start_page: 85
+        subsections:
+        - end_page: 90
+          name: TK-BLUEFISH (TK-BLFH)
+          section: 'H.4: BLUEFISH'
+          start_page: 87
+          subsections:
+          - end_page: 90
+            name: TK-BLUEFISH [SUB-COMPARTMENT] (TK-BLFH [SUB-COMPARTMENT])
+            section: 'H.4: BLUEFISH [SUB-COMPARTMENT]'
+            start_page: 89
+        - end_page: 94
+          name: TK-IDITAROD (TK-IDIT)
+          section: 'H.4: IDITAROD'
+          start_page: 91
+          subsections:
+          - end_page: 94
+            name: TK-IDITAROD [SUB-COMPARTMENT] (TK-IDIT [SUB-COMPARTMENT])
+            section: 'H.4: IDITAROD [SUB-COMPARTMENT]'
+            start_page: 93
+        - end_page: 98
+          name: TK-KANDIK (TK-KAND)
+          section: 'H.4: KANDIK'
+          start_page: 95
+          subsections:
+          - end_page: 98
+            name: TK-KANDIK [SUB-COMPARTMENT] (TK-KAND [SUB-COMPARTMENT])
+            section: 'H.4: KANDIK [SUB-COMPARTMENT]'
+            start_page: 97
+    - end_page: 102
+      name: SPECIAL ACCESS REQUIRED
+      section: H.5
+      start_page: 99
+      subsections:
+      - end_page: 102
+        name: SPECIAL ACCESS REQUIRED (SAR) - SAPs
+        section: 'H.5: SPECIAL ACCESS REQUIRED'
+        start_page: 101
+    - end_page: 121
+      name: ATOMIC ENERGY ACT INFORMATION (AEA)
+      section: H.6
+      start_page: 104
+      subsections:
+      - end_page: 110
+        name: RESTRICTED DATA (RD)
+        section: 'H.6: RESTRICTED DATA'
+        start_page: 104
+        subsections:
+        - end_page: 121
+          name: RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION (RD-CNWDI)
+          section: 'H.6: CRITICAL NUCLEAR WEAPON DESIGN INFORMATION'
+          start_page: 106
+        - end_page: 110
+          name: RD-SIGMA [#]
+          section: 'H.6: SIGMA [#]'
+          start_page: 108
+      - end_page: 115
+        name: FORMERLY RESTRICTED DATA (FRD)
+        section: 'H.6: FORMERLY RESTRICTED DATA'
+        start_page: 111
+        subsections:
+        - end_page: 115
+          name: FRD-SIGMA [#]
+          section: 'H.6: SIGMA [#]'
+          start_page: 113
+      - end_page: 117
+        name: '**DOD** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION (DCNI)'
+        section: 'H.6: **DOD** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION'
+        start_page: 116
+      - end_page: 119
+        name: '**DOE** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION (UCNI)'
+        section: 'H.6: **DOE** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION'
+        start_page: 118
+      - end_page: 121
+        name: TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION (TFNI)
+        section: 'H.6: TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION'
+        start_page: 120
+    - end_page: 130
+      name: FOREIGN GOVERNMENT INFORMATION (FGI)
+      section: H.7
+      start_page: 122
+      subsections:
+      - end_page: 130
+        name: FOREIGN GOVERNMENT INFORMATION (FGI)
+        section: 'H.7: FOREIGN GOVERNMENT INFORMATION'
+        start_page: 123
+    - end_page: 168
+      name: DISSEMINATION AND CONTROL MARKINGS
+      section: H.8
+      start_page: 131
+      subsections:
+      - end_page: 133
+        name: RISK SENSITIVE (RSEN)
+        section: 'H.8: RISK SENSITIVE'
+        start_page: 132
+      - end_page: 135
+        name: FOR OFFICIAL USE ONLY (FOUO)
+        section: 'H.8: FOR OFFICIAL USE ONLY'
+        start_page: 134
+      - end_page: 138
+        name: DISSEMINATION AND EXTRACTION OF INFORMATION CONTROLLED BY ORIGINATOR (ORCON)
+        section: 'H.8: DISSEMINATION AND EXTRACTION OF INFORMATION CONTROLLED BY ORIGINATOR'
+        start_page: 136
+      - end_page: 141
+        name: DISSEMINATION AND EXTRACTION OF INFORMATION CONTROLLED BY 
+          ORIGINATOR-USGOV (ORCON-USGOV)
+        section: 'H.8: DISSEMINATION AND EXTRACTION OF INFORMATION CONTROLLED BY ORIGINATOR-USGOV'
+        start_page: 139
+      - end_page: 144
+        name: CONTROLLED IMAGERY (IMCON)
+        section: 'H.8: CONTROLLED IMAGERY'
+        start_page: 142
+      - end_page: 168
+        name: NOT RELEASABLE TO FOREIGN NATIONALS (NOFORN)
+        section: 'H.8: NOT RELEASABLE TO FOREIGN NATIONALS'
+        start_page: 145
+      - end_page: 149
+        name: CAUTION-PROPRIETARY INFORMATION INVOLVED (PROPIN)
+        section: 'H.8: CAUTION-PROPRIETARY INFORMATION INVOLVED'
+        start_page: 148
+      - end_page: 153
+        name: AUTHORIZED FOR RELEASE TO (REL TO)
+        section: 'H.8: AUTHORIZED FOR RELEASE TO'
+        start_page: 150
+      - end_page: 156
+        name: RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL (RELIDO)
+        section: 'H.8: RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL'
+        start_page: 154
+      - end_page: 158
+        name: USA/[LIST] EYES ONLY (EYES)
+        section: 'H.8: USA/[LIST] EYES ONLY'
+        start_page: 157
+      - end_page: 160
+        name: DEA SENSITIVE
+        section: 'H.8: DEA SENSITIVE'
+        start_page: 159
+      - end_page: 162
+        name: FOREIGN INTELLIGENCE SURVEILLANCE ACT (FISA)
+        section: 'H.8: FOREIGN INTELLIGENCE SURVEILLANCE ACT'
+        start_page: 161
+      - end_page: 168
+        name: DISPLAY ONLY
+        section: 'H.8: DISPLAY ONLY'
+        start_page: 163
+    - end_page: 191
+      name: NON-INTELLIGENCE COMMUNITY DISSEMINATION CONTROL MARKINGS
+      section: H.9
+      start_page: 169
+      subsections:
+      - end_page: 171
+        name: LIMITED DISTRIBUTION (LIMDIS)
+        section: 'H.9: LIMITED DISTRIBUTION'
+        start_page: 170
+      - end_page: 173
+        name: EXCLUSIVE DISTRIBUTION (EXDIS)
+        section: 'H.9: EXCLUSIVE DISTRIBUTION'
+        start_page: 172
+      - end_page: 175
+        name: NO DISTRIBUTION (NODIS)
+        section: 'H.9: NO DISTRIBUTION'
+        start_page: 174
+      - end_page: 177
+        name: SENSITIVE BUT UNCLASSIFIED (SBU)
+        section: 'H.9: SENSITIVE BUT UNCLASSIFIED'
+        start_page: 176
+      - end_page: 180
+        name: SENSITIVE BUT UNCLASSIFIED NOFORN (SBU NOFORN)
+        section: 'H.9: SENSITIVE BUT UNCLASSIFIED NOFORN'
+        start_page: 178
+      - end_page: 184
+        name: LAW ENFORCEMENT SENSITIVE (LES)
+        section: 'H.9: LAW ENFORCEMENT SENSITIVE'
+        start_page: 181
+      - end_page: 188
+        name: LAW ENFORCEMENT SENSITIVE NOFORN (LES NOFORN)
+        section: 'H.9: LAW ENFORCEMENT SENSITIVE NOFORN'
+        start_page: 185
+      - end_page: 191
+        name: SENSITIVE SECURITY INFORMATION (SSI)
+        section: 'H.9: SENSITIVE SECURITY INFORMATION'
+        start_page: 189
+  - end_page: 193
+    name: BANNER LINE SYNTAX HISTORY
+    section: I
+    start_page: 192
+  - end_page: 196
+    name: MARKING EXAMPLES
+    section: J
+    start_page: 194
+  - end_page: 200
+    name: ACRONYM LIST
+    section: K
+    start_page: 197
+
+figures:
+  - page: 15
+    title: Marking US, Foreign, and Joint Information Using IC Markings System Artifacts
+    number: 1
+  - page: 17
+    title: IC Classification and Control Markings Categories and Formatting
+    number: 2
+  - page: 18
+    title: Required Human-Readable Marking Elements
+    number: 3
+  - page: 60
+    title: SCI Control System Hierarchical Structure
+    number: 4
+  - page: 99
+    title: Optional SAP Hierarchical Structure
+    number: 5
+
+tables:
+  - page: 14
+    title: IC Markings System Artifacts
+    number: 1
+  - page: 21
+    title: FD&R Markings Summary
+    number: 2
+  - page: 28
+    title: FD&R Markings Precedence Rules for Banner Line Roll-Up
+    number: 3
+  - page: 36
+    title: Register of Authorized Classification and Control Markings
+    number: 4
+  - page: 40
+    title: Conceptual Access Rights and Handling (ARH) by Registered Marking
+    number: 5
+  - page: 61
+    title: SCI Sample Banner Marking Categories and Markings
+    number: 6
+  - page: 100
+    title: SAP Sample Banner Marking Categories and Markings
+    number: 7
+  - page: 192
+    title: History of Banner Line Syntax Changes
+    number: 8

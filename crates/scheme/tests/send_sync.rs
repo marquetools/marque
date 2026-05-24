@@ -16,30 +16,37 @@
 //! property depends on the trait's supertraits, not on any particular
 //! `S`, and `marque-scheme` cannot depend on `marque-capco` without
 //! introducing a cycle (Constitution VII). See the companion assertion
-//! in `crates/capco/tests/send_sync.rs` (landing alongside Phase 4
-//! task T058) for the concrete `CapcoScheme` form.
+//! in `crates/capco/tests/send_sync.rs` for the concrete `CapcoScheme`
+//! form.
 
 use marque_scheme::{
-    BoundedLattice, Candidate, Category, Constraint, ConstraintViolation, EvidenceFeature, Lattice,
-    MarkingScheme, ParseContext, Parsed, Recognizer, Scope, Template,
+    BoundedJoinSemilattice, BoundedMeetSemilattice, Candidate, Category, Constraint,
+    ConstraintViolation, EvidenceFeature, JoinSemilattice, MarkingScheme, MeetSemilattice,
+    ParseContext, Parsed, Recognizer, Scope, Template,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct StubMarking;
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _: &Self) -> Self {
         Self
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _: &Self) -> Self {
         Self
     }
 }
 
-impl BoundedLattice for StubMarking {
+impl BoundedJoinSemilattice for StubMarking {
     fn bottom() -> Self {
         Self
     }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
     fn top() -> Self {
         Self
     }
@@ -51,6 +58,9 @@ impl MarkingScheme for StubScheme {
     type Token = u32;
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "stub"
@@ -82,12 +92,26 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, _: &Self::Marking) -> String {
         String::new()
     }
+    fn render_canonical(
+        &self,
+        _: &Self::Marking,
+        _: &marque_scheme::RenderContext,
+        _: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 struct NoopRecognizer;
 
 impl Recognizer<StubScheme> for NoopRecognizer {
-    fn recognize(&self, _bytes: &[u8], _cx: &ParseContext) -> Parsed<StubMarking> {
+    fn recognize(
+        &self,
+        _bytes: &[u8],
+        _offset: usize,
+        _scheme: &StubScheme,
+        _cx: &ParseContext,
+    ) -> Parsed<StubMarking> {
         // Zero-candidate Ambiguous is the engine-safe "nothing
         // recognized" signal (foundational-plan line 609-612).
         Parsed::Ambiguous {
@@ -118,8 +142,9 @@ const _: fn() = || {
 #[test]
 fn recognizer_trait_object_is_usable_as_dyn() {
     let r: Box<dyn Recognizer<StubScheme>> = Box::new(NoopRecognizer);
+    let scheme = StubScheme;
     let cx = ParseContext::default();
-    match r.recognize(b"anything", &cx) {
+    match r.recognize(b"anything", 0, &scheme, &cx) {
         Parsed::Ambiguous { candidates } => {
             assert!(candidates.is_empty(), "stub returns zero candidates");
             // Touch the feature type so the assertion keeps importing

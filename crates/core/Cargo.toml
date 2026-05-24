@@ -20,8 +20,22 @@ include = [
 [dependencies]
 aho-corasick = { workspace = true }
 marque-ism = { workspace = true }
+marque-scheme = { workspace = true }
 memchr = { workspace = true }
 serde = { workspace = true, optional = true }
+# `smallvec` lets `parse_fgi_marker` build the FGI country list inline
+# (≤4 codes per CAPCO §H.7 typical) without the heap allocation an
+# intermediate `Vec` would force on every acknowledged FGI marker.
+# WASM-safe (pure data structure, no I/O); already a workspace dep
+# via `marque-ism`.
+smallvec = { workspace = true }
+# `smol_str` provides inline-storage for short owned strings on hot-path
+# struct fields (SAR/SCI compartment identifiers, sub-compartments). The
+# `Into<SmolStr>` constructors in `marque-ism::{SciCompartment, SarCompartment,
+# SarProgram}` accept `&str` directly, but the parser builds intermediate
+# `Vec<SmolStr>` buffers to populate `Box<[SmolStr]>` fields, so we name
+# the type. WASM-safe; same scope as the marque-ism + marque-rules adoption.
+smol_str = { workspace = true }
 thiserror = { workspace = true }
 
 [features]

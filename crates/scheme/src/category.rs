@@ -23,8 +23,34 @@
 
 /// Opaque category identifier. Each scheme assigns stable ids to its
 /// categories; the engine only compares them for equality.
+///
+/// # Reserved sentinel: [`CategoryId::MARKING`]
+///
+/// [`CategoryId::MARKING`] (numeric value `0`) is reserved across all
+/// schemes as the multi-category "whole-marking" sentinel — used by
+/// audit-record emit when a fix's structural payload spans more than one
+/// category (the [`ReplacementIntent::Recanonicalize`](crate::ReplacementIntent::Recanonicalize)
+/// arm re-renders an entire `Scope::Page` / `Scope::Document`, not a
+/// single category's axis). Schemes MUST assign concrete categories
+/// starting at `CategoryId(1)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CategoryId(pub u32);
+
+impl CategoryId {
+    /// Reserved multi-category "whole-marking" sentinel.
+    ///
+    /// Used by the audit-record emit path when a fix's
+    /// [`ReplacementIntent`](crate::ReplacementIntent) re-renders an
+    /// entire `Scope::Page` / `Scope::Document` rather than naming a
+    /// single category. The renderer projects this to the JSON
+    /// `replacement.canonical.category` field as the literal string
+    /// `"Marking"`.
+    ///
+    /// All other [`CategoryId`] values are scheme-allocated (CAPCO
+    /// assigns its categories starting at `CategoryId(1)`; see
+    /// `marque-capco`'s `CAT_CLASSIFICATION` and successors).
+    pub const MARKING: CategoryId = CategoryId(0);
+}
 
 /// Opaque token identifier within a scheme. Used by supersession
 /// relations and constraint predicates to reference specific tokens
@@ -64,12 +90,13 @@ pub enum IntraOrdering {
 
 /// Per-category aggregation operator.
 ///
-/// # Status (Phase B)
+/// # Status
 ///
-/// `AggregationOp` is **retired from the runtime dispatch path**. The
-/// engine reduces categories by calling [`Lattice::join`](crate::Lattice::join)
-/// on the category's value type; it no longer consults this enum to
-/// decide which reducer to run. The variants survive as:
+/// `AggregationOp` is **not on the runtime dispatch path**. The engine
+/// reduces categories by calling
+/// [`JoinSemilattice::join`](crate::JoinSemilattice::join) on the
+/// category's value type; it does not consult this enum to decide
+/// which reducer to run. The variants survive as:
 ///
 /// 1. **Build-time shorthand** for authors declaring flat categories
 ///    (the values here map to the built-in lattice constructors in
@@ -78,10 +105,9 @@ pub enum IntraOrdering {
 ///    tooling can render a scheme's aggregation semantics without
 ///    instantiating markings.
 ///
-/// In particular, [`AggregationOp::Custom`] no longer drives a runtime
+/// In particular, [`AggregationOp::Custom`] does not drive a runtime
 /// dispatch — it's a marker meaning "this category has a bespoke
-/// `impl Lattice`." Phase C expands coverage so more categories can
-/// use the enumerated variants instead of `Custom`.
+/// `impl Lattice`."
 ///
 /// The inputs to each operator are the *atomic* tokens: any composite
 /// token (e.g., FVEY → {USA, GBR, CAN, AUS, NZL}) is expanded by the
@@ -114,7 +140,6 @@ pub enum AggregationOp {
     /// schemes that don't want "most restrictive" semantics.
     Mode,
     /// Escape hatch: caller-defined reducer over the category's tokens.
-    /// Not used in Phase A.
     Custom,
 }
 
@@ -147,10 +172,11 @@ pub struct Category {
 
 /// Runtime-inspectable shape of a category's lattice.
 ///
-/// Phase B retired `AggregationOp` as a runtime dispatch point — the
-/// engine reduces categories by calling `Lattice::join` on their
-/// values. `CategoryShape` is what replaces `AggregationOp` for
-/// *inspection*: a scheme-exploration UI or docs generator can walk
+/// `AggregationOp` is not a runtime dispatch point — the engine reduces
+/// categories by calling
+/// [`JoinSemilattice::join`](crate::JoinSemilattice::join) on their
+/// values. `CategoryShape` is the inspection counterpart to
+/// `AggregationOp`: a scheme-exploration UI or docs generator can walk
 /// `scheme.categories()`, call `Category::shape()` on each one, and
 /// render the aggregation semantics without instantiating any marking
 /// values. The engine never consults this.
@@ -158,8 +184,9 @@ pub struct Category {
 /// `Product` and `Optional` nest recursively so composed lattices
 /// (`Product<FlatSet<T>, OrdMax<U>>`) can describe their structure in
 /// full. `Custom` is the terminator for schemes whose category has a
-/// bespoke `impl Lattice` that doesn't decompose into built-ins (SCI's
-/// compartment tree, SAR's program hierarchy).
+/// bespoke `impl JoinSemilattice` (or `MeetSemilattice`) that doesn't
+/// decompose into built-ins (SCI's compartment tree, SAR's program
+/// hierarchy).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoryShape {
     /// `OrdMax` / `OrdMin` — total-order lattice.

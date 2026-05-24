@@ -1,0 +1,43 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP80-00809A000500720009-0",
+    "title": "(SANITIZED)CHINA SCENES(SANITIZED)",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP80-00809A000500720009-0/CIA-RDP80-00809A000500720009-0.pdf",
+    "cab": {
+      "classified_by": "M Nobody",
+      "derived_from": "CIA SCG 23 May 22",
+      "declassify_on": "50X1-HUM"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//NOFORN//NODIS",
+        "paragraphs": [
+          {
+            "mark": "C//NF//ND",
+            "text": "Page Denied",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "Page Denied",
+            "is_table": false
+          },
+          {
+            "mark": "TS",
+            "text": "Page Denied",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "50X1-HUM",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1889369d22c183e14efa85073cf2fa44a637c33dd9e3fae5101dfebf46007c70 # shrinks to p1 = [CanonicalAttrs { classification: None, sci_controls: [], sci_markings: [], sar_markings: None, aea_markings: [], fgi_marker: None, dissem_us: [], dissem_nato: [], non_ic_dissem: [], rel_to: [], declassify_on: None, classified_by: None, derived_from: None, declass_exemption: None, token_spans: [] }], p2 = []

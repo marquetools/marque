@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 US1 — Declarative constraint evaluator tests (T023–T025).
+//! Declarative constraint evaluator tests.
 //!
 //! Exercises [`marque_scheme::constraint::evaluate`] against a local
 //! `StubScheme` whose marking carries a presence set over sentinel
@@ -11,9 +11,63 @@
 //! violation.
 
 use marque_scheme::{
-    Category, CategoryId, Constraint, ConstraintViolation, Lattice, MarkingScheme, PageRewrite,
-    Parsed, Scope, Template, TokenId, TokenRef, constraint::evaluate,
+    Category, CategoryId, Citation, Constraint, ConstraintViolation, JoinSemilattice,
+    MarkingScheme, MeetSemilattice, PageRewrite, Parsed, Scope, SectionLetter, Template, TokenId,
+    TokenRef, capco, constraint::evaluate,
 };
+
+// Sentinel test citations — all under `AuthoritativeSource::EngineInternal`
+// (renders as `[engine-internal]`) so the stub tests carry a typed Citation
+// that doesn't claim a CAPCO §-reference. The three constants spread across
+// distinct page numbers so equality assertions remain meaningful.
+const TEST_CITATION_1: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+const TEST_CITATION_2: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(2) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+const TEST_CITATION_3: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(3) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+const TEST_CITATION_4: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(4) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+// `STUB_CUSTOM_CITATION` is the citation the StubScheme's `evaluate_custom`
+// returns; the evaluator overwrites it with the declared `Constraint::Custom
+// { label }`. Used to verify the override behavior.
+const STUB_CUSTOM_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(99) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+// `CAPCO_H4` and `CAPCO_H5` — Citation values mirroring `§H.4 p1` / `§H.5 p1`
+// so the original tests' citation-preservation assertions keep their
+// semantic intent (verbatim copy from declared `Constraint.label`).
+const CAPCO_H4: Citation = capco(SectionLetter::H, 4, 1);
+const CAPCO_H5: Citation = capco(SectionLetter::H, 5, 1);
 
 // ---------------------------------------------------------------------------
 // StubScheme + StubMarking
@@ -25,10 +79,13 @@ struct StubMarking {
     category_members: Vec<(CategoryId, TokenId)>,
 }
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _: &Self) -> Self {
         self.clone()
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _: &Self) -> Self {
         self.clone()
     }
@@ -48,6 +105,13 @@ impl MarkingScheme for StubScheme {
     type Token = TokenId;
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+    // GAT + plain associated type bindings. This stub never exercises
+    // the canonicalize path, so `()` is the lowest-information binding
+    // (the `unimplemented!()` default is unreachable from this stub's
+    // code paths).
+    type Parsed<'src> = ();
+    type Canonical = ();
     fn name(&self) -> &str {
         "stub"
     }
@@ -76,13 +140,16 @@ impl MarkingScheme for StubScheme {
         &self,
         name: &'static str,
         _marking: &Self::Marking,
+        _bits: marque_scheme::FactBitmask,
     ) -> Vec<ConstraintViolation> {
         // Return a sentinel violation so the custom dispatch is
         // observable from tests without needing real predicate logic.
         vec![ConstraintViolation {
             constraint_label: "custom-stub",
             message: format!("custom fired: {name}"),
-            citation: "stub-custom",
+            citation: STUB_CUSTOM_CITATION,
+            span: None,
+            severity: None,
         }]
     }
     fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
@@ -97,14 +164,23 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, _: &Self::Marking) -> String {
         String::new()
     }
+    fn render_canonical(
+        &self,
+        _: &Self::Marking,
+        _: &marque_scheme::RenderContext,
+        _: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 const TOK_A: TokenId = TokenId(10);
 const TOK_B: TokenId = TokenId(11);
+const TOK_C: TokenId = TokenId(12);
 const CAT_FOO: CategoryId = CategoryId(1);
 
 // ---------------------------------------------------------------------------
-// T023 — Determinism across threads.
+// Determinism across threads.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -114,13 +190,16 @@ fn evaluate_is_deterministic() {
             name: "test/ab-conflict",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_B),
-            label: "TEST §1",
+            label: TEST_CITATION_1,
+            severity: None,
+            span_anchor: None,
         },
         Constraint::Requires {
             name: "test/a-requires-foo",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::AnyInCategory(CAT_FOO),
-            label: "TEST §2",
+            label: TEST_CITATION_2,
+            severity: None,
         },
     ]);
     let marking = StubMarking {
@@ -152,7 +231,7 @@ fn evaluate_is_deterministic() {
 }
 
 // ---------------------------------------------------------------------------
-// T024 — Empty constraint set returns empty.
+// Empty constraint set returns empty.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -167,7 +246,7 @@ fn empty_constraints_returns_empty() {
 }
 
 // ---------------------------------------------------------------------------
-// T025 — Conflict violation carries the declared citation verbatim.
+// Conflict violation carries the declared citation verbatim.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -176,7 +255,9 @@ fn conflict_violation_preserves_citation() {
         name: "test/conflict",
         left: TokenRef::Token(TOK_A),
         right: TokenRef::Token(TOK_B),
-        label: "CAPCO-2016 §H.4",
+        label: CAPCO_H4,
+        severity: None,
+        span_anchor: None,
     }]);
     let marking = StubMarking {
         tokens: vec![TOK_A, TOK_B],
@@ -185,13 +266,71 @@ fn conflict_violation_preserves_citation() {
     let v = evaluate(&scheme, &marking);
     assert_eq!(v.len(), 1);
     assert_eq!(
-        v[0].citation, "CAPCO-2016 §H.4",
+        v[0].citation, CAPCO_H4,
         "citation must be copied verbatim from the triggering constraint"
     );
     assert_eq!(
         v[0].constraint_label, "test/conflict",
         "constraint_label must be the declared `name` — not a generic 'conflicts' string"
     );
+}
+
+#[test]
+fn dyadic_arm_violations_default_to_none_span_and_severity() {
+    // Sentinel test: the dyadic `Conflicts` / `Requires` arms of
+    // `evaluate` MUST emit violations with `span: None` and
+    // `severity: None`. The engine's constraint-catalog bridge skips
+    // such violations as advisory-only — they are detected but not
+    // surfaced as `Diagnostic`s.
+    //
+    // A future PR that flips the dyadic arms to emit populated
+    // `Option<Span>` / `Option<Severity>` (giving them user-facing
+    // diagnostics) would silently change the engine's behavior — the
+    // bridge would start emitting Diagnostics for every dyadic catalog
+    // constraint that fires, which is NOT today's intent. This test
+    // pins the property: the dyadic arms emit advisory-only signals
+    // by construction; only `Constraint::Custom`-arm catalog rows
+    // populated by the scheme's `evaluate_custom` may produce
+    // user-facing diagnostics through the bridge.
+    let scheme = StubScheme::new(vec![
+        Constraint::Conflicts {
+            name: "test/conflict",
+            left: TokenRef::Token(TOK_A),
+            right: TokenRef::Token(TOK_B),
+            label: CAPCO_H4,
+            severity: None,
+            span_anchor: None,
+        },
+        Constraint::Requires {
+            name: "test/requires",
+            left: TokenRef::Token(TOK_A),
+            right: TokenRef::Token(TOK_C),
+            label: CAPCO_H5,
+            severity: None,
+        },
+    ]);
+    let marking = StubMarking {
+        tokens: vec![TOK_A, TOK_B],
+        category_members: vec![],
+    };
+    let v = evaluate(&scheme, &marking);
+    assert_eq!(v.len(), 2, "both dyadic constraints must fire");
+    for violation in &v {
+        assert!(
+            violation.span.is_none(),
+            "dyadic-arm violations MUST emit None span (advisory-only); \
+             got Some({:?}) on {:?}",
+            violation.span,
+            violation.constraint_label,
+        );
+        assert!(
+            violation.severity.is_none(),
+            "dyadic-arm violations MUST emit None severity (advisory-only); \
+             got Some({:?}) on {:?}",
+            violation.severity,
+            violation.constraint_label,
+        );
+    }
 }
 
 #[test]
@@ -205,13 +344,17 @@ fn constraint_label_maps_to_declared_name_per_entry() {
             name: "test/ab-conflict",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_B),
-            label: "TEST §1",
+            label: TEST_CITATION_1,
+            severity: None,
+            span_anchor: None,
         },
         Constraint::Conflicts {
             name: "test/foo-conflict",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::AnyInCategory(CAT_FOO),
-            label: "TEST §2",
+            label: TEST_CITATION_2,
+            severity: None,
+            span_anchor: None,
         },
     ]);
     let marking = StubMarking {
@@ -225,23 +368,10 @@ fn constraint_label_maps_to_declared_name_per_entry() {
 }
 
 // ---------------------------------------------------------------------------
-// Bonus — Implies / Supersedes are quiet; Custom dispatches.
+// Bonus — Supersedes is quiet; Custom dispatches.
+// Note: there is no Constraint::Implies variant. Fact-propagation is
+// handled by the closure operator (ClosureRule).
 // ---------------------------------------------------------------------------
-
-#[test]
-fn implies_does_not_emit_diagnostics() {
-    let scheme = StubScheme::new(vec![Constraint::Implies {
-        name: "test/implies",
-        left: TokenRef::Token(TOK_A),
-        right: TokenRef::Token(TOK_B),
-        label: "TEST §implies",
-    }]);
-    let marking = StubMarking {
-        tokens: vec![TOK_A],
-        category_members: vec![],
-    };
-    assert!(evaluate(&scheme, &marking).is_empty());
-}
 
 #[test]
 fn supersedes_does_not_emit_diagnostics() {
@@ -249,7 +379,7 @@ fn supersedes_does_not_emit_diagnostics() {
         name: "test/supersedes",
         left: TokenRef::Token(TOK_A),
         right: TokenRef::Token(TOK_B),
-        label: "TEST §supersedes",
+        label: TEST_CITATION_3,
     }]);
     let marking = StubMarking {
         tokens: vec![TOK_A, TOK_B],
@@ -267,7 +397,7 @@ fn custom_dispatches_through_scheme_and_normalizes_identifiers() {
     // traceability invariant called out in the `Constraint` docs.
     let scheme = StubScheme::new(vec![Constraint::Custom {
         name: "my-custom",
-        label: "TEST §custom",
+        label: TEST_CITATION_4,
     }]);
     let marking = StubMarking::default();
     let v = evaluate(&scheme, &marking);
@@ -277,7 +407,7 @@ fn custom_dispatches_through_scheme_and_normalizes_identifiers() {
         "constraint_label must be overridden to the declared name"
     );
     assert_eq!(
-        v[0].citation, "TEST §custom",
+        v[0].citation, TEST_CITATION_4,
         "citation must be overridden to the declared label"
     );
     assert!(

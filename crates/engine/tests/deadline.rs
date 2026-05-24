@@ -2,12 +2,9 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Spec 005 (engine deadlines) — Phase 1 tests.
+//! Engine deadline tests.
 //!
-//! Phase 1 lands the type surface (`LintOptions`, `FixOptions`,
-//! `EngineError::DeadlineExceeded`) and the `_with_options`
-//! signatures with zero behavior change. These tests pin both
-//! invariants:
+//! Covers the option-surface invariants:
 //!
 //! 1. Default options yield no deadline / no threshold override.
 //! 2. The back-compat shims (`Engine::lint`, `Engine::fix`,
@@ -15,12 +12,15 @@
 //!    their `_with_options` counterparts when called with the
 //!    default options.
 //!
-//! Phase 2 will add the actual deadline-driven cancellation tests
-//! (T013–T017).
+//! and the deadline-driven cooperative-cancellation behavior:
+//! pre-pass abort on an already-expired deadline, mid-document
+//! truncation, and the asymmetric `Err(DeadlineExceeded)` from the
+//! fix path.
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, EngineError, FixMode, FixOptions, InvalidThreshold, LintOptions};
+use secrecy::ExposeSecret as _;
 use std::time::{Duration, Instant};
 
 fn engine() -> Engine {
@@ -52,32 +52,56 @@ fn assert_fix_results_match_byte_for_byte(
     expected: &marque_engine::FixResult,
     label: &str,
 ) {
-    assert_eq!(actual.source, expected.source, "{label}: source bytes");
     assert_eq!(
-        actual.applied.len(),
-        expected.applied.len(),
+        actual.source.expose_secret(),
+        expected.source.expose_secret(),
+        "{label}: source bytes"
+    );
+    assert_eq!(
+        actual.audit_lines.len(),
+        expected.audit_lines.len(),
         "{label}: applied count"
     );
-    for (i, (a, e)) in actual
-        .applied
+    // Walk the audit-line streams: both arms preserve promotion order
+    // across the parity check.
+    for (i, (a_line, e_line)) in actual
+        .audit_lines
         .iter()
-        .zip(expected.applied.iter())
+        .zip(expected.audit_lines.iter())
         .enumerate()
     {
-        assert_eq!(
-            a.proposal.rule, e.proposal.rule,
-            "{label}: applied[{i}].rule"
-        );
-        assert_eq!(
-            a.proposal.span, e.proposal.span,
-            "{label}: applied[{i}].span"
-        );
-        assert_eq!(
-            a.proposal.replacement, e.proposal.replacement,
-            "{label}: applied[{i}].replacement"
-        );
-        assert_eq!(a.source, e.source, "{label}: applied[{i}].source");
-        assert_eq!(a.dry_run, e.dry_run, "{label}: applied[{i}].dry_run");
+        match (a_line, e_line) {
+            (marque_rules::AuditLine::AppliedFix(a), marque_rules::AuditLine::AppliedFix(e)) => {
+                assert_eq!(a.rule, e.rule, "{label}: applied[{i}].rule");
+                assert_eq!(a.span, e.span, "{label}: applied[{i}].span");
+                assert_eq!(a.source, e.source, "{label}: applied[{i}].source");
+                assert_eq!(a.dry_run, e.dry_run, "{label}: applied[{i}].dry_run");
+                // Compare the rendered canonical bytes — they are the
+                // load-bearing content of a marking fix.
+                assert_eq!(
+                    a.fix.replacement.canonical.bytes(),
+                    e.fix.replacement.canonical.bytes(),
+                    "{label}: applied[{i}].fix.replacement.canonical.bytes",
+                );
+            }
+            (
+                marque_rules::AuditLine::TextCorrection(a),
+                marque_rules::AuditLine::TextCorrection(e),
+            ) => {
+                assert_eq!(a.rule, e.rule, "{label}: text_correction[{i}].rule");
+                assert_eq!(a.span, e.span, "{label}: text_correction[{i}].span");
+                assert_eq!(a.source, e.source, "{label}: text_correction[{i}].source");
+                assert_eq!(
+                    a.dry_run, e.dry_run,
+                    "{label}: text_correction[{i}].dry_run"
+                );
+                assert_eq!(
+                    a.replacement, e.replacement,
+                    "{label}: text_correction[{i}].replacement"
+                );
+            }
+            _ => panic!("{label}: audit_lines[{i}] discriminant differs"),
+        }
     }
     assert_eq!(
         actual.remaining_diagnostics.len(),
@@ -98,7 +122,7 @@ fn assert_fix_results_match_byte_for_byte(
 }
 
 // ---------------------------------------------------------------------------
-// T005 — default options carry no deadline / no threshold override
+// Default options carry no deadline / no threshold override
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -115,7 +139,7 @@ fn fix_options_default_yields_no_deadline_and_no_threshold_override() {
 }
 
 // ---------------------------------------------------------------------------
-// T006 — back-compat shims produce identical results to `_with_options`
+// Back-compat shims produce identical results to `_with_options`
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -155,10 +179,18 @@ fn lint_shim_matches_lint_with_options_default() {
             a.rule
         );
         if let (Some(a_fix), Some(b_fix)) = (&a.fix, &b.fix) {
-            assert_eq!(a_fix.rule, b_fix.rule);
-            assert_eq!(a_fix.span, b_fix.span);
-            assert_eq!(a_fix.replacement, b_fix.replacement);
             assert_eq!(a_fix.source, b_fix.source);
+            // FixIntent does not impl PartialEq (Confidence carries
+            // f32). Compare the replacement variant discriminant
+            // and confidence-combined() value — the fix's structural
+            // identity for the shim parity check.
+            assert_eq!(
+                std::mem::discriminant(&a_fix.replacement),
+                std::mem::discriminant(&b_fix.replacement)
+            );
+            assert!(
+                (a_fix.confidence.combined() - b_fix.confidence.combined()).abs() < f32::EPSILON
+            );
         }
     }
 
@@ -259,7 +291,7 @@ fn fix_shim_matches_fix_with_options_default() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2 — cooperative cancellation (T013–T017)
+// Cooperative cancellation
 // ---------------------------------------------------------------------------
 
 /// Build a synthetic document with `count` portion candidates so that
@@ -276,13 +308,13 @@ fn many_portions(count: usize) -> Vec<u8> {
     buf.into_bytes()
 }
 
-/// Build a document where every banner triggers an E001 fix (`NF`
+/// Build a document where every banner triggers a fix (`NF`
 /// abbreviated dissem in banner — banner form requires `NOFORN`).
 /// Each page-break-separated banner is a banner candidate that
-/// reliably yields a real `FixProposal`, so the apply loop has
-/// concrete work to do — load-bearing for the T017 mid-apply
-/// deadline test, where the apply phase must take observable
-/// wall-clock time for a per-fix deadline check to fire.
+/// reliably yields a real fix, so the apply loop has concrete work to
+/// do — load-bearing for the mid-apply deadline test, where the apply
+/// phase must take observable wall-clock time for a per-fix deadline
+/// check to fire.
 fn many_banners_with_fixes(count: usize) -> Vec<u8> {
     // Three newlines between banners trip the scanner's
     // `\n\n\n+` page-break heuristic, so each banner sits on
@@ -297,9 +329,9 @@ fn many_banners_with_fixes(count: usize) -> Vec<u8> {
 
 #[test]
 fn lint_with_already_expired_deadline_returns_immediately_truncated() {
-    // T013: an already-expired deadline trips the pre-pass check
-    // (T007). Spec §R3: the engine MUST return immediately with
-    // `truncated: true` and both candidate counters at 0 — the
+    // An already-expired deadline trips the pre-pass check: the engine
+    // MUST return immediately with `truncated: true` and both candidate
+    // counters at 0 — the
     // scanner does not run, so `candidates_total` stays at its
     // initial 0 even though the source has plenty of candidates.
     let eng = engine();
@@ -326,13 +358,12 @@ fn lint_with_already_expired_deadline_returns_immediately_truncated() {
 
 #[test]
 fn lint_truncates_mid_document_at_deadline_boundary() {
-    // T014: a deadline that is valid on entry but expires partway
-    // through the candidate loop must cause the engine to break
-    // out of the loop with `truncated: true` and a partial count
-    // (`processed < total`). The loop check (T008) is the
-    // load-bearing assertion — without it the engine would
-    // overrun the budget by the full document's worth of rule
-    // work.
+    // A deadline that is valid on entry but expires partway through
+    // the candidate loop must cause the engine to break out of the loop
+    // with `truncated: true` and a partial count (`processed < total`).
+    // The per-candidate loop check is the load-bearing assertion —
+    // without it the engine would overrun the budget by the full
+    // document's worth of rule work.
     //
     // Reliability strategy: `Instant::now()` is the only clock
     // the engine has, so we cannot mock time. A tight budget
@@ -387,7 +418,7 @@ fn lint_truncates_mid_document_at_deadline_boundary() {
 
 #[test]
 fn lint_with_generous_deadline_runs_to_completion_no_truncation() {
-    // T015: a deadline far in the future must NOT truncate. The
+    // A deadline far in the future must NOT truncate. The
     // engine completes the candidate loop normally; `truncated:
     // false` and `processed == total`. This is the load-bearing
     // negative test — it pins the invariant that a deadline
@@ -418,9 +449,9 @@ fn lint_with_generous_deadline_runs_to_completion_no_truncation() {
 
 #[test]
 fn fix_with_already_expired_deadline_returns_deadline_exceeded() {
-    // T016: an already-expired deadline on `fix_with_options`
+    // An already-expired deadline on `fix_with_options`
     // must surface as `Err(EngineError::DeadlineExceeded {
-    // partial_lint })` per spec §R4. The asymmetric shape
+    // partial_lint })`. The asymmetric shape
     // protects audit-record integrity (Constitution V Principle
     // V): no partial `FixResult` is ever constructed, no
     // half-applied bytes leak. `partial_lint` carries the
@@ -455,15 +486,15 @@ fn fix_with_already_expired_deadline_returns_deadline_exceeded() {
 
 #[test]
 fn fix_with_deadline_during_fix_call_returns_deadline_exceeded() {
-    // T017: a deadline that expires sometime during a `fix_with_options`
+    // A deadline that expires sometime during a `fix_with_options`
     // call MUST surface as `Err(EngineError::DeadlineExceeded { partial_lint })`,
     // never as a partial `FixResult` (Constitution V Principle V — the
     // half-applied buffer is dropped on the floor and the caller sees only
     // the lint result).
     //
-    // The spec describes two distinct trip points: the post-lint check
-    // (T010) and the per-fix-application check (T011). Both produce the
-    // same `Err(DeadlineExceeded)` shape, and both are exercised here by
+    // There are two distinct trip points: the post-lint check and the
+    // per-fix-application check. Both produce the same
+    // `Err(DeadlineExceeded)` shape, and both are exercised here by
     // setting a deadline that will trip somewhere inside the call. Which
     // exact path fires is hardware-dependent:
     //
@@ -472,18 +503,18 @@ fn fix_with_deadline_during_fix_call_returns_deadline_exceeded() {
     //     `apply` for the same fixture), the deadline trips inside the
     //     candidate loop and we get `truncated: true` with partial
     //     diagnostics. The fix-side path that converts that to
-    //     `EngineError::DeadlineExceeded` is the post-lint check (T010).
+    //     `EngineError::DeadlineExceeded` is the post-lint check.
     //   - On hardware where the apply phase is slow enough to be
     //     observable (fast machines with the FixMode::Apply variant on
     //     a large buffer), the deadline can trip inside the apply
     //     loop, yielding `truncated: false` with full diagnostics.
-    //     That exercises the per-fix check (T011).
+    //     That exercises the per-fix check.
     //
     // The test accepts either observation because both prove the
-    // deadline plumbing works through `fix_with_options`. The previous
-    // version asserted specifically the second case but that's not
-    // reliably reachable on slow CI hardware where apply takes
-    // microseconds — there is simply no margin window where
+    // deadline plumbing works through `fix_with_options`. Asserting
+    // specifically the second case is not reliably reachable on slow CI
+    // hardware where apply takes microseconds — there is simply no
+    // margin window where
     // `deadline > lint_time && deadline < lint_time + apply_time`.
     let eng = engine();
     // Bounded fixture size — large enough that `fix` takes long
@@ -517,7 +548,8 @@ fn fix_with_deadline_during_fix_call_returns_deadline_exceeded() {
     // <50% of the budget). Both paths terminate as
     // `Err(DeadlineExceeded)`, which is the load-bearing behavior the
     // test pins. A budget of 0 would test the pre-pass abort, which
-    // T016 already covers.
+    // `fix_with_already_expired_deadline_returns_deadline_exceeded`
+    // already covers.
     let mut opts = FixOptions::default();
     opts.deadline = Some(Instant::now() + t_fix / 2);
 

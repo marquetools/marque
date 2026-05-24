@@ -41,13 +41,34 @@ ismcat-tetra-version = "2022-NOV"
 
 [dependencies]
 aho-corasick = { workspace = true }
-jiff = { workspace = true }
+# `jiff` is used only inside `src/date.rs` for two calls — `civil::Date::new`
+# (calendar validity) and `civil::Date::days_in_month` (leap-year-aware
+# month length). Both have a hand-rolled Gregorian fallback in the same
+# file. Gated behind the `dates` feature: CLI (`marque`) and server
+# (`marque-server`) opt in explicitly via `features = ["dates"]`; the
+# workspace pin keeps `default-features = false` so the WASM artifact
+# excludes jiff entirely. See issue #455.
+jiff = { workspace = true, optional = true }
+# `marque-scheme` provides `Scope`, which `ProjectedMarking::scope`
+# carries. Both crates remain WASM-safe; the dep graph stays acyclic
+# because `marque-scheme` does NOT depend on `marque-ism` (it stays a
+# domain-neutral trait surface).
+marque-scheme = { workspace = true }
 serde = { workspace = true, optional = true }
+smallvec = { workspace = true }
+smol_str = { workspace = true }
 
 [dev-dependencies]
 ism = { workspace = true }
 ism-ismcat = { workspace = true }
 proptest = { workspace = true }
+# Compile-time `Send + Sync` check on `CanonicalAttrs` — load-bearing
+# axiom for the `Arc<Box<[CanonicalAttrs]>>` snapshot on
+# `marque_rules::RuleContext.page_portions`; the
+# `RuleContext: Send + Sync` HRTB pin lives in
+# `crates/rules/tests/send_sync.rs`.
+# The check lives in `crates/ism/tests/send_sync.rs`.
+static_assertions = { workspace = true }
 xmloxide = { workspace = true }
 
 [build-dependencies]
@@ -61,7 +82,19 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 
 [features]
-default = []
+# `dates` (default-on, opted out by the workspace pin's
+# `default-features = false`): enables the `jiff` calendar dep for
+# `validate_date` and `days_in_month` in `src/date.rs`. With the feature
+# off, the same two functions fall back to a hand-rolled Gregorian
+# implementation (leap-year + month-length math). Public API of
+# `IsmDate` is identical either way; native-parity tests catch
+# divergence. CLI (`marque`) and server (`marque-server`) opt back in
+# via `marque-ism = { workspace = true, features = ["dates"] }`;
+# `marque-extract` and other native crates without a direct `marque-ism`
+# line inherit `dates = on` through Cargo feature unification in the
+# CLI / server build graph. See issue #455.
+default = ["dates"]
+dates = ["dep:jiff"]
 serde = ["dep:serde"]
 
 [lints]

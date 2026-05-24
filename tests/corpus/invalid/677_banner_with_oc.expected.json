@@ -1,0 +1,6 @@
+{
+  "_note": "Issue #677: OC (portion form) appears in a banner line; canonical banner abbreviation is ORCON. CAPCO-2016 §D.1 p27 line 560 + §G.1 Table 4 p38.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "banner.metadata.uses-portion-form"}, "span": {"start": 8, "end": 10}}
+  ]
+}

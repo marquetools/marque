@@ -1,0 +1,69 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP79B01273A000100020017-6",
+    "title": "BRIEFING NOTES ARMY MATERIEL COMMAND (AMC) INTELLIGENCE ORGANIZATION",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP79B01273A000100020017-6/CIA-RDP79B01273A000100020017-6.pdf",
+    "cab": {
+      "classified_by": "J. Arden, OUSD-P",
+      "derived_from": "OUSD-P SCG 23 May 2018",
+      "declassify_on": "N/A to NATO portions, see source list for FSI portions"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//FGI NATO//NOFORN/RAWFISA//LES",
+        "paragraphs": [
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Army Materiel Command (AMC) Intelligence Organization",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "The AMC is a user and producer of foreign intelligence. Its requirements for foreign intelligence are primarily in the scientific and technical fields. Prior to the reorganization of the U.S. Army in 1962, responsibility for research and development was divided on a commodity basis among the Army Technical Services operating under the general staff supervision of the Chief of Research and Development, DA. Supporting this research and development activity each of the Technical Services had a technical intelligence activity performing under the general staff supervision of the Assistant Chief of Staff for Intelligence, DA.",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "The actual reorganization of the Army and establishment of AMC resulted in the creation of a Directorate of Research and Development. The Director of Research and Development (Brig. Gen. W. C. Gribble, Jr.) is also the AMC \"Foreign Intelligence Officer\". As such he directs all AMC intelligence activities, is principal advisor to the Commanding General/AMC (General F. S. Besson, Jr.) on foreign intelligence matters, and staff supervisor of all AMC foreign intelligence activities. As part of his immediate staff, and acting as his executive agent in the management of AMC foreign intelligence activities is a Technical Intelligence Division. This Division is supported by a U.S. Army Special Security Detachment.",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "The principal AMC intelligence production elements are the U.S. Army Foreign Science and Technology Center (FSTC) and the Directorate of Missile Intelligence (DMI) of the U.S. Army Missile Command located at Redstone Arsenal. FSTC produces and disseminates, with ACSI guidance, scientific and technical intelligence covering the basic sciences and army-type materiel and equipment in response to AMC and other user requirements. The DMI produces and disseminates through FSTC scientific and technical intelligence covering missile and space activity of concern to AMC and other intelligence users.",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "ARMY review completed.",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "UNCLASSIFIED//REL TO USA, AUSTRALIA_GROUP//LAW ENFORCEMENT SENSITIVE",
+        "paragraphs": [
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "FSTC is organized into a Basic Sciences Group, Weapons Systems Group and five functional divisions. The total complement of FSTC is 425 personnel.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Technical support to research and development of materiel and equipment peculiar to intelligence activities is provided by the U.S. Army Materiel Development Office (IMDO). IMDO is directly subordinate to AMC, Intelligence and is located at Fort Holabird, Baltimore, Maryland.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Each of the seven AMC major subordinate commands, (Munitions, Electronics, etc.) principal laboratories and other activities has a Foreign Intelligence officer whose task it is to place his command's requirements for intelligence on the production system, to receive and disseminate the resultant intelligence product, to coordinate the provision of scientific and technical consultant advisory services to the FSTC, and to act as foreign intelligence advisor to his commander. Each of the subordinate commands, under FSTC guidance, participates in the program for analysis and exploitation of acquired items of foreign materiel.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

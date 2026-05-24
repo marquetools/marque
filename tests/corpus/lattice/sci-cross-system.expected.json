@@ -1,0 +1,8 @@
+{
+  "_note": "PR 4 (006 T118) — SCI cross-system canonicalization with `/` separator. CAPCO-2016 §H.4 p61: 'Multiple SCI control system markings must be listed in ascending sort order ... separated by a single forward slash with no interjected space.' Plus §A.6 pp15-17 (general separator alphabet). The banner additionally carries ORCON (per §H.4 p80 SI-G example banner `TOP SECRET//SI-G//ORCON`; closure rule `capco/si-g-implies-orcon`) and NOFORN (per §H.4 p87 TK-BLFH 'Requires NOFORN' relationship bullet; closure rule `capco/tk-blfh-implies-noforn`); both fire via the post-PR-4b-D closure operator. The 2 E059 diagnostics fire on the source portions `(TS//SI-G ABCD)` and `(TS//TK-BLFH XYZW)` which lack the required ORCON / NOFORN companions per the §H.4 per-system rules collapsed into the `DeclarativeSciPerSystemRule` walker (rule ID E059, PR 3b.E). The banner line itself carries the closure-injected ORCON/NOFORN so it does not retrigger the per-system rules.",
+  "expected_banner": "TOP SECRET//SI-G ABCD/TK-BLFH XYZW//ORCON/NOFORN",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "marking.sci.si-g-companions"}, "span": {"start": 0, "end": 0}},
+    {"rule": {"scheme": "capco", "predicate_id": "marking.sci.tk-compartment-noforn-required"}, "span": {"start": 0, "end": 0}}
+  ]
+}

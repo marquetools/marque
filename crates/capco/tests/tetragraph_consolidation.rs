@@ -11,13 +11,15 @@
 //! FVEY/ACGU table that could (and did) drift. Issue #208 added the
 //! ODNI ISMCAT V2022-NOV taxonomy as the single source of truth and
 //! introduced the three-state decomposability discriminator that S005
-//! (#206) depends on; this test suite covers all three trichotomy
-//! branches and the §D Table 3 rule 23 round-trip.
+//! (#206; post-PR-#488 collapsed from the historical S005/S006 pair)
+//! depends on; this test suite covers all three trichotomy branches
+//! and the §D Table 3 rule 23 round-trip.
 
+use marque_capco::lattice::RelToBlock;
 use marque_capco::vocab::{expand_tetragraph, is_decomposable_tetragraph};
 use marque_ism::{
-    Classification, CountryCode, IsmAttributes, MarkingClassification, PageContext,
-    TETRAGRAPH_MEMBERS, is_decomposable, lookup_tetragraph_members,
+    CanonicalAttrs, Classification, CountryCode, MarkingClassification, TETRAGRAPH_MEMBERS,
+    is_decomposable, lookup_tetragraph_members,
 };
 
 fn cc(code: &str) -> CountryCode {
@@ -204,19 +206,18 @@ fn rel_to_intersection_d_table_3_rule_23_round_trip() {
     // hand-curated BUILTIN_TETRAGRAPH_MEMBERS. Issue #208 sources the
     // same row from the ODNI taxonomy; this test pins that the
     // round-trip is preserved across the source change.
-    let mut p1 = IsmAttributes::default();
+    let mut p1 = CanonicalAttrs::default();
     p1.classification = Some(MarkingClassification::Us(Classification::Secret));
     p1.rel_to = vec![cc("USA"), cc("FVEY")].into_boxed_slice();
 
-    let mut p2 = IsmAttributes::default();
+    let mut p2 = CanonicalAttrs::default();
     p2.classification = Some(MarkingClassification::Us(Classification::Secret));
     p2.rel_to = vec![cc("USA"), cc("GBR")].into_boxed_slice();
 
-    let mut ctx = PageContext::default();
-    ctx.add_portion(p1);
-    ctx.add_portion(p2);
-
-    let rel = ctx.expected_rel_to();
+    // Uses `RelToBlock::from_attrs_iter` (lattice-native) for tetragraph
+    // expansion + intersection semantics — §D Table 3 rule 23 round-trip
+    // pinned identically. §-authority unchanged.
+    let rel = RelToBlock::from_attrs_iter(&[p1, p2]).into_boxed_slice();
     let codes: std::collections::BTreeSet<String> = rel
         .iter()
         .map(|c| String::from_utf8_lossy(c.as_bytes()).into_owned())

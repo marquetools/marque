@@ -7,6 +7,33 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 **Date:** 2026-05-02
 **Status:** ready for implementation
+**Amended:** 2026-05-07 — PR 3b staging re-sequenced per
+`docs/plans/2026-05-07-pr3b-consultation-verdict.md`. **Source rule
+count re-baselined to 59** (ground-truth at 2026-05-07: `grep -c
+'^impl Rule for'` across `rules.rs` / `rules_declarative.rs` /
+`rules_sci_per_system.rs` — the third file was deleted in PR 3b.E
+(2026-05-08), folding its 10 `impl Rule` blocks into the E059 walker;
+the historical 59 baseline reflects the count at the 2026-05-07
+amendment, not the post-3b.E count).
+The "49 → ~10–13" count target appearing throughout this document
+(user constraints, §3 PR 3b row, §4 PR 3b row, §11 PR 3b row,
+mapping table) is **superseded** by the staged target — and the "49"
+itself was a historical approximation, not a verified count. Operative
+target: **PR 3b proper drives the rule count down within each
+sub-move's authorized primitive scope** (re-baselined 2026-05-07; the
+earlier "13–18 Stage-1 band" was retired in favor of qualitative
+per-sub-PR gating after the planning pass on T026a found the literal
+sub-move retirements deliver −15 to −21 rules, landing at ~38–44).
+End-state target ~10 surviving rules across stages 1–4 stays binding;
+heavy compaction lifts in Stage 3 (PR 4 per-category Lattice impls)
+and Stage 4 (PR 5+ renderer). The authoritative staging table lives in
+`specs/006-engine-rule-refactor/plan.md` D13 addendum and
+`.claude/skills/marque-lattice-consultant/references/marque-applied.md`
+§3.11. Two new primitives (`Constraint::Conflicts::RhsFamily(predicate)`
++ `MarkingScheme::closure(...)` per `marque-applied.md` §4.7) fold
+into PR 3.7 — see `tasks.md` T108b / T108c. The body of this plan is
+otherwise unaffected; PR sequencing (3a → 3b → 3c → 3.7 → 4 → 5+) is
+unchanged.
 **Supersedes:** `2026-05-01-engine-rule-architecture-refactor.md` (deleted in the PR that landed this plan)
 **Gates:** `2026-05-01-lattice-design.md` (filled in by PR 3.7 — see §11)
 **Synthesizes:**
@@ -24,8 +51,11 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - marque has no users, no downstream consumers, no API expectations. **Clean break
   is the operating philosophy.** This plan is the last clean-break window; the
   window closes when external consumers attach.
-- Issue #263 (canonicalizer/renderer split + form-routing collapse, 49 → ~10–13
-  rules) is a given.
+- Issue #263 (canonicalizer/renderer split + form-routing collapse,
+  49 → ~10–13 rules) is a given. **(Amended 2026-05-07: PR-3b-proper
+  numeric band retired in favor of qualitative per-sub-PR gating;
+  end-state target ~10 surviving rules across stages 1–4 stays
+  binding; see top-of-file amendment banner.)**
 - Optimize for 5-year maintenance.
 - CAPCO-first: no second `MarkingScheme` until CAPCO is solid. `Vocabulary<S>`,
   `MarkingScheme`, `Codec<S>` ship `#[doc(hidden)] pub` semver-unstable. They
@@ -129,7 +159,7 @@ Eight points on which all three original reviewers independently arrived
 at the same conclusion. Murder board did not contradict any.
 
 **2.1 #263 is the keystone refactor.** Canonicalizer + renderer split
-+ form-routing collapse. 49 → ~10–13 rules. Co-lands in PR 3b.
++ form-routing collapse. 49 → ~10 rules end-state across stages 1–4 (the original #263 framing was "~10–13"; refined to ~10 by user direction 2026-05-07). Co-lands in PR 3b. _(Amended 2026-05-07: PR-3b numeric band retired; per-sub-PR qualitative gate. See top-of-file banner.)_
 
 **2.2 The pivot type does too many jobs** (§1.1).
 
@@ -296,13 +326,14 @@ respects WASM-safety (Principle III) and the acyclic dependency graph
 | 1 | Single-pass forward splice; `fix_throughput` Criterion bench wired into `bench-check.sh` (R² ≥ 0.9) | #277 | I, VI |
 | 2 | `Vocabulary<S>::shape_admits` + parser case-strict (measurement-gated; **p99 tail-percentile assertion** added to >5% threshold); FGI silent-skip → `None`; **`FgiMarker::SourceConcealed \| Acknowledged { countries }` discriminant introduced**; rules using `countries.is_empty()` audited and migrated; `is_ascii_alphanumeric()` → `shape_admits` at the four parser sites | #280 | I, III, IV, VIII |
 | 3a | **Keystone-1**: pivot split (`ParsedAttrs<'src>`/`CanonicalAttrs`/`ProjectedMarking`) + `from_parsed_unchecked` transitional adapter (`#[doc(hidden)]`). All rules consume `&CanonicalAttrs` via the adapter. No rule collapse, no discriminant change, no schema bump. Independently revertable. | (structural prerequisite) | III, V, VI, VII |
-| 3b | **Keystone-2**: #263 rule collapse 49 → ~10–13 using the pivot from 3a. Touches only `marque-capco/rules.rs` + rule-set construction. No schema bump. Independently revertable. | #263 | IV, VI |
-| 3c | **Keystone-3**: `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + `engine.rs::build_decoder_diagnostic` carve-out delete (the `proposal.original = ""` branch around the `FixProposal::new(..., "", replacement, ...)` call — currently `engine.rs:1369-1384` but **implementer re-greps at PR 3c time** since this anchor has already shifted once and the function body is in active flux) + `from_parsed_unchecked` adapter delete + **`FixIntent<S>` rule-API surface lands** + **rule-ID retirement to `(scheme, predicate-id)` keys** + audit schema cutover (single bump `marque-mvp-2 → marque-1.0`, no accept-list, see §10). Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3b | **Keystone-2**: #263 rule collapse — qualitative per-sub-PR gate (amended 2026-05-07; numeric band retired) using the pivot from 3a. Touches `crates/capco/src/rules.rs` + `crates/capco/src/rules_declarative.rs` + `crates/capco/src/scheme.rs` rule-set construction. T026e collapsed `rules_sci_per_system.rs` (deleted in 3b.E) into a single `Constraint::Custom("sci-per-system/...", ...)` walker; T026b adds declarative `PageRewrite` rows, T026c adds enumerated `Constraint::Conflicts` rows (RELIDO incompatibility roster), and T026d adds class-floor `Constraint::Custom` rows on `CapcoScheme` (Constitution VII §IV blocks scheme-adoption PRs from extending the `Constraint` enum, so the floor catalog landed as `Custom` not `Requires`). Expected ~38–44 post-3b; end-state ~10 across stages 1–4. No schema bump. Independently revertable. Six sub-moves T026a–T026f per `tasks.md`; see top-of-file amendment banner. | #263 | IV, VI |
+| 3c | **Keystone-3** (split in practice across 3c.A / 3c.B; clean break partially deferred): `FixReplacement::Strict \| Decoder` discriminant + provenance-tagged `Canonical` with sealed closed-CVE constructor (G-Option 3, §8.1) + decoder locked out of open-vocabulary canonicalization (K-Option 2, §8.2) + **`FixIntent<S>` rule-API surface lands**. PR 3c.B Commit 10 also landed a conservative `marque-mvp-2 → marque-mvp-3` audit-schema bump (proposal sub-object envelope + content-ignorance closure only) — the fuller `marque-mvp-3 → marque-1.0` cutover (Canonical wired into audit emit, BLAKE3 digesting, closed MessageTemplate JSON, `from_parsed_unchecked` delete) and the `(scheme, predicate-id)` rule-ID form deferred to PR 3c.2 and post-PR-10 respectively. See §10 for revised cutover composition. Independently revertable. | #257, #267 Gap A, #267 Gap B (fix-emission becomes mechanical via `render_canonical`) | III, V (G13 → type invariant), VI |
+| 3c.2 | **Keystone-3 completion** (added 2026-05-14): finishes the `marque-1.0` audit-record content that PR 3c.B Commit 10 conservatively deferred. Bumps schema `marque-mvp-3 → marque-1.0`. Bakes in: `Canonical<S>` provenance wired into audit emit (`discriminant: "strict" \| "decoder"` + structured `canonical` sub-object); BLAKE3 audit-record digesting (real `blake3::hash` replaces placeholder `Blake3Hash::zero()`; `blake3` added to workspace deps); closed-set `MessageTemplate` JSON serialization (`Diagnostic.message: Box<str>` → `Message`; renderer emits structured `{"template", "args"}`); `from_parsed_unchecked` adapter deletion (27 call sites). **NOT in scope**: the `(scheme, predicate-id)` 2-tuple `RuleId` form (post-PR-10 per FR-049). Pre-7c work confirmed all four commitments are fully reserved slots with no production wire-up (2026-05-14 audit); the bump is purely additive. Clean break preserved (FR-037 still binds — no accept-list, pre-cutover records unreadable). | (completes #257; closes the four non-`RuleId` §1+ audit-record commitments in `contracts/audit-record.md`) | III, V, VI, VIII |
 | 3.7 | **Lattice §-resolution spike**. Fill `2026-05-01-lattice-design.md` §§2–8 with §-citations, formal join semantics, worked examples, property fixtures. Resolve all eight §10 open items; **no "explicitly deferred to a tracked issue" escape valve**. Patch §3 Q3 (`noforn-clears-rel-to` is already a declared `PageRewrite` per CLAUDE.md "Phase B"; reframe as confirm-and-document). Add cross-axis dominance fixtures to §9 (FOUO eviction, FGI banner roll-up #276, SCI cross-system canonicalization). Named owner + deadline before merge. | (gate for PR 4) | VI, VIII |
 | 4 | Lattice-law foundation: per-category `Lattice` impls + property tests (now including cross-axis fixtures from PR 3.7). **`CapcoMarking::join`'s `PageContext` delegation deleted with no equivalence shim** (clean break). | (regression gate) | VI |
 | 5 | Widen `expected_classification()` → `Option<MarkingClassification>`; kill `MarkingClassification::Us` hardcode at `scheme.rs:365`; render-canonical drops redundant `FGI` token when trigraph present (#261 falls out) | #276 (partial), #261 | VI, VIII |
 | 6 | Drive `scheme.project(Scope::Page, ...)` from `Engine::lint`. **`PageContext` deleted at PR 6 merge** (was PR 10, collapsed here under clean break). PR 6 is structured as a three-commit sub-sequence: **commit 6a** wires `Scope::Page` projection behind a feature flag with `PageContext` still default; **commit 6b** runs `lint_100kb_multipage` Criterion bench against both paths and asserts projection ≤ baseline + 10%; **commit 6c** flips default to projection and deletes `PageContext`. The bench thus measures both during 6b and projection-only post-merge. | (cutover) | I, VI |
-| 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking). **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). Computed E003 confidence with `FeatureId::PrecedingFixPenalty`; suggested-reorder in E003 message. **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c (`marque-1.0` already covers `FeatureId::PrecedingFixPenalty`). | #272, #273, #274 | I, V, VI |
+| 7 | **Phase-tagged pass split**: rules declare `Phase::Localized \| WholeMarking` at registration (rules needing both phases register twice — see §9.1). Engine enforces I-18 (non-overlap), I-19 (reshape-aware whole-marking). **R002 diagnostic** for re-parse-failure (pass-1 fixes ship + R002 emits + pass-2 doesn't run; document state coherent). `FeatureId::PrecedingFixPenalty` variant lands; engine applies the penalty at the pass-2 confidence-threshold gate (E003 was retired in PR 3b.F → E060, so the penalty is engine-applied not rule-applied — see D-7.19). **`fix_10kb` Criterion bench gates this PR**. Audit schema unchanged from PR 3c.B Commit 10 (`marque-mvp-3` reserves slots for `FeatureId::PrecedingFixPenalty` and R002). Sub-PRs 7a/7b/7c per the PR-7 series; the `marque-mvp-3 → marque-1.0` cutover is **NOT** in PR 7's scope — see PR 3c.2 row above. | #272, #273, #274 | I, V, VI |
 | 8 | Decoder prose null hypothesis priors (`marque-priors-3` schema bump); fold bare `NATO {level}` to canonical NATO marking. **Note: third problem class (recognizer scoring quality) — outside the two underlying problems frame; this plan does not claim closure of #258/#260, only delivery of priors and folding logic.** | #258, #260 | III |
 | 9 | Parser separator spans (#106); 7B `dissem_us` / `dissem_nato` position-attributed fields; banner-validation rules migrate to `&ProjectedMarking`; declare missing `PageRewrite`s; ATOMAL/BOHEMIA recognition; NATO-portion-in-US-doc → REL TO USA, NATO derivation as declarative `Constraint` | #106, #270, #271, #265, #246, #264, #251 | IV, VI, VIII |
 | 10 | F.1 corpus gate maturation (full per-cited-authority coverage; was PR 11). 8C vendored-source registry declared (declarative-only). | #267 Gap C if not closed by 0.6 | VIII |
@@ -327,15 +358,21 @@ separate PR.
 
 ### Audit-schema cutover
 
-Under clean break, **one cutover, no accept-list**:
+Under clean break, **two-stage cutover** (amended 2026-05-14 to reflect PR 3c.B
+Commit 10's conservative landing; the `marque-1.0` envelope content deferred
+to PR 3c.2). No accept-list at either stage:
 
 | PR | Schema | Trigger | Compat |
 |----|--------|---------|--------|
-| 3c | `marque-mvp-2` → `marque-1.0` | `FixReplacement::Strict\|Decoder` discriminant + `Canonical` sealed constructor + `FixIntent` audit fields + `(scheme, predicate-id)` rule-ID form + `FeatureId::PrecedingFixPenalty` reserved | None. Pre-cutover records unreadable by the post-cutover binary. No reader crate. There are no records. |
+| 3c.B Commit 10 | `marque-mvp-2` → `marque-mvp-3` | `FixIntent \| TextCorrection` proposal sub-object envelope + content-ignorance closure (G13). Reserved slots: `FeatureId::PrecedingFixPenalty`, R002 diagnostic class. | None. Pre-cutover records unreadable. No reader crate. |
+| 3c.2 | `marque-mvp-3` → `marque-1.0` | `Canonical<S>` provenance wired into audit emit (`discriminant: "strict" \| "decoder"` + structured `canonical` sub-object) + BLAKE3 audit-record digesting + closed `MessageTemplate` JSON serialization + `from_parsed_unchecked` adapter deletion. | None. Clean break preserved. |
 
-PR 7 does NOT bump the schema — `FeatureId::PrecedingFixPenalty` is
-reserved in `marque-1.0` at PR 3c so that PR 7 ships data into a slot that
-already exists.
+PR 7 does NOT bump the schema — `FeatureId::PrecedingFixPenalty` and R002 are
+reserved in `marque-mvp-3` at PR 3c.B Commit 10 so PR 7 ships data into slots
+that already exist. The `(scheme, predicate-id)` 2-tuple `RuleId` form is NOT
+bundled with PR 3c.2; it defers further to post-PR-10 per FR-049 (the
+stability freeze begins at PR 10 merge; the 2-tuple change requires the
+freeze to be unfrozen, so it lands in its own dedicated post-keystone PR).
 
 PR 8's `marque-priors-3` is a *priors-bake* schema, not the audit schema.
 Bumped independently per Phase D conventions.
@@ -506,7 +543,7 @@ reshape across the keystone subsequence:
   `CanonicalAttrs::from_parsed_unchecked(...)` via the transitional
   adapter (`#[doc(hidden)]`). Touches every fixture but the migration is
   mechanical (sed-replaceable). Three revert points: revert PR 3a / no-op.
-- **PR 3b**: rule collapse 49 → ~10–13. Touches rule registration; some
+- **PR 3b**: rule collapse — qualitative per-sub-PR gate (amended 2026-05-07; numeric band retired; expected ~38–44 post-3b; see top-of-file banner). Touches rule registration; some
   fixtures consolidate as their rules consolidate. Independently
   revertable.
 - **PR 3c**: adapter delete + FixIntent + rule-ID retire + schema cutover.
@@ -732,9 +769,12 @@ failure modes; this section specifies the resolution.
 Each rule declares its phase at construction:
 
 ```rust
+#[non_exhaustive]
 enum Phase {
-    Localized,      // span MUST be strictly inside a single token boundary
-    WholeMarking,   // span MUST cover a full marking span
+    Localized,        // span MUST be strictly inside a single token boundary
+    WholeMarking,     // span MUST cover a full marking span
+    PageFinalization, // dispatched once per page on the page-level
+                      // Knaster-Tarski fixpoint (issue #461)
 }
 
 trait Rule {
@@ -743,9 +783,21 @@ trait Rule {
 }
 ```
 
-Engine enforces at registration:
+Per-phase span conventions (the engine does NOT mechanically enforce
+these — they are documented expectations for rule authors; the engine
+only provides `ctx.candidate_span` and the dispatch context):
 - `Phase::Localized` rule's `FixProposal::span` is sub-token-only.
 - `Phase::WholeMarking` rule's span covers a full marking.
+- `Phase::PageFinalization` rule's `Diagnostic.span` is the
+  engine-provided boundary anchor — a zero-length `Span` at the
+  `PageBreak` byte offset, or `source.len()` at end-of-document —
+  unless the rule refines it. Refinement requires per-portion span
+  data; `PageContext` today stores only `Box<[CanonicalAttrs]>` with
+  no per-portion spans, so the boundary anchor is the only span the
+  rule can produce without extending the hot-path data type. A
+  future enhancement that adds spans to `PageContext` (or threads a
+  span-lookup helper into `RuleContext`) would let rules anchor on
+  the specific offending portion.
 
 Each rule belongs to exactly one phase. If a defect class genuinely
 needs detection in both phases (rare), register two rule entries
@@ -754,7 +806,75 @@ sharing a backend module — one `Phase::Localized`, one
 dispatch contract single-valued at registration and surfaces the
 "this rule is doing two distinct jobs" cost at the rule-set level
 where it can be reviewed, rather than hiding it behind a `Both`
-escape hatch.
+escape hatch. The rationale extends to `Phase::PageFinalization`
+without change: a rule needing both a per-marking pass and the
+page-level fixpoint registers two entries.
+
+#### 9.1.1 Phase::PageFinalization (issue #461)
+
+PageFinalization is the third dispatch bucket. It exists because
+three rule classes (W004 joint-disunity-collapse from issue #461,
+S005 rel-to-opaque-uncertain-reduction from issue #488 — PR #488
+also collapsed the historical S005/S006 Suggest/Info split into
+single S005 since CAPCO-2016 §H.8 + §D.2 Table 3 rule 21 don't
+distinguish "active validation" from "consistent case"; the split
+was an engine-workaround for per-rule severity override, not
+§-grounded — and the scheduled S007 +
+`BannerMatchesProjectedRule` migrations) need to observe the
+**closed** page-level state — the Knaster-Tarski fixpoint of every
+page-axis lattice (classification, SCI, SAR, AEA, dissem, REL TO,
+FGI marker) — not an intermediate PageContext snapshot tied to a
+Banner candidate's arrival ordering.
+
+The engine synthesizes a single dispatch per page-boundary:
+
+- At every scanner-emitted `MarkingType::PageBreak`, BEFORE the
+  PageContext reset (so the closing page's final state is what the
+  rule sees).
+- Once at end-of-document, so trailing portions on a banner-first
+  layout with no closing banner still observe the fixpoint. This
+  closes the documented W004 false-negative on banner-first layouts.
+
+**Empty-page skip invariant.** The dispatch helper's caller guards
+on `!page_context.is_empty()`. An empty page (banner-only document,
+or a stray `\f` before any portions) costs zero rule dispatches and
+no `PageContext::project` call. Rules MUST NOT assume PageFinalization
+fires on every page-boundary candidate the scanner emits; they fire
+once per page that accumulated at least one portion.
+
+**`page_context` / `page_marking` force-init.** Both `RuleContext`
+Arcs are force-initialized to `Some(_)` before invoking a
+PageFinalization rule. Defensive `.as_ref()?` early-returns are
+belt-and-suspenders rather than necessary correctness.
+
+**No-fix emission convention.** Today's consumers (W004 from issue
+#461; S005 from issue #488) emit diagnostics without `FixProposal`
+— W004's JOINT→FGI migration is renderer-canonical territory
+(PR 5+ Stage 4); S005's REL TO membership-uncertainty is not
+resolvable from in-tree data (only the producer's external
+membership data can settle it). A future fixable
+PageFinalization rule will need to thread the synthetic boundary
+candidate through the existing two-pass fix pipeline. The
+`TwoPassFixer` naming reflects fix-application passes — pass-1
+Localized splice → re-parse → pass-2 WholeMarking apply_intent —
+and stays accurate: PageFinalization rules ride pass-2 at fix-time
+if they ever produce fixes.
+
+**Audit-content-ignorance (Constitution V Principle V G13).** Same
+as every other phase: PageFinalization diagnostic messages MUST NOT
+contain document bytes. W004 carries this property by emitting only
+canonical `CountryCode` trigraphs from the `JointSet` projection.
+S005 (PR #488) carries it by emitting only canonical CAPCO REL TO
+codes from the closed vocabulary plus verbatim ODNI taxonomy
+`<Description>` text from `lookup_tetragraph_provenance` — neither
+source can leak document bytes.
+
+`Phase` is `#[non_exhaustive]` so future dispatch phases (e.g., a
+document-finalization pass once cross-page rules land) can be added
+as non-breaking changes. The wildcard arm in
+`partition_rules_by_phase` panics on an unknown variant rather than
+silently bucketing into an existing pass — the dispatch path stays
+explicit.
 
 ### 9.2 I-18 — span non-overlap between passes
 
@@ -886,19 +1006,32 @@ Post-clean-break:
   positive enforcement; comment-propagated absence is the failure mode
   the murder board (W6) called out.
 
-### 10.2 Cutover composition
+### 10.2 Cutover composition (amended 2026-05-14)
 
-PR 3c bumps `marque-mvp-2 → marque-1.0` and bakes in:
+The originally-planned single `marque-mvp-2 → marque-1.0` cutover at PR 3c
+split into two stages in practice. PR 3c.B Commit 10 landed the conservative
+half; PR 3c.2 lands the rest.
 
-- `FixReplacement::Strict | Decoder` discriminant on `FixProposal::replacement`.
-- `Canonical<S>` provenance-tagged shape (`source: TokenSource::Cve(_) | OpenVocab { ... }`).
+**PR 3c.B Commit 10** bumped `marque-mvp-2 → marque-mvp-3` and baked in:
+
+- `FixIntent | TextCorrection` discriminated proposal sub-object envelope (top-level `original`/`replacement` byte fields retired — content-ignorance G13 closure).
 - `FixIntent<S>` rule-emission audit fields.
-- `(scheme, predicate-id)` rule-ID form replacing `E###`/`W###`/`S###`/`C###`.
-- Reserved slot for `FeatureId::PrecedingFixPenalty` (PR 7 fills it; no schema bump needed at PR 7).
-- Reserved slot for R002 diagnostic class (PR 7 fills it).
+- Reserved slot for `FeatureId::PrecedingFixPenalty` (PR 7 fills it; no schema bump at PR 7).
+- Reserved slot for R002 diagnostic class (PR 7b filled it).
 
-**One audit-schema bump for the entire refactor sequence.** PR 8 bumps
-the *priors* schema (`marque-priors-3`) — that's a separate
+**PR 3c.2** bumps `marque-mvp-3 → marque-1.0` and bakes in:
+
+- `Canonical<S>` provenance wired into audit emit paths (`discriminant: "strict" | "decoder"` + structured `canonical` sub-object per `contracts/audit-record.md` §1).
+- BLAKE3 audit-record digesting (real `blake3::hash` replaces placeholder `Blake3Hash::zero()`; `blake3` added to the workspace dep graph).
+- Closed-set `MessageTemplate` JSON serialization (`Diagnostic.message: Box<str>` → `Message`; renderer emits structured `{"template", "args"}`).
+- `from_parsed_unchecked` adapter deletion (27 call sites migrated to the post-keystone path).
+
+**NOT in PR 3c.2's scope**: the `(scheme, predicate-id)` 2-tuple `RuleId` form.
+The original PR 3c plan included it, but FR-049 (stability-freeze rule) makes
+the 2-tuple change a post-PR-10 operation. The 2-tuple migration lands in its
+own dedicated post-keystone PR after the freeze is unfrozen.
+
+PR 8 bumps the *priors* schema (`marque-priors-3`) — that's a separate
 build-time-baked artifact, not the audit schema.
 
 ### 10.2.1 Audit-record JSON shape sketch (post-cutover)
@@ -1141,7 +1274,7 @@ this is a one-field extension.
 | #258 | 8 | Decoder prose null hypothesis priors (third problem class — acknowledged not closed by this plan) |
 | #260 | 8 | Decoder folds bare NATO {level} (third problem class — same) |
 | #261 | 5 | `FgiSet` render-canonical drops redundant `FGI` |
-| #263 | 3b | Rule collapse 49 → ~10–13 |
+| #263 | 3b | Rule collapse — qualitative per-sub-PR gate (amended 2026-05-07; PR-3b-proper numeric band retired; expected ~38–44 post-3b; end-state ~10 across stages 1–4) |
 | #264 | 9 | Banner-validation migration |
 | #265 | 9 | NATO-portion-in-US-doc → REL TO USA, NATO declarative `Constraint` |
 | #266 | — | Deferred (CAB out of immediate scope) |

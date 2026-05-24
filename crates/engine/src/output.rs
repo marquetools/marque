@@ -4,7 +4,10 @@
 
 //! Output types returned by the engine's synchronous API surface.
 
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_capco::CapcoScheme;
+use marque_rules::Diagnostic;
+use marque_rules::audit::{AppliedFix, AppliedTextCorrection, AuditLine};
+use secrecy::SecretSlice;
 
 /// Result of a lint pass — diagnostics without source modification.
 ///
@@ -23,26 +26,17 @@ use marque_rules::{AppliedFix, Diagnostic};
 /// result.diagnostics.clear();
 /// ```
 ///
-/// Spec 005 added `truncated`, `candidates_processed`, and
-/// `candidates_total` to surface deadline-driven cooperative
-/// cancellation.
-///
-/// **Phase 1 status (current build):** deadline enforcement is not
-/// wired yet. Lint passes run to completion regardless of
-/// `LintOptions::deadline`, so `truncated` is always `false` and
-/// both candidate-count fields are always `0`. The semantics below
-/// describe the Phase 2 behavior that lands in tasks T007–T009.
-///
-/// Once Phase 2 wiring lands: a fully completed pass reports
-/// `truncated: false` with `candidates_processed ==
-/// candidates_total`. An already-expired deadline returns
-/// immediately with `truncated: true` and both counts at `0`.
-/// Mid-document expiry produces `truncated: true` with
+/// `truncated`, `candidates_processed`, and `candidates_total` surface
+/// deadline-driven cooperative cancellation. A fully completed pass
+/// reports `truncated: false` with `candidates_processed ==
+/// candidates_total`. An already-expired deadline returns immediately
+/// with `truncated: true` and both counts at `0`. Mid-document expiry
+/// produces `truncated: true` with
 /// `0 < candidates_processed < candidates_total`.
 #[non_exhaustive]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LintResult {
-    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics: Vec<Diagnostic<CapcoScheme>>,
     /// `true` when the lint pass aborted before processing every
     /// scanner-emitted candidate due to deadline expiry. The
     /// `diagnostics` vector contains every diagnostic produced from
@@ -68,6 +62,17 @@ pub struct LintResult {
     /// post-scanner, pre-rule-loop count). Populated from the
     /// scanner output regardless of whether the pass completed.
     pub candidates_total: usize,
+    /// Number of candidates that produced a `Parsed::Unambiguous`
+    /// recognition (i.e., the recognizer returned a marking, not
+    /// `Ambiguous`). Distinct from `candidates_processed`, which
+    /// counts every iteration the engine started — including
+    /// ambiguous-recognition skips and page-break resets. Used by
+    /// `TwoPassFixer`'s R002 trigger to detect "pass-1 splice
+    /// destroyed marking shape" without depending on the issue
+    /// #433 deferred `parsed_markings` cache, whose population is
+    /// gated on `d.fix.is_some()` and so does not reflect every
+    /// recognized marking.
+    pub recognized_marking_count: usize,
 }
 
 impl LintResult {
@@ -117,37 +122,148 @@ impl LintResult {
     }
 
     /// Number of diagnostics that are configured at `Severity::Fix` AND
-    /// carry an actual `FixProposal`. A diagnostic at `Fix` severity but
-    /// with `fix: None` is not counted, since it cannot produce an
-    /// `AppliedFix` downstream.
+    /// carry an actionable payload (`Diagnostic.fix` or
+    /// `Diagnostic.text_correction`). A diagnostic at `Fix` severity
+    /// with neither populated is not counted, since it cannot produce
+    /// an `AppliedFix` or `TextCorrection` downstream.
+    ///
+    /// Both arms are counted because rules emit either `d.fix` or
+    /// `d.text_correction`. The server's response struct ([`marque_server`])
+    /// and CLI exit-code summary both depend on `fix_count` matching the
+    /// eventual `applied.len()` from `Engine::fix`.
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
         self.diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Fix && d.fix.is_some())
+            .filter(|d| {
+                d.severity == Severity::Fix && (d.fix.is_some() || d.text_correction.is_some())
+            })
             .count()
     }
 }
 
 /// Result of a fix pass — modified source and audit trail.
+///
+/// `#[non_exhaustive]` so future audit-stream additions land
+/// additively without breaking external brace constructions.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct FixResult {
     /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
-    pub source: Vec<u8>,
-    /// Audit records for every fix that was applied.
-    pub applied: Vec<AppliedFix>,
+    ///
+    /// Wrapped in [`secrecy::SecretSlice<u8>`] per Constitution Principle II
+    /// (Marque-owned content-bearing buffers wipe on drop). Readouts go
+    /// through [`secrecy::ExposeSecret::expose_secret`] which returns
+    /// `&[u8]` — every readout site is grep-able for security review. The
+    /// `Debug` impl auto-redacts to `SecretBox<[u8]>([REDACTED])`, closing
+    /// the accidental-log channel. Marque's responsibility ends at the
+    /// `SecretSlice` boundary: a caller that clones the inner bytes
+    /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
+    /// owns the clone's lifecycle.
+    pub source: SecretSlice<u8>,
+    /// Audit stream. A single [`AuditLine<CapcoScheme>`] stream preserves the
+    /// confidence-then-span promotion-order invariant across the
+    /// marking-fix channel (`AuditLine::AppliedFix`) and the
+    /// text-correction channel (`AuditLine::TextCorrection`). The
+    /// renderer projects each line to its NDJSON record type. This is
+    /// the sole audit-output channel.
+    pub audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
-    pub remaining_diagnostics: Vec<Diagnostic>,
+    pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
+    /// `true` when pass-1 re-parse failed and the engine emitted an
+    /// `R002` synthetic diagnostic. When set:
+    ///
+    /// - [`Self::source`] holds the post-pass-1 buffer ONLY. Pass-2
+    ///   never ran, so any pass-2 fixes that would have applied are
+    ///   absent from [`Self::audit_lines`].
+    /// - [`Self::remaining_diagnostics`] contains the R002 diagnostic
+    ///   (and any other unfixed pass-1 diagnostics).
+    /// - WASM / IDE consumers MUST test this field BEFORE applying
+    ///   [`Self::source`] to the user's editor; splicing the
+    ///   partial buffer in silently is destructive without consent.
+    /// - The CLI exit-code precedence chain
+    ///   (`EX_R002_PARTIAL > EX_DIAG_ERROR > EX_DIAG_WARN > EX_OK`)
+    ///   maps this to exit code `3`. See `marque/src/main.rs::merge_exit_code`.
+    ///
+    /// The flag exists so consumers can detect R002 without scanning
+    /// the diagnostic stream (D1's "detectable without NDJSON
+    /// parsing" binding constraint). A second synthetic-error
+    /// boolean lands cleanly on the same surface; a third synthetic
+    /// signal would suggest collapsing to a `partial_state:
+    /// PartialState` enum.
+    pub r002_fired: bool,
+}
+
+impl FixResult {
+    /// Iterate marking-side audit lines (zero-alloc filter view).
+    ///
+    /// The sole audit-output channel is [`Self::audit_lines`]: a
+    /// sum-type stream (`AuditLine::AppliedFix` for marking fixes,
+    /// `AuditLine::TextCorrection` for the text-correction path). This
+    /// accessor exposes a marking-fix-only read shape for consumers that
+    /// don't need to pattern-match the sum type.
+    ///
+    /// # Zero-alloc
+    ///
+    /// Returns `impl Iterator<Item = &AppliedFix<CapcoScheme>>` —
+    /// each invocation walks [`Self::audit_lines`] lazily without
+    /// allocating an intermediate `Vec`. Callers that need `.len()`
+    /// or `.is_empty()` use `.count()` / `.next().is_none()`
+    /// respectively (or `Iterator::collect` into a local `Vec` when
+    /// the same fixes need to be visited twice).
+    #[inline]
+    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<CapcoScheme>> {
+        self.audit_lines.iter().filter_map(|line| match line {
+            AuditLine::AppliedFix(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    /// Iterate text-correction audit lines (zero-alloc filter view).
+    ///
+    /// Mirrors [`Self::applied_fixes`] for the
+    /// `AuditLine::TextCorrection` arm — C001 corrections-map fixes
+    /// and the E006-shaped deprecation-migration path. Same zero-
+    /// alloc property; same `.count()` / `.next().is_none()` idiom
+    /// for length / emptiness checks.
+    #[inline]
+    pub fn applied_text_corrections(&self) -> impl Iterator<Item = &AppliedTextCorrection> {
+        self.audit_lines.iter().filter_map(|line| match line {
+            AuditLine::TextCorrection(tc) => Some(tc),
+            _ => None,
+        })
+    }
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_core::Span;
-    use marque_rules::{Diagnostic, RuleId, Severity};
+    use marque_rules::{Diagnostic, Message, MessageArgs, MessageTemplate, RuleId, Severity};
+    use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef, Span};
+
+    /// Test-fixture `Message` stub mirroring the helper in
+    /// `engine.rs::tests`. Used by `LintResult` shape tests that do
+    /// not exercise message content.
+    #[inline]
+    fn stub_message() -> Message {
+        Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
+    }
+
+    /// Test-fixture `Citation` stub mirroring the helper in
+    /// `engine.rs::tests`. Uses `AuthoritativeSource::EngineInternal`
+    /// (non-CAPCO sentinel per PM-C-4) so citation-lint skips this
+    /// entry — these stubs are test fixtures, not real CAPCO citations.
+    #[inline]
+    fn stub_citation() -> Citation {
+        Citation::new(
+            AuthoritativeSource::EngineInternal,
+            SectionRef::new(SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        )
+    }
 
     #[test]
     fn is_clean_returns_true_when_no_diagnostics() {
@@ -162,11 +278,12 @@ mod tests {
     fn is_clean_returns_false_when_has_diagnostics() {
         let dirty_result = LintResult {
             diagnostics: vec![Diagnostic::new(
-                RuleId::new("E001"),
+                // Synthetic test fixture in the reserved `"test"` scheme.
+                RuleId::new("test", "synthetic.is-clean-fixture"),
                 Severity::Error,
                 Span::new(0, 0),
-                "test",
-                "test",
+                stub_message(),
+                stub_citation(),
                 None,
             )],
             ..Default::default()
@@ -176,7 +293,7 @@ mod tests {
 
     #[test]
     fn info_count_isolates_info_from_error_and_warn() {
-        // T035c-2: `Severity::Info` diagnostics count in `info_count()`
+        // `Severity::Info` diagnostics count in `info_count()`
         // only — they do NOT contribute to `error_count()` or
         // `warn_count()`. Critical because the CLI has two non-zero
         // exit gates: `error_count() > 0 || fix_count() > 0` maps to
@@ -188,35 +305,36 @@ mod tests {
         let result = LintResult {
             diagnostics: vec![
                 Diagnostic::new(
-                    RuleId::new("W034"),
+                    RuleId::new("capco", "portion.sci.unpublished-custom-control"),
                     Severity::Info,
                     Span::new(0, 0),
-                    "info one",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("W034"),
+                    RuleId::new("capco", "portion.sci.unpublished-custom-control"),
                     Severity::Info,
                     Span::new(0, 0),
-                    "info two",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("W003"),
+                    RuleId::new("capco", "page.dissem.non-ic-dissem-in-classified-banner"),
                     Severity::Warn,
                     Span::new(0, 0),
-                    "warn",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
                 Diagnostic::new(
-                    RuleId::new("E001"),
+                    // Synthetic test fixture to exercise error_count().
+                    RuleId::new("test", "synthetic.error-count-fixture"),
                     Severity::Error,
                     Span::new(0, 0),
-                    "err",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
             ],

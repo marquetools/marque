@@ -21,18 +21,18 @@ jobs:
       contents: read
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
-      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 5
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@934b2d2c7e653bb8c968afed5a0428617f09aa24
+        uses: tj-actions/changed-files@43de409b69c2e1c66c1291a1285ca88301e1efd6
         with:
           since_last_remote_commit: true
       - name: Scan for ANSI/Unicode threats in files
         id: scan-files
-        uses: marquetools/.github/actions/strip-ansi@d17343622078c19976da6edc4a295f484e1d93ab
+        uses: marquetools/.github/actions/strip-ansi@a573a9da154ca03d98deab2cee704728a58d8589
         with:
           files: ${{ steps.changed-files.outputs.all_changed_files }}
           github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
@@ -51,10 +51,10 @@ jobs:
       issues: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 5
-      - uses: marquetools/.github/actions/strip-ansi@d17343622078c19976da6edc4a295f484e1d93ab
+      - uses: marquetools/.github/actions/strip-ansi@a573a9da154ca03d98deab2cee704728a58d8589
         id: issue-scan
         name: Scan for ANSI/Unicode in Issue Comments
         with:
@@ -77,10 +77,10 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 5
-      - uses: marquetools/.github/actions/strip-ansi@d17343622078c19976da6edc4a295f484e1d93ab
+      - uses: marquetools/.github/actions/strip-ansi@a573a9da154ca03d98deab2cee704728a58d8589
         name: Scan for ANSI/Unicode in PR Review Comments
         id: pr-scan
         with:

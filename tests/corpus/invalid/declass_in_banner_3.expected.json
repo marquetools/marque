@@ -1,5 +1,5 @@
 {
   "diagnostics": [
-    {"rule": "E005", "span": {"start": 12, "end": 20}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.declassification.declassify-on-misplaced"}, "span": {"start": 12, "end": 20}}
   ]
 }

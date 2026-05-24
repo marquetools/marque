@@ -68,13 +68,9 @@ constraint is detection without JSON parsing.
 
 ---
 
-### D2 — PR 3.7 stall-recovery
+### D2 — PR 3.7 monolithic shape
 
-**Decision**: PR 3.7 stays **monolithic** (no wave-split). NEW
-requirement: a **named alternate owner** in the PR description who
-has independently read §§2–8 of `2026-05-01-lattice-design.md`
-*before PR 3c merges*. The alternate takes ownership without
-escalation if the primary owner stalls past 1 week.
+**Decision**: PR 3.7 stays **monolithic** (no wave-split).
 
 **Lands in**: `spec.md` Assumptions section amendment (PR 3.7 entry).
 
@@ -83,11 +79,25 @@ property — PR 4 deletes `CapcoMarking::join`'s PageContext
 delegation "with no equivalence shim," which forbids partial lattice
 coverage. Cross-axis fixtures span categories (FOUO eviction depends
 on classification AND dissem lattices) and cannot wave-isolate.
-Bus-factor mitigation via alternate owner is cheaper than scope
-mitigation via split, without compromising PR 4.
+Monolithic shape preserves PR 4's clean break.
 
-**Audibles permitted**: deadline slip beyond 2 weeks still requires
-explicit team review (existing constraint preserved).
+**Amendment (2026-05-13)**: The original D2 also required a **named
+alternate owner** in the PR description as a bus-factor mitigation
+for stall scenarios. That requirement is **retired** because marque
+is a solo-driven project today — the bus-factor framing presupposed a
+team context that doesn't apply. The alternate-owner gate served no
+purpose when the same person is both primary and (de facto) alternate;
+it would only add ceremony. Stall-recovery in the solo context
+collapses to "PR sits open until the primary picks it back up." If
+marque transitions to multi-contributor staffing the requirement can
+be re-introduced via a follow-on amendment.
+
+**Audibles permitted**: deadline slip beyond 2 weeks still warrants
+self-review of scope and either an explicit re-commitment or a
+strategic split. The "2 weeks" framing predates the solo-project
+amendment but the underlying signal — "this PR has been open
+unusually long; is something stuck?" — remains a useful sanity check
+to self-apply.
 
 ---
 
@@ -219,22 +229,70 @@ The TOML schema is small and stable.
 ### D8 — Cumulative bench drift assertion
 
 **Decision**: At PR 10, re-run all per-PR bench comparisons against
-the PR-0 baseline (R-5) on **pinned bench hardware**. Per-bench
-cumulative drift ≤10% is the gate; per-PR contributions exceeding
-6% are flagged for attribution. Bench hardware is **pinned for the
-duration of the refactor** (decision recorded in PR 0).
+the PR-0 baseline (R-5). Per-bench cumulative drift ≤10% is the
+gate; per-PR contributions exceeding 6% are flagged for attribution.
+
+**Bench-runner pin** (amended PR 0 review): the marque project runs
+on standard GitHub Actions hosted runners (`ubuntu-latest`,
+currently `ubuntu-24.04` — see
+`https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md`).
+Custom or rented bare-metal runners are out of budget. Bench-runner
+"pinning" therefore degrades to:
+
+- All bench captures run on `ubuntu-latest` GitHub-hosted runners.
+- Image versions advance over the refactor's calendar window as
+  GitHub rotates the runner pool; **the project explicitly accepts
+  the resulting variance** (acknowledged by the bench-runner owner
+  in the PR-0 review thread). Pinning to a specific image SHA
+  would not eliminate variance because each build runs on a fresh
+  shared VM with different co-tenants on the same image.
+- The `bench_runner_owner` (D8 owner: `bashandbone`) is responsible
+  for re-running the PR-0 baseline capture if a runner-image
+  rotation produces clearly anomalous deltas, but is NOT obligated
+  to reconcile every percent-level drift.
+
+**Implications for FR-033 / FR-050 gates**:
+
+- **FR-033** (>5% mean OR p99 regression backs out the originating
+  change) — remains binding per-PR, with the standing caveat that a
+  PR may legitimately re-test on a fresh runner if a single CI
+  invocation produces a borderline reading. The
+  `MARQUE_BENCH_SKIP_REGRESSION=1` escape hatch already documented
+  in `scripts/bench-check.sh` is the canonical mechanism for the
+  rare case of a confirmed runner-variance false positive.
+- **FR-050** (cumulative drift ≤10% at PR 10) — the gate stays at
+  the same threshold; whether shared-runner variance produces enough
+  noise to make the gate flap or fail is empirical. The bench-runner
+  owner has observed in prior project history that drift on this
+  runner family routinely reaches 10% and "often tips into 11%" —
+  that's a known baseline-quality signal, not necessarily a runtime
+  regression. **Mitigation in the bench-runner owner's hands**:
+  capture the PR-0 baseline by sampling at multiple times of day
+  (including known-busy windows) and either (a) take the worst
+  observed run as the baseline (conservative), (b) take the median
+  across N captures (robust), or (c) take the slowest-decile
+  per-bench across N captures (adversarial). The existing
+  `scripts/capture-baselines.sh` runs ONE capture per invocation;
+  multi-capture aggregation is currently a manual procedure the
+  owner can re-run as needed. If the gate flaps in practice DESPITE
+  a robust baseline, widen the tolerance in a follow-up amendment
+  and document the runner-variance-attributed delta separately. Do
+  NOT silently relax the gate without recording the rationale.
 
 **Lands in**:
 - `plan.md` Risk section / FR-033 enforcement note.
-- PR 0 description records the chosen bench-runner commitment
-  (rented bare-metal vs. dedicated GitHub-hosted runner spec).
+- PR 0 description records the bench-runner commitment as
+  "GitHub Actions hosted `ubuntu-latest`, owner: bashandbone."
 
-**Rationale**: Hardware drift over the refactor's calendar window
+**Rationale**: hardware drift over the refactor's calendar window
 (CI runner upgrades, kernel changes, runner capacity adjustments)
-can account for several percent of baseline shift independent of
-code. Pinned hardware is the only honest comparison mechanism.
-Per-PR attribution gives diagnostic power if the cumulative gate
-fails — pinpoints which PR contributed most.
+remains a real source of baseline shift independent of code. The
+ideal mitigation is pinned hardware; the realized mitigation given
+project budget is "same runner family, accept the variance, surface
+clearly anomalous deltas via per-PR attribution." Per-PR attribution
+keeps the diagnostic power of the gate even under variance — a 6%
+single-PR contribution is detectable above runner noise; a 1% drift
+that compounds across 10 PRs may not be, but is also less actionable.
 
 ---
 
@@ -340,8 +398,23 @@ the trait method is the actual failure pattern. Rust stdlib uses
 
 ### D13 — Rule-collapse band
 
-**Decision**: 56 → **8–18 rule count band** post-PR-3b + qualitative
-gate. Each surviving rule MUST satisfy:
+> **Superseded 2026-05-07** (initial amendment) **and 2026-05-07**
+> (PR-3b-numeric-band retirement). The original D13 "56 → 8–18
+> post-PR-3b" target and "single CAPCO-§ citation per rule" wording
+> below are retained for historical reference but **superseded by
+> the two-pass Amendment 2026-05-07 below**. Operative interpretation:
+> source count is **59** (not 56); the PR-3b-proper numeric band is
+> **retired** (the literal sub-move retirements deliver ~38–44; the
+> per-sub-PR principle is "drive the count down within the sub-move's
+> primitive scope," not "hit a band"); end-state target ~10 surviving
+> rules across all four stages stays binding; "single citation"
+> applies **per declarative catalog entry**, not per `impl Rule`
+> block. Read the amendment, not this block, for binding acceptance
+> criteria.
+
+**Decision (original, superseded 2026-05-07)**: 56 → **8–18 rule
+count band** post-PR-3b + qualitative gate. Each surviving rule
+MUST satisfy:
 
 1. A single CAPCO-§ citation (no rule cites more than one §).
 2. Predicate body has ≤3 internal branches (measured by
@@ -358,6 +431,112 @@ branching is "in band" but worse than a team landing at 19 with
 clean predicates. Pairing the count with a qualitative gate (single
 citation, branch limit, reviewer attestation) prevents both failure
 modes — under-collapse and over-collapse-with-brittle-branching.
+
+#### D13 — Amendment 2026-05-07 (consultation verdict)
+
+The marque-lattice-consultant pass on PR 3b (recorded at
+`docs/plans/2026-05-07-pr3b-consultation-verdict.md`; algebraic
+justification in `marque-applied.md` §3 + §3.11) re-baselines and
+re-sequences D13 without removing it.
+
+**Re-baseline.** Source rule count is **59** (ground-truth
+`grep -c '^impl Rule for' rules.rs rules_declarative.rs
+rules_sci_per_system.rs`, not the "~56" approximation the
+lattice-design plan carried).
+
+**Re-sequence (initial 2026-05-07).** The 8–18 band was originally
+intended as the **end-state** acceptance target (post-Stage-4); the
+**PR 3b proper** target was originally **13–18**, with collapse to
+9–11 staged across PR 3.7, PR 4, and PR 5+. The full staging table
+and the six PR 3b sub-moves (3b.A–3b.F) are pinned in `plan.md` D13
+addendum.
+
+**Re-baseline (subsequent 2026-05-07, retiring the PR-3b numeric
+band).** The planning pass on T026a (PR 3b sub-move A) found that the
+literal sub-move retirements deliver −15 to −21 rules across
+3b.A–3b.F, landing at **~38–44 post-3b** — outside any 13–18 band by
+construction. The 13–18 figure was an aspirational projection that
+assumed aggressive walker-style consolidation beyond what the
+authorized primitives in 3b.A–3b.F permit (e.g., compacting all 14
+`rules_declarative.rs` entries into a single walker, which the bridge
+§3.4 does not prescribe). Rather than relax the primitives' scope or
+shed declarative-catalog discipline, the band itself retires. The
+operative gate becomes per-sub-PR: each sub-move drives the count
+down within what its authorized primitive scope (the bridge §3.4
+moves) permits, declares the math in its PR description, and earns
+team review only when retirements stray outside the bridge's
+primitives. The end-state target stays at **~10 surviving rules**
+across all four stages; Stage 3 (PR 4 per-category Lattice impls)
+and Stage 4 (PR 5+ renderer) carry the heavy lifting toward that
+target. The Stage-by-Stage expected ranges (~38–44 → ~32–40 →
+~14–22 → ~10) live in `plan.md` D13 addendum as guidance, not
+acceptance gates.
+
+**Resolved sub-decisions**:
+
+- **Q-3.9** ("single citation per rule" — does it mean per `impl Rule`
+  block or per declarative entry?) → **per declarative entry**.
+  Consolidated walkers (3b.A banner, 3b.C RELIDO, 3b.D floors, 3b.E
+  SCI per-system) are each one `impl Rule` block delegating to a
+  catalog whose rows each carry their own §-citation. Citation
+  integrity per Constitution VIII is per-claim, not per-block.
+- **Q-3.4.2-timing** (where does the family-predicate `Constraint::
+  Conflicts::RhsFamily(predicate)` variant land?) → **fold into
+  PR 3.7**. The lattice §-resolution spike already touches
+  `marque-scheme`; one variant addition fits. PR 3b ships the
+  enumerated form (~15–20 single-token rows); PR 4 compacts to 2
+  family rows.
+- **Q-4.7-timing** (where does the `marque-applied.md` §4.7 closure
+  operator primitive land?) → **fold into PR 3.7**. Same reason.
+  The implication tables and `proptest_closure.rs` ship with the
+  primitive; PR 4 wires CAPCO's `ClosureRule` catalog and
+  re-classifies closure-implied entries. (Catalog shape pivoted
+  2026-05-11 from private `ImplTable<S>` to public `ClosureRule` —
+  see D18.)
+- **Q-Move-7-timing** (where does style/ordering → renderer move
+  land?) → **PR 5+, with a single fallback walker retained in
+  PR 3b**. The renderer trait surface is a separate effort; PR 3b
+  retains one "non-canonical input" diagnostic walker covering
+  E020 / E023 / E028 / E033 ordering checks until the renderer
+  arrives.
+- **Q-FgiSet-vs-§4.8** (does existing `FgiSet::Present { concealed,
+  countries }` already model the §4.8 consensus-or-fallback pattern?)
+  → **yes** (user confirmation 2026-05-07): the FGI category is the
+  union of acknowledged foreign-government trigraphs unless any
+  portion is source-concealed, in which case the banner falls back to
+  bare `FGI`. The existing `FgiSet` join law (`concealed=true ∨ x =
+  concealed=true`; `{countries: A} ∨ {countries: B} = {countries: A
+  ∪ B}`) implements this exactly. **No new primitive needed**; T108d
+  collapses to **doc-comment amendment only** at
+  `crates/capco/src/lattice.rs` citing `marque-applied.md` §4.8 +
+  CAPCO §H.7 / §H.7 p123.
+
+**Open sub-decisions** (do NOT block PR 3b; flagged for follow-up):
+
+- **Q-3.4.6a** (class-floor catalog: build-time generated from
+  CVE/Schematron metadata, or hand-curated in `marque-capco`?) →
+  **hand-curated in PR 3b**, with a 30-minute spike to inspect ODNI
+  XML coverage tracked as a follow-up. If the schema carries floor
+  data uniformly, swap to build-time at the next ODNI schema bump.
+
+**Audibles permitted**: PR 3b reviewer may decline to land 3b.A
+(banner walker) if the per-category Lattice impls landing in PR 4
+preserve correctness via property-test-only coverage; in that case
+the walker is skipped at 3b and the 5 banner-roll-up rules retire
+in PR 4 directly. Documented as a 3b reviewer choice in the PR
+description.
+
+**Lands in**:
+- `plan.md` D13 addendum (re-sequenced staging table + sub-moves).
+- `tasks.md` T026 expansion to T026a–T026f; new T108b/T108c/T108d under
+  PR 3.7 for `RhsFamily` variant + closure operator primitive +
+  §4.8 `FgiSet` doc-comment amendment.
+- `docs/plans/2026-05-07-pr3b-consultation-verdict.md` — dated
+  decision record with the (a)/(b)/(c) verdicts.
+- `marque-applied.md` §3.10.3 timing correction + new §3.11 stage-
+  sequencing section.
+- `docs/plans/2026-05-01-lattice-design.md` §10 amendments
+  (closure operator + RhsFamily as PR 3.7 fill-in items).
 
 ---
 
@@ -428,6 +607,644 @@ queue management.
 
 ---
 
+### D17 — PR 3b.C scope correction: RELIDO Conflicts roster
+
+**Decision**: PR 3b.C ships exactly **4** `Constraint::Conflicts` rows
+(E054–E057), not the ~15–20 rows projected in the 2026-05-07 consultation
+verdict line 82. The broader §3.4.2 family roster (RELIDO ⊥ {LES-NF,
+SBU-NF, each FGI atom, each JOINT atom, each NATO atom}) is deferred to
+**PR 3.7 (T108b)** where `Constraint::Conflicts::RhsFamily(predicate)` ships.
+
+**Rationale (Constitution VIII)**: Re-verification of CAPCO-2016 against
+the consultant's `marque-applied.md §3.4.2` roster surfaces only four pairs
+with direct, re-traceable §-passage authority:
+
+| LHS | RHS | Primary citation | CAPCO-2016.md line |
+|-----|-----|------------------|--------------------|
+| RELIDO | NOFORN | §H.8 p154 | 3808 |
+| RELIDO | DISPLAY ONLY | §H.8 p154 | 3808 |
+| ORCON | RELIDO | §H.8 p136 | 3363 |
+| ORCON-USGOV | RELIDO | §H.8 p140 | 3444 |
+
+The remaining ~11–16 pairs are structural inferences (the consultant's
+"IDO has no authority over foreign equity" argument) without a verbatim
+§-passage saying "may not be used with RELIDO." Constitution VIII §3
+prohibits embedding citations that cannot be traced to a real passage —
+fabricating fifteen specific §-citations would be a correctness defect.
+
+At PR 3.7 the `RhsFamily(predicate)` variant ships. A single
+family-predicate row (or two — one per grouping) can carry the structural
+argument with one well-documented citation chain explaining the
+IDO-vs-foreign-equity reasoning, satisfying Constitution VIII without
+fabricating per-atom citations.
+
+**Net rule delta**: 57 → 61 (+4). Net constraint delta: 15 → 19 (+4).
+
+**Subtractive-fix direction (PM Addendum II, 2026-05-07; confidence
+calibration 2026-05-08).** All four wrappers emit a `FixProposal` that
+**removes RELIDO** from the dissem block (replacement = `""`, confidence
+= 0.95, `FixSource::BuiltinRule`, `Severity::Error`). The 0.95 value
+clears the engine's default `Config::confidence_threshold = 0.95`
+(`crates/config/src/lib.rs:156`; auto-apply gate is `confidence >=
+threshold`) so the fix auto-applies under default config — matching the
+user-stated guidance behavior ("remove RELIDO and tell them why"). The
+initial PM Addendum II §2 value of 0.9 was calibrated up after verifying
+the threshold default; the 0.85–0.9 tier is reserved for conditional /
+lower-confidence cases (`crates/capco/src/rules.rs:4465 / :4602 / :4962
+/ :5173`), and 0.95 matches the established CAPCO convention for
+definite, at-threshold, auto-apply fixes (`crates/capco/src/rules.rs:998
+/ :1327 / :2622 / :2777 / :2853`). RELIDO is the unambiguous
+remove-target because the
+other token in each pair carries the binding §-cited authority (NOFORN
+dominates per FD&R supersession; DISPLAY ONLY is a positive disclosure
+decision; ORCON / ORCON-USGOV explicitly assert "may not be used with
+RELIDO" on their §H.8 templates). The pattern applies to **dissem-axis
+`Constraint::Conflicts`** rules only — non-dissem conflicts (classification
+E012, JOINT cross-system, SCI grammar) remain "user resolves" because the
+fix direction cannot be inferred without policy input. Constitution V
+(audit-first) is preserved: `FixProposal` is pure data; the engine
+snapshots runtime state into `AppliedFix` at promotion. See PM Addendum II
+in `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md` for the full
+rationale and user-correction context (Marque is a guidance tool for
+dissem markings, not just a checker).
+
+**Verdict-line-82 amendment**: see `docs/plans/2026-05-07-pr3b-consultation-verdict.md` line 82 (amended in this PR).
+
+**Lands in**: PR 3b.C implementation, helper `compute_relido_removal_span`
+in `crates/capco/src/rules_declarative.rs`, test count pin in
+`crates/capco/tests/relido_conflicts.rs:capco_constraints_count_after_pr3b_c`,
+and the helper-position tests
+(`helper_first_position_consumes_trailing_slash`,
+`helper_middle_position_consumes_preceding_slash`,
+`helper_last_position_consumes_preceding_slash`,
+`helper_returns_none_when_relido_absent`).
+
+---
+
+### D18 — T108c catalog shape: public `ClosureRule` (Option C), not private `ImplTable<S>`
+
+**Decision**: PR 3.7 T108c ships the §4.7 closure operator as a
+**public** catalog primitive `ClosureRule` in `marque-scheme` (sibling
+to `Constraint`), accessed via a new `MarkingScheme::closure_rules()
+-> &[ClosureRule]` trait method. The private `ImplTable<S>` /
+`ImplRow<S>` shape pinned in the 2026-05-07 consultation verdict
+(line 113–114, item 5 — "trait shape pinned to α with default no-op;
+`ImplTable` as `&'static [ImplRow<S>]`") is **retired in favor of
+Option C**: the closure rules are first-class catalog data, not an
+engine-implementation-detail private structure.
+
+**Rationale**:
+
+1. **The bridge §3.0.b structure-vs-constraint distinction reads
+   cleanly as two parallel catalogs.** Phase A "structure rules"
+   (closure-shaped — adds facts when triggers fire) become
+   `&[ClosureRule]`. Phase B "constraint rules" (validation —
+   diagnoses violations of structural invariants) stay
+   `&[Constraint]`. Both are inspectable by tooling
+   (scheme-exploration UI, docs generator, catalog audit), both
+   per-scheme, both data-form. A private `ImplTable<S>` would hide
+   the closure rules from tooling and conflate "engine
+   implementation detail" with "scheme's declared semantics."
+
+2. **No fn-pointer trigger / suppressor bodies are needed for the
+   CAPCO catalog.** The 2026-05-07 pin specified `ImplRow = {
+   trigger: fn(&marking) -> bool, cone: ConeBuilder, suppressor:
+   fn(&marking) -> bool }` — function pointers for the predicate
+   bodies. Walking the bridge §4.7.1 implication list shows every
+   row reduces to "presence of any token in a fixed set" (n-ary OR
+   over `TokenRef`s); the function-pointer escape hatch is
+   unnecessary. `triggers: &'static [TokenRef]` + `suppressors:
+   &'static [TokenRef]` carry the same information in a
+   data-inspectable form. If a future scheme needs a
+   non-presence-shaped trigger, an `fn`-pointer variant can be
+   added then (YAGNI).
+
+3. **`Constraint::Implies` semantics are NOT promoted in this
+   pivot.** `Constraint::Implies` remains a diagnostic-suppression
+   hint (its current job — "if left is present, right is implied;
+   the engine skips false missing-X diagnostics"). The closure
+   operator's fact-propagation work flows through `ClosureRule`,
+   not through `Implies`. The two catalogs are independent.
+   **Superseded 2026-05-11 by D19 C**: a follow-on design pass
+   surfaced that closure-first evaluation makes `Constraint::Implies`
+   dead code — the implied fact is propagated before validation
+   runs, so "missing X" never fires — and that the variant has
+   zero in-tree CAPCO catalog rows. D19 C retires the variant
+   cleanly.
+
+4. **Engine call site is unchanged.** PR 4 (T112+) wires
+   `Engine::project` to call `scheme.closure(marking)` per the
+   §4.7.4 pipeline; the default `closure()` impl walks
+   `closure_rules()` to fixpoint. Engine code doesn't need to know
+   the catalog shape.
+
+5. **Shared-suppressor design** (Q-4.7-Cl_supp resolution) is
+   preserved verbatim — `FDR_DOMINATORS: &'static [TokenRef] = ...`
+   is referenced by every trio row that shares the FD&R suppressor.
+   One source of truth; rows reference by `&'static` slice
+   identity, not by row-duplication.
+
+**Decision pass context**: surfaced 2026-05-11 during a
+lattice-consultant Topic-2-variant-shape exploration (Topics 1 + 2
+in the closure-FCA-discuss worktree). User selected Option C +
+delete `ImplTable` after walking three variant-shape alternatives
+(A: enumerated single-trigger rows with shared suppressor pointer;
+B: first-class n-ary variant inside `Constraint::*`; C: separate
+catalog alongside `Constraint::*`). The consultant verdict file
+captures the analysis.
+
+**What changes for T108c**: trait method signatures + `ClosureRule`
+type definition + `closure_rules()` content (no `ImplRow<S>` /
+`ImplTable<S>` types introduced). Property-test obligations and
+the implicit-default trio data are unchanged. Class-floor entries
+still STAY in `Constraint::Custom` per §4.7.5.
+
+**What changes for PR 4**: wiring reads from `scheme.closure_rules()`
+or calls `scheme.closure()` (both public) at the §4.7.4 pipeline
+slot. Closure-implied entries that were `Constraint::Custom` /
+`Requires` rows in PR 3b flip to `ClosureRule` rows; the count
+delta projection in §3 of the 2026-05-07 consultation verdict
+(stage 2 row: "~−5 to −8 implication-shaped Requires entries flip
+to closure entries") is unchanged.
+
+**Lands in**:
+
+- `tasks.md` T108c amended to specify `ClosureRule` (not
+  `ImplTable<S>`); the trait surface gains `closure_rules()`
+  alongside `closure()`.
+- `docs/plans/2026-05-01-lattice-design.md` §9 amended.
+- `docs/plans/2026-05-07-pr3b-consultation-verdict.md` §5 item 5
+  ("trait shape pinned to α") annotated as superseded by D18.
+- `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md` §8
+  forward-reference updated.
+- `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md` §2
+  "stable ImplTable shape" wording updated to `ClosureRule`
+  catalog.
+
+---
+
+### D19 — Topic 1 design pass: `AuditNote` shape + per-row closure severity + `Constraint::Implies` retirement
+
+**Decision**: Three coordinated sub-decisions land alongside T108c's
+`ClosureRule` catalog (D18), folded into PR 3.7 as sibling tasks
+T108e / T108f / T108g.
+
+- **A. `AuditNote` type** (T108e) — new audit-stream record for
+  `ClosureRule` firings. Lives in `marque-rules` alongside
+  `AppliedFix`. Carries `rule: RuleId`, `citation: &'static str`,
+  `kind: AuditNoteKind`, engine-snapshotted runtime state
+  (`timestamp`, `classifier_id`, `dry_run`), and a structural-only
+  payload `AuditNoteStructural { row_name, cone: &'static [TokenId],
+  scope: Scope, span: Option<Span> }`. G13 invariant preserved by
+  construction: no document bytes traverse the audit pipeline —
+  only TokenIds, byte offsets, and catalog row identifiers.
+  Engine-promoted with `__engine_promote`-shaped sealing mirroring
+  `AppliedFix` (same Constitution V Principle V scope; same
+  test-fixture carve-out). Separate NDJSON line type
+  (`{"type":"audit_note", ...}`) distinct from
+  `{"type":"applied_fix", ...}`.
+
+  `AuditNoteKind` is closed-set; **v1 ships `InferredFact` only**.
+  Additional kinds (`SuppressedByFact`, `DisabledByConfig`) are
+  deferred to a debug-tracing follow-up — engineer-facing tools,
+  not load-bearing for compliance.
+
+  `Confidence` propagates from the underlying parse/recognition
+  into `AuditNote` (mirrors `AppliedFix.confidence`) so downstream
+  audits can ask "how confident was the recognition step that fed
+  this closure firing?"
+
+- **B. Per-row severity for `ClosureRule` rows in `.marque.toml`**
+  (T108f) — new `[closure_rules]` table in `.marque.toml`,
+  **separate from `[rules]`**, keyed by `ClosureRule.name` (e.g.,
+  `"capco/noforn-if-no-fdr"`). Same `Severity` enum and same
+  per-row override mechanic as `[rules]`, but a distinct section
+  rather than a shared keyspace — `RuleId` explicitly supports
+  slash-containing IDs per the `crates/rules/src/lib.rs:84` doc
+  ("E001", "capco/portion-mark-in-banner"), so a string-shape
+  disambiguation (slashes vs bare alphanumeric) would not hold.
+  Section isolation eliminates the collision risk entirely while
+  preserving the "same severity override surface" the user
+  requested (same enum, same per-row mechanic, same default-
+  fallback semantics).
+
+  Map per-row severity to closure-row semantics:
+
+  | Severity | Behavior |
+  |---|---|
+  | `Off` | Row disabled; no firing; no propagation; no `AuditNote` |
+  | `Suggest` | Fires; propagates; `AuditNote` at suggestion level |
+  | `Info` | (default) Fires; propagates; `AuditNote` at info level |
+  | `Warn` | Fires; propagates; `AuditNote` + `Diagnostic` (warn) surfaces |
+  | `Error` | Fires; propagates; `AuditNote` + `Diagnostic` (error) surfaces |
+  | `Fix` | **Rejected at config load** — closure firings are not byte-level fixes; load-time error points the user at `Info` / `Warn` / `Error` |
+
+  Default per row is `Info`. Catalog rows declare
+  `default_severity: Severity` on the `ClosureRule` struct itself
+  (always present per T108c — closure rows are severity-aware at
+  the catalog level; typically initialized to `Severity::Info`).
+  The runtime override surface in `.marque.toml` reads the
+  `[closure_rules]` table first; absent → falls back to
+  `ClosureRule.default_severity`. `[rules]` is NOT consulted for
+  closure-row severity — the section split is total, consistent
+  with the keyspace-collision rationale above.
+
+  Surface at `Warn` / `Error` produces a `Diagnostic` *in addition
+  to* the `AuditNote` from T108e — the two streams serve different
+  consumers (compliance reviewer vs. content author) and are not
+  conflated.
+
+- **C. `Constraint::Implies` retirement** (T108g) — the variant
+  becomes dead code in the post-T108c world: `ClosureRule`
+  propagates the implied fact; downstream `Requires` checks
+  evaluate against the *closed* marking; "missing X" false
+  positives disappear automatically. Grounded in code: zero
+  in-tree `Constraint::Implies` catalog rows in CapcoScheme
+  today (verified 2026-05-11). Only usage is the evaluator test
+  stub at `crates/scheme/tests/evaluator.rs:301`.
+
+  Retirement is a five-site surgical change (see T108g for the
+  call-site list). No CAPCO catalog data touched. Marque is
+  pre-users; no deprecation phasing per
+  `feedback_pre_users_no_deprecation_phasing.md`.
+
+  This narrowly supersedes D18 rationale bullet 3 — D18 preserved
+  `Implies` because the catalog-shape pivot did not surface the
+  redundancy question. D19 surfaces it: the redundancy IS
+  terminal, retire cleanly.
+
+  **Speculative-preservation rejected**: the only non-fact-
+  propagation reading of `Implies` worth naming is "left implies
+  right is the *preferred* rendered form but not required" — a
+  styling / codec preference, not a structural constraint. That
+  semantic belongs on a `Codec` / renderer trait surface
+  introduced at PR 5+, not on `Constraint`. Don't preserve
+  `Implies` today against hypothetical future use; re-add a
+  purpose-built trait surface when the use case actually arrives.
+
+**Rationale**:
+
+1. **User-stated priors** (2026-05-11 design pass): "lean
+   AuditNote type; same severity override surface" — directly
+   drives sub-decisions A and B.
+2. **G13 audit-content-ignorance preserved by construction** for
+   sub-decision A — `AuditNote` payload is structural only
+   (TokenIds, byte offsets, catalog row identifiers).
+3. **Closure-first evaluation makes `Implies` dead code** —
+   propagation runs before validation; suppression is automatic.
+4. **No user-visible breaking change** — marque is pre-users; the
+   `Constraint::Implies` variant has no production catalog rows
+   to migrate.
+
+**Decision pass context**: surfaced 2026-05-11 immediately after
+D18, in the same lattice-consultant Topic-1 design pass
+(closure-fca-discuss worktree). User selected option (1) —
+"approve A/B/C as written" — after the design pass laid out the
+three sub-decisions, the eight open questions, and the
+recommendations.
+
+**Lands in**:
+
+- `tasks.md` T108e (`AuditNote` type + emission), T108f (per-row
+  severity for `ClosureRule`), T108g (`Constraint::Implies`
+  retirement) — three new sibling tasks under PR 3.7.
+- This `decisions.md` D19 entry (above) + D18 rationale bullet 3
+  supersession annotation (history preserved).
+
+---
+
+## D20 — S007 / NATO-closure-row layer separation (PR 4b-D)
+
+**Decision**: When the NATO closure row activates on the hot path
+in PR 4b-D, it injects `REL TO USA, NATO` silently at
+`Severity::Info` at the lattice layer. S007
+(`bare-nato-requires-rel-to-usa-nato`, `crates/capco/src/rules.rs:3578+`)
+stays as the **text-layer surface** — `Severity::Suggest` with the
+visible portion-edit byte diff (`(//NS)` → `(//NS//REL TO USA, NATO)`).
+
+**Rejected alternatives**:
+
+- **(b) Parallel `Severity::Suggest`** at the lattice layer —
+  doubles the audit surface for the same inference (same fix
+  proposed twice with different `source` fields).
+- **(c) Inject NOFORN** per §B.3 Table 2 p21 (FGI-rule conforming) —
+  contradicts the §H.7 p127 Notional Example 2 worked-example
+  interpretation that motivates S007. User concern verbatim
+  (2026-05-17): "(//NS) should never be NF".
+
+**Why**:
+
+1. **No double-audit on the same inference**. Closure-layer Info
+   = lattice fact propagation (banner state); S007-layer Suggest
+   = author-visible byte diff. Single concept per layer.
+2. **Authority asymmetry preserved**. §H.7 p127's interpretive
+   weight is example-derived, not MUST-prose; S007 ships at
+   `Suggest` (confidence 0.85) precisely because the manual has
+   no explicit prose mandating the implicit REL TO USA, NATO
+   inference. Closure-layer `Info` matches that authority
+   posture without claiming higher confidence than the source
+   warrants.
+3. **Solely-NATO carve-out preserved**. S007 clause 3 already
+   silences the rule on solely-NATO docs (alliance ownership
+   implicit). The closure row's Info-level injection on those
+   same pages is structurally invisible to the audit-noise
+   profile because Info diagnostics don't surface in the
+   default `check` output the way `Suggest` diagnostics do.
+4. **NOFORN-guard ownership preserved**. S007 clause 4 already
+   defers to the `capco/noforn-conflicts-rel-to` page rewrite
+   on portions carrying NOFORN. The closure row inherits the
+   same conflict-resolution path via the rewrite scheduler — no
+   redundant guard.
+
+**Authority**: CAPCO-2016 §H.7 p127 Notional Example 2 (NATO
+REL TO worked example, S007's authority base); §H.8 p145 (NOFORN
+domination — owns the conflict path); §B.3 Table 2 p21 (the
+FD&R-roster row rejected as the calibration target per
+Constitution VIII — drawing NOFORN here would over-translate the
+table-row authority).
+
+**Lands in**:
+
+- PR 4b-D NATO closure row construction (`crates/capco/src/scheme/closure.rs`
+  CLOSURE_REL_TO_USA_NATO row, default_severity `Severity::Info`).
+- S007 left untouched in PR 4b-D (existing `Severity::Suggest`
+  default preserved).
+- Issue #508 calibration question marked resolved.
+
+---
+
+## D21 — Closure-rule open-vocab cone shape: B3 sibling field (PR 4b-D.0)
+
+**Decision**: Extend `marque_scheme::ClosureRule` with an optional
+sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[FactRef<S>; 2]>>`
+to express marking-derived cones (JOINT's partner-list-floor case).
+The existing `cone: &'static [TokenRef]` field stays unchanged.
+
+> **Addendum (2026-05-17, post-Copilot review of PR #514)**: this
+> entry originally typed the derived cone as `SmallVec<[(CategoryId,
+> TokenRef); 2]>`. Copilot review on PR #514 (the 4b-D.0 implementation
+> PR) identified that the `TokenRef` carrier cannot express open-
+> vocabulary facts — JOINT's `REL TO USA, GBR, JPN` partner-list cone
+> needs `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))` per
+> the established pattern at `crates/capco/src/rules_declarative.rs:711-718`.
+> The signature was redesigned to return `SmallVec<[FactRef<S>; 2]>`,
+> dropping the pre-bound `CategoryId` (the closure executor now calls
+> `scheme.category_of(&fact_ref)` to route — symmetric with the static
+> path, which calls `scheme.token_category(token_id)`). All other D21
+> reasoning — sibling field vs. enum, SmallVec inline-2 sizing, zero-
+> touch on the 7 `CLOSURE_NOFORN_*` rows, sequencing — stands.
+
+Concrete shape (post-addendum):
+
+```rust
+pub struct ClosureRule<S: MarkingScheme + ?Sized> {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub triggers: &'static [TokenRef],
+    pub suppressors: &'static [TokenRef],
+    pub cone: &'static [TokenRef],
+    pub cone_derived: Option<
+        fn(&S::Marking) -> smallvec::SmallVec<[FactRef<S>; 2]>
+    >,
+    pub default_severity: Severity,
+}
+```
+
+`ClosureRule<S>` becomes generic over the scheme — unavoidable: any
+shape that lets the cone read `S::Marking` requires it. The `?Sized`
+bound mirrors `FactRef<S>`'s bound at
+`crates/scheme/src/fix_intent.rs:63`; `Debug` / `Clone` are written
+manually rather than derived so the bounds resolve through the
+struct's fields without over-constraining to `S: Debug + Clone`
+(the `CapcoScheme: !Clone` constraint would otherwise silently
+prevent `ClosureRule<CapcoScheme>` from being cloned).
+
+**Rejected alternative B2 (enum-replace `cone`)**:
+
+```rust
+// Rejected
+pub enum ConeFact<S: MarkingScheme> {
+    Static(TokenRef),
+    DerivedFromMarking(fn(&S::Marking) -> SmallVec<...>),
+}
+pub struct ClosureRule<S: MarkingScheme> {
+    pub cone: &'static [ConeFact<S>],
+    ...
+}
+```
+
+**Why B3 over B2**:
+
+| Axis | B2 (enum) | B3 (sibling) |
+|---|---|---|
+| 7 shipped `CLOSURE_NOFORN_*` rows | Rewrap every cone entry as `ConeFact::Static(...)` | Zero touch |
+| Closure executor hot path | Enum dispatch per row, every row | `cone_derived.is_some()` branch predicts to cold side (1 of 8 rows in CAPCO once JOINT lands) |
+| Future scheme catalogs (CUI, NATO domain, partner-national) | Every static row pays enum dispatch | Static fast path stays `&[TokenRef]` walk |
+| `ClosureRule<S>` generic | Required | Also required (`fn` refs `S::Marking`) — cost is shared |
+| PR 4b-D.0 blast radius | Migrates every consumer + every catalog row | Additive `None`-default field; cones unchanged |
+| YAGNI posture | Designs for one open-vocab consumer (JOINT) | Defers enum dispatch until a second open-vocab consumer surfaces |
+
+**SmallVec inline-2 rationale**: matches the `marque-scheme`
+`ReplacementIntent::FactRemove::facts` inline-2 `SmallVec` precedent
+per issue #348 verbatim — keeping the cap aligned with the existing
+in-tree convention is the right baseline. JOINT's typical partner
+list (1-5 countries per §H.3 worked examples) will spill to the
+heap for ≥3 entries; the doc-comment on `cone_derived` records
+the explicit "bump to inline-4 or inline-8 if the eventual JOINT
+row routinely produces ≥3 facts per firing" follow-up. `smol_str`
+does NOT apply — `FactRef<S>` carries closed-CVE `TokenId` or
+typed open-vocab refs (`S::OpenVocabRef`), no raw strings on the
+cone-fact path.
+
+**Sequencing implication (Constitution VII §IV)**:
+
+PR 4b-D.0 (the engine-gap PR) lands first:
+
+1. `ClosureRule<S>` generic propagation through `marque-scheme`
+   and every consumer (engine executor wiring defers — no
+   production caller exists in PR 4b-D.0; the catalog is
+   inspected via `MarkingScheme::closure_rules()` only)
+2. `cone_derived: Option<fn(...) -> SmallVec<[FactRef<S>; 2]>>`
+   field defaulting `None`
+3. Existing 7 `CLOSURE_NOFORN_*` rows zero-touch — only the type
+   parameter propagates through the catalog (no rule uses
+   `cone_derived`; the field is `None` everywhere)
+4. Proves green against the corpus regression harness; no
+   `CapcoScheme` semantic change
+
+THEN PR 4b-D consumes it: NATO closure row (static cone) +
+JOINT closure row (`cone_derived`) + FGI closure row (static
+cone) + closure runtime activation + hot-path flip + S007
+calibration per D20.
+
+**Authority**: Constitution Principle VII §IV last paragraph —
+"A scheme-adoption PR MUST NOT edit the engine crates
+(`marque-engine`, `marque-scheme`, `marque-core`, `marque-rules`,
+`marque-ism`). If the scheme reveals an engine gap, the gap is
+fixed first in a separate PR..."
+
+**Lands in**:
+
+- PR 4b-D.0 (new engine-gap PR): `marque-scheme::ClosureRule`
+  shape change (`<S>` generic + `cone_derived` field), generic
+  propagation through `marque-capco`'s closure catalog, smallvec
+  dep already in `marque-scheme` workspace (no new dep). Engine
+  executor wiring defers to PR 4b-D (no production caller for
+  the closure operator exists in 4b-D.0).
+- Issue #508 scope item 3 (open-vocab cone primitive) marked
+  resolved with the B3 choice
+- This `decisions.md` D21 entry (above)
+
+---
+
+## D25 — PR 3c.2 decomposition: 5-sub-PR series + AppliedFix envelope drop + Citation const-fn + bench-gate informational posture
+
+**Decision**: PR 3c.2 lands the four FR-035a atomic structural
+commitments (Canonical wired into audit emit + BLAKE3 digesting +
+closed `MessageTemplate` JSON + `from_parsed_unchecked` deletion) plus
+the implied prerequisites (`MarkingScheme::canonicalize` trait method,
+`RenderContext` + `EmissionForm` per FR-052, `Citation` struct per
+T043, T055 NDJSON canary scan) as a five-sub-PR series:
+
+| Sub-PR | Schema | Scope |
+|---|---|---|
+| 3c.2.A | `marque-mvp-3` | Scaffolding: `blake3` workspace dep + `canonicalize` trait method + `RenderContext`/`EmissionForm` + `Citation` const-fn struct + `render_canonical` signature update + EmissionForm tests |
+| 3c.2.B | `marque-mvp-3` | ~25 call sites of `from_parsed_unchecked` → `canonicalize`; adapter retained |
+| 3c.2.C | `marque-mvp-3` | `Diagnostic.message: Box<str> → Message`; `Diagnostic.citation: &'static str → Citation`; engine.rs:1389 decoder `format!` closed; ~5–6 `format!`-built `Diagnostic.message` sites in `crates/capco/src/rules*.rs` migrated |
+| 3c.2.D | **`marque-1.0`** atomic cutover | `AppliedFix` v2 (Canonical sub-object + real BLAKE3 + discriminant); `FixIntent \| TextCorrection` envelope dropped; non-marking text corrections become own `{"type":"text_correction", ...}` NDJSON line; T055 canary + #257 masking pin retirement; every `__engine_promote` test fixture migrated; audit-record contract docs updated |
+| 3c.2.E | `marque-1.0` | Delete `from_parsed_unchecked`; drop path-based promote-callsite-lint carve-out; doc-comment cleanups |
+
+Five inter-related sub-decisions land under D25:
+
+- **D25.1 — Five-sub-PR decomposition** (over alternatives: 4 / 3 /
+  monolithic). Constitution US8 revertability is the load-bearing
+  property; PR 4b's 9-sub-PR umbrella is the precedent shape; the
+  schema-bump atomicity only needs D.
+
+- **D25.2 — `Citation` struct is `const fn` constructor, no runtime
+  validation**. Threat model is purely citation drift, which
+  `tools/citation-lint/` already enforces at CI for `&'static str`
+  citations today. WASM size discipline (Constitution III): runtime
+  validation code would ship to WASM module; const-fn construction
+  ships only data layout. Rejected: runtime `Result<Self,
+  CitationError>` (WASM bloat); compile-time macro (harder to express
+  §-range validation in const context, no advantage over CI lint).
+
+- **D25.3 — `Diagnostic.message: Box<str> → Message` is an atomic
+  field-type change in 3c.2.C, no transitional dual-field**. Marque
+  is pre-users; no deprecation phasing per
+  `feedback_pre_users_no_deprecation_phasing.md`. Per-rule migration
+  scope (~5–6 sites) too small to justify a transitional shape.
+  Audit wire format doesn't change in C — Diagnostic flows to
+  CLI/WASM output, not directly to `AppliedFix`; the wire-format
+  bump is atomic at D.
+
+- **D25.4 — `AppliedFix` v2 drops the `FixIntent | TextCorrection`
+  envelope; non-marking text corrections become their own NDJSON
+  line type** (`{"type":"text_correction", ...}` distinct from
+  `{"type":"applied_fix", ...}`). Mirrors the PR 3.7 `AuditNote`
+  precedent at `crates/rules/src/audit_note.rs`. The
+  `discriminant: "strict"|"decoder"` field is about marking
+  provenance, not fix kind — conflating "text correction" as a third
+  discriminant value would semantically misuse the field. Rejected:
+  asymmetric AppliedFix (Canonical sub-object only on FixIntent
+  branch); three-value discriminant.
+
+- **D25.5 — Test-fixture migration at D is atomic via
+  `__engine_promote` sites**. T009a's inventory at
+  `docs/refactor-006/promote-callsite-inventory.md` is the migration
+  target list. Constitution V Principle V carve-out comments
+  preserved at each migrated site. Rejected: test-utility helper
+  crate (additional maintained layer for marginal benefit); codemod
+  (pattern-matching risk).
+
+- **D25.6 — Bench gates are informational only, not blocking**
+  through the 3c.2 series. Per the user's posture: bench-gating
+  "came and went with PR 4"; benchmarks are all well below ceiling
+  (SC-001 16ms, SC-002 18ms not violated); correctness debt
+  outranks perf optimization. Constitution I preserved by the
+  SC-001/SC-002 ceiling — bench-gate enforcement is a PR-to-PR drift
+  discipline mechanism, not a constitutional requirement.
+  Cumulative perf regression analysis deferred to dedicated
+  post-PR-5 perf-analysis pass per
+  `project_perf_baseline_pr5_trigger`.
+
+- **D25.7 — WASM size delta budget ≤5%, measured at 3c.2.D**.
+  Mirrors T058i's PR 3d WASM size budget. `blake3` workspace dep
+  added at A is the dominant size contributor (~50–80 KB compressed
+  estimate). Per-sub-PR measurement overhead exceeds signal for
+  B/C/E (no material WASM change); D measurement captures
+  cumulative delta.
+
+**Rejected alternatives** (cross-cutting):
+
+- **Single mega-PR**: high blast radius, long review cycles, hard to
+  bisect. PR 4b's 9-sub-PR series demonstrated the alternative.
+- **Schema bump deferred further**: leaves G13 content-ignorance as a
+  carve-out instead of a type invariant; `from_parsed_unchecked`
+  adapter remains in production paths indefinitely.
+- **Strict bench-gate enforcement**: would block the 3c.2 series on
+  perf drift the user has already classified as deferred to
+  post-PR-5 perf-analysis. Marque does not produce correct results
+  without this refactor; correctness outranks perf-discipline-as-blocker.
+
+**Why** (cross-cutting):
+
+1. **Atomicity preserved where it matters**. Only D bumps the schema
+   and changes the wire format; A/B/C/E are additive or
+   dead-code removal under the existing `marque-mvp-3` schema.
+2. **G13 content-ignorance becomes a type invariant**. T055 canary
+   at D + `Diagnostic.message: Message` at C + `AppliedFix` v2 at D
+   together close every leak channel `format!`-of-input could
+   open. The masking pin at `core_error_isolation.rs:92` (#257)
+   retires at D.
+3. **Constitution VII boundary respected**. Each sub-PR's touch
+   surface is bounded: A touches `crates/scheme/` + `crates/rules/`
+   (trait surface), B touches consumers (cross-crate but no graph
+   change), C touches `crates/capco/` rule bodies + `crates/rules/`
+   field reshape, D touches `crates/engine/` audit-emit, E touches
+   `crates/ism/` (adapter deletion).
+4. **Constitution VIII citation discipline maintained**. `Citation`
+   struct + citation-lint at CI replaces the per-site `&'static
+   str` discipline with a typed surface that the citation-lint
+   already verifies against `crates/capco/docs/CAPCO-2016.md` at
+   build time. Drift becomes mechanically catchable.
+
+**Authority**: `specs/006-engine-rule-refactor/spec.md` FR-035a (the
+four-commitment list); `contracts/audit-record.md` §0 (active
+`marque-mvp-3`) + §1+ (post-keystone `marque-1.0` target);
+`docs/plans/2026-05-02-engine-refactor-consolidated.md` §10.2
+(cutover composition).
+
+**Decision pass context**: surfaced 2026-05-19 during PR 3c.2
+planning session (post-PR-4-closeout). User selected all four
+recommended options in the AskUserQuestion decision matrix, with
+pushback on the Citation runtime-validation option ("validation at
+build is sufficient ... lint should handle that. My other concern
+is WASM size") that produced D25.2's const-fn outcome; pushback on
+the bench-gate option ("bench gating came and went with PR 4 ... we
+don't have a choice to gate because without this refactor Marque
+does not produce correct results") that produced D25.6's
+informational-only outcome.
+
+**Lands in**:
+
+- `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` (operative
+  PM contract for the 3c.2 series — full plan + risk register +
+  sub-decision rationale + appendices)
+- `specs/006-engine-rule-refactor/tasks.md` (cross-reference table
+  in the plan doc Appendix A maps existing T### tasks to sub-PRs;
+  no new task IDs introduced — existing T041 / T042 / T043 / T046 /
+  T048 / T048a / T048b / T048c / T050 / T052 / T054 / T055 cover the
+  scope)
+- This `decisions.md` D25 entry (above)
+- Future: per-sub-PR preflight + PM decisions + implementation +
+  3-reviewer pass docs at `docs/plans/2026-05-19-pr3c2-*-{preflight,
+  pm-decisions, implementation, review}.md` (created lazily as each
+  sub-PR's cycle starts)
+
+---
+
 ## PR 0 absorption summary
 
 | # | Decision | PR-0 deliverable |
@@ -444,10 +1261,44 @@ queue management.
 | D10 | Layer 0 + toolchain / trybuild pin | `contracts/engine-pipeline.md` test-strategy amended |
 | D11 | Masking-pin cache-with-fallback | `research.md` new R-10 |
 | D12 | `_unchecked` lint by signature shape | `research.md` new R-11; `spec.md` FR-040 amended |
-| D13 | 8–18 band + qualitative gate | `plan.md` PR 3b acceptance criteria |
+| D13 | Qualitative per-declarative-entry gate; PR-3b numeric band retired 2026-05-07; end-state target ~10 surviving rules across stages 1–4 | `plan.md` PR 3b acceptance criteria + D13 two-pass amendment 2026-05-07 |
 | D14 | Trait stabilization forcing function | `spec.md` Assumptions amendment |
 | D15 | Fixture glob + count | `spec.md` US1 / US2 AC edits |
 | D16 | Quarantine queue (cap=10) | `tools/flake-watch/` scaffold; `spec.md` FR-051 |
+| D17 | PR 3b.C scope correction: RELIDO Conflicts roster pruned from ~15–20 to 4 rows under Constitution VIII; broader §3.4.2 family roster deferred to PR 3.7 T108b | `crates/capco/tests/relido_conflicts.rs` count pin; verdict line 82 amended |
+| D18 | T108c catalog shape: public `ClosureRule` (Option C), not private `ImplTable<S>` | `tasks.md` T108c amended; `2026-05-07-pr3b-consultation-verdict.md` §5 item 5 superseded; `decisions.md` Q-4.7-timing wording updated |
+| D19 | Topic 1 design pass: `AuditNote` audit-stream record + per-row severity for `ClosureRule` + `Constraint::Implies` retirement (narrowly supersedes D18 rationale bullet 3) | `tasks.md` T108e/T108f/T108g added; D18 bullet 3 annotated |
+| D9b-1 | Two parallel slice fields for `dissem_us` / `dissem_nato` | PR 9b T132 shipped two `Box<[DissemControl]>` fields per FR-046. Future cross-system translation (memory `project_cross_system_translation.md`) and a hypothetical third namespace (FVEY-only, partner-national) would be cleaner with `Box<[NamespacedDissem]>`. Owner reviewed and chose to defer; revisit in PR 10+ if cross-system translation work surfaces the smell as concrete blocking pain. Reference: PR 9b preflight, 2026-05-14. |
+| D20 | S007 / NATO-closure-row layer separation (PR 4b-D): closure injects `REL TO USA, NATO` silently at `Severity::Info` (lattice layer); S007 stays as the visible `Severity::Suggest` text-layer surface. Authority asymmetry preserved; option (c) NOFORN-injection rejected per user-stated invariant "(//NS) should never be NF" + §H.7 p127 worked-example interpretation. | `decisions.md` D20 (above); resolves issue #508 calibration question; PR 4b-D NATO closure row construction. |
+| D21 | Closure-rule open-vocab cone shape: B3 sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[FactRef<S>; 2]>>` selected over B2 enum-replace. `ClosureRule<S>` generic required either way; B3 leaves the 7 shipped `CLOSURE_NOFORN_*` rows zero-touch and keeps the closed-vocab hot path tight. Return type is `FactRef<S>` (not `(CategoryId, TokenRef)`) so the derived path covers open-vocab facts like JOINT's REL TO partner-list — addendum applied post-Copilot review on PR #514, see D21 entry. SmallVec inline cap matches the `marque-scheme` `ReplacementIntent::FactRemove::facts` inline-2 precedent from #348; bump to inline-4 / inline-8 is a one-line change if the eventual JOINT row routinely produces ≥3 facts per firing. PR 4b-D.0 lands the trait change ahead of PR 4b-D per Constitution VII §IV. | `decisions.md` D21 (above); resolves issue #508 scope item 3; PR 4b-D.0 (new engine-gap PR) trait-surface change. |
+| D22 | NOFORN-supersession at FactAdd injection site (PR 4b-D.2 commit 3 + Copilot R2 #1 commit 13): `apply_fact_add` now maintains the COMPLETE §H.8 p145 invariant on the dissem axis. (a) Route NOFORN insertions through `DissemSet::with_noforn_injected` so the supersession overlay strips dominated FD&R *tokens* (REL TO / RELIDO / DISPLAY ONLY / EYES ONLY) from `dissem_us`. (b) Clear the parallel country-list fields `attrs.rel_to` and `attrs.display_only_to` so the injection brings the full §H.8 p145 supersession with it. (c) Inverse-case rejection — if NOFORN is already in `dissem_us`, FactAdd of any dominated token (RELIDO / DISPLAY ONLY / EYES) returns `IntentInapplicable` instead of appending. Pre-PR-4b-D.2 the path appended `Nf` to `dissem_us` without re-applying overlays. The Copilot R2 #1 amendment closed two remaining gaps the original commit 3 had: country-list axes stayed populated, and the inverse case bypassed the inapplicability guard. Post-R2 `apply_fact_add` is self-sufficient for §H.8 p145 — direct `apply_intent` callers (E021 AEA, E038 NODIS/EXDIS) bypass `scheme.project` and the `capco/noforn-clears-*` PageRewrites and get correct output by construction; closure-driven and PageRewrite-driven FactAdd paths get the same self-sufficiency for free. The PageRewrite layer (`capco/noforn-clears-rel-to`, `capco/noforn-clears-fdr-family`, `capco/noforn-clears-display-only-to`) remains as defense-in-depth. Authority: §H.8 p145 + §D.2 Table 3 rows 1-2 + §H.8 p157 (re-verified 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`). | `decisions.md` D22 (above); PR 4b-D.2 commit 3 (initial token-axis fix) + commit 13 (R2 #1 country-axis + inverse-case completion); `crates/capco/src/scheme/actions/intent.rs::apply_fact_add` CAT_DISSEM branch; `crates/capco/tests/category_action_intent.rs` apply_fact_add_* test cluster pins the R2 contract. |
+| D23 | Closure-rewrite-application sentinel placement: the `#[cfg(debug_assertions)]` read-only-attrs sentinel for the closure operator's rewrite-application site lives inside `CapcoScheme::project(Scope::Page \| Document \| Diff, ...)` between the `join_via_lattice` composition and the closure invocation. Snapshots the raw per-portion `CanonicalAttrs` slice; asserts byte-identity after `closure()` returns. Sibling to the existing `dispatch_page_finalization` PageFinalization-rule sentinel (engine.rs); together they pin the §3 (e.1) read-only-attrs invariant across both engine-facing consumer surfaces (scheme-side projection + engine-side rule dispatch). Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e.1) read-only-attrs invariant. | `decisions.md` D23 (above); PR 4b-D.2 commit 3; `crates/capco/src/scheme/marking_scheme_impl.rs::project` Scope::Page arm. |
+| D24 | `CapcoMarking` is a projection target, not a lattice element (Option D-extended). Copilot R1 review surfaced that `impl JoinSemilattice for CapcoMarking` violated structural-`Eq` idempotence whenever a per-axis lattice normalized its input (load-bearing case: `RelToBlock`'s tetragraph expansion). The lattice consultant verdict: `CapcoMarking` is a **cross-axis fold** of per-axis lattice values back into a `CanonicalAttrs` record; cross-axis folding is a *projection*, not a lattice op. PR 4b-D.2 commit 11 drops `impl JoinSemilattice for CapcoMarking` AND `impl MeetSemilattice for CapcoMarking` AND relaxes the `MarkingScheme::Marking: JoinSemilattice` trait bound (load-bearing constraint at `crates/scheme/src/scheme.rs:46`, established by the `Lattice` trait split — issue #456 / PR #502) AND relaxes `DiffInput<M: JoinSemilattice>` to `DiffInput<M>` (`crates/scheme/src/scope.rs:62`, the bound was purely declarative — `DiffInput` itself never called `.join`). The cross-axis fold remains accessible as the inherent methods `CapcoMarking::join_via_lattice` and `CapcoMarking::join_via_lattice_with_context` (engine's `project_from_page_context` hot path uses the latter). Per-axis lattice impls (`RelToBlock`, `DissemSet`, `SciSet`, `SarSet`, `AeaSet`, `FgiSet`, `JointSet`, `NatoDissemSet`, `ClassificationLattice`, `NatoClassLattice`, `DeclassifyOnLattice`) remain — they are the algebraically-sound site for the lattice claim, with `RelToBlock` proptests added in PR 4b-D.2 commit 11 to pin idempotence/commutativity/associativity/absorption on `RelToBlock`'s own structural `Eq` (the BTreeSet-of-expanded-trigraphs representative). The lossy-eager-canonicalize-at-construct alternative (Option A) and the quotient-`Eq` rewrite (Option C) were both rejected; the trait-bound relaxation is the surgical fix. Systematic audit of remaining per-axis types for similar structural-vs-lattice-`Eq` mismatches (`DissemSet::relido_observed_unanimous`, `JointSet::Mixed`/`DisunityCollapse`, `SupersessionSet`) is tracked as a follow-up issue. Authority: `marque-applied.md` §3 (PR 3b stall walkthrough); `pure-lattice.md` §7 (quotient lattices) + §11 (powerset Boolean algebra). | `decisions.md` D24 (above); PR 4b-D.2 commit 11; `crates/scheme/src/scheme.rs::MarkingScheme::Marking` bound relaxed; `crates/scheme/src/scope.rs::DiffInput<M>` bound relaxed; `crates/capco/src/scheme/marking.rs` `JoinSemilattice` / `MeetSemilattice` impls dropped; `crates/capco/tests/proptest_lattice.rs` `RelToBlock` laws added. |
+| D25 | PR 3c.2 decomposition into five sub-PRs (3c.2.A scaffolding / 3c.2.B `from_parsed_unchecked` call-site migration / 3c.2.C `Diagnostic` reshape / 3c.2.D atomic `marque-mvp-3 → marque-1.0` cutover / 3c.2.E adapter deletion) lands the four FR-035a structural commitments plus T043 `Citation`, T048a/b/c `RenderContext`/`EmissionForm`, T055 NDJSON canary scan. Sub-decisions: D25.2 `Citation::new` is `const fn`, no runtime validation (WASM size discipline + citation-lint catches drift); D25.3 `Diagnostic.message: Box<str> → Message` is atomic in C, no transitional dual-field; D25.4 `AppliedFix` v2 drops `FixIntent \| TextCorrection` envelope — non-marking text corrections become own `{"type":"text_correction"}` NDJSON line type; D25.5 test fixtures migrate atomically at D via `__engine_promote` sites (T009a inventory); D25.6 bench gates informational only (correctness-first; integration-then-optimize per `project_perf_baseline_pr5_trigger`); D25.7 WASM size ≤5% delta budget measured at D. | `decisions.md` D25 (above); `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` (operative PM contract); no new task IDs (existing T041 / T042 / T043 / T046 / T048 / T048a / T048b / T048c / T050 / T052 / T054 / T055 cover scope). |
 
-All 16 decisions lock at PR 0. Subsequent PRs execute against this
-register; amendments require a follow-up PR editing this file.
+D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 / D20 / D21 / D22 / D23 / D24 / D25
+are post-PR-0 implementation decisions: D17 is a PR 3b.C scope
+correction amending a consultation verdict projection; D18 is a
+PR 3.7 T108c catalog-shape pivot from the 2026-05-07 trait-shape
+pin to a public `ClosureRule` catalog (Option C); D19 is the
+Topic 1 design pass that lands `AuditNote`, per-row severity for
+`ClosureRule`, and the `Constraint::Implies` retirement as sibling
+T108e/f/g tasks under PR 3.7; D9b-1 is the PR 9b T132 dissem-split
+shape choice (two-parallel-fields over namespaced-tuple); D20 is
+the PR 4b-D S007 / NATO-closure-row layer-separation calibration;
+D21 is the PR 4b-D.0 / PR 4b-D `ClosureRule` open-vocab cone shape
+(B3 sibling field over B2 enum-replace); D22 is the PR 4b-D.2
+NOFORN-supersession-at-injection-site fix; D23 is the PR 4b-D.2
+closure-rewrite-application sentinel placement (sibling to the
+existing PageFinalization-rule sentinel); D24 is the PR 4b-D.2
+Copilot-R1 Option-D-extended trait-bound relaxation (drop
+`CapcoMarking: JoinSemilattice` + relax `MarkingScheme::Marking`
+bound + relax `DiffInput<M>` bound, with the lattice claim moved
+to the per-axis types where it is algebraically sound); D25 is the
+PR 3c.2 five-sub-PR decomposition with seven sub-decisions
+(D25.1–D25.7) covering sub-PR shape, Citation const-fn
+constructor, atomic Diagnostic.message field-type change,
+AppliedFix v2 envelope drop, test-fixture migration strategy,
+informational bench-gate posture, and WASM size budget. Subsequent
+PRs execute against this register; amendments require a follow-up
+PR editing this file.

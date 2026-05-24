@@ -2,12 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! marque-capco build script (T004a + T042).
+//! marque-capco build script.
 //!
 //! Reads `corpus/priors.json` at compile time and emits `&'static` Rust
 //! tables into `OUT_DIR/priors.rs`, included by `src/priors.rs`. No
 //! runtime JSON parsing; no runtime `serde_json` dependency — the
-//! decoder reads plain const tables (Constitution II, SC-008).
+//! decoder reads plain const tables (Constitution II).
 //!
 //! Fails closed on missing or malformed input. A clean checkout MUST
 //! have a valid `corpus/priors.json` checked in; regenerate via:
@@ -26,9 +26,27 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+// `build_inputs` lives in `src/` so both the runtime crate (via
+// `pub mod build_inputs` in `lib.rs`) and the build script can share
+// the single pin-constant declaration. `#[path = ...]` reaches across
+// the build.rs/src boundary without duplicating the module body.
+#[path = "src/build_inputs.rs"]
+mod build_inputs;
+
 const SUPPORTED_PRIORS_SCHEMA_VERSION: &str = "marque-priors-3";
 
 fn main() {
+    // Constitution VIII / authoritative-source-fidelity build pin:
+    // re-hash `docs/CAPCO-2016.md` against the pinned BLAKE3 digest
+    // baked into `src/build_inputs.rs`. A single tampered byte refuses
+    // the build, defending against silent vendored-source drift
+    // alongside the SHA-256 manifest at
+    // `crates/capco/docs/original-refs/SHA256SUMS`. The independent
+    // hash algorithms (BLAKE3 here, SHA-256 there) are intentional —
+    // two integrity surfaces with different failure modes; both must
+    // pass for the build to ship.
+    verify_capco_2016_md();
+
     let priors_json_path = Path::new("corpus").join("priors.json");
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set by cargo");
     let out_path = Path::new(&out_dir).join("priors.rs");
@@ -36,6 +54,8 @@ fn main() {
     println!("cargo:rerun-if-changed=corpus/priors.json");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=docs/CAPCO-2016.md");
+    println!("cargo:rerun-if-changed=src/build_inputs.rs");
 
     let raw = match fs::read_to_string(&priors_json_path) {
         Ok(s) => s,
@@ -449,10 +469,10 @@ fn require_f64(record: &serde_json::Value, key: &str, parent: &str, path: &Path)
 /// is the algebraic identity for the strict-context-classification
 /// feature contribution (the feature multiplies a posterior weight
 /// against the floor; a `0.0` floor never rejects any candidate,
-/// silently making the rule a no-op). Per Phase 4 review M8: a
-/// regenerator emitting `0.0` accidentally — e.g., a corpus bucket
-/// with no observed markings at the relevant classification level —
-/// would defeat FR-011 semantics with no diagnostic at build time.
+/// silently making the rule a no-op). A regenerator emitting `0.0`
+/// accidentally — e.g., a corpus bucket with no observed markings at
+/// the relevant classification level — would defeat the
+/// strict-context floor semantics with no diagnostic at build time.
 /// Operators or tools that want "very permissive" should write a
 /// finite small positive (e.g., `0.01`), which has the same
 /// practical effect without the no-op footgun.
@@ -560,4 +580,58 @@ fn downcast_log_prior(value: f64, name: &str, path: &Path) -> f32 {
         );
     }
     narrowed
+}
+
+/// Re-hash `docs/CAPCO-2016.md` and compare to the pinned BLAKE3
+/// digest in `src/build_inputs.rs`. Panics on mismatch, missing
+/// file, or malformed pin.
+///
+/// Independent of the SHA-256 manifest at
+/// `crates/capco/docs/original-refs/SHA256SUMS` — the SHA-256 file
+/// covers the PDFs and the prose-form CAPCO references; this pin
+/// covers the marque-vendored markdown form (`CAPCO-2016.md`) the
+/// rule citations actually trace into via Constitution VIII. Two
+/// integrity surfaces with different hash algorithms and different
+/// scope; either tripping is a stop-the-build event.
+fn verify_capco_2016_md() {
+    let path = Path::new("docs").join("CAPCO-2016.md");
+    let bytes = fs::read(&path).unwrap_or_else(|err| {
+        panic!(
+            "marque-capco build failed: could not read {}: {err}.\n\
+             The vendored CAPCO-2016 markdown is the authoritative source for \
+             every CAPCO §-citation in the rule catalog (Constitution VIII). \
+             Restore from git or regenerate from the original PDF.",
+            path.display(),
+        );
+    });
+    let actual = blake3::hash(&bytes);
+    let actual_hex = actual.to_hex();
+    if actual_hex.as_str() != build_inputs::CAPCO_2016_MD_BLAKE3 {
+        panic!(
+            "marque-capco build failed: BLAKE3 digest mismatch on {}.\n\
+             expected: {}\n\
+             actual:   {}\n\
+             \n\
+             The vendored CAPCO-2016 markdown has been modified without an \
+             intentional pin bump. This is a Constitution VIII / Authoritative \
+             Source Fidelity violation — every §-citation in the rule catalog \
+             traces into this file at a specific section/page anchor, and \
+             silent drift breaks the reviewability promise.\n\
+             \n\
+             If the edit is intentional (e.g., upstream CAPCO publishes a new \
+             revision and the vendored copy is updated in lockstep):\n  \
+             1. Re-run every citation-bearing test against the new content.\n  \
+             2. Update CAPCO_2016_MD_BLAKE3 in crates/capco/src/build_inputs.rs \
+                to the new digest. Regenerate via:\n     \
+                cargo run --manifest-path tools/citation-lint/Cargo.toml -- \\\n        \
+                --print-capco-blake3 .\n     \
+                (or: `b3sum crates/capco/docs/CAPCO-2016.md` from the workspace root,\n        \
+                or: `b3sum docs/CAPCO-2016.md` from `crates/capco/`).\n  \
+             3. Re-verify every affected §-citation against the new revision \
+                per the Principle VIII propagation rule.",
+            path.display(),
+            build_inputs::CAPCO_2016_MD_BLAKE3,
+            actual_hex,
+        );
+    }
 }

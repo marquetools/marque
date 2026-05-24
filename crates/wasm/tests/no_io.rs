@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T062 — No-I/O dependency audit (FR-013).
+//! No-I/O dependency audit.
 //!
 //! Asserts that the `marque-wasm` crate's non-dev dependency tree contains
-//! no I/O crates (filesystem, network, async runtime). This enforces the US4
-//! acceptance scenario: "no file system or network access is attempted."
+//! no I/O crates (filesystem, network, async runtime), so the WASM build
+//! attempts no file system or network access.
 
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -35,7 +35,7 @@ const BANNED_CRATES: &[&str] = &[
 /// Run `cargo tree` for the WASM crate targeting `wasm32-unknown-unknown`
 /// (excluding dev-dependencies) and return the stdout output.
 /// Uses the actual WASM target graph, not the host-target graph, so
-/// cfg-gated dependencies are resolved correctly for FR-013 enforcement.
+/// cfg-gated dependencies are resolved correctly.
 fn wasm_dep_tree() -> String {
     let output = Command::new("cargo")
         .args([
@@ -82,7 +82,7 @@ fn wasm_dep_tree_has_no_io_crates() {
     for banned in BANNED_CRATES {
         assert!(
             !tree_contains_crate(&tree_output, banned),
-            "FR-013 violation: banned crate `{banned}` found in marque-wasm dependency tree.\n\
+            "WASM-safety violation: banned crate `{banned}` found in marque-wasm dependency tree.\n\
              The WASM build must not contain filesystem or network dependencies.\n\
              Run `cargo tree -p marque-wasm -e=no-dev` to investigate."
         );

@@ -12,6 +12,7 @@ use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use proptest::prelude::*;
+use secrecy::ExposeSecret as _;
 use std::sync::OnceLock;
 
 // Build the engine once per test binary; constructing the Aho-Corasick
@@ -125,9 +126,9 @@ proptest! {
     fn fix_idempotent(src in arb_source()) {
         let e = engine();
         let first = e.fix(src.as_bytes(), FixMode::Apply);
-        let second = e.fix(&first.source, FixMode::Apply);
+        let second = e.fix(first.source.expose_secret(), FixMode::Apply);
         prop_assert!(
-            second.source == first.source,
+            second.source.expose_secret() == first.source.expose_secret(),
             "fix not idempotent on: {:?}", src,
         );
     }
@@ -139,17 +140,17 @@ proptest! {
         let dry = e.fix(src.as_bytes(), FixMode::DryRun);
         let apply = e.fix(src.as_bytes(), FixMode::Apply);
         prop_assert!(
-            dry.applied.len() == apply.applied.len(),
+            dry.applied_fixes().count() == apply.applied_fixes().count(),
             "dry-run and apply applied counts differ for {:?}", src,
         );
-        for (d, a) in dry.applied.iter().zip(apply.applied.iter()) {
+        for (d, a) in dry.applied_fixes().zip(apply.applied_fixes()) {
             prop_assert!(
-                d.proposal.rule == a.proposal.rule,
+                d.rule == a.rule,
                 "dry-run/apply rule ID mismatch for {:?}", src,
             );
             // confidence combined() values must be identical (same rule, same input)
-            let dc = d.confidence.combined();
-            let ac = a.confidence.combined();
+            let dc = d.fix.replacement.confidence.combined();
+            let ac = a.fix.replacement.confidence.combined();
             prop_assert!(
                 (dc - ac).abs() < f32::EPSILON,
                 "dry-run confidence {} != apply confidence {} for {:?}", dc, ac, src,
@@ -163,7 +164,7 @@ proptest! {
         let bytes = src.as_bytes().to_vec();
         let result = engine().fix(&bytes, FixMode::DryRun);
         prop_assert!(
-            result.source == bytes,
+            result.source.expose_secret() == bytes,
             "dry-run modified source for {:?}", src,
         );
     }
@@ -173,11 +174,18 @@ proptest! {
     fn threshold_respected(src in arb_source()) {
         let threshold = Config::default().confidence_threshold();
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
-        for fix in &result.applied {
-            let combined = fix.confidence.combined();
+        for fix in result.applied_fixes() {
+            let combined = fix.fix.replacement.confidence.combined();
             prop_assert!(
                 combined >= threshold,
                 "applied fix confidence {combined} < threshold {threshold} for {src:?}",
+            );
+        }
+        for tc in result.applied_text_corrections() {
+            let combined = tc.confidence.combined();
+            prop_assert!(
+                combined >= threshold,
+                "applied text correction confidence {combined} < threshold {threshold} for {src:?}",
             );
         }
     }
@@ -187,8 +195,8 @@ proptest! {
     #[test]
     fn confidence_bounds(src in arb_source()) {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
-        for fix in &result.applied {
-            let c = &fix.confidence;
+        for fix in result.applied_fixes() {
+            let c = &fix.fix.replacement.confidence;
             prop_assert!(
                 (0.0..=1.0).contains(&c.recognition),
                 "recognition {} out of range for {src:?}",

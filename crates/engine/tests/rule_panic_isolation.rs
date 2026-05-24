@@ -21,11 +21,14 @@
 //! force every test to defend against panic-recovery noise. This
 //! file owns the panicky rule set and the assertions tied to it.
 
-use marque_capco::capco_rules;
+use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_ism::IsmAttributes;
-use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, RuleSet, Severity};
+use marque_ism::CanonicalAttrs;
+use marque_rules::{
+    Diagnostic, Message, MessageArgs, MessageTemplate, Rule, RuleContext, RuleId, RuleSet, Severity,
+};
+use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 
 /// A rule that always panics in `check()`.
 ///
@@ -35,12 +38,12 @@ use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, RuleSet, Severity};
 /// assert (where it would matter) that the panic was contained.
 struct AlwaysPanicsRule;
 
-impl Rule for AlwaysPanicsRule {
+impl Rule<CapcoScheme> for AlwaysPanicsRule {
     fn id(&self) -> RuleId {
-        // Reserved-for-tests prefix: real rules use `E### / W### /
-        // C### / S### / R001`. `Z` keeps this rule out of the rule-id
-        // allocation space the rest of the codebase tracks.
-        RuleId::new("Z001")
+        // Synthetic test sentinel in the reserved `"test"` scheme,
+        // which keeps test fixtures out of any real marking scheme's
+        // namespace per the `marque_rules::RuleId` doc-comment.
+        RuleId::new("test", "synthetic.z001-rule-panic-isolation")
     }
 
     fn name(&self) -> &'static str {
@@ -51,7 +54,7 @@ impl Rule for AlwaysPanicsRule {
         Severity::Error
     }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         panic!("FixProposal invalid confidence: simulated rule defect (Z001 panic-isolation test)");
     }
 }
@@ -62,11 +65,33 @@ impl Rule for AlwaysPanicsRule {
 /// other rules after one has panicked.
 struct AlwaysFiresRule;
 
-const ALWAYS_FIRES_MESSAGE: &str = "always-fires-test-rule sibling diagnostic";
+/// Test-fixture `Message` stub mirroring the helpers in
+/// `engine.rs::tests` and `output.rs::tests`. The rule body only needs
+/// to emit *some* diagnostic; the closed-set `Message` shape means no
+/// free-form sentinel text is constructible here. `UnrecognizedToken`
+/// is the generic template; default args
+/// keep the payload empty.
+#[inline]
+fn stub_message() -> Message {
+    Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
+}
 
-impl Rule for AlwaysFiresRule {
+/// Test-fixture `Citation` stub mirroring the helpers in
+/// `engine.rs::tests` and `output.rs::tests`. Uses
+/// `AuthoritativeSource::EngineInternal` (non-CAPCO sentinel) so
+/// citation-lint skips the entry.
+#[inline]
+fn stub_citation() -> Citation {
+    Citation::new(
+        AuthoritativeSource::EngineInternal,
+        SectionRef::new(SectionLetter::A),
+        core::num::NonZeroU16::new(1).unwrap(),
+    )
+}
+
+impl Rule<CapcoScheme> for AlwaysFiresRule {
     fn id(&self) -> RuleId {
-        RuleId::new("Z002")
+        RuleId::new("test", "synthetic.z002-rule-panic-isolation")
     }
 
     fn name(&self) -> &'static str {
@@ -77,33 +102,33 @@ impl Rule for AlwaysFiresRule {
         Severity::Info
     }
 
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Build a Diagnostic without a fix — we just need to prove
         // this rule's output reaches the LintResult after a sibling
         // rule panics.
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
-            marque_ism::Span::new(0, 1),
-            ALWAYS_FIRES_MESSAGE,
-            "test-citation",
+            marque_scheme::Span::new(0, 1),
+            stub_message(),
+            stub_citation(),
             None,
         )]
     }
 }
 
 struct TestRuleSet {
-    rules: Vec<Box<dyn Rule>>,
+    rules: Vec<Box<dyn Rule<CapcoScheme>>>,
 }
 
 impl TestRuleSet {
-    fn new(rules: Vec<Box<dyn Rule>>) -> Self {
+    fn new(rules: Vec<Box<dyn Rule<CapcoScheme>>>) -> Self {
         Self { rules }
     }
 }
 
-impl RuleSet for TestRuleSet {
-    fn rules(&self) -> &[Box<dyn Rule>] {
+impl RuleSet<CapcoScheme> for TestRuleSet {
+    fn rules(&self) -> &[Box<dyn Rule<CapcoScheme>>] {
         &self.rules
     }
     fn schema_version(&self) -> &'static str {
@@ -115,7 +140,7 @@ impl RuleSet for TestRuleSet {
 }
 
 fn engine_with(panicky: bool, with_fires: bool) -> Engine {
-    let mut rules: Vec<Box<dyn Rule>> = Vec::new();
+    let mut rules: Vec<Box<dyn Rule<CapcoScheme>>> = Vec::new();
     if panicky {
         rules.push(Box::new(AlwaysPanicsRule));
     }
@@ -166,7 +191,7 @@ fn sibling_rules_continue_after_panic() {
     let z002_count = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "Z002")
+        .filter(|d| d.rule.predicate_id() == "synthetic.z002-rule-panic-isolation")
         .count();
     assert!(
         z002_count >= 1,
@@ -175,7 +200,7 @@ fn sibling_rules_continue_after_panic() {
         result
             .diagnostics
             .iter()
-            .map(|d| d.rule.as_str())
+            .map(|d| d.rule.predicate_id())
             .collect::<Vec<_>>()
     );
 
@@ -183,12 +208,12 @@ fn sibling_rules_continue_after_panic() {
     let z001_count = result
         .diagnostics
         .iter()
-        .filter(|d| d.rule.as_str() == "Z001")
+        .filter(|d| d.rule.predicate_id() == "synthetic.z001-rule-panic-isolation")
         .count();
     assert_eq!(
         z001_count, 0,
-        "AlwaysPanicsRule (Z001) must produce zero diagnostics; the \
-         panic should have been caught and the rule skipped"
+        "AlwaysPanicsRule (synthetic.z001-rule-panic-isolation) must produce zero \
+         diagnostics; the panic should have been caught and the rule skipped"
     );
 }
 
@@ -210,11 +235,11 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.as_str() == "Z002"),
-        "AlwaysFiresRule (Z002) diagnostic must surface in fix pipeline output"
+            .any(|d| d.rule.predicate_id() == "synthetic.z002-rule-panic-isolation"),
+        "AlwaysFiresRule must surface its diagnostic in fix pipeline output"
     );
     assert!(
-        result.applied.is_empty(),
+        result.applied_fixes().next().is_none(),
         "no fixes should have been applied — neither test rule emits any"
     );
 }
@@ -234,9 +259,9 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
 
 struct InvalidConfidenceRule;
 
-impl Rule for InvalidConfidenceRule {
+impl Rule<CapcoScheme> for InvalidConfidenceRule {
     fn id(&self) -> RuleId {
-        RuleId::new("Z003")
+        RuleId::new("test", "synthetic.z003-rule-panic-isolation")
     }
     fn name(&self) -> &'static str {
         "invalid-confidence-test-rule"
@@ -244,20 +269,11 @@ impl Rule for InvalidConfidenceRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-    fn check(&self, _attrs: &IsmAttributes, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // `Confidence::strict(2.0)` is out of `[0.0, 1.0]` and
-        // `validate()` rejects it. `FixProposal::new` then panics.
-        // The wrapper must catch it.
-        let bad = marque_rules::Confidence::strict(2.0);
-        let _proposal = marque_rules::FixProposal::new(
-            self.id(),
-            marque_rules::FixSource::CorrectionsMap,
-            marque_ism::Span::new(0, 1),
-            "x",
-            "y",
-            bad,
-            None,
-        );
+        // panics directly. The engine's catch_unwind wrapper must
+        // catch the rule-side panic and continue.
+        let _bad = marque_rules::Confidence::strict(2.0);
         Vec::new() // unreachable
     }
 }

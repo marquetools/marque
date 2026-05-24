@@ -23,7 +23,13 @@ unrepresentable rather than carve-out-enforced; drives page-level rollup
 through `MarkingScheme::project(Scope::Page, ...)` and deletes
 `PageContext`; phase-tags rules at registration with `Phase::Localized
 | WholeMarking` and re-parses the buffer between passes; cuts over the
-audit schema once (`marque-mvp-2 → marque-1.0`) under clean-break;
+audit schema in two stages under clean-break (`marque-mvp-2 → marque-mvp-3`
+at PR 3c.B Commit 10, then `marque-mvp-3 → marque-1.0` at PR 3c.2 — the
+original "single cutover at PR 3c" plan was conservatively split when
+PR 3c.B Commit 10 landed only the proposal sub-object envelope; the
+remaining four structural commitments [Canonical wired into audit emit,
+BLAKE3 digesting, closed MessageTemplate JSON, `from_parsed_unchecked`
+delete] move to PR 3c.2 per FR-035a, added 2026-05-14);
 adds three AST-based CI lints (citation, masking-pin, promote-callsite);
 and gates PR 4's per-category `Lattice` impls behind PR 3.7 — a spike
 that fills `2026-05-01-lattice-design.md` §§2–8 with the actual math
@@ -64,7 +70,7 @@ evaluated against this refactor's spec.
 |---|-----------|---------------|---------|
 | I | Uncompromising performance | FR-029..FR-033, SC-008/SC-009; four Criterion benches gate the relevant PRs; measurement-gated rollback discipline preserved | **PASS** |
 | II | Zero-copy / streaming core | Pivot split *strengthens* the invariant — `ParsedAttrs<'src>` carries `'src` lifetime, `FixProposal::original` becomes `Span` (not bytes, FR-004), `Box<[T]>` already used for collection fields | **PASS** |
-| III | Format-agnostic core / WASM safety | All new types (`Canonical<S>`, `FixIntent<S>`, `ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`, `MessageTemplate`, `Phase`) land in WASM-safe crates (`marque-ism`, `marque-rules`, `marque-scheme`, `marque-capco`); WASM build runs the same dispatcher as native | **PASS** |
+| III | Format-agnostic core / WASM safety | All new types (`Canonical<S>`, `FixIntent<S>`, `RenderContext`/`EmissionForm` per PR 3c.2 / FR-052, `FormSet`/`FormKind` per PR 3d / FR-053, `Deprecation` validity-window fields per PR 3d / FR-054, `ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`, `MessageTemplate`, `Phase`) land in WASM-safe crates (`marque-ism`, `marque-rules`, `marque-scheme`, `marque-capco`); WASM build runs the same dispatcher as native; PR 3d additions tracked under WASM size budget (≤ 5%, T058i) | **PASS** |
 | IV | Two-layer rule architecture | FR-025/FR-026 codify rule emission via `FixIntent<S>` while preserving Layer 1 generated predicates / Layer 2 hand-written rule split; FR-021 makes `Phase` an explicit registration tag | **PASS** |
 | V | Audit-first / G13 | The keystone correctness property of this entire refactor. FR-001..FR-005 (sealed `Canonical`, `MessageTemplate`-only messages, `Span`-only original, engine-only promotion) + FR-027/FR-028 (decoder open-vocab lockout + carve-out delete) + FR-040 (promote-callsite lint) close it. Test-fixture carve-out preserved per Principle V's three constraints | **PASS** |
 | VI | Dataflow pipeline model | FR-006 (Scope::Page projection replaces `PageContext`), FR-021..FR-024 (phase-tagged two-pass with R002 partial-progress diagnostic), FR-038 (Send + Sync), FR-041 (engine mints synthetic diagnostics) | **PASS** |
@@ -107,8 +113,9 @@ crates/
 │   │   ├── attrs.rs                # IsmAttributes (current); split into ParsedAttrs/CanonicalAttrs/ProjectedMarking (PR 3a)
 │   │   ├── canonical.rs            # NEW (PR 3c) — Canonical<S> with sealed constructors + TokenSource
 │   │   ├── message.rs              # NEW (PR 3c) — MessageTemplate enum + MessageArgs closed-set
+│   │   ├── marking_forms.rs        # MarkingForm gains description_title field (PR 3d, FR-053)
 │   │   └── ...                     # generated CVE enums, Span, Vocabulary metadata
-│   └── build.rs                    # No semantic change; per-token is_fdr_dissem field added (FR-010)
+│   └── build.rs                    # Per-token is_fdr_dissem field (PR 4, FR-010); ODNI Description.title harvested into recognized_aliases when divergent from CAPCO long-title (PR 3d, FR-053); Deprecation valid_from/valid_until populated from XSD annotations + migration table (PR 3d, FR-054)
 │
 ├── core/                           # Scanner + parser
 │   └── src/parser.rs               # Four open-vocab admission sites migrate to shape_admits (PR 2, FR-015): three is_ascii_alphanumeric() checks (:1453/:1481/:1493) + FGI trigraph silent-skip (:1011-1024); FGI returns None on shape failure (FR-016)
@@ -122,14 +129,16 @@ crates/
 │
 ├── scheme/                         # Domain-neutral trait surface (no domain vocab)
 │   └── src/
-│       ├── lib.rs                  # MarkingScheme: render_canonical(token, scope) → Canonical<S>; CanonicalConstructor<S> sealed trait (PR 3c)
+│       ├── scheme.rs               # MarkingScheme: render_canonical(&FixIntent<S>, &RenderContext) → Canonical<S>; RenderContext { scope, emission_form, schema_version }; #[non_exhaustive] EmissionForm { Auto, Portion, BannerTitle, BannerAbbreviation } per CAPCO §G.1 Table 4 (PR 3c.2, FR-052); CanonicalConstructor<S> sealed trait (PR 3c.1)
+│       ├── vocabulary.rs           # Vocabulary<S>::forms() returning &'static FormSet; per-form methods become defaults (banner_form() = banner_abbreviation.unwrap_or(banner_title)); FormSet { portion, banner_title, banner_abbreviation, recognized_aliases } + #[non_exhaustive] FormKind (PR 3d, FR-053); Deprecation<Token> gains valid_from/valid_until (PR 3d, FR-054); shape_admits + is_fdr_dissem (PR 2 / PR 4, FR-015 / FR-010)
 │       ├── lattice.rs              # Existing built-in constructors (OrdMax, OrdMin, FlatSet, IntersectSet, SupersessionSet, ModeSet, MaxDate, OptionalSingleton, Product); Phase B already shipped
 │       └── recognizer.rs           # Recognizer<S>: Send + Sync bound (PR 0, FR-038)
 │
 ├── capco/                          # CAPCO Layer 2 rules + scheme adapter
 │   ├── src/
-│   │   ├── scheme.rs               # MarkingClassification::Us hardcode at :365 deleted (PR 5, FR-007); CapcoMarking::join PageContext delegation deleted (PR 4, FR-014); §4 fabrication cluster fixed (PR 0.6, FR-020)
-│   │   ├── rules.rs                # ~56 rules collapse to ~10–13 (PR 3b, #263); doubled p150–151 p151 cluster fixed (PR 0.6); SIGMA archaeology fixed (PR 0.6); per-rule Phase declared (PR 7, FR-021)
+│   │   ├── scheme.rs               # render_canonical impl honors RenderContext.emission_form (PR 3c.2, FR-052); MarkingClassification::Us hardcode at :365 deleted (PR 5, FR-007); CapcoMarking::join PageContext delegation deleted (PR 4, FR-014); §4 fabrication cluster fixed (PR 0.6, FR-020)
+│   │   ├── vocabulary.rs           # impl Vocabulary<CapcoScheme>: forms() composes FormSet from MARKING_FORMS + per-token build-time records (PR 3d, FR-053)
+│   │   ├── rules.rs                # ~56 rules collapse to ~10–13 (PR 3b, #263); doubled p150–151 p151 cluster fixed (PR 0.6); SIGMA archaeology fixed (PR 0.6); per-rule Phase declared (PR 7, FR-021); FixIntent emission sites pass EmissionForm::Auto by default (PR 3c.2, FR-052)
 │   │   └── lattice.rs              # SciSet / SarSet / FgiSet (existing); FgiSet renders without redundant FGI when trigraph present (PR 5, FR-008); FgiMarker::SourceConcealed | Acknowledged discriminant (PR 2, FR-017)
 │   ├── docs/
 │   │   └── CAPCO-2016.md           # Vendored authoritative source — single source of truth for citation-lint (FR-018)
@@ -138,6 +147,8 @@ crates/
 │       ├── category_lattice_laws.rs        # NEW (PR 4) — assoc/comm/idem/identity per category (FR-011)
 │       ├── cross_axis_dominance.rs         # NEW (PR 4) — FOUO eviction, FGI rollup, SCI canonicalization, AEA commingling (FR-012)
 │       ├── parse_render_roundtrip.rs       # NEW (PR 2) — strict-path round-trip property (Layer 2)
+│       ├── render_canonical_emission_form.rs # NEW (PR 3c.2) — EmissionForm selector covers Auto/Portion/Banner/BannerAbbreviated/LongTitle (FR-052)
+│       ├── vocabulary_forms.rs             # NEW (PR 3d) — forms() round-trip with per-form accessors (FR-053)
 │       └── citation_fidelity.rs            # NEW (PR 0.5 skeleton, PR 10 maturation) — F.1 corpus fixture per cited authority (FR-019)
 │
 ├── engine/                         # Pipeline orchestration
@@ -222,33 +233,213 @@ path (`tools/<crate>/`, workspace files) land in PR 0 implementation.
 | D5 | SC-010 binding R-8 wording; threshold-artifact reference | `spec.md` SC-010 (landed); `research.md` R-8 (amended in this PR) |
 | D6 | FR-049 — predicate-id stability freeze begins at PR 10 merge | `spec.md` (landed) |
 | D7 | `tests/corpus/mangled/threshold.toml` scaffold (schema + empty values) | new file |
-| D8 | FR-050 — cumulative bench-drift gate at PR 10 + pinned bench hardware | `spec.md` (landed); PR 0 description records hardware pin |
+| D8 | FR-050 — cumulative bench-drift gate at PR 10. PR-0-review amendment: hardware pinning beyond `ubuntu-latest` is out of project budget; `decisions.md` D8 documents the realized constraint and the bench-runner owner (`bashandbone`) | `spec.md` (landed); `decisions.md` D8 (amended); PR 0 description records the runner-family commitment |
 | D9 | R-9 in research — PR 9 → 9a / 9b / 9c | `research.md` |
 | D10 | Layer 0 in test taxonomy + `rust-toolchain.toml` + trybuild version pin | `contracts/engine-pipeline.md`; workspace toolchain file (verify) |
 | D11 | R-10 in research — masking-pin cache-with-fallback | `research.md`; `tools/masking-pin-lint/` design note |
 | D12 | R-11 in research — `_unchecked`-by-signature lint extension; FR-040 amendment | `research.md`; `spec.md` FR-040 (landed) |
-| D13 | PR 3b acceptance criteria (8–18 band + qualitative gate) | this section (below) + reviewer attestation requirement |
+| D13 | PR 3b acceptance criteria (qualitative gate per declarative entry; end-state target ~10 surviving rules across stages 1–4) — amended 2026-05-07; per-PR-3b numeric band retired 2026-05-07 | this section (below) + reviewer attestation requirement |
 | D14 | Trait stabilization forcing function in Assumptions | `spec.md` (landed) |
 | D15 | US2 Independent Test → glob+count | `spec.md` (landed) |
 | D16 | FR-051 — flake-watch quarantine queue (cap=10) | `spec.md` (landed); `tools/flake-watch/` scaffold |
 
-**PR 3b acceptance criteria addendum (D13)**: post-collapse rule count
-MUST land in the **8–18 band**. Each surviving rule MUST satisfy
-(reviewer attests in PR description):
+**PR 3b acceptance criteria addendum (D13, amended 2026-05-07 per
+`docs/plans/2026-05-07-pr3b-consultation-verdict.md`)**:
 
-1. Single CAPCO-§ citation per rule.
-2. Predicate body has ≤3 internal branches (count `match`/`if` arms in
-   the body of the rule's `evaluate` impl; count nested `match` /
-   `if` separately).
-3. Out-of-band counts (<8 or >18) require explicit team review and
-   block merge until reviewed.
+The post-collapse rule count is the **first** of four staged collapse
+waves. PR 3b proper lands the **declarative-catalog moves** (existing
+primitives only); subsequent compaction lands across PR 3.7 / PR 4 /
+PR 5+ alongside the lattice §-resolution spike, the per-category
+Lattice impls, and the renderer correctness work. Original D13 wording
+targeted "8–18 band post-PR-3b"; the consultation verdict re-baselined
+the source count to **59** (`grep -c '^impl Rule for' rules.rs
+rules_declarative.rs rules_sci_per_system.rs`, not the "~56"
+approximation the lattice plan carried) and re-sequenced the moves
+across stages. A subsequent re-evaluation **2026-05-07** retired the
+PR-3b-proper numeric band (originally "13–18") after the planning pass
+on T026a found that the literal sub-move retirements deliver −15 to
+−21 rules, landing at ~38–44 post-3b — outside any 13–18 band by
+construction. The per-sub-PR principle is now **drive the count down
+within what the sub-move's primitive scope authorizes**, not "hit a
+band." End-state target across all four stages remains ~10 surviving
+rules, with the heavy compaction lifting in Stage 3 (PR 4 per-category
+Lattice impls retire entire walker classes) and Stage 4 (PR 5+ renderer
+absorbs ordering / style rules).
+
+| Stage | PR | Expected surviving rules | Acceptance gate |
+|---|---|---|---|
+| Pre-collapse (today) | — | **59** | — |
+| Stage 1 (PR 3b proper — declarative-catalog) | PR 3b | **~38–44** | Qualitative gate (per-sub-move attestation; see below). Numeric band retired. |
+| Stage 2 (new primitives + catalog compaction) | PR 3.7 | ~32–40 (RELIDO compacts to 2 family rows; closure operator absorbs implication rows) | PR 3.7 acceptance (T108) |
+| Stage 3 (per-category Lattice impls + closure wiring) | PR 4 | ~14–22 (banner walker retires; SCI per-system walker retires into per-category Lattice impls) | PR 4 acceptance (T111+) |
+| Stage 4 (renderer correctness + RELOPT round-trip) | PR 5+ | **~10** | PR 5+ acceptance |
+
+**PR 3b sub-moves** (each independently committable inside PR 3b; see
+T026a–T026f in `tasks.md`):
+
+- **3b.A** — banner roll-up rules (E031 SAR, E035 SCI, E040 Non-IC
+  dissem — the literal `impl Rule` blocks in `rules.rs`; spec-text
+  E034 / E045 / FGI / classification banner rules are out of scope:
+  no current `RuleId::new("E034")` exists in the live ruleset — the
+  archived spec planned it but it landed as `W034`
+  `SciCustomControlInfoRule`, which is per-system not banner-rollup;
+  E045 is per-system and belongs to T026e; FGI / classification
+  banner rollup have no current `impl Rule` block to retire) collapse to ONE generic walker over a
+  per-category catalog. The walker consumes existing
+  `PageContext::expected_*()` accessors (NOT `MarkingScheme::project`,
+  which still delegates back through `PageContext` and which awaits
+  `ProjectedMarking` becoming a real consumer in PR 6). Each catalog
+  row preserves its source rule's surgical fix-emission machinery
+  (zero-width insertion span vs error fallback, C-1 overlap-guard
+  interaction with E028/E029) and emits diagnostics with per-row rule
+  IDs to preserve audit-stream traceability across the walker
+  boundary. Net delta: −2 rules (3 retired, 1 walker added). The
+  walker retires when PR 4's per-category Lattice impls + property
+  tests land (Stage 3).
+- **3b.B** — `marque-applied.md` §3.4.1 transmutation roster (6
+  entries) + §3.4.3 cross-axis FGI rollup (1 entry) ship as 7
+  declarative `PageRewrite` rows. Topological scheduler annotates
+  reads/writes per entry.
+- **3b.C** — 4 directly-cited RELIDO `Constraint::Conflicts` rows
+  (E054–E057; single-token RHS only; D17 scope correction). The
+  ~15–20 projection from the consultation verdict was revised:
+  re-verification found only 4 pairs with verbatim §H.8 authority;
+  the broader §3.4.2 family roster defers to T108b (PR 3.7) where
+  `RhsFamily(predicate)` lands — see `decisions.md D17`.
+- **3b.D** — **LANDED 2026-05-08** (T026d, #324). Landed
+  `marque-applied.md` §3.4.6 per-token classification-floor catalog
+  as 27 `Constraint::Custom("class-floor/...", ...)` rows on
+  `CapcoScheme` (catalog-pin: `catalog_declares_27_class_floor_rows`;
+  the +1 vs the plan-doc's "~26" is the UCNI split) (Constitution VII §IV blocks scheme-adoption PRs
+  from adding new `Constraint` variants; the canonical-Custom
+  precedent set by `E022/CNWDI-classification-floor` was generalized
+  to the 26-row catalog). Walker `DeclarativeClassFloorRule` (rule
+  ID `E058`) dispatches over the catalog with a 3-layer hot-path
+  optimization. Closure-implied requirements (`marque-applied.md`
+  §4.7.5) stay as `Custom` floor rows in PR 3b; the closure
+  operator primitive (Stage 2.B in `marque-applied.md` §3.11) lands
+  in PR 3.7 and re-classifies the implication-shaped entries in
+  PR 4. Net rule delta: 3 retired (E022/E025/E027) + 1 walker
+  added = net −2. Running registered-rule count: 61 → 59. See
+  `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`.
+- **3b.E** — **LANDED 2026-05-08** (T026e). Collapsed the 10 rules in
+  the now-deleted `crates/capco/src/rules_sci_per_system.rs` into ONE
+  `DeclarativeSciPerSystemRule` walker (rule ID `E059`) dispatching
+  over a 5-row `Constraint::Custom("sci-per-system/...", ...)` catalog
+  at §H.4 family granularity (HCS-O companions, HCS-P NOFORN, HCS-P
+  sub-compartment companions, SI-G companions, TK compartment NOFORN);
+  per-row `CAPCO-2016 §H.4 pXX` citation. The class-floor portions of
+  the retired rules are absorbed by PR 3b.D's class-floor catalog;
+  no class-floor rows are added in 3b.E. Net rule delta: −9 (10
+  retired + 1 walker added). Running registered-rule count: 59 → 50.
+  See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`.
+- **3b.F** — non-canonical input fallback walker covering E020 /
+  E023 / E028 / E033 ordering checks (REL TO leads with USA, AEA
+  SIGMA numeric sort, SAR alphabetic, SCI numeric-then-alpha) as a
+  single `impl Rule` block. **Status: LANDED 2026-05-08.**
+  `DeclarativeNonCanonicalInputRule` (rule ID `E060`) dispatches
+  over a 5-row private `NON_CANONICAL_CATALOG` inside
+  `crates/capco/src/rules_declarative.rs`. Per-row §-citations:
+  REL TO USA-first alpha (§H.8 p150-151), JOINT alpha (§H.3 p56),
+  AEA SIGMA numeric sort (§H.6 p108), SAR program ascending alpha
+  (§H.5 p99), SCI compartment + sub-compartment numeric-then-alpha
+  (§H.4 p61). Net rule delta: −3 (4 retired + 1 walker added).
+  Running registered-rule count: 50 → 47. Walker retires when the
+  Phase C renderer trait surface lands in PR 5+ (Stage 4) and
+  absorbs canonical-form rendering. See
+  `docs/plans/2026-05-08-pr3b-F-non-canonical-input-walker-plan.md`.
+- **3b umbrella — LANDED 2026-05-08** (T027 + T028 + T029,
+  closeout sub-PR #328 aggregating 3b.A #319 / 3b.B #320 /
+  3b.C #321 / 3b.D #324 / 3b.E #326 / 3b.F #327). Closeout
+  bookkeeping only — zero rule-logic edits. T027: per-sub-move
+  reviewer attestation (D13 single-§-citation discipline,
+  ≤3-branch `impl Rule` bodies, net-rule-delta math 59 → 47)
+  aggregated in the umbrella PR description. T028:
+  exact-rule-ID-set pin landed at
+  `crates/capco/tests/post_3b_registration_pin.rs`,
+  complementing the existing count pin in
+  `corpus_parity.rs:170-194` by catching rename-at-same-count
+  + delete-and-add-at-same-count drift. T029: new
+  `pr-3b-corpus-regression` CI job in `.github/workflows/ci.yml`
+  mirroring T025's body, branch-filtered to
+  `refactor-006-pr-3b*`. Constitution VII §IV-clean (no edits to
+  `crates/{engine,scheme,core,rules,ism}`). See
+  `docs/plans/2026-05-08-pr3b-closeout-T027-T028-T029-plan.md`.
+- **4b umbrella — LANDED 2026-05-{15→18}** (T142 + T143 + T144 +
+  T145, closeout aggregating 4b-A #426 / 4b-B #437 / 4b-C #468 /
+  4b-D.0 #514 / 4b-D.1 #517 / 4b-D.2 #527 / 4b-D.3 #535 / 4b-E
+  #539 / 4b-F #542). Closeout bookkeeping only — zero rule-logic
+  edits; zero engine-crate edits (Constitution VII
+  scheme-adoption boundary). T142: umbrella attestation
+  aggregating (a) single-§-citation discipline across 12 lattice
+  types + 27 `PageRewrite` rows + 10 `ClosureRule` rows + W004,
+  (b) engine-crate touch ledger documenting the five within-006
+  precedent breaches (4b-B Commit 2 / 4b-C Commit 5 / 4b-D.2 /
+  4b-D.3 / 4b-E), (c) per-axis net-delta math from pre-4b
+  baseline through post-4b-F terminal state (12 Join + 9 Meet +
+  2 BoundedJoin + 2 BoundedMeet impls; 27 PageRewrite rows; 10
+  ClosureRule rows; 39 `Constraint::Custom` rows; 38 registered
+  rules with W004 added and W002 retired). T143: compile-time
+  pin at `crates/capco/tests/lattice_static_assertions.rs`
+  locking 12 + 9 + 2 + 2 trait impls plus the Join-only invariant
+  for DissemSet / JointSet / DisplayOnlyBlock (issue #456 / PR #502
+  split + PR #538 audit). T144: runtime triple-pin at
+  `crates/capco/tests/post_4b_lattice_inventory_pin.rs` covering
+  positional 27 `PageRewrite` names + positional 10 `ClosureRule`
+  names + sorted-set 39 `Constraint::Custom` labels. T145:
+  `pr-4b-corpus-regression` CI job branch-filtered to
+  `refactor-006-pr-4b*`, mirroring T029's body. See
+  `docs/plans/2026-05-19-pr4b-closeout-pm-decisions.md`.
+
+**Reviewer attestation requirements** (each sub-PR's PR description
+declares a–c against the sub-move it lands; the umbrella PR-3b
+aggregates):
+
+1. **Single CAPCO-§ citation per declarative catalog entry** (NOT
+   per `impl Rule` block). Resolves Q-3.9 from `marque-applied.md`
+   §9. The consolidated walkers (3b.A banner, 3b.C RELIDO, 3b.D
+   floors, 3b.E SCI per-system, 3b.F non-canonical input) are each
+   one `impl Rule` block that
+   delegates to a catalog; each catalog row carries its own
+   §-citation. Cited per Constitution VIII (citation integrity is
+   per-claim, not per-block); the discipline is unaffected by where
+   the citation textually lives so long as it is verifiable.
+2. Predicate body of every `impl Rule` block has ≤3 internal
+   branches (count `match`/`if` arms in the body of the rule's
+   `evaluate` impl; count nested `match` / `if` separately).
+   Walkers' dispatch on catalog-entry kind counts as ≤3 when the
+   catalog stays homogeneous (`Conflicts` / `Requires` / `Custom`).
+3. **Net rule delta and running count** declared in the PR
+   description with the math (e.g., "3b.A: 3 retired + 1 walker =
+   net −2; running count 59 → 57"). The PR-3b-proper numeric band
+   is retired; the gate is "drive the count down within what the
+   sub-move's primitive scope authorizes" — sub-PRs that retire 0
+   rules (because their primitives are additive, not consolidating)
+   are still acceptable when the additions ship the declarative
+   catalog the bridge §3.4 prescribes. Aggressive consolidation
+   beyond what the bridge prescribes (e.g., compacting
+   `rules_declarative.rs` further than `marque-applied.md` §3.4
+   authorizes) requires team review before merge — the gate is
+   "stay within the sub-move's authorized primitive scope," not "hit
+   a numeric target." End-state target ~10 surviving rules across
+   all four stages remains binding; the heavy lifting toward that
+   target lands in Stage 3 (PR 4) and Stage 4 (PR 5+).
+
+**Algebraic justification**: `marque-applied.md` §3 (PR 3b stall
+walkthrough — bucket carving + Phase A/B/C overlay) and §3.11 (stage
+sequencing) are the source of truth for "this rule collapses to that
+primitive." The (a)/(b)/(c) verdicts and per-move catalog citations
+from `pure-lattice.md` / `security-lattice.md` / `abstract-interp.md`
+/ `frames-locales.md` justify each collapse target. The consultation
+verdict at `docs/plans/2026-05-07-pr3b-consultation-verdict.md` is
+the dated decision record.
 
 **Risk register (refactor-006 specific)**:
 
 | Risk | Mitigation | Owner |
 |------|-----------|-------|
-| Cumulative bench drift across PR 1–10 invisibly exceeds the per-PR FR-033 envelope | FR-050 end-state assertion at PR 10 against PR-0 baseline on **pinned hardware** (D8). Per-PR contributions >6% are flagged for attribution | bench-runner owner (named in PR 0) |
-| Hardware drift between PR 0 baseline capture and PR 10 acceptance invalidates comparison | Bench hardware pinned at PR 0 (D8); rented bare-metal or dedicated runner spec is recorded in PR 0 description; same hardware used at PR 10 acceptance | bench-runner owner |
+| Cumulative bench drift across PR 1–10 invisibly exceeds the per-PR FR-033 envelope | FR-050 end-state assertion at PR 10 against PR-0 baseline. Per-PR contributions >6% are flagged for attribution. **Project explicitly accepts shared-runner variance** per the D8 amendment (no custom-runner budget); the gate stays at 10% cumulative and may need a follow-up tolerance widening if shared-runner variance makes it flap empirically | bench-runner owner (`bashandbone`) |
+| Hardware drift between PR 0 baseline capture and PR 10 acceptance invalidates comparison | Bench captures run on GitHub Actions `ubuntu-latest` hosted runners — runner-pool image rotations are not within project control. The bench-runner owner re-runs the PR-0 baseline if a rotation produces clearly anomalous deltas, but is NOT obligated to reconcile every percent-level drift. See `decisions.md` D8 for the full constraint and rationale | bench-runner owner (`bashandbone`) |
 | PR 3.7 stalls and PRs 4–10 cascade-stall | Named alternate owner (D2) with §§2–8 read-through completed before PR 3c merges; 1-week stall trigger for alternate handoff without escalation | PR 3.7 primary owner + alternate |
 | PR 3c lands but mangled-corpus accuracy regresses below 0.80 | Binding R-8 decision tree (D5); `threshold.toml` (D7) records branch taken; <0.80 + non-K-Option-2 attribution → revert 3a/3b/3c as a unit | PR 3c reviewer |
 | Test flakes accumulate silently and erode CI signal | FR-051 quarantine queue with cap=10 (D16); cap exceedance blocks merges until triage clears | flake-watch triage owner (rotating) |

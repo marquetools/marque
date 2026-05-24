@@ -8,13 +8,12 @@
 //! [`try_rel_to_usa_injection_candidates`] path against a realistic-
 //! shaped 10KB document where one REL TO block has a 2-char first
 //! entry (`SA` instead of `USA`) — the canonical fixture
-//! `tests/fixtures/mangled/typo/ad2bcfe3ac0b0765.json` whose recovery
-//! PR-B gates on.
+//! `tests/fixtures/mangled/typo/ad2bcfe3ac0b0765.json`.
 //!
 //! Constitution Principle I — perf bench mandatory: a structural
 //! decoder path that lands without a committed bench couldn't claim
-//! its candidate-expansion is bounded against the SC-002 perceptual-
-//! instantaneity envelope. Mirrors the SC-002 / `lint_latency.rs` and
+//! its candidate-expansion is bounded against the decoder-path latency
+//! envelope (p95 ≤ 18 ms). Mirrors the `lint_latency.rs` and
 //! `decoder_trigraph_priors.rs` shape (10KB document with one
 //! mangled REL TO region) so the three benches share the same
 //! synthetic-input model and any latency delta is attributable to

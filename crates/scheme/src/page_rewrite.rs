@@ -14,13 +14,12 @@
 //! `Lattice::join` composed over all portions), then applies the
 //! scheme's `page_rewrites()` in declaration order, then validates
 //! constraints. Declaring the rewrite as *data* — rather than hiding it
-//! inside `PageContext::expected_rel_to` — means tooling (constraint
+//! inside per-axis scheme methods — means tooling (constraint
 //! catalog, scheme-exploration UI, docs generator) can render the
 //! scheme's full aggregation semantics without executing scheme code.
-//!
-//! See §7a of the Phase B design doc.
 
 use crate::category::CategoryId;
+use crate::citation::Citation;
 use crate::scheme::MarkingScheme;
 
 /// Stable identifier for a [`PageRewrite`]. Alias for `&'static str` —
@@ -45,17 +44,19 @@ pub type RewriteId = &'static str;
 /// and the categories it mutates. They surface two properties the
 /// engine relies on:
 ///
-/// 1. **Topological ordering** — the engine sorts rewrites so a
-///    rewrite that writes category X runs before any rewrite that
-///    reads X (Phase 3 / T031–T032). Cycles fail scheme construction
-///    (`EngineConstructionError::RewriteCycle`).
+/// 1. **Topological ordering / validation** — the engine validates
+///    rewrites at construction time to detect dependency cycles
+///    (`EngineConstructionError::RewriteCycle`). At runtime, rewrites
+///    are applied in declaration order (as declared in the scheme's
+///    `page_rewrites()` table); the topological sort is an inspection
+///    and validation artifact, not the execution order.
 /// 2. **Tooling** — scheme-exploration UIs and the declarative-
 ///    constraint catalog can render the dataflow graph without
 ///    executing scheme code.
 ///
 /// For declarative triggers and actions the fields can be derived
-/// from the variants themselves (Phase 3 / T029 adds const-fn
-/// derivation in [`PageRewrite::declarative`]). For `Custom` triggers
+/// from the variants themselves (see [`PageRewrite::declarative`]).
+/// For `Custom` triggers
 /// and actions the caller MUST supply them explicitly via
 /// [`PageRewrite::custom`] because the function-pointer bodies are
 /// opaque to the engine.
@@ -67,8 +68,10 @@ pub struct PageRewrite<S: MarkingScheme + ?Sized> {
     /// audit records. Convention: `"scheme/snake-case-description"`
     /// (e.g., `"capco/noforn-clears-rel-to"`).
     pub id: RewriteId,
-    /// The rewrite's CAPCO / CUI / other-spec citation.
-    pub citation: &'static str,
+    /// The rewrite's typed authoritative-source citation. The catalog
+    /// declaration carries the same closed-template citation surface
+    /// the engine emits on `Diagnostic.citation`.
+    pub citation: Citation,
     /// When this rewrite fires.
     pub trigger: CategoryPredicate<S>,
     /// What to do when it fires.
@@ -87,7 +90,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     ///
     /// The caller still passes `reads` / `writes` explicitly. The
     /// scheduler in `marque-engine` uses them to build the topological
-    /// ordering between rewrites (task T031). For a pure-declarative
+    /// ordering between rewrites. For a pure-declarative
     /// rewrite the slices should be derivable from the `trigger` and
     /// `action` categories; callers that want a single-category hint
     /// can construct the slices as `const`s at the call site. Deriving
@@ -100,7 +103,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// [`PageRewrite::custom`] which fails closed on empty annotations.
     pub const fn declarative(
         id: RewriteId,
-        citation: &'static str,
+        citation: Citation,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
         reads: &'static [CategoryId],
@@ -145,7 +148,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// and engine-construct).
     pub const fn custom(
         id: RewriteId,
-        citation: &'static str,
+        citation: Citation,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
         reads: &'static [CategoryId],
@@ -199,7 +202,7 @@ impl<S: MarkingScheme + ?Sized> PageRewrite<S> {
     /// construction time.
     pub fn try_custom(
         id: RewriteId,
-        citation: &'static str,
+        citation: Citation,
         trigger: CategoryPredicate<S>,
         action: CategoryAction<S>,
         reads: &'static [CategoryId],
@@ -304,6 +307,40 @@ pub enum CategoryAction<S: MarkingScheme + ?Sized> {
     },
     /// Scheme-specific mutation.
     Custom(fn(&mut S::Marking)),
+    /// Apply a structural fix-intent at page scope.
+    ///
+    /// Bridges page-level declarative rewrites to the
+    /// [`ReplacementIntent`](crate::ReplacementIntent) vocabulary already
+    /// used for rule-emitted fixes. The trigger detects a page-scope
+    /// precondition (e.g., NODIS present in a dissem-control category)
+    /// and the action expresses the rewrite as a `FactAdd` / `FactRemove`
+    /// / `Recanonicalize` operation against the projected marking.
+    ///
+    /// Unlike `Clear` / `Replace` (which operate on an entire category)
+    /// and `Custom` (which is opaque to the scheduler), `Intent` lets the
+    /// rewrite mutate one or more named facts in a category while
+    /// remaining declarative (`FactAdd` carries one fact;
+    /// `FactRemove` carries a `SmallVec` of one or more for atomic
+    /// multi-fact clusters like the E024 RD/FRD/TFNI removal). The
+    /// rewrite author still declares `reads` / `writes` annotations
+    /// explicitly via [`PageRewrite::declarative`].
+    ///
+    /// **Validation**: every `CategoryAction::Intent` is validated at
+    /// engine-construction time. The engine walks each rewrite's
+    /// `FactRef`s and calls the scheme's category routing to confirm
+    /// every token maps to a category. If any token is unroutable, the
+    /// engine returns `EngineConstructionError::InvalidIntentInPageRewrite`
+    /// at `Engine::new` — the failure surfaces deterministically at
+    /// startup, not on the first page that triggers the rewrite.
+    ///
+    /// **Note on `Recanonicalize`**: the `Recanonicalize` variant of
+    /// `ReplacementIntent` is a no-op when used inside a `PageRewrite`
+    /// action. Page rewrites mutate the projected marking before the
+    /// renderer runs; a re-canonicalization intent has no semantic effect
+    /// at this layer. Authoring `CategoryAction::Intent(Recanonicalize {
+    /// .. })` is permitted (for round-trip uniformity) but is silently
+    /// inert.
+    Intent(crate::fix_intent::ReplacementIntent<S>),
 }
 
 // Manual Debug impls — function pointers don't auto-derive well across
@@ -350,6 +387,7 @@ where
                 .field("transform", &"<fn>")
                 .finish(),
             Self::Custom(_) => f.write_str("Custom(<fn>)"),
+            Self::Intent(intent) => f.debug_tuple("Intent").field(intent).finish(),
         }
     }
 }
@@ -361,7 +399,7 @@ mod tests {
     use crate::ambiguity::Parsed;
     use crate::category::{Category, TokenId};
     use crate::constraint::{Constraint, ConstraintViolation};
-    use crate::lattice::Lattice;
+    use crate::lattice::{JoinSemilattice, MeetSemilattice};
     use crate::scope::Scope;
     use crate::template::Template;
 
@@ -372,10 +410,13 @@ mod tests {
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct FakeMarking(u32);
 
-    impl Lattice for FakeMarking {
+    impl JoinSemilattice for FakeMarking {
         fn join(&self, other: &Self) -> Self {
             Self(self.0.max(other.0))
         }
+    }
+
+    impl MeetSemilattice for FakeMarking {
         fn meet(&self, other: &Self) -> Self {
             Self(self.0.min(other.0))
         }
@@ -387,6 +428,9 @@ mod tests {
         type Token = TokenId;
         type Marking = FakeMarking;
         type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
 
         fn name(&self) -> &str {
             "fake"
@@ -417,6 +461,14 @@ mod tests {
         }
         fn render_banner(&self, _: &Self::Marking) -> String {
             String::new()
+        }
+        fn render_canonical(
+            &self,
+            _: &Self::Marking,
+            _: &crate::RenderContext,
+            _: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
         }
     }
 
@@ -477,10 +529,53 @@ mod tests {
     }
 
     #[test]
+    fn debug_category_action_intent_fact_add() {
+        let a: CategoryAction<FakeScheme> =
+            CategoryAction::Intent(crate::fix_intent::ReplacementIntent::FactAdd {
+                token: crate::fix_intent::FactRef::Cve(TokenId(7)),
+                scope: Scope::Page,
+            });
+        let s = format!("{a:?}");
+        assert!(s.contains("Intent"), "got: {s}");
+        assert!(s.contains("FactAdd"), "got: {s}");
+    }
+
+    #[test]
+    fn debug_category_action_intent_fact_remove() {
+        let a: CategoryAction<FakeScheme> =
+            CategoryAction::Intent(crate::fix_intent::ReplacementIntent::fact_remove(
+                crate::fix_intent::FactRef::Cve(TokenId(3)),
+                Scope::Page,
+            ));
+        let s = format!("{a:?}");
+        assert!(s.contains("Intent"), "got: {s}");
+        assert!(s.contains("FactRemove"), "got: {s}");
+    }
+
+    #[test]
+    fn debug_category_action_intent_recanonicalize() {
+        let a: CategoryAction<FakeScheme> =
+            CategoryAction::Intent(crate::fix_intent::ReplacementIntent::Recanonicalize {
+                scope: crate::fix_intent::RecanonScope::Page,
+            });
+        let s = format!("{a:?}");
+        assert!(s.contains("Intent"), "got: {s}");
+        assert!(s.contains("Recanonicalize"), "got: {s}");
+    }
+
+    #[test]
     fn try_custom_rejects_empty_reads() {
+        // Test fixture: sentinel `Citation` for fake-scheme construction;
+        // routes through `AuthoritativeSource::EngineInternal` so Display
+        // omits §/page and the value carries no source-relative claim.
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let res = PageRewrite::<FakeScheme>::try_custom(
             "bad",
-            "test",
+            test_citation,
             CategoryPredicate::Custom(|_: &FakeMarking| false),
             CategoryAction::Custom(|_: &mut FakeMarking| {}),
             &[],
@@ -495,9 +590,14 @@ mod tests {
 
     #[test]
     fn try_custom_rejects_empty_writes() {
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let res = PageRewrite::<FakeScheme>::try_custom(
             "bad",
-            "test",
+            test_citation,
             CategoryPredicate::Custom(|_: &FakeMarking| false),
             CategoryAction::Custom(|_: &mut FakeMarking| {}),
             &[crate::category::CategoryId(1)],
@@ -512,9 +612,14 @@ mod tests {
 
     #[test]
     fn try_custom_accepts_non_empty_axes() {
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let ok = PageRewrite::<FakeScheme>::try_custom(
             "ok",
-            "test",
+            test_citation,
             CategoryPredicate::Custom(|_: &FakeMarking| false),
             CategoryAction::Custom(|_: &mut FakeMarking| {}),
             &[crate::category::CategoryId(1)],
@@ -534,9 +639,16 @@ mod tests {
     #[test]
     fn page_rewrite_struct_fields_accessible() {
         // Exercise the PageRewrite struct itself — store, read back.
+        // Test fixture: sentinel `Citation` routes through
+        // `AuthoritativeSource::EngineInternal` so Display omits §/page.
+        let test_citation = Citation::new(
+            crate::AuthoritativeSource::EngineInternal,
+            crate::SectionRef::new(crate::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        );
         let rw: PageRewrite<FakeScheme> = PageRewrite {
             id: "test/r1",
-            citation: "doc §1",
+            citation: test_citation,
             trigger: CategoryPredicate::Empty {
                 category: crate::category::CategoryId(1),
             },
@@ -547,7 +659,7 @@ mod tests {
             writes: &[crate::category::CategoryId(1)],
         };
         assert_eq!(rw.id, "test/r1");
-        assert_eq!(rw.citation, "doc §1");
+        assert_eq!(rw.citation, test_citation);
         assert_eq!(rw.reads, &[crate::category::CategoryId(1)]);
         assert_eq!(rw.writes, &[crate::category::CategoryId(1)]);
         // Trigger / action reachable through pattern match.

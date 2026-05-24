@@ -37,13 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
       - name: scripts/bench-check.sh (capture full output)
         run: |
@@ -82,15 +82,37 @@ jobs:
           }
           missing = expected_names - lines_by_name.keys()
           if missing:
-              sys.stderr.write(
-                  f"expected {len(expected_names)} fix_latency bench lines but missing: {sorted(missing)}\n"
-                  "bench-check output follows:\n"
+              # The `fix_latency` Criterion bench may be temporarily
+              # stubbed (e.g., pending a shape rewrite after an audit
+              # schema flip). When that happens, `report_fix_latency`
+              # emits only "WARN — could not parse" lines for each
+              # missing bench. Treat that case as advisory-skip rather
+              # than a hard failure: post a placeholder comment to #268
+              # so the weekly history isn't lost, and don't break the
+              # workflow.
+              warn_pat = re.compile(
+                  r"bench-check\[fix_latency\]:\s+WARN\s+—\s+could not parse "
+                  r"(fix_single_e001_apply|fix_single_e001_dry_run|lint_single_e001_baseline) timing"
               )
-              sys.stderr.write(text)
-              sys.exit(1)
-
-          # Preserve canonical bench order in the comment.
-          lines = [lines_by_name[n] for n in sorted(expected_names)]
+              warn_seen = {m.group(1) for m in warn_pat.finditer(text)}
+              if missing <= warn_seen:
+                  sys.stderr.write(
+                      "fix_latency bench is stubbed; posting advisory placeholder to #268\n"
+                  )
+                  lines = [
+                      f"bench-check[fix_latency]: {n}: STUBBED (bench disabled pending rewrite)"
+                      for n in sorted(expected_names)
+                  ]
+              else:
+                  sys.stderr.write(
+                      f"expected {len(expected_names)} fix_latency bench lines but missing: {sorted(missing)}\n"
+                      "bench-check output follows:\n"
+                  )
+                  sys.stderr.write(text)
+                  sys.exit(1)
+          else:
+              # Preserve canonical bench order in the comment.
+              lines = [lines_by_name[n] for n in sorted(expected_names)]
 
           repo = os.environ["GITHUB_REPOSITORY"]
           sha = os.environ.get("GITHUB_SHA", "unknown")

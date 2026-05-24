@@ -290,41 +290,73 @@ pub struct MessageArgs {
 ## `AppliedFix` v2 (PR 3c, FR-002 / FR-004 / FR-005 / FR-026)
 
 Audit record. Reshaped to carry only content-ignorant identifiers.
+Per PM-D-7 / PM-D-11 the v2 shape is flat `AppliedReplacement<S>`
+(no enum discriminator on the struct — the discriminant is derived
+at audit-emit time from `FixSource`), `SystemTime` (not
+`DateTime<Utc>`), `Option<Arc<str>>` for classifier identity (not
+a `ClassifierId` newtype), and includes `source: FixSource` at the
+top level.
 
 ```rust
-pub struct AppliedFix {
-    pub rule: RuleId,                              // (scheme, predicate-id) form per FR-026 / R-3
-    pub severity: Severity,
+pub struct AppliedFix<S: MarkingScheme> {
+    pub rule: RuleId,
+    pub severity: Severity,                         // top-level snapshot from Diagnostic.severity (PM-D-11)
     pub span: Span,
-    pub fix: AppliedFixDetail,
+    pub fix: AppliedFixDetail<S>,
+    pub source: FixSource,                          // recognizer provenance (PM-D-7 emit-time discriminant input)
     pub message: Message,                           // template + args; FR-003
-    pub timestamp: DateTime<Utc>,
-    pub classifier_id: Option<ClassifierId>,
+    pub timestamp: SystemTime,                      // not DateTime<Utc>
+    pub classifier_id: Option<Arc<str>>,            // not a ClassifierId newtype
     pub dry_run: bool,
+    pub input: Option<Arc<str>>,                    // caller-supplied input identifier
 }
 
-pub struct AppliedFixDetail {
-    pub replacement: FixReplacement,                // discriminant Strict | Decoder
+pub struct AppliedFixDetail<S: MarkingScheme> {
+    pub replacement: AppliedReplacement<S>,         // flat struct; no Strict/Decoder enum
     pub original_span: Span,                        // FR-004: span only, no bytes
     pub original_digest: Blake3Hash,                // BLAKE3 of pre-fix bytes
 }
 
-pub enum FixReplacement {
-    Strict { canonical: Canonical<CapcoScheme>, confidence: Confidence },
-    Decoder { canonical: Canonical<CapcoScheme>, confidence: Confidence },
+pub struct AppliedReplacement<S: MarkingScheme> {
+    pub canonical: Canonical<S>,                    // engine-rendered canonical payload
+    pub confidence: Confidence,                     // confidence snapshot
+    pub bytes_digest: Blake3Hash,                   // BLAKE3 of canonical.bytes() (PM-D-6, precomputed at promotion)
 }
 
-pub struct RuleId(pub &'static str /* scheme */, pub &'static str /* predicate_id */);
+/// Derived at audit-emit time from `AppliedFix.source` via the 5-to-2 collapse
+/// in `discriminant_from_source` (PM-D-7). NOT stored on `AppliedReplacement`.
+pub enum Discriminant { Strict, Decoder }
+
+// `RuleId` post-T044 — the 2-tuple `(scheme, predicate_id)` form per
+// FR-026 / FR-044. Both fields are `&'static str`. The canonical wire
+// string is `"<scheme>:<predicate_id>"` via the `Display` impl, used
+// by `.marque.toml` `[rules]` keys, CLI text output, and grep targets;
+// JSON audit records serialize the structured 2-tuple shape, never
+// the wire string. See `crates/rules/src/lib.rs` for the live type.
+pub struct RuleId {
+    scheme: &'static str,
+    predicate_id: &'static str,
+}
+
+impl RuleId {
+    pub const fn new(scheme: &'static str, predicate_id: &'static str) -> Self {
+        Self { scheme, predicate_id }
+    }
+    pub const fn scheme(&self) -> &'static str { self.scheme }
+    pub const fn predicate_id(&self) -> &'static str { self.predicate_id }
+}
 ```
 
 **Validation rules**:
 - `AppliedFix::__engine_promote(...)` is `pub #[doc(hidden)]` and reachable only from `Engine::fix_inner` in production code (FR-005). Test-fixture carve-out per Constitution V Principle V remains in effect; promote-callsite lint (FR-040, AST-based) enforces.
-- `AppliedFix.fix.replacement` carries `Canonical<S>`; the `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed). `FixReplacement::Strict | Decoder` discriminant tracks the recognizer that produced the fix.
-- `AppliedFix.message` is `Message` (template + args), never a free-form string (FR-003).
-- `RuleId` is `(scheme, predicate-id)` form; legacy `E###`/`W###`/`S###`/`C###` IDs do not appear in v2 records (FR-026, R-3).
-- Pre-cutover (`marque-mvp-2`) records are unreadable by post-cutover binaries (FR-037); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034).
+- The FR-040 lint's reserved-name list at HEAD: `__engine_promote`, `__engine_promote_text_correction` (PM-D-4 text-correction split; PR 3c.2.D fixup F-1 added the lint coverage), `__engine_construct`. Exact-equality match on the last path segment — back-compat names like `__engine_promote_legacy` are deliberately NOT covered.
+- `AppliedFix.fix.replacement` carries `Canonical<S>` post-PR-3c.2.D (per FR-035a). The `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed); `Discriminant::Strict | Decoder` (derived at emit time from `AppliedFix.source` via PM-D-7's 5-to-2 collapse) tracks the recognizer that produced the fix. The discriminant is NOT a struct field on `AppliedReplacement<S>` — it's projected at JSON emit time.
+- `AppliedFix.message` is `Message` (template + args) — FR-003 fully closed at PR 3c.2.D. The template carries the `MessageTemplate` variant name verbatim via `as_str()`; the args object holds the closed-set permitted-identifier types (`token`, `expected_token`, `actual_token`, `category`, `span`, `digest`, `confidence`, `feature_ids`).
+- `RuleId` is the 2-tuple `(scheme, predicate_id)` form as of T044 (2026-05-22) per FR-026. The migration unfroze FR-049 for a single atomic PR that landed the 2-tuple shape and bumped `marque-1.0 → marque-2.0` in lockstep; the freeze re-engaged at T044's merge. See `docs/refactor-006/legacy-rule-id-map.md` for the rename table from the prior 1-tuple `(&'static str)` form.
+- Pre-cutover (`marque-1.0` and earlier) records are not interoperable with `marque-2.0` binaries (FR-037 — clean break, no `marque-audit-reader` crate scheduled); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034). (`marque-mvp-1` / `marque-mvp-2` / `marque-mvp-3` / `marque-1.0` retired across the keystone and T044 cutovers.)
+- Non-marking text corrections (C001 corrections-map matches, the E006-shaped deprecation path) flow through a separate `AppliedTextCorrection` type carrying a corpus-derived `SmolStr` replacement (PM-D-4). The two types are disjoint by construction; G13 boundary is type-level checkable.
 
-**Serialization**: NDJSON. Schema field is `"schema": "marque-1.0"` (FR-035). The exact JSON shape is documented in `contracts/audit-record.md`.
+**Serialization**: NDJSON. Schema field is `"schema": "marque-2.0"` per FR-035 / FR-035a / T044. The exact JSON shape — including the `"rule": {"scheme": "...", "predicate_id": "..."}` structured 2-tuple form — is documented in `contracts/audit-record.md` §"NDJSON record shape" and §"Rule ID encoding".
 
 ---
 
@@ -366,6 +398,9 @@ pub trait MarkingScheme: Send + Sync + 'static {
 
     /// Render an open-vocab fix replacement to Canonical<Self>. The
     /// only call path that produces an open-vocab Canonical<Self>.
+    /// `ctx.emission_form` selects the form (Auto / Portion / Banner /
+    /// BannerAbbreviated / LongTitle) — see FR-052 and the
+    /// `RenderContext` section below.
     fn render_canonical<C: CanonicalConstructor<Self>>(
         intent: &FixIntent<Self>,
         ctx: &RenderContext,
@@ -396,22 +431,134 @@ pub trait CanonicalConstructor<S: MarkingScheme>: sealed::Sealed {
 
 ---
 
-## `Vocabulary<S>` extensions (PR 2 / PR 4)
+## `RenderContext` and `EmissionForm` (PR 3c.2, FR-052)
 
-Existing `Vocabulary<S>` (Phase 5 metadata surface) gains:
+Engine-supplied context to `MarkingScheme::render_canonical`. The `RenderContext`
+shape lands alongside `render_canonical`'s implementation in PR 3c.2 (T048 +
+T048a). Locking the shape now is the only marking-form-handling change worth
+pulling into the keystone window: `render_canonical` is the single open-vocab
+emission path, and any future recognize-A-emit-B work (ISM-XML output,
+schema-compliance round-trip, grammar-bridge adapters) flows through this
+context. Adding `emission_form` later means re-signing `render_canonical`
+and propagating into every `FixIntent` emission site across the rule
+catalog — a much larger blast radius than locking it now.
+
+```rust
+pub struct RenderContext {
+    /// Existing — Page vs Portion (already in PR 3.7 / Phase B surface).
+    pub scope: Scope,
+
+    /// NEW (FR-052) — explicit emission-form selector. Engine populates
+    /// from rule context (defaulting to Auto); scheme honors it in the
+    /// closed-CVE branch by routing to the matching FormSet field.
+    pub emission_form: EmissionForm,
+
+    /// NEW — schema version this render targets. Reserved for future
+    /// codec / grammar-bridge routing. Defaults to the active scheme's
+    /// pinned ism-schema-version.
+    pub schema_version: SchemaVersionId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum EmissionForm {
+    /// Derive from Scope: Page → BannerAbbreviation if present else
+    /// BannerTitle; Portion → Portion. Preserves pre-3c.2 emission
+    /// behavior — matches the existing `Vocabulary::banner_form()`
+    /// abbreviation-when-distinct semantics. Every existing FixIntent
+    /// emission site uses Auto and is unaffected by 3c.2.
+    Auto,
+    /// Force portion form — CAPCO §G.1 Table 4 column 3 "Authorized
+    /// Portion Mark". Always present per token. Examples: "S" for
+    /// SECRET, "NF" for NOFORN.
+    Portion,
+    /// Force banner-title form — CAPCO §G.1 Table 4 column 1
+    /// "Authorized Banner Line Marking Title". Always present per token.
+    /// Examples: "SECRET" for SECRET (no distinct abbreviation exists),
+    /// "NOT RELEASABLE TO FOREIGN NATIONALS" for NOFORN.
+    BannerTitle,
+    /// Force banner-abbreviation form — CAPCO §G.1 Table 4 column 2
+    /// "Authorized Banner Line Abbreviation". Distinct from BannerTitle
+    /// only when one exists. Examples: "NOFORN" for NOFORN (the
+    /// abbreviation is distinct from the title); SECRET has no distinct
+    /// abbreviation, so this falls back to BannerTitle ("SECRET") per
+    /// the validation rule below.
+    BannerAbbreviation,
+}
+```
+
+**Validation rules (FR-052)**:
+- `EmissionForm` is `#[non_exhaustive]` — adding a future variant
+  (`IsmDescriptionTitle` for ISM-XML output; `XmlAttribute`; scheme-
+  specific forms) MUST NOT require touching `FixIntent` emission sites
+  that pass `EmissionForm::Auto`. Existing rules that don't care about
+  form pass `Auto` and inherit the scope-derived default forever.
+- The closed-CVE branch of `render_canonical` MUST honor every variant
+  by routing to the matching `FormSet` field via `Vocabulary<S>::forms()`.
+  When `EmissionForm::BannerAbbreviation` is requested but
+  `forms().banner_abbreviation == None` (the token has no distinct
+  abbreviation, e.g., classifications, FISA, RELIDO), the branch MUST
+  return `forms().banner_title` rather than panicking. `BannerTitle` and
+  `Portion` are total — every token has one — so no fallback rule is
+  needed for those variants.
+- The open-vocab branch (rendering an SCI compartment, an FGI trigraph
+  list, etc.) ignores `emission_form` for now — open-vocab tokens carry
+  one canonical per scope. Future scheme-specific variants of
+  `EmissionForm` may extend this.
+- `schema_version` is reserved data plumbing — no consumer in 3c.2.
+  Wired by the engine to the active scheme's pinned schema version
+  (`marque-ism/Cargo.toml [package.metadata.marque] ism-schema-version`).
+
+**Used by**: `MarkingScheme::render_canonical` (the only path that reads
+`ctx`); `Engine::fix_inner` (the only constructor of `RenderContext`).
+
+---
+
+## `Vocabulary<S>` extensions (PR 2 / PR 3d / PR 4)
+
+Existing `Vocabulary<S>` (Phase 5 metadata surface) gains methods across three
+PRs — all additive, no signature changes to existing methods:
 
 ```rust
 pub trait Vocabulary<S: MarkingScheme>: Send + Sync + 'static {
-    /* existing: lookup, authority, owner, deprecation, urn, schema_version, portion_form, banner_form */
+    /* existing Phase-5 methods: lookup, authority, owner, deprecation,
+       urn, schema_version */
 
-    /// FR-015 — admit input bytes against a category's structural shape.
-    /// Used by parser (replacing inline byte-class checks at the four
-    /// open-vocabulary admission sites — three `is_ascii_alphanumeric`
+    /// PR 3d — aggregate per-token form data. The three canonical CAPCO
+    /// forms (Portion Mark, Banner Line Marking Title, Banner Line
+    /// Abbreviation per §G.1 Table 4) plus a recognize-only alias slice
+    /// for forms accepted on input but not emitted by default. Replaces
+    /// the per-form-method triple as the authoritative accessor; existing
+    /// per-form methods become default methods over `forms()`.
+    fn forms(&self, token: &S::Token) -> &'static FormSet;
+
+    /// PR 3d — default-method accessors over `forms()`. Existing call
+    /// sites are unaffected. Schemes that already provide bespoke
+    /// `forms()` impls inherit these for free.
+    fn portion_form(&self, token: &S::Token) -> &'static str {
+        self.forms(token).portion
+    }
+    /// Returns the banner-abbreviation form when one is distinct, else
+    /// the banner-title form. Preserves the pre-3d semantics of
+    /// `banner_form()` byte-for-byte (matches the existing
+    /// `MarkingForm.banner` field's "abbreviation when distinct, else
+    /// title" convention in `crates/ism/src/marking_forms.rs`).
+    fn banner_form(&self, token: &S::Token) -> &'static str {
+        let f = self.forms(token);
+        f.banner_abbreviation.unwrap_or(f.banner_title)
+    }
+    fn banner_abbreviation(&self, token: &S::Token) -> Option<&'static str> {
+        self.forms(token).banner_abbreviation
+    }
+
+    /// PR 2 / FR-015 — admit input bytes against a category's structural
+    /// shape. Used by parser (replacing inline byte-class checks at the
+    /// four open-vocabulary admission sites — three `is_ascii_alphanumeric`
     /// checks plus the FGI trigraph silent-skip) and by open-vocab
     /// Canonical construction.
     fn shape_admits(category: CategoryId, bytes: &[u8]) -> bool;
 
-    /// FR-010 — per-token classification of dissem markings as
+    /// PR 4 / FR-010 — per-token classification of dissem markings as
     /// foreign-disclosure-and-release (FD&R) or non-FD&R (CAPCO §H.8).
     /// Returns false for non-dissem categories.
     fn is_fdr_dissem(token: TokenId) -> bool;
@@ -421,6 +568,131 @@ pub trait Vocabulary<S: MarkingScheme>: Send + Sync + 'static {
 **Validation rules**:
 - `shape_admits` is total over `(CategoryId, &[u8])`; categories with no structural shape rule (closed-CVE-only) return `lookup(bytes).is_some()`.
 - `is_fdr_dissem` baked from `crates/capco/docs/CAPCO-2016.md` §H.8 at build time (per the Phase 5 metadata surface mechanism). PR 4 wires `SupersessionSet` over the dissem axis to the predicate.
+- `forms()` MUST return `&'static FormSet` data (no runtime allocation; SC-008 invariant). The CAPCO impl reuses the existing `marking_forms.rs` static table plus build-time-derived per-token records.
+- The default per-form accessor methods MUST NOT be overridden when a scheme implements `forms()` — the trait shape relies on round-trip equality between `forms(token).portion` and `portion_form(token)` for back-compat.
+
+---
+
+## `FormSet` and `FormKind` (PR 3d, FR-053)
+
+Per-token aggregation of every form a scheme recognizes (input) or emits
+(output). Replaces the closed-world "exactly three forms per token"
+assumption baked into the Phase 5 per-form methods. Lands in
+`crates/scheme/src/vocabulary.rs`; CAPCO build-time impl lands in
+`crates/capco/src/vocabulary.rs` and `crates/ism/src/marking_forms.rs`.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormSet {
+    /// CAPCO §G.1 Table 4 column 3 — "Authorized Portion Mark".
+    /// Always present per token. Examples: "S" for SECRET, "NF" for
+    /// NOFORN, "FOUO" for FOR OFFICIAL USE ONLY.
+    pub portion: &'static str,
+    /// CAPCO §G.1 Table 4 column 1 — "Authorized Banner Line Marking
+    /// Title". Always present per token. Examples: "SECRET" for SECRET
+    /// (no distinct abbreviation), "NOT RELEASABLE TO FOREIGN NATIONALS"
+    /// for NOFORN (the long descriptive title; abbreviation lives in the
+    /// next field), "FOR OFFICIAL USE ONLY" for FOUO.
+    pub banner_title: &'static str,
+    /// CAPCO §G.1 Table 4 column 2 — "Authorized Banner Line
+    /// Abbreviation". `Some` only when the abbreviation is distinct from
+    /// `banner_title`. Examples: `Some("NOFORN")` for NOFORN,
+    /// `Some("FOUO")` for FOR OFFICIAL USE ONLY, `None` for SECRET (no
+    /// abbreviation form exists for any classification marking).
+    pub banner_abbreviation: Option<&'static str>,
+    /// Forms recognized on input but NOT emitted by default.
+    /// Populated for ISM `Description.title` when it differs from
+    /// CAPCO `banner_title` (per build-time ODNI XML harvest); also
+    /// historical aliases pre-dating the current schema. Engine policy
+    /// — not data shape — decides whether any alias may be promoted to
+    /// emission.
+    pub recognized_aliases: &'static [(FormKind, &'static str)],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FormKind {
+    /// ODNI ISM CVE `Description.title` form, when the published title
+    /// disagrees with CAPCO's `banner_title` (typically the ISM form is
+    /// anachronistic). Recognize-only by default.
+    IsmDescriptionTitle,
+    /// Pre-dated alias from a prior CAPCO revision. Recognize-only.
+    HistoricalAlias,
+    /* future: NatoTitle, FgiTrigraphFullName, scheme-specific kinds */
+}
+```
+
+**Validation rules (FR-053)**:
+- `FormSet` is constructed only at build time; runtime code holds
+  `&'static FormSet`. No public `FormSet::new` — the only construction
+  path is the macro / generator that the build script emits.
+- `FormKind` is `#[non_exhaustive]`. Promoting a recognize-only
+  `FormKind` variant to first-class emission requires:
+  (a) adding the matching `EmissionForm` variant (FR-052 — additive);
+  (b) extending `render_canonical`'s closed-CVE branch to dispatch on it.
+  No `FormSet` shape change is required.
+- `recognized_aliases` MUST contain only forms that genuinely *do* differ
+  from the three canonical fields (`portion`, `banner_title`,
+  `banner_abbreviation`). The build-time generator MUST elide duplicates
+  (an ISM `Description.title` that exactly matches the CAPCO
+  `banner_title` does not appear).
+- Build-time generation rule: when ODNI ISM XML's `<Description>` text
+  carries a parseable title that differs from the CAPCO `banner_title`
+  (per `crates/capco/docs/CAPCO-2016.md` §G.1 Table 4 column 1), it
+  lands in `recognized_aliases` with `FormKind::IsmDescriptionTitle`.
+  When the texts agree, the entry is omitted (no information added).
+
+**Used by**: `Vocabulary<S>::forms()` (returns `&'static FormSet`);
+`MarkingScheme::canonicalize` (consults `recognized_aliases` during
+input normalization — recognizes the alias, normalizes to canonical);
+`MarkingScheme::render_canonical` (consults the canonical fields via
+`EmissionForm`).
+
+---
+
+## `Deprecation<Token>` validity windows (PR 3d, FR-054)
+
+Extension of the existing `Deprecation<Token>` struct. Adds
+schema-version range fields so the data plumbing for "evaluate as
+valid for the time" exists before any consumer needs it.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Deprecation<Token> {
+    /// Existing — schema version at deprecation time.
+    pub since: &'static str,
+
+    /// NEW (FR-054) — schema version of first publication. Defaults
+    /// to None when build.rs cannot derive it from ODNI XSD annotations.
+    pub valid_from: Option<&'static str>,
+
+    /// NEW (FR-054) — schema version after which the token is no
+    /// longer valid in newly-authored documents. Defaults to None when
+    /// the token has no successor in the migration table (rare —
+    /// FOUO-style "no replacement" cases per FR-017).
+    pub valid_until: Option<&'static str>,
+
+    /// Existing — replacement token id when one is defined.
+    pub replacement: Option<Token>,
+}
+```
+
+**Validation rules (FR-054)**:
+- Both `valid_from` and `valid_until` are `Option<&'static str>` —
+  build-time generation populates them when source annotations exist;
+  defaults to `None` otherwise. No runtime panic if absent.
+- `valid_from <= since` MUST hold when both are populated (a token
+  cannot be deprecated before it was published). Build-time test
+  asserts the invariant over the generated migration table.
+- No PR 3d consumer is required. The validity-window data is the
+  prerequisite for a later `RuleContext.evaluation_as_of:
+  Option<SchemaVersionId>` flag (post-refactor; tracked separately as
+  a follow-on issue).
+
+**Used by**: build-time generation only in PR 3d. Post-refactor:
+historical-as-valid evaluation mode in rules; ISM-XML codec
+(`Codec<CapcoScheme>`) when it needs to round-trip a document
+authored under a prior schema version.
 
 ---
 
@@ -452,7 +724,11 @@ Engine-minted diagnostic class for two-pass re-parse failure.
 
 ```rust
 // In marque-engine (FR-041 — engine mints, not rule crate)
-pub const R002_RULE_ID: RuleId = RuleId("engine", "r002.reparse-failed");
+// Per T044 PM OD-4, the `r002.` numeric prefix from the pre-T044 spec
+// wording is dropped — `scheme = "engine"` already disambiguates,
+// and descriptive `<class>.<predicate>` reads better at audit-log
+// triage. The live constant in `crates/engine/src/engine.rs` is:
+pub const R002_RULE_ID: RuleId = RuleId::new("engine", "fix.reparse-failed");
 
 pub struct R002Diagnostic {
     pub contributing_pass1_fix_ids: SmallVec<[RuleId; 4]>,
@@ -492,9 +768,10 @@ Vec<Diagnostic { fix: Option<FixIntent<S>> }>       ◀── FR-025: rules emit
    │   - sort + non-overlap (C-1, I-3)
    │   - render FixIntent → Canonical<S> via S::render_canonical
    │   - construct AppliedFix via __engine_promote
-Vec<AppliedFix>       ◀── FR-002: content-ignorant
-   │                     ◀── FR-026: (scheme, predicate-id) RuleId
-   │                     ◀── FR-035: schema "marque-1.0"
+Vec<AuditLine>        ◀── FR-002: content-ignorant
+   │                     ◀── FR-026: rule-id surface (2-tuple (scheme, predicate_id)
+   │                     │           landed at T044, active post marque-2.0)
+   │                     ◀── FR-035 / FR-035a / T044: schema "marque-2.0" (active post T044)
    ▼ NDJSON serializer
 Audit log                                      ◀── SC-001: canary scan finds zero input bytes
 

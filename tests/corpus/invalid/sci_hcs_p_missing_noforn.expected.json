@@ -1,0 +1,7 @@
+{
+  "_note": "CAPCO-2016 §H.4 p62 (E010 HCS family rules) + §H.4 p66 (E059 sci-per-system/HCS-P-NOFORN). Re-verified at PR 10.A.2 authorship against crates/capco/docs/CAPCO-2016.md.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "portion.sci.hcs-system-constraints"}, "span": {"start": 12, "end": 17}},
+    {"rule": {"scheme": "capco", "predicate_id": "marking.sci.hcs-p-noforn-required"}, "span": {"start": 12, "end": 17}}
+  ]
+}
