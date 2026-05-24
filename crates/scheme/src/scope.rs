@@ -21,7 +21,6 @@
 //! call sites.
 
 use crate::ambiguity::Parsed;
-use crate::lattice::Lattice;
 
 /// Where a projection is being evaluated.
 ///
@@ -52,8 +51,21 @@ pub enum Scope {
 /// about diffs. Callers (CLI batch mode, server diff endpoints, email-
 /// thread walkers) construct the `DiffInput` explicitly; the engine
 /// does not fetch second markings.
+///
+/// `DiffInput` carries a `from`/`to` pair of `Parsed<M>` values and a
+/// [`DiffRelation`] tag. The type holds no lattice machinery itself —
+/// its fields are inspected by diff rules, which compose per-axis
+/// lattice operations on the inner `M` (the scheme's marking type,
+/// `MarkingScheme::Marking`) if they need to.
+///
+/// `DiffInput` carries no `M: JoinSemilattice` bound, matching the
+/// `MarkingScheme::Marking` associated type. The bound would be purely
+/// declarative — `DiffInput` itself never calls `.join` on `M` — and
+/// would force every consumer to satisfy a trait the cross-axis fold
+/// cannot keep idempotently. See the `MarkingScheme::Marking` doc
+/// comment for the full rationale.
 #[derive(Debug, Clone)]
-pub struct DiffInput<M: Lattice> {
+pub struct DiffInput<M> {
     pub from: Parsed<M>,
     pub to: Parsed<M>,
     pub relation: DiffRelation,

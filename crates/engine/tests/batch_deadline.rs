@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Spec 005 Phase 3d — BatchEngine per-document deadline tests
-//! (T049, T050).
+//! BatchEngine per-document deadline tests.
 //!
 //! Pins the contract that `BatchOptions::per_doc_deadline`:
 //! - Stamps a fresh `Instant` after each document acquires its
@@ -44,8 +43,8 @@ fn slow_doc() -> Vec<u8> {
 
 #[tokio::test]
 async fn batch_per_doc_deadline_isolates_one_slow_doc_from_rest() {
-    // T049 — per-doc deadline, three docs. The slow doc must trip
-    // its own budget; the fast docs must complete on theirs. With
+    // Per-doc deadline, three docs. The slow doc must trip its own
+    // budget; the fast docs must complete on theirs. With
     // `max_concurrent_docs: Some(4)` all three run in parallel,
     // so the slow doc cannot block the fast ones, and each doc's
     // deadline is stamped independently after its own permit
@@ -206,7 +205,7 @@ async fn batch_no_deadline_runs_all_docs_to_completion() {
 }
 
 // ---------------------------------------------------------------------------
-// T050 — `BatchError::DocumentDeadlineExceeded` shape and predicates.
+// `BatchError::DocumentDeadlineExceeded` shape and predicates.
 // ---------------------------------------------------------------------------
 
 #[test]

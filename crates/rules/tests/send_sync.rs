@@ -18,14 +18,127 @@
 //!
 //! Companion file: `crates/scheme/tests/send_sync.rs` already pins the
 //! `Recognizer` trait-object form. This file closes the equivalent
-//! gap for `Rule` and `RuleSet` (Phase 4 review M2).
+//! gap for `Rule` and `RuleSet`.
 
 use std::sync::Arc;
 
-use marque_rules::{Rule, RuleSet};
+use marque_rules::{Rule, RuleContext, RuleId, RuleSet};
+use marque_scheme::ambiguity::Parsed;
+use marque_scheme::category::Category;
+use marque_scheme::constraint::Constraint;
+use marque_scheme::lattice::{
+    BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+};
+use marque_scheme::template::Template;
+use marque_scheme::{MarkingScheme, Scope};
 use static_assertions::assert_impl_all;
 
-assert_impl_all!(Box<dyn Rule>: Send, Sync);
-assert_impl_all!(Arc<dyn Rule>: Send, Sync);
-assert_impl_all!(Box<dyn RuleSet>: Send, Sync);
-assert_impl_all!(Arc<dyn RuleSet>: Send, Sync);
+// Local stub scheme for the trait-object Send + Sync proof.
+// `Rule<S>` and `RuleSet<S>` are generic over the marking scheme; the
+// trait-object form is `Arc<dyn Rule<S>>` / `Arc<dyn RuleSet<S>>` for
+// some concrete scheme. The Send + Sync bound flows through the
+// supertrait declaration regardless of `S`, so a bound proof for any
+// one scheme proves the property for every scheme.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct StubMarking;
+
+impl JoinSemilattice for StubMarking {
+    fn join(&self, _other: &Self) -> Self {
+        StubMarking
+    }
+}
+
+impl MeetSemilattice for StubMarking {
+    fn meet(&self, _other: &Self) -> Self {
+        StubMarking
+    }
+}
+
+impl BoundedJoinSemilattice for StubMarking {
+    fn bottom() -> Self {
+        StubMarking
+    }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
+    fn top() -> Self {
+        StubMarking
+    }
+}
+
+struct StubScheme;
+
+impl MarkingScheme for StubScheme {
+    type Token = ();
+    type Marking = StubMarking;
+    type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
+
+    fn name(&self) -> &str {
+        "StubScheme"
+    }
+    fn schema_version(&self) -> &str {
+        "0.0.1"
+    }
+    fn categories(&self) -> &[Category] {
+        &[]
+    }
+    fn constraints(&self) -> &[Constraint] {
+        &[]
+    }
+    fn templates(&self) -> &[Template] {
+        &[]
+    }
+    fn parse(&self, _input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        Ok(Parsed::Unambiguous(StubMarking))
+    }
+    fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
+        StubMarking
+    }
+    fn render_portion(&self, _m: &Self::Marking) -> String {
+        String::new()
+    }
+    fn render_banner(&self, _m: &Self::Marking) -> String {
+        String::new()
+    }
+    fn render_canonical(
+        &self,
+        _m: &Self::Marking,
+        _ctx: &marque_scheme::RenderContext,
+        _out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
+}
+
+assert_impl_all!(Box<dyn Rule<StubScheme>>: Send, Sync);
+assert_impl_all!(Arc<dyn Rule<StubScheme>>: Send, Sync);
+assert_impl_all!(Box<dyn RuleSet<StubScheme>>: Send, Sync);
+assert_impl_all!(Arc<dyn RuleSet<StubScheme>>: Send, Sync);
+
+// Pin `RuleId: Send + Sync + Copy`. The 2-tuple
+// `RuleId { scheme, predicate_id }` has only `&'static str` fields, so
+// the property holds today by construction. The pin makes the safety
+// property machine-verifiable rather than assumed from the derive
+// list.
+assert_impl_all!(RuleId: Send, Sync, Copy);
+
+// Compile-time pin on `RuleContext: Send + Sync`.
+//
+// The page-portion field type on `RuleContext` is
+// `Option<Arc<Box<[CanonicalAttrs]>>>`, which is `Send + Sync` iff
+// `CanonicalAttrs: Send + Sync` (asserted in
+// `crates/ism/tests/send_sync.rs`). This file closes the gap by
+// asserting the property on `RuleContext` itself.
+//
+// `RuleContext<'a>` is lifetime-parameterized so `assert_impl_all!`
+// (which requires `'static`) cannot be applied directly. The HRTB
+// function-bound form below proves the property for every `'a` at
+// compile time.
+fn _rule_context_is_send_sync<'a>()
+where
+    RuleContext<'a>: Send + Sync,
+{
+}

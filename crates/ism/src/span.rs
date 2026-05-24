@@ -3,66 +3,30 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Byte-offset spans into source buffers — zero-copy position tracking.
+//!
+//! [`Span`] itself lives in [`marque_scheme::Span`] so the scheme
+//! layer's [`marque_scheme::constraint::ConstraintViolation`] (and
+//! other scheme-layer types) can carry source positions without
+//! taking a dependency on `marque-ism`, which would violate
+//! Constitution VII (`marque-scheme` is the only true graph leaf).
+//! The re-export here keeps every existing `marque_scheme::Span` import
+//! site unchanged.
 
-/// A byte-offset span into the original source buffer.
-/// Never owns data; always references the original input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
+pub use marque_scheme::Span;
 
-impl Span {
-    /// Construct a span. Panics in both debug and release builds if
-    /// `start > end`, because such a span will inevitably panic later
-    /// at slice time and the early panic gives a better error message.
-    #[inline]
-    pub fn new(start: usize, end: usize) -> Self {
-        assert!(
-            start <= end,
-            "Span::new: start ({start}) must not exceed end ({end})"
-        );
-        Self { start, end }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.end - self.start
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.start == self.end
-    }
-
-    /// Borrow the span's bytes from `source`. Panics if the span is
-    /// out of bounds for `source` — use [`Span::try_as_slice`] when the
-    /// caller cannot guarantee bounds.
-    #[inline]
-    pub fn as_slice<'a>(&self, source: &'a [u8]) -> &'a [u8] {
-        &source[self.start..self.end]
-    }
-
-    /// Borrow the span's bytes from `source`, returning `None` if the
-    /// span lies outside the buffer instead of panicking.
-    #[inline]
-    pub fn try_as_slice<'a>(&self, source: &'a [u8]) -> Option<&'a [u8]> {
-        source.get(self.start..self.end)
-    }
-
-    /// Extract the spanned bytes as a UTF-8 string slice.
-    ///
-    /// Returns `Err` if the span does not cover valid UTF-8.
-    /// Callers that know the source is ASCII can use `.unwrap()` in tests
-    /// or `.expect("...")` with context.
-    #[inline]
-    pub fn as_str<'a>(&self, source: &'a [u8]) -> Result<&'a str, std::str::Utf8Error> {
-        std::str::from_utf8(self.as_slice(source))
-    }
-}
-
-/// Classification marking candidate type, determined by scanner heuristics.
+/// Classification marking candidate type, determined by scanner heuristics
+/// (plus one engine-synthesized variant — see [`MarkingType::PageFinalization`]).
+///
+/// **`#[non_exhaustive]`** (issue #461): a future scanner enhancement
+/// or engine pass may introduce additional variants (e.g., a sentence-
+/// boundary candidate, a header-region marker). Marking the enum
+/// `#[non_exhaustive]` means a future variant addition is a
+/// non-breaking change for downstream consumers, which matters
+/// because every exhaustive-match site in the workspace tracks every
+/// variant by construction (rust-reviewer §1 surfaces every site
+/// requiring a wildcard arm when this enum grows).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MarkingType {
     /// `(TS//SI//NF)` — parenthesized, typically at paragraph start.
     Portion,
@@ -72,9 +36,32 @@ pub enum MarkingType {
     Cab,
     /// Document page break — `\f` (form feed) or `\n\n\n+` heuristic.
     /// Carries a zero-length span at the boundary offset. The engine uses
-    /// this to reset its `PageContext` so banner/CAB rules on the next page
-    /// see a fresh aggregate (Phase 3, plan §Task 1).
+    /// this to reset its per-page accumulator so banner/CAB rules on the
+    /// next page see a fresh aggregate (Phase 3, plan §Task 1).
     PageBreak,
+    /// Engine-synthesized page-finalization boundary — dispatched at
+    /// every [`MarkingType::PageBreak`] BEFORE the per-page
+    /// accumulator reset, plus once at end-of-document. Never emitted
+    /// by the scanner. Carries a zero-length `Span` at the boundary
+    /// offset.
+    ///
+    /// Parsers MUST reject this kind — only `marque_rules::Phase::PageFinalization`
+    /// rules dispatched by the engine consume it, and they read
+    /// `RuleContext::page_portions` / `RuleContext::page_marking` (the
+    /// page-level fixpoint snapshot the engine attaches to the
+    /// synthetic candidate), not `CanonicalAttrs` parsed from candidate
+    /// bytes.
+    ///
+    /// The variant exists so PageFinalization dispatch is
+    /// distinguishable from `PageBreak` (which carries the per-page
+    /// accumulator reset semantic) without overloading. The two MUST
+    /// NOT be co-located in the candidate stream — `PageBreak` is
+    /// the scanner-emitted reset boundary; `PageFinalization` is the
+    /// engine-synthesized dispatch marker that runs strictly before
+    /// the matching `PageBreak`'s reset.
+    ///
+    /// Issue #461 (PR refactor-006-pr-pagefinalization).
+    PageFinalization,
 }
 
 /// A scanner-identified candidate with its type and source span.

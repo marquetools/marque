@@ -9,6 +9,34 @@
 [Cc]ache/
 .[Cc]ache/
 
+# masking-pin-lint cache is intentionally tracked: D11 in
+# specs/006-engine-rule-refactor/decisions.md requires daily-refreshed
+# cache files committed to the repo so CI's cache-with-fallback path has
+# data even when GitHub's API is unreachable. The negation below carves
+# that directory out of the generic [Cc]ache/ rule above.
+!tools/masking-pin-lint/cache/
+!tools/masking-pin-lint/cache/**
+
+# proptest persistent failure seeds are intentionally tracked. Each
+# `*.proptest-regressions` file carries the seed of a real property-test
+# failure proptest discovered locally; checking them in makes the seed
+# part of CI so the same input is re-tried before any new shrink work,
+# permanently locking in the regression. Adding `*.proptest-regressions`
+# to .gitignore would silently un-track these and reopen the regression
+# window. Issue #704 (P3 monotonicity violation in CAPCO closure) is the
+# motivating instance: the failing seed `cc e88bf36f...` was untracked
+# at discovery; once the proptest-regressions file landed in CI, the
+# fix's correctness became permanently regression-tested. REUSE.toml
+# carries an explicit `**/*.proptest-regressions` annotation that names
+# the license directly so a future narrowing of the `tests/**` bulk
+# block cannot silently strip license coverage from these files.
+# Do NOT add `*.proptest-regressions` to this file.
+
+# Python bytecode (tools/perf/ utilities are Python; users running
+# them locally create __pycache__/ directories).
+__pycache__/
+*.pyc
+
 # Packages
 node_modules/
 .venv/
@@ -65,6 +93,7 @@ Temporary Items
 .LSOverride
 Icon[*]
 .claude/*.local.*
+.claude/scheduled_tasks.lock
 
 demo/demo.webm
 demo/demo.mp4

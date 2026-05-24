@@ -1,0 +1,5 @@
+{
+  "_note": "PR 4 (006 T118) — FGI banner roll-up retains FGI marker on cross-classified pages. CAPCO-2016 §H.7 pp123-129 + §H.7 p129 worked example: `(//DEU TS//NF)` portion + US-classified portion → banner `TOP SECRET//FGI [LIST]//NOFORN`. Reciprocal classification (§H.7 pp123-125) lifts the page to the foreign-equivalent level (TS); the FGI marker captures the foreign provenance; REL TO is cleared by the `capco/noforn-clears-rel-to` PageRewrite per §H.8 p145. This fixture parallels `tests/corpus/foreign/mixed_us_foreign_rollup.expected.json` (issue #276 ground truth) at the lattice-projection level.",
+  "expected_banner": "TOP SECRET//FGI GBR//NOFORN",
+  "diagnostics": []
+}

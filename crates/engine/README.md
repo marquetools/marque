@@ -63,12 +63,13 @@ for applied in &result.applied {
 - **Reverse-span application.** Fixes are sorted and applied from the end of
   the document to the start, so earlier spans remain valid as edits land.
   Overlapping fixes are rejected per the C-1 invariant.
-- **Page context.** The engine builds a `marque_ism::PageContext` from
-  preceding portion markings and hands an `Arc<PageContext>` to banner/CAB
-  rules through `RuleContext`. The accumulator resets at scanner-emitted
-  `MarkingType::PageBreak` candidates (form-feed `\f` and `\n\n\n+`),
-  *before* attempting to parse the page-break candidate, so a malformed
-  candidate cannot block the reset.
+- **Per-page accumulator.** The engine builds a `Vec<CanonicalAttrs>`
+  from preceding portion markings and hands an
+  `Arc<Box<[CanonicalAttrs]>>` snapshot to banner/CAB rules through
+  `RuleContext::page_portions`. The accumulator resets at
+  scanner-emitted `MarkingType::PageBreak` candidates (form-feed
+  `\f` and `\n\n\n+`), *before* attempting to parse the page-break
+  candidate, so a malformed candidate cannot block the reset.
 - **Audit log.** In production code paths, `AppliedFix` is constructed
   exclusively by the engine via the `__engine_promote` constructor.
   Rule crates must not bypass this. Test code MAY call

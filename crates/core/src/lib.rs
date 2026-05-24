@@ -9,19 +9,20 @@
 //!
 //! This crate is WASM-safe: no format dependencies, no I/O, operates on `&[u8]`.
 //! The pipeline entry point is [`Scanner`], which produces [`Span`]s that the
-//! [`Parser`] converts into [`IsmAttributes`].
+//! [`Parser`] converts into `marque_ism::ParsedAttrs<'src>`. The engine
+//! then runs `MarkingScheme::canonicalize` (the trait route — for CAPCO
+//! that is `CapcoScheme::canonicalize`) to land owned [`CanonicalAttrs`]
+//! for rule consumption. That trait method is the sole production
+//! `ParsedAttrs → CanonicalAttrs` path.
 //!
-//! Core ISM types (`Span`, `IsmAttributes`, `TokenSet`, etc.) are defined in
-//! `marque-ism` and re-exported here for backward compatibility.
+//! Core ISM types (`Span`, `CanonicalAttrs`, `TokenSet`, etc.) are defined in
+//! `marque-ism` and re-exported here for ergonomic access.
 
-pub mod attrs;
 pub mod error;
 pub mod fuzzy;
 pub mod parser;
 pub mod scanner;
-pub mod span;
 
 pub use error::CoreError;
-pub use marque_ism::{IsmAttributes, MarkingType, Span};
 pub use parser::Parser;
 pub use scanner::Scanner;

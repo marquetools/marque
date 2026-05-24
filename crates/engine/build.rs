@@ -5,25 +5,24 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! The default is `marque-mvp-2` (the Phase-D schema — see
-//! `specs/004-constraints-decoder-vocab/contracts/audit-record-v2.md`);
-//! a build may downgrade to `marque-mvp-1` by exporting
-//! `MARQUE_AUDIT_SCHEMA=marque-mvp-1` before building. A single build
-//! emits exactly one schema version per FR-014 and R4 — mixing v1 and
-//! v2 records in the same output stream is a downstream-parser hazard,
-//! not a feature.
+//! The accept-list is a single value: `["marque-2.0"]`. Under that
+//! schema, `RuleId` is a `(scheme, predicate_id)` 2-tuple and the
+//! audit-record `"rule"` JSON field is an object (never a flattened
+//! string). Older record shapes are not interoperable with current
+//! binaries (clean break — there is no audit-reader crate). A single
+//! build emits exactly one schema version.
 //!
 //! The value is surfaced to downstream code via
 //! `env!("MARQUE_AUDIT_SCHEMA")`. Rebuilds are triggered when the
 //! env var changes.
 
 fn main() {
-    // Accepted values. A future schema bump adds its identifier here
-    // and lands alongside any emitter / parser updates; an unknown
-    // value is a build error so typos don't silently produce v2 output
-    // under a v3-named label.
-    const ACCEPTED: &[&str] = &["marque-mvp-1", "marque-mvp-2"];
-    const DEFAULT: &str = "marque-mvp-2";
+    // Accepted values. The accept-list is a closed contract; adding
+    // or removing a value MUST coordinate with audit-emit paths.
+    // `crates/engine/tests/audit_schema_accept_list.rs` regression-
+    // pins this verbatim.
+    const ACCEPTED: &[&str] = &["marque-2.0"];
+    const DEFAULT: &str = "marque-2.0";
 
     let schema = std::env::var("MARQUE_AUDIT_SCHEMA").unwrap_or_else(|_| DEFAULT.to_string());
 

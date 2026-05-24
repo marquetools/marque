@@ -8,13 +8,13 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ISM vocabulary types and generated CVE enums for marque.
 
-This crate is the leaf dependency in the marque workspace. It owns the canonical parsed-marking representation (`IsmAttributes`), zero-copy position types (`Span`), page-level aggregation (`PageContext`), and the closed Rust enums generated at build time from ODNI ISM schemas.
+This crate is the foundational vocabulary crate of the marque workspace. It owns the pivot-type triple (`ParsedAttrs<'src>`, `CanonicalAttrs`, `ProjectedMarking`), zero-copy position types (`Span`), and the closed Rust enums generated at build time from ODNI ISM schemas. `marque-ism` depends on `marque-scheme` (one-way edge — `ProjectedMarking::scope` carries `marque_scheme::Scope`); the consolidated plan's Appendix D anticipated this edge and Constitution VII v1.4.0 codified it.
 
 This crate implements the ISM vocabulary model *for* the marque rule engine. For the engine itself, see `marque-engine`. For the CAPCO rule implementations that consume this vocabulary, see `marque-capco`.
 
 ## Role in Marque
 
-`marque-ism` is the pivot type. Every source format normalizes to `IsmAttributes` before rule validation runs. It sits at the bottom of the dependency graph:
+`marque-ism` is the pivot type. Every source format normalizes to `CanonicalAttrs` before rule validation runs. It sits at the bottom of the dependency graph:
 
 ```
 marque-ism  ←  marque-core (scanner/parser)
@@ -67,11 +67,11 @@ when ODNI publishes updates and the ism-data workspace is re-vendored.
 
 | Type | Purpose |
 |------|---------|
-| `IsmAttributes` | Canonical parsed marking. Fields use `Box<[T]>` to avoid over-allocation. |
+| `ParsedAttrs<'src>` | Borrowed parser output. Each token retains a `&'src str` slice into the source buffer so the canonicalizer can reconstruct the original text. |
+| `CanonicalAttrs` | Owned post-canonical pivot. What rules consume. Fields use `Box<[T]>` to avoid over-allocation. |
 | `Span` | Byte offset range into the original source buffer. Never copies. |
 | `MarkingCandidate`, `MarkingType` | Scanner output (Portion, Banner, CAB, PageBreak). |
 | `Zone`, `DocumentPosition` | Structural context. Both are `Option`-typed in `RuleContext`. |
-| `PageContext` | Page-level aggregation: `max()` for classification, union for SCI/SAR/dissem, intersection (with NOFORN supersession) for `REL TO`. Reset at scanner-emitted page-break candidates. |
 | `Classification`, `SciControl`, `DissemControl`, `Trigraph`, … | Generated CVE enums. |
 | `SarMarking`, `SarIndicator`, `SarProgram`, `SarCompartment` | Structural SAR types (not CVE-derived — see migration note below). |
 | `CapcoTokenSet` | Aho-Corasick automaton over CVE token list. |
@@ -79,12 +79,18 @@ when ODNI publishes updates and the ism-data workspace is re-vendored.
 ## Usage
 
 ```rust
-use marque_ism::{IsmAttributes, Classification, SCHEMA_VERSION};
+use marque_ism::{CanonicalAttrs, SCHEMA_VERSION};
 
 assert_eq!(SCHEMA_VERSION, "ISM-v2022-DEC");
 
-let attrs = IsmAttributes::default();
-assert_eq!(attrs.classification, Classification::Unclassified);
+// CanonicalAttrs::default() leaves classification as None. Rule code
+// matches on `Some(...)` paths and treats `None` as the absent /
+// unparseable case. Several construction paths produce `None`:
+// strict-parse failure on a malformed marking, an empty marking, the
+// lattice-bottom seed for projection accumulators, etc. — the type
+// stays honest about absence rather than forcing a sentinel value.
+let attrs = CanonicalAttrs::default();
+assert!(attrs.classification.is_none());
 ```
 
 ## Features
@@ -97,17 +103,27 @@ assert_eq!(attrs.classification, Classification::Unclassified);
 
 WASM-safe. No runtime I/O. All schema work runs in `build.rs` on the host.
 
+## Pivot-Type Triple
+
+The marking state is split across three types so each phase holds only what it needs:
+
+- `ParsedAttrs<'src>` (in `parsed.rs`) — borrowed parser output. Nine thin `Parsed*<'src>` wrappers (`ParsedClassification`, `ParsedSciMarking`, `ParsedSarMarking`, `ParsedFgiMarker`, `ParsedDissem`, `ParsedNonIcDissem`, `ParsedRelToEntry`, `ParsedDeclassifyOn`, `ParsedAea`) retain `&'src str` slices into the source buffer, so the canonicalizer can reconstruct the original text without re-borrowing.
+- `CanonicalAttrs` (in `canonical.rs`) — the owned post-canonical pivot type rules consume. Fields use `Box<[T]>` to avoid over-allocation.
+- `ProjectedMarking` (in `projected.rs`) — output of `MarkingScheme::project(scope, ...)`. Carries `scope: Scope` (from `marque-scheme`); this is the one edge from `marque-ism` to `marque-scheme`.
+
+`ParsedAttrs<'_>` becomes `CanonicalAttrs` only through `MarkingScheme::canonicalize` — the sole conversion path. The CAPCO override lives in `marque_capco::CapcoScheme::canonicalize`.
+
 ## Migration Notes
 
 ### 0.3.0: `SarIdentifier` → `SarMarking`
 
 Prior versions exposed `SarIdentifier` as a CVE-derived enum re-exported from `attrs`. The ODNI `CVEnumISMSAR.xml` is empty in all published ISM packages because SAR program identifiers are agency-assigned codewords, not centrally registered. The enum was therefore a typed placeholder that never matched anything at runtime.
 
-`0.3.0` replaces the enum with a structural `SarMarking` type carrying programs, compartments, and sub-compartments per CAPCO-2016 §H.5 syntax. `IsmAttributes.sar_identifiers: Box<[SarIdentifier]>` is now `IsmAttributes.sar_markings: Option<SarMarking>`. The `SarIdentifier` enum has been removed from code generation; `TokenKind::SarIdentifier` remains as a `#[deprecated]` back-compat variant that the parser no longer emits, joined by new `TokenKind::SarIndicator`, `SarProgram`, `SarCompartment`, and `SarSubCompartment` variants.
+`0.3.0` replaces the enum with a structural `SarMarking` type carrying programs, compartments, and sub-compartments per CAPCO-2016 §H.5 syntax. The pivot type's `sar_identifiers: Box<[SarIdentifier]>` is now `sar_markings: Option<SarMarking>`. The `SarIdentifier` enum has been removed from code generation; `TokenKind::SarIdentifier` remains as a `#[deprecated]` back-compat variant that the parser no longer emits, joined by new `TokenKind::SarIndicator`, `SarProgram`, `SarCompartment`, and `SarSubCompartment` variants.
 
 ### 0.x.0 (SCI compartments)
 
-Additive. New `sci_markings: Box<[SciMarking]>` field on `IsmAttributes` provides structural SCI access (control system + compartments + sub-compartments per CAPCO-2016 §A.6); existing `sci_controls: Box<[SciControl]>` is preserved as a CVE enum projection for back-compat. Non-breaking.
+Additive. New `sci_markings: Box<[SciMarking]>` field on the pivot type provides structural SCI access (control system + compartments + sub-compartments per CAPCO-2016 §A.6); existing `sci_controls: Box<[SciControl]>` is preserved as a CVE enum projection for back-compat. Non-breaking.
 
 ## License
 

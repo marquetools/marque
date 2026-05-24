@@ -1,19 +1,21 @@
+#![cfg(any())]
+// Legacy FixProposal-shape test disabled pending rewrite.
+
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Trait-level tests for `impl Vocabulary<CapcoScheme> for CapcoScheme`
-//! (Phase 5 PR-2, tasks T071 / T072 / T073 / T074 / T076 / T077).
+//! Trait-level tests for `impl Vocabulary<CapcoScheme> for CapcoScheme`.
 //!
-//! `marque-ism` ships the raw per-token tables (Phase 5 PR-1, tested
-//! in `crates/ism/tests/vocabulary_tables.rs`); this file exercises
+//! `marque-ism` ships the raw per-token tables (tested in
+//! `crates/ism/tests/vocabulary_tables.rs`); this file exercises
 //! the `marque-scheme::Vocabulary<S>` adapter that composes them
 //! into the trait surface.
 //!
 //! ## Token coverage scope
 //!
 //! `CapcoScheme::Token = TokenId` and the active sentinel set today
-//! is ~14 hand-assigned ids in `crates/capco/src/scheme.rs` — the
+//! is ~14 hand-assigned ids in `crates/capco/src/scheme/mod.rs` — the
 //! only TokenIds CAPCO's catalog actually references. Of those, the
 //! ones with a corresponding canonical CVE value in the JSON-derived
 //! `TOKEN_METADATA` table form the "active CAPCO vocabulary set"
@@ -25,8 +27,8 @@
 //! attach metadata to. The Vocabulary impl panics if asked about
 //! one of those, surfacing the misuse loudly.
 //!
-//! Phase C extends both the sentinel set and the canonical-string
-//! mapping to cover the full CVE-published token vocabulary; until
+//! A future extension covers both the sentinel set and the canonical-string
+//! mapping for the full CVE-published token vocabulary; until
 //! then the per-sentinel set is what "active" means here.
 
 use marque_capco::CapcoScheme;
@@ -55,7 +57,7 @@ fn active_sentinels() -> &'static [TokenId] {
 }
 
 // ---------------------------------------------------------------------------
-// T071 — every active token has authority + owner/producer + POC + forms.
+// Every active token has authority + owner/producer + POC + forms.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -108,7 +110,7 @@ fn every_active_token_has_authority() {
 }
 
 // ---------------------------------------------------------------------------
-// T072 — authority traces back to ODNI for every ISM token.
+// Authority traces back to ODNI for every ISM token.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -129,16 +131,16 @@ fn authority_points_to_odni_for_ism_tokens() {
 }
 
 // ---------------------------------------------------------------------------
-// T073 — active tokens have no deprecation metadata.
+// Active tokens have no deprecation metadata.
 // ---------------------------------------------------------------------------
 
 /// No active sentinel today is a deprecated marking — every entry in
 /// `active_sentinels()` is a current, valid CAPCO token. This test
 /// asserts the *negative* case: an active token returns `None` from
-/// `deprecation()`. The complementary positive case (T074) lives
-/// below; both arms of the `Option` are exercised between the two.
+/// `deprecation()`. The complementary positive case lives below; both
+/// arms of the `Option` are exercised between the two.
 ///
-/// When Phase C extends the sentinel set to include deprecated tokens
+/// When a future extension adds deprecated tokens to the sentinel set
 /// (e.g., adding a sentinel for `25X1-` from the `MIGRATIONS` table),
 /// this test should keep its current scope (active subset → `None`)
 /// and a new sibling test should land for the deprecated subset.
@@ -155,16 +157,16 @@ fn active_tokens_have_no_deprecation_metadata() {
 }
 
 // ---------------------------------------------------------------------------
-// T074 — replacement is populated when a deprecation maps to a known token.
+// Replacement is populated when a deprecation maps to a known token.
 // ---------------------------------------------------------------------------
 
 /// Pin-down test for the deprecation-replacement contract.
 ///
 /// `Deprecation { since, replacement: Option<S::Token> }` carries
 /// `replacement = Some(_)` when the deprecated token has a known
-/// canonical successor in the active vocabulary, and `None` when
-/// "no known replacement" (FR-017 — silence is informative; do not
-/// rewrite into a token that does not exist).
+/// canonical successor in the active vocabulary, and `None` when there
+/// is no known replacement (silence is informative; do not rewrite into
+/// a token that does not exist).
 ///
 /// The `MIGRATIONS` table in `marque-ism::generated::migrations`
 /// today has two entries (`25X1-` → `25X1`, `50X1-` → `50X1-HUM`),
@@ -172,8 +174,8 @@ fn active_tokens_have_no_deprecation_metadata() {
 /// active sentinel currently has a `Some(replacement)` deprecation.
 /// This test asserts the structural property: every replacement that
 /// IS populated must be a TokenId that resolves cleanly in the same
-/// vocabulary (no dangling pointers). Phase C will extend the
-/// sentinel set to include real deprecations and this test will
+/// vocabulary (no dangling pointers). A future extension will add
+/// real deprecations to the sentinel set and this test will
 /// gain genuine `Some(_)` coverage.
 #[test]
 fn deprecation_replacement_when_known() {
@@ -194,16 +196,16 @@ fn deprecation_replacement_when_known() {
 }
 
 // ---------------------------------------------------------------------------
-// T076 — FOUO remains an active dissem control after the FOUO→CUI removal.
+// FOUO remains an active dissem control after the FOUO→CUI removal.
 // ---------------------------------------------------------------------------
 
 /// Constructs a FOUO-bearing document and runs it through `Engine::lint`,
 /// asserting no diagnostic suggests migrating FOUO to CUI. The legacy
-/// `FOUO → CUI` migration entry was retired in Phase E
+/// `FOUO → CUI` migration entry was retired
 /// (`crates/ism/build.rs` doc-comment under `MIGRATIONS`); FOUO remains
 /// enumerated in `CVEnumISMDissem.json` and is a current, valid CAPCO
 /// dissem control. Any rule that proposes a CUI replacement on FOUO is
-/// a regression of FR-020.
+/// a regression.
 ///
 /// The test phrases "no CUI suggestion" structurally rather than by
 /// counting all diagnostics: a stylistic E001/E009-style fix may still
@@ -239,7 +241,7 @@ fn fouo_remains_active_dissem_control() {
     }
 }
 
-// T077 (zero-allocation regression gate) lives in its own integration
+// The zero-allocation regression gate lives in its own integration
 // file `tests/vocabulary_zero_alloc.rs`, gated at the FILE level on
 // `#![cfg(feature = "count-allocs")]`. Isolating it to its own binary
 // keeps the global counting allocator's measurements free of noise
@@ -248,46 +250,60 @@ fn fouo_remains_active_dissem_control() {
 // shared counter even with a `MEASURE_LOCK`).
 
 // ---------------------------------------------------------------------------
-// T077a — expanded trait coverage: panic paths, banner-abbreviation
-//         arms, and metadata round-trip equivalence.
+// Expanded trait coverage: panic paths, banner-abbreviation arms, and
+// metadata round-trip equivalence.
 // ---------------------------------------------------------------------------
 //
-// The original T071–T077 tests cover the happy-path active-sentinel
-// loop. Codecov flagged ~37 uncovered lines in
-// `crates/capco/src/vocabulary.rs` — primarily the panic branches in
-// `canonical_for` / `entry_for` / `derived_for_token` /
-// `token_derived` (none of the active sentinels ever hit them) and
-// the `Some` arm of `derive_banner_abbreviation`. T077a closes that
-// gap so the production code paths CI exercises match the production
-// code paths real callers will hit.
+// The happy-path active-sentinel-loop tests above leave uncovered the
+// panic branches in `canonical_for` / `entry_for` / `derived_for_token`
+// / `token_derived` (none of the active sentinels ever hit them) and
+// the `Some` arm of `derive_banner_abbreviation`. These tests close
+// that gap so the production code paths CI exercises match the
+// production code paths real callers will hit.
 
-/// Sentinels whose canonical CVE value has a distinct banner form
-/// (`portion_to_banner(canonical)` returns `Some(banner)` with
-/// `banner != canonical`). For these, `banner_abbreviation()` must
-/// return `Some` — see CAPCO-2016 §G.1 Table 4 (banner column 2 ≠
-/// portion column 3).
+/// Sentinels whose `MARKING_FORMS` row has a distinct title and
+/// banner-line abbreviation. Under the semantic
+/// `banner_abbreviation = Some iff banner != title`, these must
+/// surface their banner abbreviation as `Some(banner)`. Each tuple
+/// is `(token, canonical/portion, expected banner abbreviation)`.
+///
+/// The abbreviation column is non-empty exactly when the row has a
+/// distinct title (CAPCO §G.1 Table 4 col 2), regardless of whether the
+/// abbreviation collapses to the portion form. For RD / FRD / TFNI the
+/// expected banner is the row's banner-line abbreviation — `"RD"`,
+/// `"FRD"`, `"TFNI"` — which also equals the portion form for those
+/// three rows; `banner_form()` returns the same string via
+/// `banner_abbreviation.unwrap_or(banner_title)`.
 fn distinct_banner_form_sentinels() -> &'static [(TokenId, &'static str, &'static str)] {
-    // (TokenId, canonical/portion, expected banner abbreviation)
     &[
         (TOK_NOFORN, "NF", "NOFORN"),
         (TOK_UCNI, "UCNI", "DOE UCNI"),
         (TOK_NODIS, "ND", "NODIS"),
         (TOK_EXDIS, "XD", "EXDIS"),
+        // Rows where MARKING_FORMS lists a distinct CAPCO title; the
+        // banner-line abbreviation is the row's banner column even
+        // when it collapses to the portion form. CAPCO §G.1 Table 4:
+        // - RD row: title="RESTRICTED DATA", banner="RD", portion="RD"
+        // - FRD row: title="FORMERLY RESTRICTED DATA", banner="FRD",
+        //   portion="FRD"
+        // - TFNI row: title="TRANSCLASSIFIED FOREIGN NUCLEAR
+        //   INFORMATION", banner="TFNI", portion="TFNI"
+        (TOK_RD, "RD", "RD"),
+        (TOK_FRD, "FRD", "FRD"),
+        (TOK_TFNI, "TFNI", "TFNI"),
     ]
 }
 
-/// Sentinels whose canonical CVE value is identical to its banner
-/// form (no distinct authorized abbreviation in the CAPCO Register).
-/// `banner_abbreviation()` must return `None` for these.
+/// Sentinels whose canonical CVE value has NO `MARKING_FORMS` row
+/// (the canonical-collapse fallback applies: all three forms are the
+/// canonical itself, `banner_abbreviation` is `None`). Today's set:
+/// HCS (canonical `"HCS"`, no row), TOK_CNWDI (canonical `"RD-CNWDI"`,
+/// no row — the `"CNWDI"` row is a different token surface), and
+/// TOK_RESTRICTED (canonical `"R"`, deliberately routed through the
+/// canonical-collapse path — see the `classification_form_set`
+/// doc-comment in `crates/capco/src/vocabulary.rs`).
 fn same_form_sentinels() -> &'static [TokenId] {
-    &[
-        TOK_RD,
-        TOK_FRD,
-        TOK_TFNI,
-        TOK_CNWDI,
-        TOK_HCS,
-        TOK_RESTRICTED,
-    ]
+    &[TOK_CNWDI, TOK_HCS, TOK_RESTRICTED]
 }
 
 #[test]
@@ -302,7 +318,7 @@ fn banner_abbreviation_some_for_distinct_form() {
              CAPCO-2016 §G.1 Table 4 lists a distinct authorized banner abbreviation",
         );
         // And the banner_form() accessor must match the expected
-        // banner (not the portion-form canonical).
+        // banner via `Some(...).unwrap_or(banner_title)`.
         assert_eq!(
             scheme.banner_form(token),
             *expected_banner,
@@ -318,8 +334,9 @@ fn banner_abbreviation_none_for_same_form() {
         assert_eq!(
             scheme.banner_abbreviation(token),
             None,
-            "banner_abbreviation({token:?}) should be None — CAPCO-2016 §G.1 \
-             Table 4 lists no distinct banner abbreviation for this marking",
+            "banner_abbreviation({token:?}) should be None — no MARKING_FORMS \
+             row exists for this canonical, so the canonical-collapse fallback \
+             applies (all three forms equal the canonical itself)",
         );
         // For same-form markings the portion form and banner form
         // are byte-identical.

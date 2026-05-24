@@ -1,6 +1,6 @@
 {
   "diagnostics": [
-    {"rule": "E037", "span": {"start": 16, "end": 21}}
+    {"rule": {"scheme": "capco", "predicate_id": "portion.dissem.nodis-conflicts-exdis"}, "span": {"start": 16, "end": 21}}
   ],
   "_note": "E037 nodis-conflicts-exdis: both NODIS and EXDIS in the same banner — mutually exclusive per CAPCO-2016 §H.9 p172 (EXDIS) and p174 (NODIS). Uses single `/` between NODIS and EXDIS since both are non-IC dissem; E037 fires on the first NonIcDissem token (NODIS at byte 16)."
 }

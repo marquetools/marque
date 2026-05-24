@@ -18,11 +18,38 @@ include = [
 ]
 
 [dependencies]
+# Content-ignorant audit-record digesting (Constitution V Principle V):
+# `AppliedFix::__engine_promote` digests `original_bytes` and
+# `Canonical::bytes()` the same way, and only the BLAKE3 digests reach the
+# audit envelope (`AppliedFixDetail.original_digest`,
+# `AppliedReplacement.bytes_digest`) — never the bytes. The workspace dep
+# selects `default-features = false` + `features = ["pure"]` so the
+# WASM-safe set builds for `wasm32-unknown-unknown` without platform
+# intrinsics (Constitution III).
+blake3 = { workspace = true }
 marque-ism = { workspace = true }
+# `marque-rules` depends on `marque-scheme` directly so rule-emission values
+# (`FixIntent<S>`) can reference scheme types without routing through
+# `marque-ism`. The graph stays acyclic because `marque-scheme` is leaf-only
+# (Constitution VII).
+marque-scheme = { workspace = true }
+# Issue #699 — `Diagnostic.recognized_canonical` carries the decoder's
+# canonical bytes in a `SecretBox<Box<[u8]>>` so the field obeys
+# Constitution Principle II (Marque-owned content wipes on drop; every
+# readout site goes through `expose_secret()` and is grep-auditable for
+# security review). The field is lint-side only — never serialized into
+# the audit envelope (Constitution V Principle V). See the field's
+# doc comment for the asymmetry rationale.
+secrecy = { workspace = true }
 serde = { workspace = true, optional = true }
+# `MessageArgs.feature_ids` and `FixIntent.feature_ids` both use
+# `SmallVec<[FeatureId; 4]>` to keep the inline-4 case heap-free.
+smallvec = { workspace = true }
+smol_str = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 static_assertions = { workspace = true }
 
 [features]

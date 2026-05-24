@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.4 p70 — RSV may not be used alone; requires associated compartment. Fires E063 rsv-bare-requires-compartment.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "portion.sci.rsv-bare-requires-compartment"}, "span": {"start": 12, "end": 15}}
+  ]
+}

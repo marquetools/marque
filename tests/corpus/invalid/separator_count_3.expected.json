@@ -1,6 +1,0 @@
-{
-  "diagnostics": [
-    {"rule": "E004", "span": {"start": 10, "end": 14}},
-    {"rule": "E004", "span": {"start": 16, "end": 20}}
-  ]
-}

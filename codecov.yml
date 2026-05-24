@@ -33,6 +33,18 @@ coverage:
         removed_code_behavior: adjust_base  # adjust base when code is removed
 
     # Patch-level coverage gate — only new/changed lines in a PR.
+    #
+    # The threshold here applies to REAL covered lines. The companion
+    # CI change in `.github/workflows/ci.yml` switches the Coverage
+    # job to nightly Rust and sets `RUSTFLAGS=--cfg coverage_nightly`,
+    # which activates the existing
+    # `#[cfg_attr(coverage_nightly, coverage(off))]` annotations on
+    # `mod tests { ... }` blocks across the workspace. With those
+    # annotations active, `assert!`-message-continuation lines and
+    # other test-block "uncovered" artifacts (which dominated the
+    # PR-#303 patch-coverage failure) drop out of the report
+    # entirely. What remains is signal, and the 80% target with 5%
+    # slack is a meaningful threshold over that signal.
     patch:
       default:
         target: 80%           # new code should be ≥80% covered

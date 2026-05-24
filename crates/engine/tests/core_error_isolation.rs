@@ -64,8 +64,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_core::CoreError;
-use marque_engine::{Engine, FixMode, StrictRecognizer};
-use std::sync::Arc;
+use marque_engine::{Engine, FixMode};
 
 /// A high-entropy ASCII run that cannot occur in any valid CAPCO/ISM
 /// marking: lowercase letters, digits, and hyphens combined into a
@@ -83,13 +82,22 @@ const CANARY: &str = "leak-canary-x9z7q3-content-bytes";
 /// dispatcher (which would also exercise decoder-side leak channels —
 /// real but separately scoped issues, not the one this file gates).
 fn test_engine() -> Engine {
+    // No strict-recognizer pin is needed here (#257): the audit
+    // content-ignorance canary at
+    // `crates/engine/tests/audit_g13_canary.rs` structurally closes the
+    // decoder leak channel — marking-side audit records carry a sealed
+    // `Canonical<S>` payload (no free-form string surface),
+    // text-correction records carry only corpus-derived `SmolStr`
+    // replacements (on Constitution V's permitted-identifier list), and
+    // the audit-emit shape is wire-format-pinned to a closed JSON
+    // projection. The dispatcher default (`StrictOrDecoderRecognizer`)
+    // applies.
     Engine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 
 // ---------------------------------------------------------------------------
@@ -192,21 +200,28 @@ fn lint_does_not_leak_core_error_content() {
 
         // Walk every text-bearing field of LintResult.
         for diag in &result.diagnostics {
+            // `Diagnostic.message` is closed-template `Message`;
+            // document text (including the `CANARY` byte sequence)
+            // cannot reach this field by type. Scan the
+            // closed-enum template label as the structural-pin
+            // equivalent of the prior `contains()` check — if a
+            // future refactor reintroduces a free-form string channel
+            // on `Message`, this scan still catches it.
+            let template_label = diag.message.template().as_str();
             assert!(
-                !diag.message.contains(CANARY),
-                "Diagnostic.message leaked CoreError-bearing input: \
-                 {msg:?} (input was {input:?})",
-                msg = diag.message,
+                !template_label.contains(CANARY),
+                "Diagnostic.message template leaked CoreError-bearing input: \
+                 {template_label} (input was {input:?})",
                 input = String::from_utf8_lossy(&input),
             );
-            if let Some(fix) = diag.fix.as_ref() {
+            // `Diagnostic.fix` carries a structural FixIntent with no
+            // byte payload. The diagnostic's
+            // `text_correction` field is the only string-bearing
+            // channel; assert it doesn't contain the canary.
+            if let Some(tc) = diag.text_correction.as_ref() {
                 assert!(
-                    !fix.original.contains(CANARY),
-                    "FixProposal.original leaked CoreError-bearing input"
-                );
-                assert!(
-                    !fix.replacement.contains(CANARY),
-                    "FixProposal.replacement leaked CoreError-bearing input"
+                    !tc.replacement.contains(CANARY),
+                    "Diagnostic.text_correction.replacement leaked CoreError-bearing input"
                 );
             }
         }
@@ -219,29 +234,36 @@ fn fix_does_not_leak_core_error_content() {
     for input in adversarial_inputs() {
         let result = engine.fix(&input, FixMode::Apply);
 
-        // Every applied fix's proposal — the bytes that flow into
-        // the audit record. This is the same surface T056 covers in
-        // `audit.rs`, but with input designed to trip CoreError
-        // rather than to embed prose.
-        for applied in &result.applied {
-            assert!(
-                !applied.proposal.original.contains(CANARY),
-                "AppliedFix.proposal.original leaked CoreError-bearing input"
-            );
-            assert!(
-                !applied.proposal.replacement.contains(CANARY),
-                "AppliedFix.proposal.replacement leaked CoreError-bearing input"
-            );
+        // Every applied audit line — the bytes that flow into the
+        // audit record. This is the same surface the content-ignorance
+        // tests in `audit.rs` cover, but with input designed to trip
+        // CoreError rather than to embed prose.
+        //
+        // The marking-side `AuditLine::AppliedFix` arm carries a sealed
+        // `Canonical<S>` payload — no free-form string surface to scan.
+        // The `AuditLine::TextCorrection`
+        // arm carries a corpus-derived `replacement: SmolStr`;
+        // that's the channel a leak would surface on.
+        for line in &result.audit_lines {
+            if let marque_rules::AuditLine::TextCorrection(tc) = line {
+                assert!(
+                    !tc.replacement.contains(CANARY),
+                    "AppliedTextCorrection.replacement leaked CoreError-bearing input"
+                );
+            }
         }
 
         // Remaining diagnostics — what `marque check` and the lint
         // re-run after fix would emit. Same content-ignorance contract.
         for diag in &result.remaining_diagnostics {
+            // Scan the closed-template label, per the companion
+            // `lint_does_not_leak_core_error_content` structural-pin
+            // explanation above.
+            let template_label = diag.message.template().as_str();
             assert!(
-                !diag.message.contains(CANARY),
-                "RemainingDiagnostic.message leaked CoreError-bearing input: \
-                 {msg:?}",
-                msg = diag.message,
+                !template_label.contains(CANARY),
+                "RemainingDiagnostic.message template leaked CoreError-bearing input: \
+                 {template_label}",
             );
         }
 

@@ -10,10 +10,13 @@
 //! Installs a counting global allocator and asserts that `Scanner::scan(...)`
 //! does not exceed a small allocation budget on a representative corpus
 //! sweep. The Constitution invariant is "zero heap allocations *per candidate
-//! span detected*" — the scanner is allowed to allocate the result `Vec`
-//! itself (which grows logarithmically as candidates accumulate), but it is
-//! NOT allowed to allocate per-character, per-byte, or per-candidate beyond
-//! that single buffer.
+//! span detected*" — the scanner's only legitimate allocation is the spill
+//! buffer of its output container, and only when the candidate count exceeds
+//! the inline capacity. Issue #430 switched the output to
+//! `SmallVec<[MarkingCandidate; 16]>`, so inputs producing ≤ 16 candidates
+//! stay entirely inline (zero allocations); inputs past 16 spill to a heap
+//! buffer that doubles as it grows. The scanner is NOT allowed to allocate
+//! per-character, per-byte, or per-candidate beyond that spill buffer.
 //!
 //! ## Why this is feature-gated
 //!
@@ -148,33 +151,43 @@ fn count_allocs<F: FnOnce()>(body: F) -> usize {
 // =====================================================================
 // Budgets.
 //
-// The scanner's only legitimate allocation is the result `Vec<MarkingCandidate>`
-// growing as candidates accumulate. A `Vec` that pushes N items goes
-// through ceil(log2(N + initial_capacity)) - log2(initial_capacity)
-// reallocations. The standard library's growth factor is 2× and the
-// initial allocation is 4 elements; for 0 ≤ N ≤ 4 we expect 1 alloc, for
-// 5 ≤ N ≤ 8 we expect 2, and so on.
+// The scanner's only legitimate allocation is the spill buffer of its
+// output container. Issue #430 switched the output from
+// `Vec<MarkingCandidate>` (initial heap allocation of 4, doubling growth)
+// to `SmallVec<[MarkingCandidate; 16]>` (inline-mode capacity 16, then
+// heap spill that doubles from 16). So 0 ≤ N ≤ 16 candidates produce
+// zero allocations; N > 16 produces 1 spill alloc + further realloc
+// doublings (32, 64, …) as the heap buffer grows.
 //
 // The scanner runs four sub-scans (`scan_portions`, `scan_banners`,
 // `scan_cab`, `scan_page_breaks`) plus a `sort_unstable_by` pass. None
-// of those allocate, so the candidate-Vec growth is the entire budget.
+// of those allocate, so the SmallVec spill-buffer growth is the entire
+// budget.
 //
 // Budgets here are deliberately above the theoretical minimum — we want
 // the gate to fire on per-byte / per-candidate allocations (a real
-// regression), not on a +1 alloc from a stdlib growth-factor tweak.
+// regression), not on a +1 alloc from a stdlib growth-factor tweak. The
+// budgets have not been tightened post-#430; a follow-up PR could drop
+// `BUDGET_SINGLE_MARKING` to 0 and `BUDGET_PER_PAGE` to ≤ 2 to catch a
+// future regression that re-introduces the old Vec-style growth bursts,
+// but doing so atomically with #430 would conflate the perf change with
+// the gate-tightening change.
 // =====================================================================
 
-/// Empty input: zero candidates, zero pushes → zero allocations.
+/// Empty input: zero candidates, container stays inline → zero allocations.
 const BUDGET_EMPTY: usize = 0;
 
-/// A single banner-shaped marking: 1 candidate. The Vec's first push
-/// triggers the initial allocation; nothing else is allocated.
+/// A single banner-shaped marking: 1 candidate. Stays inside the
+/// SmallVec's inline capacity of 16, so no heap allocation is required.
+/// Budget retained at 2 (pre-#430 value) as a generous headroom; a
+/// follow-up PR could tighten it to 0.
 const BUDGET_SINGLE_MARKING: usize = 2;
 
-/// Up to ~32 candidates: at most 4 Vec growths (0 → 4 → 8 → 16 → 32).
-/// The "32" comes from the realistic ceiling on a single-page document
-/// with portions and a banner; corpus inspection shows no fixture
-/// exceeding ~12 candidates.
+/// Up to ~32 candidates: at most 2 spill steps past the inline-16 floor
+/// (16 → 32 once growth fires, plus the initial spill alloc).
+/// Corpus inspection shows no fixture exceeding ~12 candidates, so in
+/// practice every corpus input stays inline. Budget retained at 6
+/// (pre-#430 value); a follow-up PR could tighten to ≤ 2.
 const BUDGET_PER_PAGE: usize = 6;
 
 // =====================================================================

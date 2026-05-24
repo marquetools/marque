@@ -4,19 +4,20 @@
 
 //! Engine::lint latency benchmarks. Two functions live here:
 //!
-//! - **SC-001 strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
+//! - **strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
 //!   representative input with [`StrictRecognizer`] explicitly
-//!   installed. Target p95 <= 16ms. Pinning the strict recognizer
-//!   directly (rather than relying on the engine default, which is the
-//!   strict-then-decoder dispatcher) keeps SC-001 measuring a pure
-//!   strict-path number even if the dispatcher's overhead grows.
-//! - **SC-002 decoder-path**: `decoder_10kb_one_mangled_region` —
+//!   installed. Target p95 <= 16ms (the interactive-latency gate).
+//!   Pinning the strict recognizer directly (rather than relying on the
+//!   engine default, which is the strict-then-decoder dispatcher) keeps
+//!   this measuring a pure strict-path number even if the dispatcher's
+//!   overhead grows.
+//! - **decoder-path**: `decoder_10kb_one_mangled_region` —
 //!   `Engine::lint` on a 10KB representative input where exactly one
 //!   region contains a mangled marking that forces the decoder to fire.
 //!   Target p95 <= 18ms. The gap (18 - 16 = 2ms) is the per-document
 //!   budget the decoder gets for fuzzy correction + canonical generation
 //!   on a single mangled region; corpus-wide accuracy is gated separately
-//!   by SC-004 in `tests/decoder_accuracy.rs`.
+//!   by the decoder accuracy harness in `tests/decoder_accuracy.rs`.
 //!
 //! Both targets are enforced by `scripts/bench-check.sh`, not by this
 //! benchmark file. Run `./scripts/bench-check.sh` to gate.
@@ -26,9 +27,8 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, StrictRecognizer};
+use marque_engine::{Engine, FixMode};
 use std::hint::black_box;
-use std::sync::Arc;
 
 /// Build a ~10KB representative input by repeating a block of mixed valid and
 /// invalid markings interspersed with prose. This mimics a real document with
@@ -62,7 +62,7 @@ fn build_representative_input(target_bytes: usize) -> Vec<u8> {
     let complete_blocks = target_bytes / block_bytes.len();
     input.truncate(complete_blocks.max(1) * block_bytes.len());
     // Pad with spaces to reach exactly target_bytes so the benchmark name
-    // (`lint_10kb`) and the SC-001 gate are measured against a true 10KB input.
+    // (`lint_10kb`) and the interactive-latency gate are measured against a true 10KB input.
     // Trailing whitespace does not affect any token boundaries.
     input.resize(target_bytes, b' ');
     input
@@ -76,7 +76,8 @@ fn lint_latency_benchmark(c: &mut Criterion) {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    // INTENTIONAL-STRICT: the interactive-latency bench pins the strict recognizer to measure the latency floor; the dispatcher's decoder fallback is benchmarked separately in decoder_10kb_rel_to_invariant.rs
+    .with_strict_recognizer();
 
     c.bench_function("lint_10kb", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -89,7 +90,7 @@ fn lint_latency_benchmark(c: &mut Criterion) {
 /// strict-path cost is identical and the measured delta isolates the
 /// decoder's fuzzy-correction + canonical-generation cost.
 ///
-/// SC-002 measures the *worst-case* decoder cost on a single document:
+/// This measures the *worst-case* decoder cost on a single document:
 /// one region triggers the slow path while the rest stays on the fast
 /// strict path. A document with many mangled regions amortizes the
 /// per-token fuzzy work over more matches; a single mangled region in
@@ -139,8 +140,8 @@ fn build_decoder_input(target_bytes: usize) -> Vec<u8> {
     let truncated_len = mangled_bytes.len() + complete_blocks.max(1) * block_bytes.len();
     input.truncate(truncated_len);
     // Pad with spaces to reach exactly `target_bytes` so the bench
-    // name (`decoder_10kb_one_mangled_region`) and the SC-002 gate are
-    // measured against a true 10KB input.
+    // name (`decoder_10kb_one_mangled_region`) and its p95 ≤ 18 ms gate
+    // are measured against a true 10KB input.
     input.resize(target_bytes, b' ');
     input
 }
@@ -165,5 +166,684 @@ fn decoder_latency_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, lint_latency_benchmark, decoder_latency_benchmark);
+// ---------------------------------------------------------------------------
+// Severity-override-hoist benchmarks (perf/engine-severity-override-hoisting)
+// ---------------------------------------------------------------------------
+//
+// These two variants pin the speedup expected from pre-resolving rule
+// severity overrides at engine construction time. Both run on the same
+// `build_representative_input(10_000)` fixture as `lint_10kb` and pin
+// the `StrictRecognizer` for the same reason (isolate strict-path
+// latency from the decoder-dispatcher's fallback overhead).
+//
+//   - `lint_default_config`   — empty `Config::default()` (no overrides).
+//                               Baseline; the hoist removes per-candidate
+//                               HashMap probes + per-diagnostic parse_config
+//                               calls that previously fired in the hot loop
+//                               even with an empty override map.
+//   - `lint_off_heavy_config` — `OFF_RULES` (below) set to `"off"` in
+//                               `config.rules.overrides`. This is the
+//                               configuration where the hoist matters
+//                               most: pre-hoist, every (candidate × rule)
+//                               pair did an `overrides.get + parse_config`
+//                               just to decide whether to skip the rule;
+//                               post-hoist, each pair is one indexed
+//                               array load.
+
+/// Rules disabled in the `lint_off_heavy_config` bench. Chosen to maximize
+/// the number of pre-resolved Off entries the lint hot loop's Site A
+/// short-circuits past, while avoiding the rules the bench fixture is
+/// known to exercise (`capco:banner.banner-rollup.sar-portions-roll-up`,
+/// the banner-roll-up walker; `capco:portion.dissem.rel-to-missing-usa`,
+/// the missing-USA-trigraph rule, which doesn't fire on this fixture
+/// since `REL TO USA, GBR` already contains USA).
+///
+/// Source set: the registered rule IDs pinned by
+/// `crates/capco/tests/post_3b_registration_pin.rs::EXPECTED_RULE_IDS`
+/// and the dyadic-collapse predicate IDs exposed through
+/// `CapcoScheme::bridge_emitted_rule_ids` (the rules collapsed into
+/// declarative `Constraint::Custom` rows). The picks below cover the
+/// long-tail the bench fixture doesn't trigger — the SCI
+/// suggest/long-form rules, the NATO and dyadic-classification rules,
+/// the warning suite, and the rare-fire dissem / SCI / AEA per-axis
+/// rules. Together they exercise the Site A fast-path Off-skip on every
+/// candidate (~10 per 10KB).
+///
+/// IDs use the canonical wire-string form (`<scheme>:<predicate_id>`)
+/// the override resolver accepts at `Engine::new`. The override
+/// resolver also accepts the bare predicate-id form and the rule's
+/// descriptive alias, but the wire string matches what users type in
+/// `.marque.toml [rules]` keys and what `RuleId::Display` emits, so the
+/// bench pins that form.
+const OFF_RULES: &[&str] = &[
+    // SCI suggest / long-form (very rare in clean fixture).
+    "capco:portion.sci.hcs-bare-at-confidential-legacy-remark",
+    "capco:portion.sci.hcs-bare-suggest-subcompartment",
+    "capco:portion.sci.rsv-bare-requires-compartment",
+    "capco:portion.dissem.eyes-only-convert-to-rel-to",
+    "capco:portion.sci.deprecated-long-form",
+    // NATO recanonicalize / bare-NATO (don't fire in this fixture).
+    "capco:marking.recanonicalize.legacy-nato-compound",
+    "capco:portion.nato.bare-nato-requires-rel-to-usa-nato",
+    // Warning suite.
+    "capco:page.dissem.non-ic-dissem-in-classified-banner",
+    "capco:portion.sci.unpublished-custom-control",
+    // Style suggestions.
+    "capco:portion.classification.joint-usa-first-style",
+    "capco:portion.dissem.rel-to-trigraph-suggest",
+    "capco:page.dissem.rel-to-uncertain-reduction",
+    // Misc rare-fire (registered, not bridge-emitted).
+    "capco:portion.declassification.declassify-on-misplaced",
+    "capco:marking.deprecation.deprecated-dissem-control",
+    "capco:portion.metadata.x-shorthand-date-pattern",
+    "capco:marking.metadata.unrecognized-token",
+    // Dyadic classification / SCI (declarative-collapsed; routed
+    // through `CapcoScheme::bridge_emitted_rule_ids`).
+    "capco:portion.sci.hcs-system-constraints",
+    "capco:portion.classification.dual-classification",
+    "capco:portion.classification.joint-requires-rel-to-coverage",
+    "capco:portion.classification.non-us-requires-dissem",
+    "capco:portion.classification.joint-conflicts-restricted",
+    "capco:portion.classification.joint-conflicts-hcs",
+    // AEA dyadic (declarative-collapsed; bridge-emitted).
+    "capco:portion.aea.rd-frd-requires-noforn",
+    "capco:portion.aea.rd-precedence",
+];
+
+fn lint_default_config_benchmark(c: &mut Criterion) {
+    let input = build_representative_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: matches lint_10kb's recognizer pin so the
+    // severity-hoist delta is measured against a pure strict-path
+    // baseline. Same rationale as the interactive-latency bench.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_default_config", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+fn lint_off_heavy_config_benchmark(c: &mut Criterion) {
+    let input = build_representative_input(10_000);
+    let mut config = Config::default();
+    for rule_id in OFF_RULES {
+        config
+            .rules
+            .overrides
+            .insert((*rule_id).to_owned(), "off".to_owned());
+    }
+    let engine = Engine::new(
+        config,
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: same recognizer pin as the baseline so the
+    // measured delta isolates the per-rule override resolution cost.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_off_heavy_config", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Prose-heavy advisory bench (perf/scanner-memchr-page-breaks)
+// ---------------------------------------------------------------------------
+//
+// `lint_prose_heavy` measures the scanner-pass cost on pure-prose input
+// (newline-sparse text, no marking tokens). This is the input shape that
+// most exercises `Scanner::scan_page_breaks` and the other newline-driven
+// sub-passes; it isolates the perf delta from a SIMD-driven newline
+// stride against the previous byte-by-byte iter loop.
+//
+// Advisory bench — no entry in `benches/baseline.json`, same pattern as
+// `lint_default_config` / `lint_off_heavy_config`. Report the number in
+// PRs that touch the scanner; don't gate on it.
+
+/// Build a ~10KB pure-prose input. Lorem-ipsum-style sentences with `\n`
+/// line breaks and `\n\n` paragraph breaks. Explicitly NO marking tokens
+/// (no `(U)`, no `//`, no banners) and NO `\n\n\n+` runs that would
+/// trigger soft page breaks — the bench measures scanner cost on the
+/// happy-path prose case, not page-break emission.
+fn build_prose_input(target_bytes: usize) -> Vec<u8> {
+    let block = concat!(
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut\n",
+        "enim ad minim veniam, quis nostrud exercitation ullamco laboris\n",
+        "nisi ut aliquip ex ea commodo consequat.\n",
+        "\n",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse\n",
+        "cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat\n",
+        "cupidatat non proident, sunt in culpa qui officia deserunt\n",
+        "mollit anim id est laborum.\n",
+        "\n",
+        "Sed ut perspiciatis unde omnis iste natus error sit voluptatem\n",
+        "accusantium doloremque laudantium, totam rem aperiam, eaque ipsa\n",
+        "quae ab illo inventore veritatis et quasi architecto beatae vitae\n",
+        "dicta sunt explicabo.\n",
+        "\n",
+    );
+
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    // Truncate to a block-aligned boundary so we don't split mid-sentence.
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    // Pad with spaces to reach exactly `target_bytes` so the bench name
+    // (`lint_prose_heavy`) corresponds to a true 10KB input. Trailing
+    // whitespace does not change scanner output.
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn lint_prose_heavy_benchmark(c: &mut Criterion) {
+    let input = build_prose_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pure-prose bench pins the strict recognizer
+    // for the same reason `lint_10kb` does — isolate scanner cost from
+    // the dispatcher's decoder fallback. The prose input contains no
+    // tokens the decoder would fire on, but pinning matches the
+    // sibling benches and keeps the measurement deterministic.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_prose_heavy", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Portion-dense advisory bench (perf/scanner-presize-allocators, issue #430)
+// ---------------------------------------------------------------------------
+//
+// `lint_portion_dense` measures the scanner-output-SmallVec + PageContext
+// portions-Vec allocator cost on a portion-rich input (20+ portion markings
+// in a 10KB doc). This is the input shape that most exercises the pre-sized
+// floors. Advisory bench — no entry in `benches/baseline.json`, same pattern
+// as `lint_prose_heavy`. Report the number in PRs that touch the scanner or
+// PageContext; don't gate on it.
+//
+// Also serves as the per-portion measurement vehicle for issue #434, which
+// eliminated the `attrs.clone()` on `PageContext.add_portion(...)` by moving
+// the call to end-of-iteration and consuming `attrs` by value. The portion-
+// dense shape is the hot path that change targets.
+
+fn build_portion_dense_input(target_bytes: usize) -> Vec<u8> {
+    let block = concat!(
+        "(U) Background paragraph one with unclassified portion marking.\n",
+        "(C) Confidential portion follows. (S//NF) And a secret one.\n",
+        "(U) Another unclassified portion in the running text.\n",
+        "(S//REL TO USA, GBR) Secret releasable portion here.\n",
+        "(U) Closing unclassified portion for this block.\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn lint_portion_dense_benchmark(c: &mut Criterion) {
+    let input = build_portion_dense_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: portion-dense bench pins the strict
+    // recognizer to isolate scanner + PageContext allocator cost
+    // from the dispatcher's decoder fallback. Issue #430.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_portion_dense", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// High-candidate-count advisory bench (perf/rule-trusted, issue #436)
+// ---------------------------------------------------------------------------
+//
+// `lint_high_candidate_count` measures the per-rule dispatch loop on an
+// input shape that maximizes the (candidate × rule) cross-product: ~200
+// minimal portion candidates `(S//NF)` packed into one document with no
+// prose interleaving. This is the input shape where the engine's
+// `catch_unwind` wrapper costs the most per `Engine::lint` call, and
+// therefore the input shape where `Rule::trusted()`'s short-circuit
+// matters most. Advisory bench — no entry in `benches/baseline.json`,
+// same pattern as `lint_prose_heavy` / `lint_portion_dense`. Report the
+// number in PRs that touch the rule-dispatch hot loop; don't gate on it.
+
+fn build_high_candidate_input(target_candidates: usize) -> Vec<u8> {
+    // One portion per line. `(S//NF)` is the minimal valid portion
+    // candidate: a classification + an abbreviated dissem that parses
+    // strictly. Newline separators keep each candidate on its own
+    // scanner-emitted span without forcing the page-break heuristic
+    // (`\n\n\n+` would reset PageContext mid-document, which is not
+    // what we're measuring).
+    let portion = "(S//NF)\n";
+    let portion_bytes = portion.as_bytes();
+    let mut input = Vec::with_capacity(portion_bytes.len() * target_candidates);
+    for _ in 0..target_candidates {
+        input.extend_from_slice(portion_bytes);
+    }
+    input
+}
+
+fn lint_high_candidate_count_benchmark(c: &mut Criterion) {
+    let input = build_high_candidate_input(200);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: matches `lint_10kb`'s pin so the per-rule
+    // dispatch-loop delta is measured against a pure strict-path
+    // baseline. Issue #436.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_high_candidate_count", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Decoder hot-path advisory benches (issues #451 / #452)
+// ---------------------------------------------------------------------------
+//
+// Two advisory benches pinning the decoder hot-path optimizations in PR
+// `perf/decoder-canonical-tokens-cow`:
+//
+//   - `decoder_deep_scan_mangled_10kb` (issue #451) — one mangled portion
+//     every ~500 bytes. Each mangled portion forces the dispatcher into the
+//     decoder leg, where `score_candidate` runs over K=8 candidates per
+//     mangled region. Pins the `canonical_tokens_for` → `for_each_canonical_token`
+//     visitor + SmallVec dedup win (kills the per-candidate BTreeSet+Vec
+//     allocations and the per-call `seen_rel_to_codes` BTreeSet allocation).
+//
+//   - `decoder_clean_input_through_fallback_10kb` (issue #452) — already-
+//     canonical text shaped to trip the dispatcher's decoder fallback
+//     anyway. Each portion contains one unknown SCI compartment letter
+//     (`SI-Z`, `SI-Y`, …) which the strict parser flags via
+//     `TokenKind::Unknown`, so the dispatcher routes to the decoder. But
+//     the rest of each portion is fully canonical, so
+//     `normalize_delimiters_and_case` and `fuzzy_correct_tokens` both hit
+//     their `Cow::Borrowed` short-circuit paths and skip the String
+//     allocation entirely. Pins the #452 lazy-alloc win.
+//
+// Advisory — no entry in `benches/baseline.json`. Report numbers in PRs
+// that touch the decoder hot path; don't gate on them.
+
+fn build_decoder_dense_mangled_input(target_bytes: usize) -> Vec<u8> {
+    // ~500-byte block carrying one mangled portion + a chunk of prose
+    // and a few canonical markings. `SERCET` is edit-distance-1 from
+    // `SECRET`, mirroring the single-region decoder fixture above.
+    let block = concat!(
+        "(SERCET//NF) Mangled portion forces decoder dispatch.\n",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut\n",
+        "enim ad minim veniam, quis nostrud exercitation ullamco laboris\n",
+        "nisi ut aliquip ex ea commodo consequat.\n",
+        "\n",
+        "SECRET//NOFORN//REL TO USA, GBR\n",
+        "\n",
+        "(TS//SI) Canonical portion between mangled regions.\n",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse\n",
+        "cillum dolore eu fugiat nulla pariatur.\n",
+        "\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn decoder_deep_scan_mangled_benchmark(c: &mut Criterion) {
+    let input = build_decoder_dense_mangled_input(10_000);
+    // Default engine: `StrictOrDecoderRecognizer` (issue #259). The
+    // mangled portions in each block trip the decoder fallback ~20×
+    // across the 10KB input, exercising `score_candidate` repeatedly.
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+
+    c.bench_function("decoder_deep_scan_mangled_10kb", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+fn build_decoder_fallback_clean_input(target_bytes: usize) -> Vec<u8> {
+    // Already-canonical text. Each portion carries one unknown SCI
+    // compartment letter (`Z`, `Y`, `W`, …) so the strict parser emits
+    // `TokenKind::Unknown` and the dispatcher routes to the decoder.
+    // Once inside the decoder, the rest of each portion is canonical
+    // so `normalize_delimiters_and_case` returns `Cow::Borrowed` and
+    // `fuzzy_correct_tokens` returns `Cow::Borrowed` for the all-known
+    // tail tokens — pinning the issue #452 lazy-alloc win.
+    let block = concat!(
+        "(S//SI-Z) Unknown compartment letter forces decoder dispatch.\n",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
+        "\n",
+        "(TS//SI-Y//NOFORN) Another unknown-compartment portion.\n",
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco.\n",
+        "\n",
+        "(S//SI-W) Third unknown-compartment portion.\n",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse.\n",
+        "\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
+    let input = build_decoder_fallback_clean_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+
+    c.bench_function("decoder_clean_input_through_fallback_10kb", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Intent-heavy advisory bench (perf/defer-parsed-markings-clone, issue #433)
+// ---------------------------------------------------------------------------
+//
+// `lint_intent_heavy_10kb` measures the per-candidate cost on an
+// input shape where every JOINT portion fires a
+// joint-requires-rel-to-coverage `FactAdd` FixIntent — JOINT
+// participants must appear in the REL TO list per §H.3 p57, and the
+// rule emits one FixIntent per missing co-owner. This is the input
+// shape where issue #433's deferred `parsed_markings` insert still
+// pays the cost: every candidate emits a FixIntent-bearing diagnostic,
+// so the cache populates on every candidate. Pair with `lint_10kb`
+// (intent-light, typical) to measure both shapes — #433's win lands on
+// intent-light inputs and should not regress this intent-heavy worst
+// case.
+//
+// Class-floor diagnostics carry `fix: None` today
+// (`CapcoScheme::fix_intent_by_name` returns `None` for those rows
+// — see `crates/capco/src/scheme/adapter.rs`), so a class-floor-only
+// fixture would measure an
+// intent-light path even though it triggers lots of diagnostics.
+// The JOINT REL-TO-coverage rule is the right driver for the
+// intent-heavy worst case because its fix produces a `FactAdd`
+// `FixIntent` per
+// missing JOINT participant — the open-vocab `CountryCode` FactAdd
+// applied by `crate::scheme::actions::intent::apply_fact_add` in
+// `marque-capco`. The constraint is evaluated for the live
+// `CapcoRuleSet` (`crates/capco/src/rules/registry.rs`), so the
+// fixture exercises a production code path. `joint_disunity_collapse_to_FGI`
+// and other JOINT-block tests in `crates/capco/tests/` are the
+// active CI guards covering this rule's predicate; the
+// `e014_fact_add_engine.rs` file is disabled
+// (`#![cfg(any())]`), so it is NOT a current CI guard for this bench.
+// The `Inserted FactAdd` audit-stream invariant pinned in
+// `crates/engine/tests/intent_only_byte_identity.rs` exercises the
+// FixIntent emission path this bench measures.
+//
+// Advisory bench — no entry in `benches/baseline.json`, same pattern
+// as `lint_portion_dense` / `lint_high_candidate_count`. Report the
+// number in PRs that touch the lint hot loop's cache discipline.
+
+fn build_intent_heavy_input(target_bytes: usize) -> Vec<u8> {
+    // JOINT portion shapes that each fire the
+    // joint-requires-rel-to-coverage `FactAdd` FixIntents
+    // — every JOINT co-owner missing from `REL TO` produces one
+    // FixIntent-bearing diagnostic. Mix of two- and three-country
+    // JOINT lists keeps the per-candidate intent count >0.
+    let block = concat!(
+        "(//JOINT S AUS CAN USA)\n",
+        "(//JOINT S AUS GBR USA)\n",
+        "(//JOINT S CAN GBR USA)\n",
+        "(//JOINT C AUS NZL USA)\n",
+        "(//JOINT C CAN NZL USA)\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    // Trim to a block-aligned boundary so we never split a portion
+    // mid-token, then pad with spaces to reach exactly
+    // `target_bytes`. Both steps do real work: the `while` loop
+    // overshoots `target_bytes` by up to `block_bytes.len() - 1`
+    // bytes, the truncate drops that overshoot to a block-aligned
+    // length ≤ `target_bytes`, and the resize pads any remaining
+    // gap with spaces.
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn lint_intent_heavy_benchmark(c: &mut Criterion) {
+    let input = build_intent_heavy_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: matches `lint_10kb`'s pin so the intent-heavy
+    // cost is measured against a pure strict-path baseline. Issue #433.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_intent_heavy_10kb", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Parsed-markings cache stress advisory benches (perf/parsed-markings-vec, issue #432)
+// ---------------------------------------------------------------------------
+//
+// Two paired benches measure the cache cost on opposite paths so the
+// decomposition is transparent. Both share the
+// `build_parsed_markings_cache_stress_input(1000)` fixture — 1000
+// FactAdd-emitting JOINT portions packed without prose so the
+// cache populates on every candidate (each diagnostic carries
+// `fix.is_some()`, triggering issue #433's deferred-cache insert
+// gate).
+//
+//   - `lint_parsed_markings_cache_population_stress` — `Engine::lint`
+//     path. The public lint surface discards the parsed-markings
+//     cache via `.0`, so this measures cache POPULATION cost in
+//     isolation: per-candidate `push((span, marking))` plus the
+//     final drop. The Vec-vs-HashMap delta here is the pure
+//     SipHash + bucket-allocation savings.
+//
+//   - `fix_parsed_markings_cache_stress` — `Engine::fix` path. The
+//     full TwoPassFixer pipeline runs, including `synthesize_fixes`
+//     (point lookups via `lookup_marking`) and `find_containing_marking`
+//     (linear containment scans) against the same cache the lint
+//     phase populated. Cache population + lookup + splice + audit
+//     render are all in the measurement, so the cache-data-structure
+//     delta is amortized into the larger fix-pipeline cost. Worth
+//     measuring to verify the swap does not regress the user-facing
+//     fix path.
+//
+// Pair with `lint_10kb` (typical, intent-light) and
+// `lint_intent_heavy_10kb` (10KB intent-heavy) — together the four
+// benches span the cache's realistic load curve, with these two
+// fixtures pinning the degenerate tail case the issue calls out.
+// Advisory benches — no entries in `benches/baseline.json`. Report
+// numbers in PRs that touch the cache data structure; don't gate on
+// them.
+
+fn build_parsed_markings_cache_stress_input(candidate_count: usize) -> Vec<u8> {
+    // Same JOINT FactAdd shape as `build_intent_heavy_input` so each
+    // candidate fires a FixIntent and populates the cache. One portion
+    // per line; no prose interleaving so the document stays compact and
+    // the scanner emits all `candidate_count` portions in one pass.
+    let block = concat!(
+        "(//JOINT S AUS CAN USA)\n",
+        "(//JOINT S AUS GBR USA)\n",
+        "(//JOINT S CAN GBR USA)\n",
+        "(//JOINT C AUS NZL USA)\n",
+        "(//JOINT C CAN NZL USA)\n",
+    );
+    let block_bytes = block.as_bytes();
+    // 5 portions per block — round up so we reach at least candidate_count.
+    let block_count = candidate_count.div_ceil(5);
+    let mut input = Vec::with_capacity(block_bytes.len() * block_count);
+    for _ in 0..block_count {
+        input.extend_from_slice(block_bytes);
+    }
+    input
+}
+
+fn lint_parsed_markings_cache_population_stress_benchmark(c: &mut Criterion) {
+    let input = build_parsed_markings_cache_stress_input(1000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pin strict recognizer so the cache stress
+    // measurement isolates the (insert + drop) cost from the
+    // dispatcher's decoder fallback. Issue #432.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_parsed_markings_cache_population_stress", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+fn fix_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
+    let input = build_parsed_markings_cache_stress_input(1000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: same recognizer pin as the lint-side variant
+    // so the only measured delta between the two benches is the path
+    // (lint vs fix), not the recognizer choice. Issue #432.
+    .with_strict_recognizer();
+
+    c.bench_function("fix_parsed_markings_cache_stress", |b| {
+        b.iter(|| engine.fix(black_box(&input), FixMode::Apply));
+    });
+}
+
+// SCI-composite parsing stress fixture.
+//
+// `crates/core/src/parser.rs` builds the `{ctrl}-{comp}` composite
+// string for the bare-CVE `SciControl::parse` lookup at three sites
+// (structural parser body, whole-block long-form recognizer body, and
+// deprecated long-form chunk recognizer body). This fixture packs SCI
+// portions across all nine known CVE composites (HCS-{O,P,X},
+// SI-{EU,G,NK}, TK-{BLFH,IDIT,KAND}) plus one structural-only
+// sub-compartment shape (`SI-G ABCD`) so the bench amplifies the
+// composite-lookup cost in the hot path without any prose dilution.
+// `Engine::lint` alone is sufficient — the cost lives inside the
+// parser, not the rule/fix machinery, so a per-portion FactAdd shape
+// is not needed.
+//
+// Provenance: issue #435 asked whether the `format!` heap-allocation
+// at the three SCI-composite sites was worth removing. The won't-fix
+// measurement on this fixture (600 portions, +0.28% p=0.72) closed
+// #435, but the fixture itself stays as advisory measurement
+// infrastructure for any future PR that touches the SCI composite
+// path (parser refactor, grammar extension, alternative CVE-lookup
+// scheme). Not in `benches/baseline.json`; don't gate on it.
+fn build_sci_composite_dense_input(portion_count: usize) -> Vec<u8> {
+    let block = concat!(
+        "(TS//HCS-O)\n",
+        "(TS//HCS-P)\n",
+        "(TS//HCS-X)\n",
+        "(TS//SI-EU)\n",
+        "(TS//SI-G)\n",
+        "(TS//SI-NK)\n",
+        "(TS//TK-BLFH)\n",
+        "(TS//TK-IDIT)\n",
+        "(TS//TK-KAND)\n",
+        "(TS//SI-G ABCD)\n",
+    );
+    let block_bytes = block.as_bytes();
+    // 10 portions per block — round up so we reach at least portion_count.
+    let block_count = portion_count.div_ceil(10);
+    let mut input = Vec::with_capacity(block_bytes.len() * block_count);
+    for _ in 0..block_count {
+        input.extend_from_slice(block_bytes);
+    }
+    input
+}
+
+fn lint_sci_composite_dense_benchmark(c: &mut Criterion) {
+    let input = build_sci_composite_dense_input(600);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pin strict recognizer so the SCI composite
+    // measurement isolates the parser path from the dispatcher's
+    // decoder fallback. Issue #435.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_sci_composite_dense", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+criterion_group!(
+    benches,
+    lint_latency_benchmark,
+    decoder_latency_benchmark,
+    lint_default_config_benchmark,
+    lint_off_heavy_config_benchmark,
+    lint_prose_heavy_benchmark,
+    lint_portion_dense_benchmark,
+    lint_high_candidate_count_benchmark,
+    lint_intent_heavy_benchmark,
+    lint_parsed_markings_cache_population_stress_benchmark,
+    fix_parsed_markings_cache_stress_benchmark,
+    lint_sci_composite_dense_benchmark,
+    decoder_deep_scan_mangled_benchmark,
+    decoder_clean_input_through_fallback_benchmark,
+);
 criterion_main!(benches);

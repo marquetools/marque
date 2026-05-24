@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+# Pins the dev-environment Rust toolchain to the channel that compiles the
+# workspace today (1.89). The project calls for a pinned toolchain without a
+# fixed version; we choose the lowest channel that satisfies the workspace's
+# transitive dependency MSRVs:
+#
+#   * `criterion@0.8.2` requires rustc 1.86
+#   * `recoco-utils@0.2.3` requires rustc 1.89
+#
+# Workspace `Cargo.toml` still claims `rust-version = "1.85"`, which is the
+# constitution Tech-Stack floor (Constitution: "Rust ≥ 1.85"); reconciling the
+# claim with the realized MSRV (1.89) is a separate housekeeping change.
+#
+# CI alignment status: `.github/workflows/ci.yml` currently runs the `check`
+# job (cargo fmt + cargo clippy) on `nightly`; the bench/coverage/lint jobs
+# opt into `1.89` explicitly via `dtolnay/rust-toolchain`. The dev pin at
+# 1.89 here matches the non-fmt/clippy CI jobs but diverges from the `check`
+# job — that divergence is intentional (CI's nightly fmt/clippy catches
+# upcoming-Rust regressions early) and should NOT be "reconciled" by
+# bumping this file or by switching CI's check job. Future toolchain
+# updates: bump this file when the workspace MSRV moves and CI's
+# non-nightly jobs follow it; leave the nightly check job alone.
+#:tombi schema.strict = false
+
+[toolchain]
+channel = "1.89"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

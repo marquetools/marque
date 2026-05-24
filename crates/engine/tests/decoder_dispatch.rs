@@ -8,7 +8,7 @@
 //! `crates/engine/src/decoder.rs::tests`; these tests exercise the
 //! dispatch layer — the default `StrictOrDecoderRecognizer` installed
 //! by [`Engine::new`], the explicit-strict opt-out via
-//! [`Engine::with_recognizer`], and the FR-015 zero-candidate path
+//! [`Engine::with_recognizer`], and the zero-candidate path
 //! through the full `Engine::lint` pipeline.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
@@ -16,17 +16,17 @@ use marque_config::Config;
 use marque_engine::{DecoderRecognizer, Engine, StrictOrDecoderRecognizer, StrictRecognizer};
 use marque_rules::RuleSet;
 use marque_scheme::recognizer::Recognizer;
-use std::sync::Arc;
 
 fn build_engine() -> Engine {
     let config = Config::default();
-    let rule_sets: Vec<Box<dyn RuleSet>> = vec![Box::new(CapcoRuleSet::new())];
+    let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
     Engine::new(config, rule_sets, CapcoScheme::new())
         .expect("engine construction should succeed on a stock CAPCO scheme")
 }
 
 fn build_strict_engine() -> Engine {
-    build_engine().with_recognizer(Arc::new(StrictRecognizer::new()))
+    // INTENTIONAL-STRICT: this helper exists specifically to construct an engine with the decoder suppressed; the test family asserts strict-path behavior in contrast to the default dispatcher
+    build_engine().with_strict_recognizer()
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn explicit_strict_recognizer_never_invokes_the_decoder() {
 }
 
 // ---------------------------------------------------------------------------
-// FR-015 zero-candidate signal surfaces as diagnostics only, no fix.
+// Zero-candidate signal surfaces as diagnostics only, no fix.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -84,8 +84,8 @@ fn default_engine_on_unrecognized_bytes_emits_no_decoder_fix() {
     // `//FROBNITZ WIBBLE` is a scanner-detectable banner candidate
     // (leading `//` matches the scanner's prefix list) whose tokens
     // have no vocabulary overlap with any CAPCO CVE. The dispatcher
-    // runs; the decoder's candidate set stays empty (FR-015:
-    // zero-candidate is the "we see signal, can't resolve" signal).
+    // runs; the decoder's candidate set stays empty (zero-candidate is
+    // the "we see signal, can't resolve" signal).
     // No `DecoderPosterior` fix should appear.
     let engine = build_engine();
     let result = engine.lint(b"//FROBNITZ WIBBLE");
@@ -111,7 +111,7 @@ fn default_engine_on_unrecognized_bytes_emits_no_decoder_fix() {
 fn default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input() {
     // The critical regression-guard for the strict→decoder fallback:
     // the `marque_core::Parser` is lenient enough to return
-    // `Ok(empty IsmAttributes)` for shapes like `(SERCET//NOFORN)`
+    // `Ok(empty CanonicalAttrs)` for shapes like `(SERCET//NOFORN)`
     // where no CVE tokens are recognized. The dispatcher must treat
     // such a trivial strict result as equivalent to zero-candidate
     // and fall through to the decoder — otherwise the engine would
@@ -137,12 +137,12 @@ fn default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input() {
     let strict_ids: Vec<&str> = strict_result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id())
         .collect();
     let default_ids: Vec<&str> = default_result
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str())
+        .map(|d| d.rule.predicate_id())
         .collect();
     assert!(
         strict_ids != default_ids
@@ -181,7 +181,7 @@ fn default_engine_suppresses_prose_glue_single_letter_portions() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str(), d.message.to_string()))
+                .map(|d| (d.rule.predicate_id(), d.message.template().as_str()))
                 .collect::<Vec<_>>(),
         );
     }
@@ -198,15 +198,16 @@ fn default_engine_recovers_single_letter_portion_after_whitespace() {
     // Leading whitespace + canonical-case `(S)`: strict path produces
     // a SECRET marking; downstream rules see it as a real marking.
     let result = engine.lint(b" (S) some text");
-    let saw_marking = result
-        .diagnostics
-        .iter()
-        .any(|d| d.fix.is_some() || d.rule.as_str().starts_with('E'));
-    let _ = saw_marking; // diagnostic set is rule-dependent; the load-bearing
-    // assertion is "no panic, marking surfaces normally" — recognizer
-    // proves it via the `(s)` lower-case canonicalization in
+    // The diagnostic set is rule-dependent (the rule lineup may evolve
+    // independently of the recognizer behavior under test). The
+    // load-bearing assertion is "no panic, marking surfaces normally"
+    // — proven by `candidates_processed >= 1` below + the recognizer-
+    // canonicalization test in
     // `decoder_canonicalizes_single_letter_when_preceded_by_whitespace`.
-    // Engine-level test: zero panics and the strict path completes.
+    //
+    // There is no `predicate_id().starts_with('E')`-style heuristic
+    // here: predicate IDs are descriptive paths, not E### codes, so any
+    // such check would be both vacuous and semantically wrong.
     assert!(
         result.candidates_processed >= 1,
         "engine must reach the recognizer for whitespace-preceded `(S)`, \
@@ -240,7 +241,7 @@ fn default_engine_rejects_bare_restricted_portion() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str(), d.message.to_string()))
+                .map(|d| (d.rule.predicate_id(), d.message.template().as_str()))
                 .collect::<Vec<_>>(),
         );
     }
@@ -264,12 +265,12 @@ fn default_engine_does_not_change_canonical_input_diagnostics() {
     let strict_ids: Vec<_> = strict_diag
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect();
     let default_ids: Vec<_> = default_diag
         .diagnostics
         .iter()
-        .map(|d| d.rule.as_str().to_owned())
+        .map(|d| d.rule.predicate_id().to_owned())
         .collect();
     assert_eq!(
         strict_ids, default_ids,

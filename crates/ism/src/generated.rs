@@ -31,7 +31,7 @@ pub mod migrations {
 ///
 /// The composition of these raw records into the
 /// `marque-scheme::Vocabulary<S>` trait surface lives in
-/// `marque-capco` (Phase 5 PR-2 task T084). `marque-ism` cannot
+/// `marque-capco`. `marque-ism` cannot
 /// reference the scheme types directly per Constitution VII —
 /// it sits below `marque-scheme` in the dependency graph.
 pub mod vocabulary {

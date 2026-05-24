@@ -2,14 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Corpus-override parsing — Phase 4 PR-5 (T065).
+//! Corpus-override parsing.
 //!
 //! Operators with their own non-public corpora can supply a JSON file
 //! that **annotates** decoder fixes with the
 //! [`marque_rules::FeatureId::CorpusOverrideInEffect`] audit marker. The override
 //! surface is opt-in (Cargo feature `corpus-override`), CLI-only
-//! (server rejects it on every channel — T066; WASM cannot enable the
-//! feature — T067), and gated behind a security envelope summarized in
+//! (the server rejects it on every channel; WASM cannot enable the
+//! feature), and gated behind a security envelope summarized in
 //! `docs/security/WHITEPAPER.md` §10.3.
 //!
 //! ## Why this lives in `marque-config`, not `marque-capco`
@@ -87,7 +87,7 @@ pub struct CorpusOverride {
     /// `GrammarTemplate` shape identifiers the decoder consumes (e.g.,
     /// `"classification//dissem"`).
     pub template_overrides: BTreeMap<String, f32>,
-    /// Strict-context floor overrides for FR-011 candidate filtering.
+    /// Strict-context floor overrides for candidate filtering.
     /// Any subset of the three may be supplied.
     pub strict_context_overrides: StrictContextOverrides,
 }
@@ -282,10 +282,9 @@ pub fn parse_corpus_override(
 ///   same practical effect on candidate ranking without the
 ///   silent-deletion footgun.
 ///
-/// Phase 4 review M6 confirmed this policy. If a future scoring
-/// change makes infinite penalties first-class, this function can
-/// be relaxed; until then, the contract is "log_priors must be
-/// finite."
+/// If a future scoring change makes infinite penalties first-class,
+/// this function can be relaxed; until then, the contract is
+/// "log_priors must be finite."
 fn validate_log_prior(
     path: &Path,
     section: &'static str,
@@ -322,13 +321,11 @@ fn validate_log_prior(
 /// `crates/capco/build.rs::require_probability`. Accepts `(0.0,
 /// 1.0]`; rejects `0.0` because a `0.0` floor silently makes the
 /// strict-context rule a no-op (the feature contribution becomes
-/// algebraically identity), defeating FR-011 with no diagnostic at
-/// load time. Operators who want "very permissive" should write a
-/// finite small positive (e.g., `0.01`).
-///
-/// Phase 4 review M8 confirmed this policy.
+/// algebraically identity), defeating candidate filtering with no
+/// diagnostic at load time. Operators who want "very permissive" should
+/// write a finite small positive (e.g., `0.01`).
 fn validate_floor(path: &Path, key: &'static str, value: f32) -> Result<(), ConfigError> {
-    if !value.is_finite() || !(value > 0.0 && value <= 1.0) {
+    if !(value.is_finite() && value > 0.0 && value <= 1.0) {
         return Err(ConfigError::CorpusOverrideInvalidValue {
             path: path.to_path_buf(),
             section: "strict_context_overrides",

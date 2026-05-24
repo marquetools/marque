@@ -2,19 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! SC-005-class fix throughput benchmark: `Engine::fix` with `FixMode::Apply`
+//! Linear-throughput fix benchmark: `Engine::fix` with `FixMode::Apply`
 //! must scale linearly in input size when fix density is proportional to
 //! document size.
 //!
-//! Input shape: mixed prose + valid markings with one `SECRET//NF` (E001
-//! NOFORN-abbreviation violation) per ~10.9 KB section, so the number of
-//! fixes tracks input size. This is the "real document with a known violation
-//! rate" shape a batch user would feed in.
+//! Input shape: mixed prose + valid markings with one `SECRET//NOFORN` banner
+//! per ~10.9 KB section. Zero fixes fire — the bench measures the fix-path
+//! overhead (recognition, page-context accumulation, fix-apply scaffolding)
+//! without actual splice work.
+//! Fix density proportional to document size is the shape that exposed the
+//! O(N²) page-context blowup fixed in issue #306.
 //!
 //! The benchmark sweeps from 1 MB to 100 MB and reports throughput (MB/s) at
 //! each size. Linearity is enforced by `scripts/bench-check.sh` via the
 //! `fix_throughput` R² gate in `benches/baseline.json` (R² ≥ 0.9 across the
-//! size sweep), mirroring the `lint_scaling` gate for SC-005. The
+//! size sweep), mirroring the `lint_scaling` linear-throughput gate. The
 //! `fix_throughput/100000000` data point specifically guards the
 //! `Vec::splice`-per-fix regression described in the
 //! `perf(engine): fix-apply path is quadratic in input size` issue.
@@ -31,16 +33,19 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
+use secrecy::ExposeSecret as _;
 use std::hint::black_box;
 
-/// Build an input of approximately `target_bytes` containing one fixable
-/// `SECRET//NF` banner per ~10.9 KB prose section.  The violation density
-/// therefore scales linearly with document size — exactly the shape that
-/// exposed the quadratic blowup.
+/// Build an input of approximately `target_bytes` containing one
+/// `SECRET//NOFORN` banner per ~10.9 KB prose section. The banner density
+/// scales linearly with document size — exactly the shape that exposed the
+/// quadratic blowup in page-context accumulation.
 fn build_fix_input(target_bytes: usize) -> Vec<u8> {
-    // Each block is ~10.9 KB: one E001 violation (SECRET//NF — abbreviated
-    // NOFORN in a banner) followed by ~10.9 KB of valid markings and prose.
-    let violation = "SECRET//NF\n\n";
+    // Each block is ~10.9 KB: one valid `SECRET//NOFORN` banner followed by
+    // ~10.9 KB of valid markings and prose. Zero fixes fire; the scaling
+    // signal comes from the page-context accumulation path, which was O(N²)
+    // before issue #306.
+    let banner = "SECRET//NOFORN\n\n";
 
     // ~220-byte prose + marking block repeated to fill the section.
     let prose_block = concat!(
@@ -59,20 +64,20 @@ fn build_fix_input(target_bytes: usize) -> Vec<u8> {
         "\n",
     );
 
-    // Target section size: violation + enough prose to reach ~10.9 KB.
+    // Target section size: banner + enough prose to reach ~10.9 KB.
     let section_target = 10_900usize;
-    let violation_bytes = violation.as_bytes();
+    let banner_bytes = banner.as_bytes();
     let prose_bytes = prose_block.as_bytes();
 
     // Build one section.
     let mut section = Vec::with_capacity(section_target + prose_bytes.len());
-    section.extend_from_slice(violation_bytes);
+    section.extend_from_slice(banner_bytes);
     while section.len() < section_target {
         section.extend_from_slice(prose_bytes);
     }
     // Trim to a block-aligned boundary so we never split mid-token.
-    let prose_reps = (section_target.saturating_sub(violation_bytes.len())) / prose_bytes.len();
-    section.truncate(violation_bytes.len() + prose_reps.max(1) * prose_bytes.len());
+    let prose_reps = (section_target.saturating_sub(banner_bytes.len())) / prose_bytes.len();
+    section.truncate(banner_bytes.len() + prose_reps.max(1) * prose_bytes.len());
 
     // Tile sections to reach target_bytes.
     let mut input = Vec::with_capacity(target_bytes + section.len());
@@ -114,7 +119,7 @@ fn fix_throughput_benchmark(c: &mut Criterion) {
                     let result = engine.fix(black_box(input), FixMode::Apply);
                     // Prevent the compiler from eliding the call: consume the
                     // output length so the fix actually runs.
-                    black_box(result.source.len())
+                    black_box(result.source.expose_secret().len())
                 });
             },
         );

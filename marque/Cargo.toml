@@ -23,15 +23,33 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+# `blake3::Hash` is the wire type for the audit-record
+# `original_digest` / `bytes_digest` fields. The renderer formats
+# `blake3:<hex>`. The same `pure`-feature surface flows through
+# `marque-rules` and `marque-engine`; the CLI inherits transitively but
+# the direct dep here makes the wire-format formatting explicit at the
+# emit boundary.
+blake3 = { workspace = true }
 clap = { workspace = true }
 humantime = { workspace = true }
 is-terminal = { workspace = true }
 marque-capco = { workspace = true }
-marque-config = { workspace = true }
+# CLI loads `.marque.toml` / `.marque.local.toml`; opt in to the toml chain
+# the workspace pin keeps off by default (so the WASM build can exclude it).
+marque-config = { workspace = true, features = ["toml-loader"] }
 marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
-marque-ism = { workspace = true }
+# CLI opts into jiff-backed date validation; the workspace pin keeps
+# `default-features = false` so the WASM build inherits the hand-rolled
+# Gregorian path (issue #455).
+marque-ism = { workspace = true, features = ["dates"] }
 marque-rules = { workspace = true }
+marque-scheme = { workspace = true }
+# Constitution Principle II — readout discipline at the CLI output
+# boundary (stdout / atomic temp-file rename). `FixResult.source` is
+# `SecretBox<[u8]>`; `expose_secret()` calls at the write sites are
+# the grep target.
+secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
@@ -44,11 +62,11 @@ assert_cmd = { workspace = true }
 tempfile = { workspace = true }
 
 [features]
-# Phase-D / US2 wiring. The CLI is the one target that ships the
-# corpus-override surface — server rejects it at the handler layer,
-# WASM excludes it at compile time (Constitution III + FR-013 + T3).
-# Proxying through `marque-engine/corpus-override` pulls the matching
-# gates in capco + config along with it.
+# The CLI is the one target that ships the corpus-override surface —
+# server rejects it at the handler layer, WASM excludes it at compile
+# time (Constitution III). Proxying through
+# `marque-engine/corpus-override` pulls the matching gates in capco +
+# config along with it.
 default = []
 # Harness pass-throughs for convenience on the CLI crate; individual
 # harnesses are exercised from `marque-capco` and `marque-engine`

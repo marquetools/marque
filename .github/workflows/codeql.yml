@@ -22,6 +22,7 @@ on:
   schedule:
     - cron: '20 20 * * 6'
 
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -53,10 +54,12 @@ jobs:
             build-mode: none
     steps:
       - name: Checkout repository
-        uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Set up environment
-        uses: jdx/mise-action@5b3e4e007b276e6bad43f8e745b95a5ffa71aa5e
+        continue-on-error: true
+        uses: jdx/mise-action@1c5f70fd400ce6c745085c93ea80026272f8d346
+        if: matrix.language != 'actions'
         with:
           install: true
           experimental: true
@@ -65,7 +68,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@b71f5aebfc5cee7388c9d7b75e6e36f47787eb9a
+        uses: github/codeql-action/init@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -96,6 +99,6 @@ jobs:
           exit 1
   
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@b71f5aebfc5cee7388c9d7b75e6e36f47787eb9a
+        uses: github/codeql-action/analyze@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
         with:
           category: "/language:${{matrix.language}}"

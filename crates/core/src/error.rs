@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-use marque_ism::Span;
+use marque_scheme::Span;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

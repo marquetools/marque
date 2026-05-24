@@ -10,6 +10,7 @@
 //! Each stage is a `Stream`. Middleware inserts between stages.
 //! This module defines the stage types; full async streaming implementation is TODO.
 
+use marque_capco::CapcoScheme;
 use marque_ism::MarkingCandidate;
 use marque_rules::Diagnostic;
 
@@ -39,6 +40,6 @@ impl<T> Source for T where T: futures_core::Stream<Item = Result<TextChunk, Sour
 
 /// A stream sink — anything that consumes pipeline output.
 pub trait Sink: Send {
-    fn accept_diagnostic(&mut self, diag: Diagnostic);
+    fn accept_diagnostic(&mut self, diag: Diagnostic<CapcoScheme>);
     fn accept_candidate(&mut self, candidate: MarkingCandidate);
 }
