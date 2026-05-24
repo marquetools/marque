@@ -12,10 +12,9 @@
 //! `super::actions::*`, and the `CapcoScheme` type via `super::*`
 //! (the parent module's `pub use self::adapter::CapcoScheme` re-export).
 //!
-//! T044 (post-mvp-3): the `RULE_E059` walker-shared constant was
-//! deleted. Per OD-8.A the bridge becomes a no-op pass-through — each
-//! row's `name` IS the canonical predicate ID, and emit functions
-//! construct `RuleId::new("capco", row.name)` directly at the call
+//! The bridge is a no-op pass-through — each row's `name` IS the
+//! canonical predicate ID, and emit functions construct
+//! `RuleId::new("capco", row.name)` directly at the call
 //! site (see `super::actions::companions`).
 
 use super::actions::*;
@@ -60,18 +59,15 @@ use marque_scheme::{SectionLetter, capco};
 // branch-specific anchor.
 //
 // The catalog is consumed by `CapcoScheme::bridge_sci_per_system_diagnostics`
-// (in `adapter.rs`), which is the engine's direct emit path for E059
-// diagnostics + fixes. PR 3c.B Commit 7.4 retired the original
-// `DeclarativeSciPerSystemRule` walker in favor of the direct bridge so
-// the catalog's per-row fixes (companion-insertion at the dissem-block
+// (in `adapter.rs`), which is the engine's direct emit path for these
+// diagnostics + fixes. The direct bridge lets the catalog's per-row fixes (companion-insertion at the dissem-block
 // anchor and `ORCON-USGOV → ORCON` token replacement) could ride
 // alongside the diagnostics without threading a fix table through the
 // `ConstraintViolation` envelope.
 //
-// FORWARD LINK to PR 4 (per-category Lattice impls): once `marque-scheme`
-// exposes `Constraint::CompanionRequired<Set>` / `Forbid<Set>` primitives
-// (or the equivalent ImplTable / closure-operator machinery from
-// `marque-applied.md` §3.4.6), these rows can re-classify from
+// Once `marque-scheme` exposes `Constraint::CompanionRequired<Set>` /
+// `Forbid<Set>` primitives (or equivalent ImplTable / closure-operator
+// machinery), these rows can re-classify from
 // `Constraint::Custom` to a primitive form without changing per-row
 // semantics. See `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`
 // §1 for the architectural rationale.
@@ -91,8 +87,7 @@ pub(crate) enum CompanionForm {
 }
 
 /// Dispatch tag for an SCI per-system catalog row's emit body. Two
-/// variants keep the `match row.kind` arm count under the ≤3-branch
-/// reviewer-attestation cap (§7(b) of the PR 3b.E plan).
+/// variants keep the `match row.kind` arm count low.
 #[derive(Copy, Clone)]
 pub(crate) enum SciPerSystemKind {
     /// Single dissem-control insertion. The row encodes "if marking M is
@@ -132,8 +127,8 @@ pub(crate) enum SciPerSystemKind {
 ///
 /// # Naming-prefix invariant
 ///
-/// Post-T044: every row's `name` is now a canonical predicate ID
-/// starting with `marking.sci.` (uniquely scoped to the per-system
+/// Every row's `name` is a canonical predicate ID starting with
+/// `marking.sci.` (uniquely scoped to the per-system
 /// catalog; `portion.sci.*` is reserved for standalone SCI rules).
 /// The `sci_per_system_catalog_naming_convention` test in
 /// `crates/capco/tests/sci_per_system_catalog.rs` enforces this at
@@ -144,11 +139,10 @@ pub(crate) enum SciPerSystemKind {
 #[derive(Copy, Clone)]
 pub(crate) struct SciPerSystemRow {
     /// Catalog row name — matches the `Constraint::Custom { name }` of
-    /// the same logical row. Post-T044 the name IS the canonical
+    /// the same logical row. The name IS the canonical
     /// `(scheme="capco", predicate_id=name)` 2-tuple's predicate
     /// component; the engine's constraint-catalog bridge constructs
-    /// `RuleId::new("capco", row.name)` directly with no string
-    /// manipulation (OD-8.A no-op pass-through). MUST start with
+    /// `RuleId::new("capco", row.name)` directly. MUST start with
     /// `marking.sci.`.
     pub(crate) name: &'static str,
     /// Human-readable marking name for the diagnostic message
@@ -186,8 +180,6 @@ pub(crate) struct SciPerSystemRow {
     /// Zero means no forbidden bits.
     pub(crate) bitmask_companion_forbidden: u128,
     /// Per-row typed §-citation, matching `Constraint::Custom { label }`.
-    /// PR 10.A.1 consolidated the dual-track `citation: &'static str` +
-    /// `citation_typed: Citation` design into this single typed field.
     /// The engine's constraint-catalog bridge reads it directly; the
     /// `Citation` `Display` impl produces the `§<L>.<sub> p<page>`
     /// canonical form when emitted into diagnostics.
