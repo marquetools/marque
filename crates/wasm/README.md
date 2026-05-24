@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 WASM build target for marque — browser and web-worker integration.
 
-Compiles the marque rule engine to WebAssembly via `wasm-pack` and exposes a small JavaScript surface for linting and fixing pre-extracted text. NDJSON output is byte-identical to the native CLI's `--format json` output (SC-008 parity, enforced by test).
+Compiles the marque rule engine to WebAssembly via `wasm-pack` and exposes a small JavaScript surface for linting and fixing pre-extracted text. NDJSON output is byte-identical to the native CLI's `--format json` output (parity enforced by test).
 
 ## Role in Marque
 

@@ -51,7 +51,7 @@ for candidate in Scanner::scan(source) {
 borrows its `TokenSet` for the duration of parsing. The parser produces
 `ParsedMarking<'src> { attrs: ParsedAttrs<'src>, ... }` (re-exported from
 `marque-ism`); the engine immediately runs `MarkingScheme::canonicalize`
-(sole production path per FR-043; the CAPCO override is
+(the sole production path; the CAPCO override is
 `marque_capco::CapcoScheme::canonicalize`) to land owned
 `CanonicalAttrs` for rule consumption. Spans are byte offsets
 into the original buffer; rule crates read them without allocating.
