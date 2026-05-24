@@ -13,7 +13,7 @@
 //! per-token base rates (how often each canonical token appears in
 //! non-IC English prose), per-template base rates (which grammar
 //! template shapes are common in real markings), and strict-context
-//! probability floors (FR-011 — if one portion says SECRET, candidate
+//! probability floors (if one portion says SECRET, candidate
 //! resolutions that drop to UNCLASSIFIED are rejected before scoring).
 //!
 //! See `crates/capco/corpus/README.md` for the generator pipeline
@@ -44,7 +44,7 @@ pub struct TemplatePrior {
     pub log_prior: f32,
 }
 
-/// Strict-context probability floors for FR-011 candidate filtering.
+/// Strict-context probability floors for candidate filtering.
 ///
 /// Each floor is the probability that a classification token at that
 /// level in one portion of a document implies other portions share at
@@ -339,8 +339,8 @@ mod tests {
     #[test]
     fn strict_context_floors_are_valid_probabilities() {
         // Mirrors the build-time policy in
-        // `crates/capco/build.rs::require_probability` per Phase 4
-        // review M8: floors live in `(0.0, 1.0]`. `0.0` is rejected
+        // `crates/capco/build.rs::require_probability`: floors live
+        // in `(0.0, 1.0]`. `0.0` is rejected
         // because it silently makes the strict-context rule a no-op
         // (the feature contribution becomes algebraically identity).
         let p = STRICT_CONTEXT_PRIORS;

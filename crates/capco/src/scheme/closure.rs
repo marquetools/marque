@@ -8,7 +8,7 @@
 //! # Post-#704 shape
 //!
 //! Issue #704 retired the residual `CLOSURE_REL_TO_USA_NATO` fn-pointer
-//! rule that the post-PR-D state carried. The rule was a "default if
+//! rule that the bitmask state carried. The rule was a "default if
 //! absent" semantic per §H.7 p127 + §G.2 Table 5 p40 — non-monotone
 //! by §-spec design (§B.3 paragraph b p19's "NOT MARKED PREVIOUSLY"
 //! gate). Non-monotone rules cannot live in a closure operator that
@@ -34,8 +34,8 @@
 //!
 //! # Historical note
 //!
-//! Pre-PR-D the catalog was a 10-row fn-pointer slice; PR-D moved 9
-//! rows into the bitmask `CLOSURE_TABLE`. Pre-#704 the bitmask
+//! The catalog was a 10-row fn-pointer slice; 9 rows moved into the
+//! bitmask `CLOSURE_TABLE`. Pre-#704 the bitmask
 //! catalog kept the same 10-row shape with `suppressor_mask` field
 //! gating the four "default if absent" rows. Issue #704's refinement
 //! moved the four default-if-absent rules out of `close()` entirely
@@ -55,7 +55,7 @@ use super::*;
 // explicit FD&R decision exists; the implicit-default trio (Trio 1, 2, 3)
 // should NOT fire. Per CAPCO-2016 §B.3.a p19 (canonical enumeration —
 // "NOFORN, REL TO, RELIDO, or DISPLAY ONLY"), §B.3 Table 2 pp 21-22
-// (scenario-summary table, derivative), and `marque-applied.md` §4.7.1.
+// (scenario-summary table, derivative).
 //
 // Includes:
 //   - NOFORN (most restrictive FD&R, top of chain per §H.8 p145)
@@ -71,14 +71,14 @@ use super::*;
 // pp 21-22 is the per-scenario marking-summary table (derivative, not the
 // definition).
 //
-// Algebraic note (re: `marque-applied.md` §4.7.3 has_fdr definition):
-// §4.7.3 defines `has_fdr(x)` to include LES-NF / SBU-NF for the
+// Algebraic note (has_fdr definition):
+// `has_fdr(x)` includes LES-NF / SBU-NF for the
 // table-design-property monotonicity proof. The in-tree FDR_DOMINATORS
 // omits them because (a) LES-NF and SBU-NF entail NOFORN through their
 // own PageRewrite (so the operational behavior is preserved — when LES-NF
 // is present, NOFORN is added via PageRewrite, and the Trio-1 row would
 // then be suppressed by the post-PageRewrite NOFORN regardless), and
-// (b) the §4.7.3 case-2 table-design property is preserved per-row because
+// (b) the case-2 table-design property is preserved per-row because
 // the suppressed cone {NOFORN} is exactly the fact that LES-NF / SBU-NF's
 // PageRewrite would have added. The monotonicity proof holds via the
 // downstream PageRewrite step rather than via FDR_DOMINATORS membership;
@@ -147,8 +147,8 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 // architecture note in `closure_table.rs`'s module doc-comment for
 // the full rationale.
 
-// Trio 1 (`CLOSURE_NOFORN_CAVEATED`) was retired in PR-D of the
-// FactBitmask refactor (issue #371). The 20-trigger caveated-NOFORN
+// Trio 1 (`CLOSURE_NOFORN_CAVEATED`) is bit-packed into the bitmask
+// `CLOSURE_TABLE` (issue #371). The 20-trigger caveated-NOFORN
 // row was bit-packed into `CLOSURE_TABLE` Row 0 with the
 // `ROW0_NOFORN_IF_CAVEATED_TRIGGERS` mask (21 source `TokenRef`
 // entries collapse to 20 atom bits — the `TOK_FGI_MARKER` +
@@ -192,8 +192,8 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 // ---------------------------------------------------------------------------
 //
 // The two Trio 2 closure rules (`CLOSURE_RELIDO_SCI` +
-// `CLOSURE_RELIDO_US_CLASS`) were retired in PR-D of the FactBitmask
-// refactor (issue #371) into `CLOSURE_TABLE` Rows 8-9.
+// `CLOSURE_RELIDO_US_CLASS`) live in `CLOSURE_TABLE` Rows 8-9
+// (issue #371).
 //
 // The `RELIDO_US_CLASS_SUPPRESSORS` `TokenRef` slice that backstopped
 // the bitmask `MASK_RELIDO_US_CLASS_SUPPRESSORS` projection retired
@@ -219,7 +219,7 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 ///
 /// The slice stays as an empty `&[]` to preserve the
 /// `MarkingScheme::closure_rules` trait surface (per `decisions.md`
-/// D18 — every scheme owns a `closure_rules()` method even when it
+/// Every scheme owns a `closure_rules()` method even when it
 /// has none) and to keep a stable expansion seam: if a future CAPCO
 /// rule ships an open-vocab cone that does not project onto a
 /// closed-vocab bit (the original purpose of the fn-pointer surface),

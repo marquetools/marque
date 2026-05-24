@@ -3,19 +3,13 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Family-presence predicates (one per class-floor catalog row) plus
-//! the §3.7 passthrough-family predicates and the SCI helper
-//! primitives ([`anchors_on`] / [`has_compartment`] /
-//! [`compartment_has_sub`] / [`is_tk_noforn_compartment`]). Lifted
-//! from the monolithic `predicates.rs` per the issue #466 Stage 2
-//! PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! the passthrough-family predicates and the SCI helper primitives
+//! ([`anchors_on`] / [`has_compartment`] / [`compartment_has_sub`] /
+//! [`is_tk_noforn_compartment`]).
 
 // No items from `super::super::*` are needed here — every predicate
-// reaches its types via the `marque_ism::` and `marque_scheme::`
-// paths directly. The original `predicates.rs` carried the glob
-// import for adjacent predicates in the same file; after the Stage-2
-// PR A split (`claudedocs/refactor-466/stage2_leaves_plan.md`), the
-// only items presence-style predicates need live in `marque_ism`.
+// reaches its types via the `marque_ism::` and `marque_scheme::` paths
+// directly.
 
 // ---------------------------------------------------------------------------
 // Family-presence predicates (one per catalog row)
@@ -24,9 +18,8 @@
 // Each predicate iterates the relevant axis (`attrs.sci_markings`,
 // `attrs.aea_markings`, `attrs.dissem_iter()` over the namespace
 // split, etc.) looking for any token matching the family pattern.
-// Family granularity is the §3.4.6
-// author's choice — the predicates pattern-match across all marking-
-// template-level leaves that belong to the family.
+// Family granularity — the predicates pattern-match across all
+// marking-template-level leaves that belong to the family.
 
 /// HCS-[comp][sub] — any HCS-anchored marking carrying a compartment
 /// that has at least one sub-compartment. Family covers HCS-P [SUB] and
@@ -99,7 +92,7 @@ pub(crate) fn presence_tk_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
             return false;
         }
         // Exclude markings whose compartment set includes BLFH — those
-        // are §2.1 row TK-BLFH (TS-only), not §2.2 row TK (S floor).
+        // are the TK-BLFH row (TS-only), not the TK row (S floor).
         let has_blfh = m
             .compartments
             .iter()
@@ -130,7 +123,7 @@ pub(crate) fn presence_rd_bare(attrs: &marque_ism::CanonicalAttrs) -> bool {
 
 /// RD-CNWDI — any RD block with `cnwdi == true`. Replaces retired E022.
 /// CAPCO §H.6 p104 (TS-or-S RD); matches the catalog row's
-/// authoritative §3.4.6 citation
+/// authoritative citation
 /// (`E058/CNWDI-classification-floor` → `CAPCO-2016 §H.6 p104`).
 pub(crate) fn presence_rd_cnwdi(attrs: &marque_ism::CanonicalAttrs) -> bool {
     attrs
@@ -197,7 +190,7 @@ pub(crate) fn presence_sar(attrs: &marque_ism::CanonicalAttrs) -> bool {
 }
 
 /// RSEN dissem control present. CAPCO §H.8 p132 (operative §H.8 p149
-/// per §3.4.6 author). RSEN's CVE form is `RS`
+/// per the catalog). RSEN's CVE form is `RS`
 /// (the portion-mark abbreviation; banner form is `RSEN`).
 pub(crate) fn presence_rsen(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
@@ -210,9 +203,9 @@ pub(crate) fn presence_imcon(attrs: &marque_ism::CanonicalAttrs) -> bool {
     attrs.dissem_iter().any(|d| matches!(d, DissemControl::Imc))
 }
 
-/// ORCON family — ORCON or ORCON-USGOV. The §3.4.6 single family entry
+/// ORCON family — ORCON or ORCON-USGOV. The single family entry
 /// covers both because §H.8 p136 (ORCON) and p139 (ORCON-USGOV) both
-/// require classification ≥ C and the §3.4.6 author groups them.
+/// require classification ≥ C and are grouped.
 pub(crate) fn presence_orcon_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
     attrs
@@ -233,7 +226,7 @@ pub(crate) fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
 /// classifications) per CAPCO-2016 §G.2 p40 Table 5 (ARH by
 /// Registered Marking).
 ///
-/// PR 9c.1 T134 corrected the structural model:
+/// The structural model:
 ///   - ATOMAL is an AEA-axis marking (CAPCO-2016 §H.7 p122 worked
 ///     example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`), shared with
 ///     NATO+UK under §123/§144 sharing agreements.
@@ -244,9 +237,9 @@ pub(crate) fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
 /// The presence predicates read the corresponding canonical axes:
 /// `aea_markings` for ATOMAL, `sci_markings` (via
 /// `SciControlSystem::NatoSap`) for BALK / BOHEMIA. Legacy text
-/// (`CTSA`, `CTS-B`, `CTS-BALK`, …) canonicalizes through the parser
-/// (PR 9c.1 Commit 3), so this predicate fires on both well-formed
-/// canonical input and on parsed legacy text.
+/// (`CTSA`, `CTS-B`, `CTS-BALK`, …) canonicalizes through the parser,
+/// so this predicate fires on both well-formed canonical input and on
+/// parsed legacy text.
 pub(crate) fn presence_balk(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::{NatoSap, SciControlSystem};
     attrs
@@ -272,7 +265,7 @@ pub(crate) fn presence_atomal(attrs: &marque_ism::CanonicalAttrs) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Passthrough family predicates — §3.7 unknown-floor passthrough policy
+// Passthrough family predicates — unknown-floor passthrough policy
 // ---------------------------------------------------------------------------
 
 /// BUR family — `BUR`, `BUR-BLG`, `BUR-DTP`, `BUR-WRG`. ISM-known SCI
@@ -336,7 +329,7 @@ pub(crate) fn presence_passthrough_mvl(attrs: &marque_ism::CanonicalAttrs) -> bo
 
 // ---------------------------------------------------------------------------
 // SCI per-system helpers — moved verbatim from rules_sci_per_system.rs
-// (helper-relocation Option A per planning doc §4.1)
+
 // ---------------------------------------------------------------------------
 
 /// Is this `SciMarking` anchored on the given published bare system?

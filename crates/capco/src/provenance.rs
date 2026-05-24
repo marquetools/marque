@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Decoder provenance — Phase 4 PR-4b side channel that carries the
+//! Decoder provenance — side channel that carries the
 //! probabilistic recognizer's canonical-bytes attempt and feature trace
 //! out of [`Recognizer::recognize`](marque_scheme::recognizer::Recognizer)
 //! so the engine can emit a `FixSource::DecoderPosterior` fix without
@@ -34,12 +34,12 @@
 //! recognition score via softmax over top vs. runner-up) and carries
 //! `p.runner_up_ratio` and `p.features` verbatim. The `source` is
 //! `FixSource::DecoderPosterior`, locking the audit-record provenance
-//! per FR-009 and the data-model spec.
+//! per the data-model spec.
 
 use marque_rules::{FeatureContribution, FixSource};
 
 /// Provenance trace recorded when a probabilistic recognizer (the
-/// Phase D decoder) produces a marking. Strict-path recognizers leave
+/// probabilistic decoder) produces a marking. Strict-path recognizers leave
 /// the corresponding `CapcoMarking::provenance` field as `None`.
 ///
 /// Fields:

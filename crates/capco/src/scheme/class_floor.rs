@@ -5,10 +5,7 @@
 //! Class-floor catalog — `ClassFloorPolicy` + `ClassFloorRow` + the
 //! 27-row `CLASS_FLOOR_CATALOG`.
 //!
-//! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
-//! (issue #466). Module contents are byte-identical to the pre-split
-//! source — imports adjusted to pick up the `presence_*` helpers from
-//! `super::predicates::*` (the same glob `mod.rs` used pre-split) and
+//! Imports the `presence_*` helpers from `super::predicates::*` and
 //! the `Classification` / `TokenKind` types directly from `marque_ism`.
 
 use marque_ism::{Classification, TokenKind};
@@ -19,12 +16,11 @@ use crate::fact_bitmask::fact_bit;
 use super::predicates::*;
 
 // ===========================================================================
-// PR 3b.D (T026d) — Class-floor catalog dispatch (§3.4.6)
+// Class-floor catalog dispatch
 // ===========================================================================
 //
 // `class_floor_catalog_eval` is the static-table dispatcher for the 27
-// `Constraint::Custom` rows declared by `build_constraints` under the
-// "PR 3b.D (T026d) — class-floor catalog (§3.4.6)" section header.
+// `Constraint::Custom` class-floor rows declared by `build_constraints`.
 //
 // Each row's predicate has a uniform shape: "if marking M is present in
 // `attrs`, the page's classification must satisfy F(M)" where F(M) is
@@ -37,7 +33,7 @@ use super::predicates::*;
 //      the family pattern is present
 //   - `policy`: `ClassFloorPolicy` — either `AtLeast(level)` or `EqualsU`
 //   - `severity`: `Severity` — `Error` for enumerated rows, `Warn` for
-//      passthrough rows (§3.4.6 Q-3.4.6b)
+//      passthrough rows
 //   - `citation`: per-row §-citation matching `Constraint::Custom { label }`
 //   - `passthrough`: `true` for unknown-floor passthrough rows (drives the
 //      diagnostic message variant)
@@ -46,16 +42,12 @@ use super::predicates::*;
 // reads `CapcoScheme::has_diagnostic_constraints` to short-circuit
 // the walk when the catalog has nothing to fire and otherwise runs
 // the standard `MarkingScheme::validate()` → `Vec<ConstraintViolation>`
-// path. PR 3c.B Commit 7.3 retired the original
-// `DeclarativeClassFloorRule` walker; the bridge is the only consumer
-// today.
+// path. The bridge is the only consumer.
 //
-// FORWARD LINK to PR 3.7 (T108b): once `TokenRef::ClassAtLeast(ClassLevel)`
-// or `Constraint::ClassFloor` lands as a primitive in `marque-scheme`,
-// these rows can re-classify from `Constraint::Custom` to the new
-// primitive form without changing per-row semantics. See
-// `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md` §3 for the
-// architectural rationale.
+// Once `TokenRef::ClassAtLeast(ClassLevel)` or `Constraint::ClassFloor`
+// lands as a primitive in `marque-scheme`, these rows can re-classify
+// from `Constraint::Custom` to the new primitive form without changing
+// per-row semantics.
 
 /// Floor policy for a class-floor catalog row.
 #[derive(Debug, Clone, Copy)]
@@ -63,7 +55,7 @@ pub(crate) enum ClassFloorPolicy {
     /// Classification level must be ≥ this floor (TS / S / C semantics).
     AtLeast(Classification),
     /// Classification must be exactly UNCLASSIFIED. Used by the UCNI
-    /// ceiling rows (§2.4 of the planning doc).
+    /// ceiling rows.
     EqualsU,
 }
 
@@ -71,10 +63,10 @@ pub(crate) enum ClassFloorPolicy {
 /// table; each row owns its presence predicate, floor policy, severity,
 /// citation, and human-readable marking label for diagnostic messages.
 ///
-/// # Naming-prefix invariant (PR D R3.2)
+/// # Naming-prefix invariant
 ///
-/// Every row's `name` is now a canonical predicate ID per T044 of the
-/// form `banner.<axis>.<floor-or-ceiling>-<marking>`. Five axis ×
+/// Every row's `name` is a canonical predicate ID of the form
+/// `banner.<axis>.<floor-or-ceiling>-<marking>`. Five axis ×
 /// floor/ceiling discriminators appear in the catalog:
 ///
 ///   - `banner.classification.floor-<marking>` — SCI / SAR / NATO-SAP
@@ -97,11 +89,10 @@ pub(crate) enum ClassFloorPolicy {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ClassFloorRow {
     /// Catalog row name — matches the `Constraint::Custom { name }` of
-    /// the same logical row. Post-T044 the name IS the canonical
+    /// the same logical row. The name IS the canonical
     /// `(scheme="capco", predicate_id=name)` 2-tuple's predicate
     /// component; the engine's constraint-catalog bridge constructs
-    /// `RuleId::new("capco", row.name)` directly with no string
-    /// manipulation (OD-8.A no-op pass-through). Must contain
+    /// `RuleId::new("capco", row.name)` directly. Must contain
     /// `.floor-` or `.ceiling-` per the naming convention above.
     pub(crate) name: &'static str,
     /// Human-readable marking name for the diagnostic message
@@ -112,12 +103,10 @@ pub(crate) struct ClassFloorRow {
     /// Floor policy.
     pub(crate) policy: ClassFloorPolicy,
     /// Per-row severity (`Error` for enumerated rows, `Warn` for
-    /// passthrough rows per §3.4.6 Q-3.4.6b).
+    /// passthrough rows).
     pub(crate) severity: marque_rules::Severity,
     /// Per-row typed §-citation, matching `Constraint::Custom { label }`.
-    /// PR 10.A.1 consolidated the dual-track `citation: &'static str` +
-    /// `citation_typed: Citation` design into a single typed field —
-    /// the catalog declaration is now structurally constructed via
+    /// The catalog declaration is structurally constructed via
     /// `capco(...)` / `capco_section(...)` / `capco_table(...)`, and
     /// the engine's constraint-catalog bridge reads this field
     /// directly. Display via the [`Citation`](marque_scheme::Citation)
@@ -126,14 +115,14 @@ pub(crate) struct ClassFloorRow {
     ///
     /// Passthrough rows (`passthrough: true`) use
     /// [`AuthoritativeSource::EngineInternal`](marque_scheme::AuthoritativeSource::EngineInternal)
-    /// because their citation references `marque-applied.md Section 3.7`,
-    /// the engine's own policy document — not a CAPCO-2016 anchor. The
-    /// page number for passthrough rows is a synthetic `1` since
-    /// marque-applied.md has no canonical page anchor; the stable
-    /// identifier is the source kind, not the page.
+    /// because their citation references the engine's own policy
+    /// document — not a CAPCO-2016 anchor. The page number for
+    /// passthrough rows is a synthetic `1` since the policy doc has no
+    /// canonical page anchor; the stable identifier is the source kind,
+    /// not the page.
     pub(crate) citation: marque_scheme::Citation,
     /// True for the unknown-floor passthrough rows. Drives the
-    /// diagnostic message variant (passthrough rows quote the §3.7
+    /// diagnostic message variant (passthrough rows quote the
     /// passthrough-policy framing).
     pub(crate) passthrough: bool,
     /// Diagnostic-span anchor token kind. Used by
@@ -143,7 +132,7 @@ pub(crate) struct ClassFloorRow {
     /// the classification token IS the marking surface).
     pub(crate) primary_kind: Option<marque_ism::TokenKind>,
 
-    // ----- Bitmask compilation fields (PR-G / issue #650 tier-2) -----
+    // ----- Bitmask compilation fields (issue #650 tier-2) -----
     //
     // These fields compile the per-row structural presence predicate to a
     // bitmask fast path. The dispatcher in `predicates/class_floor.rs`
@@ -174,11 +163,11 @@ pub(crate) struct ClassFloorRow {
 }
 
 // ---------------------------------------------------------------------------
-// The catalog — 27 rows at §3.4.6 family granularity
+// The catalog — 27 rows at family granularity
 // ---------------------------------------------------------------------------
 
 /// Sentinel `Citation` for the four passthrough rows. Their `citation`
-/// field references `marque-applied.md Section 3.7` (the engine's own
+/// field references the engine's own policy (the
 /// policy document, NOT CAPCO-2016), so the typed citation routes
 /// through `AuthoritativeSource::EngineInternal`. The Display impl
 /// drops the §/page suffix for this source, rendering as
@@ -200,7 +189,7 @@ pub(crate) const PASSTHROUGH_CITATION: Citation = {
 };
 
 pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
-    // ---- §2.1 Floor TS (5 rows) ------------------------------------
+    // ---- Floor TS (5 rows) ------------------------------------
     ClassFloorRow {
         name: "banner.classification.floor-hcs-comp-sub",
         marking_label: "HCS sub-compartment markings",
@@ -259,8 +248,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
     // the floor checks effective US-equivalent classification level
     // (typically TS for NATO SAPs per §G.2 p40).
     //
-    // Severity = Warn at the catalog row level per PR 9c.1 D5 (the
-    // architect's pre-flight decision): §G.2 p40's citation depth is
+    // Severity = Warn at the catalog row level: §G.2 p40's citation depth is
     // too soft to drive Error — the manual identifies BOHEMIA/BALK as
     // SAPs and lists them in the ARH table but does not enumerate a
     // classification floor with the precision §H.6 has for RD/CNWDI.
@@ -275,8 +263,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: capco(SectionLetter::G, 2, 40),
         passthrough: false,
-        // `None` falls through to the Classification token span. PR
-        // 9c.1 Commit 3's parser writes the BALK SciMarking but does
+        // `None` falls through to the Classification token span. The
+        // parser writes the BALK SciMarking but does
         // not push a `TokenKind::SciSystem` span for the legacy
         // compound text (`CTS-BALK` is a single Classification token
         // that carries both the bare-class and the companion semantic);
@@ -301,7 +289,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         bitmask_trigger: Some(1u128 << fact_bit::AEA_BOHEMIA),
         bitmask_trigger_exact: true,
     },
-    // ---- §2.2 Floor S (8 rows) -------------------------------------
+    // ---- Floor S (8 rows) -------------------------------------
     ClassFloorRow {
         name: "banner.classification.floor-hcs-comp",
         marking_label: "HCS-O / HCS-P (compartment, no sub-compartment)",
@@ -365,9 +353,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
         // RD-SIGMA marking template lives on §H.6 p108; FRD-SIGMA on
-        // p113 (the latter retains p113 below). Pre-T044 the row drifted
-        // to the FRD page; corrected at T044 per Constitution VIII
-        // citation-propagation discipline.
+        // p113 (the latter retains p113 below).
         citation: capco(SectionLetter::H, 6, 108),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
@@ -436,7 +422,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         bitmask_trigger: Some(1u128 << fact_bit::IMCON),
         bitmask_trigger_exact: true,
     },
-    // ---- §2.3 Floor C (8 rows) -------------------------------------
+    // ---- Floor C (8 rows) -------------------------------------
     ClassFloorRow {
         name: "banner.classification.floor-si",
         marking_label: "SI (bare)",
@@ -515,7 +501,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         bitmask_trigger: Some(1u128 << fact_bit::AEA_TFNI),
         bitmask_trigger_exact: true,
     },
-    // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
+    // ATOMAL: AEA-axis marking per
     // CAPCO-2016 §H.7 p122 worked example
     // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`). The class floor is the
     // same Confidential lower-bound as the rest of §H.6's AEA family
@@ -575,7 +561,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         bitmask_trigger: Some(1u128 << fact_bit::EYES),
         bitmask_trigger_exact: true,
     },
-    // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
+    // ---- Floor =U (2 rows; UCNI split) ----------
     ClassFloorRow {
         name: "banner.aea.ceiling-dod-ucni",
         marking_label: "DOD UCNI",
@@ -609,31 +595,13 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         bitmask_trigger: Some(1u128 << fact_bit::AEA_DOE_UCNI),
         bitmask_trigger_exact: true,
     },
-    // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
+    // ---- Unknown-floor passthrough (4 rows; Warn) ---------------
     //
-    // `row.citation` uses the `Section 3.7` form (not `§3.7`) because
-    // the citation-lint tool (FR-018) parses `§N.M` in `citation:`
-    // struct-field literals as a CAPCO section reference and would
-    // flag `§3` as a bare section without subsection letter (CAPCO
-    // sections are A-K, not digits). The cross-document
-    // `marque-applied.md` prefix doesn't currently disambiguate.
-    //
-    // The corresponding `Constraint::Custom { label: PASSTHROUGH_CITATION }`
-    // entries in `build_constraints()` keep the `§3.7` form because
-    // the lint only scans `citation:`, `message:`, and
-    // `constraint_label:` struct fields (not `label:`). The bridge's
-    // user-visible `Diagnostic.citation` IS the `§3.7` form because
-    // `marque_scheme::constraint::evaluate` overrides
-    // `ConstraintViolation::citation` from the constraint's `label`
-    // field after `evaluate_custom` returns — so the lint is happy
-    // AND end users see the canonical `§3.7` form. `row.citation` is
-    // internal scratch (never user-visible post-7.3) after the
-    // `evaluate` override step.
-    //
-    // Tracking issue: the citation-lint tool's CAPCO-context
-    // implicit-treatment of `citation:` fields should learn to
-    // recognize cross-document prefixes (`<word>.md §`) so the
-    // `§3.7` form can be used uniformly. Not in scope here.
+    // These rows cite an engine-internal policy
+    // ([`PASSTHROUGH_CITATION`]), not a CAPCO section — the markings
+    // are ISM-known tokens with no enumerated CAPCO classification
+    // floor. The citation renders as `[engine-internal]` via
+    // `AuthoritativeSource::EngineInternal`.
     ClassFloorRow {
         name: "banner.classification.floor-passthrough-bur",
         marking_label: "BUR family",
@@ -641,9 +609,9 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
         citation: PASSTHROUGH_CITATION,
-        // Passthrough rows reference marque-applied.md (engine policy
-        // doc), not CAPCO-2016. Routes through AuthoritativeSource::
-        // EngineInternal so Display renders `[engine-internal]`.
+        // Passthrough rows reference the engine policy doc, not
+        // CAPCO-2016. Routes through AuthoritativeSource::EngineInternal
+        // so Display renders `[engine-internal]`.
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         // Passthrough rows have no atom bit in the closed inventory;

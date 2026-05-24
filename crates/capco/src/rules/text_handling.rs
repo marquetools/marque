@@ -30,10 +30,10 @@ use super::helpers::{FixDiagnosticParams, is_fgi_invalid_ownership_token, make_f
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Rule: E005 — Declassification instruction misplaced (belongs in CAB)
+// Rule: Declassification instruction misplaced (belongs in CAB)
 // ---------------------------------------------------------------------------
 
-/// E005 fires when a declassification exemption or `Declassify On` date
+/// Fires when a declassification exemption or `Declassify On` date
 /// appears inside a banner or portion marking rather than the Classification
 /// Authority Block (CAB).
 ///
@@ -69,85 +69,50 @@ use crate::scheme::CapcoScheme;
 ///
 /// None. Repairing a misplaced declass marking requires moving the token
 /// from the banner/portion into a CAB, which is multi-span document-level
-/// rewriting rather than a local replacement. E005 surfaces the
-/// diagnostic; the author resolves manually.
-// ---------------------------------------------------------------------------
-// Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A
-// per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md` D4.
-// E005 stays as a hand-written `Rule` impl in this file; it does NOT
-// migrate to a `Constraint::Custom` catalog row on `CapcoScheme` in this
-// PR.
-//
-// Retirement target: `Recanonicalize { scope: Scope::Document }` on the
-// `MarkingScheme` trait surface, once `render_canonical` (deferred per
-// `architecture.md` §"What this commits us to") can position declass in
-// the Classification Authority Block (CAB) by construction. Authority:
-// CAPCO-2016 §E.1 p31 + §E.2 p32 (`Declassify On` is a CAB line — the
-// single-value mandate makes the position unambiguous) + §D.1 p27 (the
-// banner category list enumerates classification + control markings;
-// declassification is conspicuously absent — negative-inference). §E
-// commingling exemptions at pp 33-34 are CAB-line *content* rules (e.g.,
-// "N/A to RD/FRD/TFNI portions"), not placement rules, and do not weaken
-// the "declass belongs in CAB" invariant.
-//
-// Structural blocker (why Path A in PR 3c.B Commit 9):
-// `MarkingScheme::evaluate_custom` (in crates/scheme/src/scheme.rs)
-// receives only `&Self::Marking`. It has no access to
-// `RuleContext.marking_type`, so a constraint-catalog predicate cannot
-// reproduce the existing `Banner | Portion` gate (lines below). Without
-// that gate, the predicate would fire on every CAB candidate — declass
-// in a CAB is the correct location, not a violation. The trait-surface
-// extension that would unblock this migration is tracked in
-// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
-//
-// `Diagnostic::with_fix(..., None)` constructor: this rule emits
-// neither a legacy `FixProposal` nor a structural `FixIntent<S>` because
-// the repair is multi-span document-level rewriting (move the declass
-// token from banner/portion into a CAB). The constructor swap (vs the
-// `Diagnostic::new(..., None)` form) signals consciously-decided deferred
-// migration evaluation, matching the PR #349 pattern for E016/E036.
-// Downstream audit consumers observe no behavioral difference: both
-// constructors leave `fix: None` and `fix_intent: None`.
+/// rewriting rather than a local replacement. The rule surfaces the
+/// diagnostic; the author resolves manually. The retirement target is a
+/// document-scope `Recanonicalize` once `render_canonical` can position
+/// declass in the CAB by construction. Authority: CAPCO-2016 §E.1 p31 +
+/// §E.2 p32 (`Declassify On` is a CAB line — the single-value mandate
+/// makes the position unambiguous) + §D.1 p27 (the banner category list
+/// enumerates classification + control markings; declassification is
+/// conspicuously absent — negative-inference). §E commingling exemptions
+/// at pp 33-34 are CAB-line *content* rules (e.g., "N/A to RD/FRD/TFNI
+/// portions"), not placement rules, and do not weaken the "declass
+/// belongs in CAB" invariant.
+///
+/// This stays a hand-written `Rule` rather than a `Constraint::Custom`
+/// catalog row because constraint predicates receive only
+/// `&Self::Marking` — they have no access to `RuleContext.marking_type`,
+/// so they could not reproduce the `Banner | Portion` gate below, and
+/// would fire on every (well-formed) CAB candidate.
 pub(super) struct DeclassifyMisplacedRule;
 
-/// E005 secondary CAPCO §-citations.
+/// Secondary CAPCO §-citation for this rule.
 ///
-/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
-/// pre-migration string form `"CAPCO-2016 §E.1 p31 + §D.1 p27"` into a
-/// single `capco(SectionLetter::E, 1, 31)` value on the emitted
-/// diagnostic (typed `Citation` carries one passage). The cross-reference
-/// to §D.1 p27 (banner categories exclude declassification) survived in
-/// the rule's doc-comment but was un-checked — a rename or removal of
-/// the comment wouldn't trip a test. This constant pins the dropped
-/// cross-reference structurally so a regression that loses the §D.1 p27
-/// connection still fails a test.
+/// The typed `Citation` on the emitted diagnostic carries one passage
+/// (§E.1 p31). This constant pins the cross-reference to §D.1 p27 (banner
+/// categories exclude declassification) structurally, so a regression
+/// that loses the connection still fails a test rather than only mutating
+/// a doc-comment.
 ///
-/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
-/// Commit 4 authorship per Constitution VIII propagation rule:
 /// §D.1 p27 enumerates the banner-line categories and conspicuously
 /// excludes declassification, the negative-inference complement to
 /// §E.1 p31's positive "Declassify On is a CAB line" rule.
 ///
-/// The constant is rule-authoritative metadata intended for runtime
-/// introspection by a future PR 10.A.2 `Rule::cited_authorities()`
-/// trait method (deferred per the PR brief). Today the only consumer
-/// is the `citation_cross_refs_tests` module at the bottom of this
-/// file (`#[cfg(test)]`-gated, parallel to but not conflated with the
-/// `#[cfg(any())]`-gated inline `mod tests` that's dead code pending a
-/// separate rewrite). The const is `pub(crate)` so the test mod can
-/// reach it directly; under non-test builds, the `#[allow(dead_code)]`
-/// keeps the compiler quiet and the linker DCEs the const at use-site
-/// (consts in Rust are inlined; an unused `pub(crate) const` does not
-/// add to the production binary footprint, including the WASM-shipped
-/// crate surface).
+/// The only consumer is the `citation_cross_refs_tests` module at the
+/// bottom of this file (`#[cfg(test)]`-gated). The const is `pub(crate)`
+/// so the test mod can reach it directly; under non-test builds,
+/// `#[allow(dead_code)]` keeps the compiler quiet and the linker DCEs the
+/// const at use-site (an unused `pub(crate) const` adds nothing to the
+/// production binary, including the WASM-shipped surface).
 #[allow(dead_code)] // used by `citation_cross_refs_tests` at end of file
 pub(crate) const DECLASSIFY_MISPLACED_CROSS_REFS: &[Citation] = &[capco(SectionLetter::D, 1, 27)];
 
-/// Citations E005 may emit on diagnostics. Combines the primary
+/// Citations this rule may emit on diagnostics. Combines the primary
 /// `Diagnostic.citation` value (§E.1 p31) with the
 /// [`DECLASSIFY_MISPLACED_CROSS_REFS`] cross-references. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
-/// contract.
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate contract.
 const DECLASSIFY_MISPLACED_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::E, 1, 31),
     capco(SectionLetter::D, 1, 27),
@@ -195,10 +160,9 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
 
-        // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
-        // signals consciously-decided deferred migration evaluation. See the
-        // migration-status block above `struct DeclassifyMisplacedRule;` for
-        // the full rationale and retirement target.
+        // No fix: the repair is multi-span document-level rewriting.
+        // See the doc comment on `DeclassifyMisplacedRule` for the
+        // rationale and retirement target.
         //
         // Citation: §E.1 p31 governs the "Declassify On is a CAB line"
         // rule; §D.1 p27 affirms banner categories do not include
@@ -219,13 +183,13 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E007 — X-shorthand declassification date
+// Rule: X-shorthand declassification date
 // ---------------------------------------------------------------------------
 
 /// CAPCO X-shorthand declass codes (e.g., `25X1-`, `25X2-`, `50X1-`,
 /// `50X1-HUM-`) are deprecated in favor of the canonical forms (`25X1`,
 /// `50X1-HUM`, etc.). The deprecated dashed form is not in the CVE, so
-/// the parser surfaces it as `TokenKind::Unknown`. E007 walks Unknown
+/// the parser surfaces it as `TokenKind::Unknown`. This rule walks Unknown
 /// tokens via two paths:
 ///
 /// 1. **Migration table lookup**: exact match in the seed `MIGRATIONS`
@@ -242,7 +206,7 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
 pub(super) struct XShorthandDateRule;
 
 /// Citations E007 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const X_SHORTHAND_DATE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::E, 6, 33)];
 
@@ -284,9 +248,10 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                 if is_dissem_replacement(entry.replacement) {
                     continue;
                 }
-                // G13: original `text` and `entry.replacement` do not
-                // flow into the typed `Message`; the canonical
-                // replacement still rides on `Diagnostic.text_correction.replacement`.
+                // Audit content-ignorance: original `text` and
+                // `entry.replacement` do not flow into the typed
+                // `Message`; the canonical replacement still rides on
+                // `Diagnostic.text_correction.replacement`.
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
@@ -310,11 +275,11 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                 if replacement.is_empty() {
                     continue;
                 }
-                // G13: pattern-derived `replacement` is on the audit
-                // permitted list (canonical form, deterministic
-                // stripping). The typed `Message` carries no args
-                // for this path — the template label identifies the
-                // migration class.
+                // Audit content-ignorance: pattern-derived `replacement`
+                // is a canonical form produced by deterministic
+                // stripping (a permitted audit identifier). The typed
+                // `Message` carries no args for this path — the template
+                // label identifies the migration class.
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
@@ -434,10 +399,10 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E008 — Unrecognized token inside marking
+// Rule: Unrecognized token inside marking
 // ---------------------------------------------------------------------------
 
-/// FR-012: any token inside a marking candidate boundary that the parser
+/// Any token inside a marking candidate boundary that the parser
 /// could not classify is reported as an error with no fix offered.
 ///
 /// Authority: CAPCO-2016 §G.1 (Register of Authorized Markings, p36):
@@ -483,7 +448,7 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 pub(super) struct UnknownTokenRule;
 
 /// Citations E008 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const UNKNOWN_TOKEN_AUTHORITIES: &[Citation] = &[capco(SectionLetter::G, 1, 36)];
 
@@ -497,11 +462,10 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-    /// Phase::WholeMarking: no fix is emitted (FR-012); diagnostics
-    /// point at a single `Unknown` span but the firing decision reads
-    /// cross-token state (`attrs.sar_markings.is_some()` to suppress
-    /// repeated-SAR shapes E030 owns). Default to whole-marking per
-    /// D-7.2 — the dispatch consequence is conservative.
+    /// Phase::WholeMarking: no fix is emitted; diagnostics point at a
+    /// single `Unknown` span but the firing decision reads cross-token
+    /// state (`attrs.sar_markings.is_some()` to suppress repeated-SAR
+    /// shapes E030 owns). Whole-marking is the conservative default.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
@@ -570,7 +534,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                     t.span,
                     Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default()),
                     capco(SectionLetter::G, 1, 36),
-                    None, // FR-012: no fix offered
+                    None, // no fix offered for unrecognized tokens
                 )
             })
             .collect()
@@ -578,7 +542,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: C001 — Corrections-map typo replacement
+// Rule: Corrections-map typo replacement
 // ---------------------------------------------------------------------------
 
 /// Scans token spans against the organization-specific corrections map from
@@ -587,39 +551,33 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 ///
 /// # Not a CAPCO rule
 ///
-/// C001 is intentionally NOT anchored to a CAPCO passage. No CAPCO section
-/// governs user-defined typo replacements — they are organization-specific
-/// mappings supplied through `.marque.toml`. The citation string
-/// [`marque_rules::CORRECTIONS_MAP_CITATION`] (`"CONFIG:[corrections]"`) is
-/// a config pointer rather than a §/page/line reference. This is deliberate
+/// This rule is intentionally NOT anchored to a CAPCO passage. No CAPCO
+/// section governs user-defined typo replacements — they are
+/// organization-specific mappings supplied through `.marque.toml`. The
+/// citation [`marque_rules::CORRECTIONS_MAP_CITATION`] (`"CONFIG:[corrections]"`)
+/// is a config pointer rather than a §/page reference. This is deliberate
 /// and Constitution VIII-compliant: fabricating a CAPCO citation for a
 /// user-defined mapping would be worse than no citation. Auditors
-/// distinguish C001 fixes from CAPCO-authoritative fixes via
+/// distinguish corrections-map fixes from CAPCO-authoritative fixes via
 /// `FixSource::CorrectionsMap` in the audit record.
 ///
-/// # FR-009 precedence (spec: `specs/001-marque-mvp/spec.md` §Functional
-/// Requirements, FR-009)
+/// # Precedence over built-in rules
 ///
-/// User corrections take precedence over built-in rules on the same span.
-/// This is automatic under FR-016 sort order — `"C001" < "E001"`
-/// lexicographically, so C001 wins under the C-1 overlap guard. No
-/// special-case code in the engine; the invariant falls out of the sort
-/// key alone. Exercised by
-/// `fr009_c001_wins_over_builtin_rule_on_same_span` in
-/// `crates/capco/tests/corrections_map.rs`.
+/// User corrections take precedence over built-in rules on the same span,
+/// and this falls out of the engine's deterministic fix-ordering and
+/// overlap guard rather than any special-case code.
 ///
 /// # `migration_ref = None`
 ///
-/// C001 emits `migration_ref: None`. `migration_ref` identifies a
-/// deterministic migration-table entry (FR-004a, `FixSource::MigrationTable`)
-/// — C001 is a user map, not an ODNI migration, so there is no ref to
-/// carry. PR #6 review explicitly rejected the earlier
-/// `Some("corrections-map")` placeholder; the `FixSource` enum already
-/// distinguishes provenance without a string label.
+/// This rule emits `migration_ref: None`. `migration_ref` identifies a
+/// deterministic ODNI migration-table entry (`FixSource::MigrationTable`)
+/// — a user corrections map is not an ODNI migration, so there is no ref
+/// to carry; the `FixSource` enum distinguishes provenance without a
+/// string label.
 ///
 /// # Emission paths
 ///
-/// Two call sites emit C001 diagnostics:
+/// Two call sites emit corrections-map diagnostics:
 /// 1. This rule's `check` method — triggered when the scanner detected a
 ///    marking and the parser produced a `TokenSpan` whose text matches a
 ///    corrections key.
@@ -635,7 +593,7 @@ pub(super) struct CorrectionsMapRule;
 /// `[corrections]` map entries, so its citation is the
 /// [`AuthoritativeSource::Config`] sentinel (`[config]`) rather than
 /// a §/page reference. See [`marque_rules::CORRECTIONS_MAP_CITATION`]
-/// and [`Rule::cited_authorities`] for the F.1 gate contract.
+/// and [`Rule::cited_authorities`] for the gate contract.
 const CORRECTIONS_MAP_AUTHORITIES: &[Citation] = &[marque_rules::CORRECTIONS_MAP_CITATION];
 
 impl Rule<CapcoScheme> for CorrectionsMapRule {
@@ -652,12 +610,11 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
     /// user-configured `[corrections]` mapping (e.g. `SERCET → SECRET`).
     /// Span is strictly one token.
     ///
-    /// Architecturally C001 also runs as a separate pre-pass-0 in
+    /// The corrections map also runs as a separate pre-pass in
     /// `Engine::fix_inner` (text-correction Aho-Corasick scan against
-    /// raw bytes before parsing — `docs/refactor-006/pr-7-architect-plan.md`
-    /// §3.5). The phase tag governs the rule-dispatch path; the
-    /// pre-pass-0 path is a separate channel that bypasses rule
-    /// dispatch entirely.
+    /// raw bytes before parsing). The phase tag governs the
+    /// rule-dispatch path; that pre-pass is a separate channel that
+    /// bypasses rule dispatch entirely.
     fn phase(&self) -> Phase {
         Phase::Localized
     }
@@ -688,15 +645,15 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
             if replacement == text {
                 continue;
             }
-            // G13: drop the runtime byte text from the message per
-            // PM-C-5. Original document bytes (`text`) and the
-            // user-config replacement (`replacement`) do not flow into
-            // the typed `Message` — `MessageArgs.token` would need a
-            // `TokenId` projection that does not exist for arbitrary
-            // user-config `String → String` mappings. The closed-template
-            // label identifies the corrections-map class; the canonical
-            // replacement still rides on `Diagnostic.text_correction.replacement`
-            // for the engine's apply path.
+            // Audit content-ignorance: original document bytes (`text`)
+            // and the user-config replacement (`replacement`) do not
+            // flow into the typed `Message` — `MessageArgs.token` would
+            // need a `TokenId` projection that does not exist for
+            // arbitrary user-config `String → String` mappings. The
+            // closed-template label identifies the corrections-map class;
+            // the canonical replacement still rides on
+            // `Diagnostic.text_correction.replacement` for the engine's
+            // apply path.
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                 rule: self.id(),
                 severity: self.default_severity(),
@@ -715,13 +672,11 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #722 — ported from quarantined `_disabled_tests.rs`.
-//
 // `looks_like_deprecated_x_shorthand` is the private predicate shared by
-// E007 (emit) and E008 (suppress), so the two rules cannot drift on
-// which X-shorthand variants each owns. Colocated `mod tests` is the
-// correct port destination per `feedback_pub_doc_hidden_is_still_public_api`
-// — widening visibility for test reach is forbidden.
+// the X-shorthand rule (emit) and the unrecognized-token rule (suppress),
+// so the two cannot drift on which X-shorthand variants each owns. The
+// colocated `mod tests` keeps the predicate private rather than widening
+// visibility for test reach.
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -733,13 +688,11 @@ mod tests {
     /// live in the ODNI ISM CVE vocabulary and parse as
     /// `DeclassExemption`; they never reach this helper via the
     /// `TokenKind::Unknown` walk. The deprecated forms carry a trailing
-    /// `-` and must match here so E007 owns them (and E008 suppresses
-    /// on the same span — see `is_x_shorthand_for_suppression` in
-    /// this module).
+    /// `-` and must match here so the X-shorthand rule owns them (and the
+    /// unrecognized-token rule suppresses on the same span).
     ///
     /// Authority: CAPCO-2016 §E.6 pp 33-34 (X-shorthand date-pattern
-    /// migration). Re-verified against `crates/capco/docs/CAPCO-2016.md`
-    /// at authorship per Constitution VIII.
+    /// migration). Verified against `crates/capco/docs/CAPCO-2016.md`.
     #[test]
     fn looks_like_deprecated_x_shorthand_matches_expected_patterns() {
         let m = looks_like_deprecated_x_shorthand;

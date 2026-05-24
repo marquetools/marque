@@ -2,19 +2,15 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `CapcoScheme` constraint catalog + `build_categories`/`build_constraints`
-//! free constructors. Lifted from the monolithic `scheme.rs` per the issue
-//! #466 split plan (`claudedocs/refactor-466/split_proposal.md`, Risk 1
-//! Option 2).
+//! `CapcoScheme` constraint catalog + `build_categories` /
+//! `build_constraints` free constructors.
 //!
 //! See [`build_constraints`] for the catalog and per-row authority.
 //!
-//! Stage 2 PR A (issue #466) sub-split this leaf into focused files
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`). The catalog
-//! body is partitioned by section: `core_catalog` (dyadic Conflicts /
-//! Requires / Custom rows), `class_floor_catalog` (PR 3b.D §3.4.6
-//! class-floor rows), and `sci_per_system_catalog` (PR 3b.E §H.4
-//! per-system rows). `build_constraints` concatenates them in the
+//! The catalog body is partitioned by section: `core_catalog` (dyadic
+//! Conflicts / Requires / Custom rows), `class_floor_catalog`
+//! (per-marking class-floor rows), and `sci_per_system_catalog`
+//! (§H.4 per-system rows). `build_constraints` concatenates them in the
 //! original order — row order is load-bearing for the predicate
 //! evaluator's tiebreakers.
 
@@ -59,8 +55,8 @@ pub(crate) fn build_categories() -> Vec<Category> {
 /// 1. [`core_catalog::core_constraints`] — dyadic Conflicts /
 ///    Requires / Custom rows (E010 through E057, plus
 ///    `capco/joint-requires-usa`).
-/// 2. [`class_floor_catalog::class_floor_constraints`] — PR 3b.D
-///    §3.4.6 per-marking class-floor rows.
+/// 2. [`class_floor_catalog::class_floor_constraints`] — per-marking
+///    class-floor rows.
 /// 3. [`sci_per_system_catalog::sci_per_system_constraints`] —
 ///    PR 3b.E §H.4 SCI per-system rows.
 pub(crate) fn build_constraints() -> Vec<Constraint> {

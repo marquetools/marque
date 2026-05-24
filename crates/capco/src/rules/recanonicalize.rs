@@ -69,9 +69,7 @@ struct BareCanonicalCompoundRow {
     source: &'static str,
     /// Canonical replacement (hardcoded static literal).
     replacement: &'static str,
-    /// Typed authoritative-source citation. Migrated from the dual-track
-    /// `citation: &'static str` + `citation_typed: Citation` design to a
-    /// single typed field in PR 10.A.1.
+    /// Typed authoritative-source citation.
     citation: Citation,
     /// Diagnostic message text (static string).
     #[allow(dead_code)] // Retained for documentation; audit uses MessageTemplate.
@@ -128,7 +126,7 @@ pub(crate) struct BareCanonicalCompoundRule;
 /// Citations the [`BareCanonicalCompoundRule`] walker may emit on
 /// diagnostics — the union of `citation` fields across every row in
 /// [`BARE_CANONICAL_COMPOUND_CATALOG`]. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const E067_AUTHORITIES: &[Citation] = &[
     // CNWDI → RD-CNWDI (§H.6 p106).
@@ -155,8 +153,7 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
         // "capco:marking.recanonicalize.bare-canonical-compound" = ...`
         // override anchor cannot accidentally weaken any row below its
         // authoring intent — mirrors the precedent set by
-        // `BannerMatchesProjectedRule` (PR 3b.A) and
-        // `DeprecatedSciLongFormRule`.
+        // `BannerMatchesProjectedRule` and `DeprecatedSciLongFormRule`.
         Severity::Error
     }
 

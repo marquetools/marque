@@ -6,7 +6,6 @@
 //! policy-satisfaction predicate, and the trait-path catalog walker
 //! (`class_floor_catalog_eval`). Lifted from the monolithic
 //! `predicates.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::{CanonicalAttrs, Classification, Span, TokenKind};
 
@@ -19,7 +18,7 @@ use crate::fact_bitmask::extract_us_class_level;
 /// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`
 /// to route on the table.
 ///
-/// Post-T044, every catalog row's `name` is a canonical predicate ID
+/// Every catalog row's `name` is a canonical predicate ID
 /// containing either `.floor-` or `.ceiling-` (see [`ClassFloorRow`]
 /// docstring). The discriminator is the substring presence — uniquely
 /// scoped to this catalog, since `floor` and `ceiling` are reserved
@@ -49,16 +48,10 @@ pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorR
 
 /// Resolve the diagnostic span anchor for a class-floor catalog row.
 ///
-/// Lifted from the former `rules_declarative` module in PR
-/// 3c.B Commit 7.3 when the `DeclarativeClassFloorRule` walker
-/// retired into the engine's constraint-catalog bridge. Per PM
-/// directive #2 of the original PR 3b.D plan, the span anchors at
-/// the marking token (not the classification token) so the
-/// diagnostic UX puts the squiggle under the offending presence.
-/// Reads `row.primary_kind` directly (the PR D R2 perf-3
-/// optimization hoisted from the retired `primary_token_kind_for_row`
-/// string-match table into a struct field on `ClassFloorRow`).
-/// Falls back to the first `Classification` token span if no
+/// The span anchors at the marking token (not the classification
+/// token) so the diagnostic UX puts the squiggle under the offending
+/// presence. Reads `row.primary_kind` directly. Falls back to the
+/// first `Classification` token span if no
 /// axis-specific span is found, and finally to `Span::new(0, 0)` if
 /// neither is present.
 pub(crate) fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &ClassFloorRow) -> Span {
@@ -77,8 +70,7 @@ pub(crate) fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &ClassFloorRo
 }
 
 /// Returns the first span of a given token kind in the attrs'
-/// `token_spans`, or `None` if the kind is absent. Lifted from the
-/// former `rules_declarative` module in PR 3c.B Commit 7.3 alongside
+/// `token_spans`, or `None` if the kind is absent. A companion to
 /// [`class_floor_anchor_span`].
 pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Span> {
     attrs
@@ -94,14 +86,11 @@ pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) ->
 /// [`marque_scheme::constraint::evaluate`] when the catalog row's
 /// `Constraint::Custom` arm fires.
 ///
-/// PR 3c.B Commit 7.3: the walker hot-path equivalent
-/// (`class_floor_eval_row`) retired alongside
-/// `DeclarativeClassFloorRule`; the engine's constraint-catalog
-/// bridge invokes this function via `evaluate_custom` → here, and
-/// fields are populated in [`class_floor_emit`] so no second emitter
-/// path is needed.
+/// The engine's constraint-catalog bridge invokes this function via
+/// `evaluate_custom` → here, and fields are populated in
+/// [`class_floor_emit`] so no second emitter path is needed.
 ///
-/// # Tier-2 bitmask fast path (PR-G / issue #650)
+/// # Tier-2 bitmask fast path (issue #650)
 ///
 /// 23 of the 27 catalog rows have a `bitmask_trigger: Some(_)` field.
 /// The dispatch order is:
@@ -121,7 +110,7 @@ pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) ->
 ///    passthrough rows for BUR/HCS-X/KLM/MVL use the existing `class_floor_emit`
 ///    path verbatim.
 ///
-/// `ConstraintViolation` emission is byte-identical to the pre-PR-G structural
+/// `ConstraintViolation` emission is byte-identical to the structural
 /// form: the fast path reaches `class_floor_emit` on the same inputs
 /// (presence confirmed, floor confirmed not satisfied), and `class_floor_emit`
 /// is unchanged.
@@ -209,7 +198,7 @@ pub(crate) fn class_floor_catalog_eval(
 ///
 /// - **`AtLeast(floor)`** uses `MarkingClassification::effective_level`
 ///   so NATO / FGI / JOINT classifications get reciprocal-raised to
-///   their US-equivalent level per `marque-applied.md` §3.4.1 Note (i)
+///   their US-equivalent level
 ///   (CTS → TS, NS → S, NC → C, NR → R, NU → U). This is the C1 fix
 ///   from PR #324 R1: before the fix, the NATO catalog rows
 ///   (BALK / BOHEMIA / ATOMAL) queried `attrs.us_classification()`,

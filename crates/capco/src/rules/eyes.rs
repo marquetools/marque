@@ -16,7 +16,7 @@ use super::helpers::build_rel_to_replacement;
 use crate::scheme::CapcoScheme;
 
 // ===========================================================================
-// E064 — EYES / EYES ONLY → REL TO conversion (T135a Commit 5)
+// EYES / EYES ONLY → REL TO conversion
 // ===========================================================================
 //
 // Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
@@ -27,44 +27,40 @@ use crate::scheme::CapcoScheme;
 // marks to REL TO" and "carry forward the trigraph/tetragraph codes
 // listed in the source document banner line to the new portion mark."
 //
-// E064 emits a `text_correction` covering the source-bytes of the EYES
-// block (the parser preserves `<TRIGRAPHS> EYES [ONLY]` source text
-// verbatim in `TokenSpan.text` per the Commit 2 recognizer). The
-// replacement is the canonical `REL TO USA, <list>` form: USA
+// The rule emits a `text_correction` covering the source-bytes of the
+// EYES block (the parser preserves `<TRIGRAPHS> EYES [ONLY]` source text
+// verbatim in `TokenSpan.text`). The replacement is the canonical
+// `REL TO USA, <list>` form: USA
 // prepended per §A.6 p16 + §H.8 p150-151 REL TO template, remaining
 // codes sorted alphabetically, comma-space delimited per §A.6 p16.
 //
-// Note: the EYES source format is trigraph-only per §H.8 p157 line
-// 3874-3875 ("Country trigraph codes are separated by single forward
-// slashes"), so the recognizer rejects tetragraph inputs in the EYES
-// prefix. The diagnostic message still mirrors §H.8 p158's
-// "trigraph/tetragraph" wording verbatim because that wording refers
-// to the carry-forward from the source-document banner line, where
-// tetragraphs may legitimately appear. A future page-context-aware
-// pass may surface banner-line tetragraphs into REL TO output, but
-// is out of PR 9a scope.
+// Note: the EYES source format is trigraph-only per §H.8 p157
+// ("Country trigraph codes are separated by single forward slashes"),
+// so the recognizer rejects tetragraph inputs in the EYES prefix. The
+// diagnostic message still mirrors §H.8 p158's "trigraph/tetragraph"
+// wording verbatim because that wording refers to the carry-forward
+// from the source-document banner line, where tetragraphs may
+// legitimately appear. A future page-context-aware pass may surface
+// banner-line tetragraphs into REL TO output.
 //
 // Implementation note: cross-axis migration (remove EYES from dissem +
 // add trigraphs to rel_to) is not expressible as a single
 // `ReplacementIntent` — the intent vocabulary's `FactAdd` /
 // `FactRemove` / `Recanonicalize` variants are strictly single-axis-
-// scoped. A `FixIntent` mirror of the E041 pattern would either need a
-// new `Migrate { from, to, scope }` intent variant (engine/scheme
-// edit out of scope here) or an engine-side composition of two atomic
-// intents (architectural change beyond Commit 5's scope). The
-// `text_correction` channel is the existing route that delivers the
-// same user-facing outcome — a byte-precise canonicalization splice
-// at the EYES block span. The brief's "FixIntent / mirror E041"
-// guidance assumed intra-axis migration shape; the EYES → REL TO
-// case is documented as cross-axis in `project_incompatibility_class.md`
-// (memory). Selecting the existing text_correction path is the
-// citation-honest implementation under today's intent vocabulary.
+// scoped. A `FixIntent` would need either a new `Migrate { from, to,
+// scope }` intent variant or an engine-side composition of two atomic
+// intents. The `text_correction` channel is the existing route that
+// delivers the same user-facing outcome — a byte-precise
+// canonicalization splice at the EYES block span. The EYES → REL TO
+// case is cross-axis (see `project_incompatibility_class.md` memory);
+// the text_correction path is the citation-honest implementation under
+// today's intent vocabulary.
 
 /// Rule E064 — convert EYES / EYES ONLY portions to REL TO per §H.8 p157.
 pub(super) struct EyesOnlyConvertToRelToRule;
 
 /// Citations E064 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 157)];
 

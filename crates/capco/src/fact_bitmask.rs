@@ -7,12 +7,9 @@
 //! This module owns the *CAPCO-specific* bit assignment for the
 //! domain-neutral [`marque_scheme::FactBitmask`] storage primitive.
 //! Atom names live here; the bitwise storage primitive lives in
-//! `marque-scheme`. Constitution VII placement disposition from the
-//! 2026-05-20 PR-B plan, OQ-1 (resolved Option C).
+//! `marque-scheme` (Constitution VII placement).
 //!
-//! # Sub-PR scope (PR-B)
-//!
-//! PR-B lands the projection mathematics ONLY:
+//! # Contents
 //!
 //! - [`fact_bit`] — the 51-atom CAPCO inventory (bit indices 0..51,
 //!   the remaining 77 bits split between CAPCO future-growth at
@@ -34,16 +31,6 @@
 //!   closure-cone outputs (NOFORN, ORCON, RELIDO, REL_TO_USA) are
 //!   eligible for write-back; every other atom is observation-only.
 //!
-//! PR-B does NOT touch `CapcoScheme::closure` or the `CLOSURE_TABLE`
-//! catalog — those are PR-C / PR-D. PR-B's only consumers are the
-//! co-located unit tests + the round-trip proptests in
-//! `crates/capco/tests/proptest_fact_bitmask_roundtrip.rs`. The
-//! `#[allow(dead_code)]` below silences the per-item warnings every
-//! non-test build emits; PR-C lands the `CLOSURE_TABLE` consumer
-//! and PR-D wires `CapcoScheme::closure` to call `derive_bits` /
-//! `apply_closed_bits_to` on the hot path, at which point this
-//! attribute deletes.
-//!
 //! # Visibility
 //!
 //! The module is declared `#[doc(hidden)] pub mod` in `lib.rs` —
@@ -51,12 +38,12 @@
 //! crate as an external dependency and need access to the projection
 //! helpers (a `pub(crate)` module would be invisible to them). The
 //! `#[doc(hidden)]` keeps the module out of rustdoc and signals
-//! "internal API, do not consume from outside the crate". PR-C wires
-//! the `CLOSURE_TABLE` consumer; PR-D wires `CapcoScheme::closure`.
-//! Once both land, the visibility tightens back to `pub(crate)` and
-//! `#[doc(hidden)]` deletes.
+//! "internal API, do not consume from outside the crate". The
+//! visibility can tighten back to `pub(crate)` (and `#[doc(hidden)]`
+//! delete) once integration tests no longer need the projection
+//! helpers directly.
 //!
-//! # Atom layout (mirrors `docs/plans/2026-05-20-371-factbitmask-refactor.md` §3)
+//! # Atom layout
 //!
 //! | Bits | Count | Axis |
 //! |---|---|---|
@@ -84,10 +71,10 @@
 //! `001` = U, ..., `100` = TS / CTS). Bitwise OR of two ladders does
 //! NOT compute their max — callers MUST extract the 3-bit field and
 //! perform numeric compare. The bits live in the bitmask to give the
-//! `CLOSURE_TABLE` (PR-C) a uniform input shape; the joins live in
+//! `CLOSURE_TABLE` a uniform input shape; the joins live in
 //! the lattice halves on `ClassificationLattice` / `NatoClassLattice`.
 
-#![allow(dead_code)] // PR-B sidecar; PR-C / PR-D wire the production consumers.
+#![allow(dead_code)] // production consumers are wired separately.
 
 use marque_ism::{
     AeaMarking, Classification, CountryCode, DissemControl, MarkingClassification,
@@ -182,11 +169,11 @@ pub mod fact_bit {
 /// fits-in-128 compile-time guard. Whenever a new atom is added,
 /// bump this and re-run the static assert below.
 ///
-/// `pub` visibility (not `pub(crate)`) so the PR-C proptest harness
+/// `pub` visibility (not `pub(crate)`) so the proptest harness
 /// at `crates/capco/tests/proptest_closure_table.rs` can pin its
 /// local `INVENTORY_MASK` against this single source of truth via
 /// `const _: () = assert!(...)`. Tightening back to `pub(crate)`
-/// after PR-D wires production would break the staleness gate;
+/// would break the staleness gate;
 /// the public-but-doc-hidden visibility (`#[doc(hidden)] pub mod
 /// fact_bitmask` in `lib.rs`) keeps this off the documentation
 /// surface while making it reachable for the gate.
@@ -281,7 +268,7 @@ pub(crate) const MASK_RELIDO_US_CLASS_SUPPRESSORS: u128 = MASK_FDR_DOMINATORS
 /// Closure-cone outputs that [`apply_closed_bits_to`] is willing to
 /// write back to [`CanonicalAttrs`].
 ///
-/// Every CAPCO closure-row cone in section 4 of the PR-B plan resolves to
+/// Every CAPCO closure-row cone resolves to
 /// one of these four atoms (NOFORN / ORCON / RELIDO for the dissem
 /// axis; REL_TO_USA for the country-list axis). Other delta bits in
 /// `(closed & !input)` are silently ignored by `apply_closed_bits_to`
@@ -299,12 +286,12 @@ const APPLY_ELIGIBLE_MASK: u128 = (1u128 << fact_bit::NOFORN)
 /// [`CanonicalAttrs`] into a [`FactBitmask`].
 ///
 /// The mapping is structural — every atom whose presence the
-/// `CLOSURE_TABLE` (PR-C) needs to read flips the corresponding bit.
+/// `CLOSURE_TABLE` needs to read flips the corresponding bit.
 /// Atoms outside the closed inventory (open-vocab FGI tetragraphs
 /// beyond `FGI_PRESENT`, open-vocab REL TO country codes beyond
 /// `USA`, custom SCI control-system identifiers, custom SAR program
 /// names) are observed only as presence sentinels; their detail
-/// survives on `CanonicalAttrs` itself (PR-D's `closure()` rewire
+/// survives on `CanonicalAttrs` itself (the `closure()` path
 /// runs the bitmask Kleene loop AND a follow-up open-vocab cone pass
 /// for Row 7's `cone_derived` NATO tetragraph emission).
 ///
@@ -472,7 +459,7 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
     // `crates/capco/src/scheme/predicates/satisfies.rs` exactly so the
     // bitmask reflects the same any-portion semantic the existing
     // `TOK_SI_G` / `TOK_HCS_O` etc. predicates use. Branchless single
-    // pass; the hot path lives in PR-D's `closure()` rewire which calls
+    // pass; the hot path lives in the `closure()` path, which calls
     // `derive_bits` once per page.
     for sci in attrs.sci_markings.iter() {
         match &sci.system {
@@ -531,10 +518,10 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
 /// delta), one rebuild of `attrs.rel_to` (if REL_TO_USA is in the
 /// delta). The three cone-output dissem atoms are coalesced into a
 /// single `Vec::with_capacity(...)` + `into_boxed_slice` rebuild
-/// rather than per-bit allocate-push cycles. PR-D calls this
-/// function on the closure hot path; the allocation profile here
-/// is the budget that PR-D's `lint_latency` SC-001 non-regression
-/// gate enforces.
+/// rather than per-bit allocate-push cycles. This runs on the closure
+/// hot path; the allocation profile here is the budget the
+/// `lint_latency` interactive-latency non-regression gate enforces
+/// (p95 ≤ 16 ms).
 ///
 /// # Idempotence
 ///
@@ -542,8 +529,8 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
 /// Calling the function twice with the same `(closed, input)`
 /// arguments is also a no-op on the second call — the eligible-bit
 /// guards check `attrs.dissem_iter()` / `attrs.rel_to.contains` to
-/// short-circuit re-adds. This is the round-trip law the PR-B
-/// proptest harness asserts.
+/// short-circuit re-adds. This is the round-trip law the proptest
+/// harness asserts.
 ///
 /// # §H.8 p145 NOFORN supersession
 ///
@@ -563,7 +550,7 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
 ///    DISPLAY ONLY country-list axis).
 ///
 /// **Why this is needed even though `CLOSURE_NOFORN_CAVEATED`
-/// gates on `REL_TO_PRESENT`.** PR-C's closure-table catalog
+/// gates on `REL_TO_PRESENT`.** The closure-table catalog
 /// has five per-marking unconditional rows (HCS-O / HCS-P[sub] /
 /// TK-BLFH / TK-IDIT / TK-KAND) that add NOFORN with NO
 /// suppressors. Without this overlay, those rows could leave the
@@ -595,7 +582,7 @@ pub fn apply_closed_bits_to(attrs: &mut CanonicalAttrs, closed: FactBitmask, inp
     // existing dominated tokens still need eviction. The
     // existing-presence guards on ORCON / RELIDO use
     // `attrs.dissem_iter()` (both namespaces) for symmetry with
-    // pre-PR-B `apply_fact_add`.
+    // the structural `apply_fact_add`.
     //
     // Eviction precedence: NOFORN evicts RELIDO before the RELIDO
     // bit's add-guard fires; if both NOFORN and RELIDO are in the
@@ -890,10 +877,9 @@ mod tests {
 
     /// §H.8 p145: adding NOFORN evicts `Rel` / `Relido` /
     /// `Displayonly` / `Eyes` from `attrs.dissem_us` in the same
-    /// call. Covers the Copilot-flagged hole: PR-C's unconditional
-    /// per-marking NOFORN rows (HCS-O / HCS-P[sub] / TK-BLFH/IDIT/KAND
-    /// at plan section 4 rows 1, 2, 4, 5, 6) have no suppressors and can
-    /// fire on portions with pre-existing FD&R tokens.
+    /// call. The unconditional per-marking NOFORN rows (HCS-O /
+    /// HCS-P[sub] / TK-BLFH/IDIT/KAND) have no suppressors and can fire
+    /// on portions with pre-existing FD&R tokens.
     #[test]
     fn apply_noforn_supersedes_dominated_dissem_tokens() {
         for dominated in [
@@ -1078,7 +1064,7 @@ mod tests {
     /// would have
     /// missed a `DISPLAY ONLY USA GBR` portion (populated
     /// `display_only_to`, no `Displayonly` dissem variant) and
-    /// allowed PR-C's closure to spuriously imply NOFORN/RELIDO.
+    /// allowed the closure to spuriously imply NOFORN/RELIDO.
     #[test]
     fn display_only_paths_both_set_display_only_bit() {
         // Path 1: dissem-axis Displayonly token.
