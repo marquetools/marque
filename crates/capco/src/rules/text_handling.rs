@@ -76,8 +76,8 @@ use crate::scheme::CapcoScheme;
 /// §E.2 p32 (`Declassify On` is a CAB line — the single-value mandate
 /// makes the position unambiguous) + §D.1 p27 (the banner category list
 /// enumerates classification + control markings; declassification is
-/// conspicuously absent — negative-inference). §E commingling exemptions
-/// at pp 33-34 are CAB-line *content* rules (e.g., "N/A to RD/FRD/TFNI
+/// conspicuously absent — negative-inference). §E.3 p33 and §E.4 p34 
+/// commingling exemptions are CAB-line *content* rules (e.g., "N/A to RD/FRD/TFNI
 /// portions"), not placement rules, and do not weaken the "declass
 /// belongs in CAB" invariant.
 ///
