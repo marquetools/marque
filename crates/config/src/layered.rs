@@ -18,7 +18,7 @@ pub(crate) struct ConfigFile {
     user: Option<UserConfigFile>,
     #[serde(default)]
     pub(crate) rules: HashMap<String, String>,
-    /// Closure-rule severity overrides. Keys use the T044 wire-string
+    /// Closure-rule severity overrides. Keys use the wire-string
     /// form (`<scheme>:closure.<category>.<predicate>`) and must be
     /// quoted in TOML because `:` and `.` are not valid in bare TOML
     /// keys. Example:

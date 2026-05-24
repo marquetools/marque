@@ -28,9 +28,9 @@ use std::sync::Arc;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    // H-1: load the real layered config so the server honors `.marque.toml`,
+    // Load the real layered config so the server honors `.marque.toml`,
     // `MARQUE_CONFIDENCE_THRESHOLD`, `MARQUE_CLASSIFIER_ID`, and — most
-    // importantly — runs the FR-011 schema-version hard-fail validator.
+    // importantly — runs the schema-version hard-fail validator.
     let cwd = match std::env::current_dir() {
         Ok(p) => p,
         Err(e) => {
@@ -57,7 +57,7 @@ async fn main() {
             std::process::exit(69);
         }
     };
-    // Spec 005 §10.2 — per-request deadline cap (default 60 s,
+    // Per-request deadline cap (default 60 s,
     // override via `MARQUE_MAX_DEADLINE`). Resolved here so an
     // unparseable / out-of-range value fails startup loudly instead
     // of silently degrading a per-request safety control.

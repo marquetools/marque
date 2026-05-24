@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T088 — sync gate for the WASM parity corpus artifact.
+//! Sync gate for the WASM parity corpus artifact.
 //!
 //! Runs natively (host target) and verifies that
 //! `tests/parity_corpus.json` is in sync with what `Engine::lint`
@@ -41,7 +41,7 @@ use std::sync::OnceLock;
 // that the artifact format does not silently change when the WASM crate's
 // internals refactor. The native parity test (`native_parity.rs`) already
 // asserts that `marque_wasm::lint_native` produces the same NDJSON shape
-// as this projection on the same corpus, so the SC-008 chain is:
+// as this projection on the same corpus, so the parity chain is:
 //
 //   Engine::lint  ==  marque_wasm::lint_native (native)  ==  parity_corpus.json
 //                 ==  marque_wasm::lint_native (wasm32, via parity.rs)
@@ -52,8 +52,8 @@ use std::sync::OnceLock;
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    /// T044 PM OD-2: 2-tuple `RuleId` wire shape. Mirrors the CLI and
-    /// WASM emitters' `RuleIdJson` for SC-008 byte-identical NDJSON.
+    /// 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for byte-identical NDJSON.
     rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
@@ -190,7 +190,7 @@ struct ParityEntry {
     /// Corpus subdir: `invalid` or `valid`. Prose corpus is intentionally
     /// excluded — it exists at 125KB which would dominate the artifact
     /// size, and `native_parity.rs::lint_parity_prose_fixtures` already
-    /// exercises it natively. SC-008 still holds because the algorithmic
+    /// exercises it natively. Parity still holds because the algorithmic
     /// equivalence between `Engine::lint` and `marque_wasm::lint_native`
     /// is what the prose native parity catches; the WASM-target parity
     /// gate runs on the smaller corpus and catches WASM-vs-native

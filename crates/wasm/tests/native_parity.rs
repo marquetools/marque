@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T061 — Native-vs-WASM parity test (SC-008).
+//! Native-vs-WASM parity test.
 //!
 //! Drives the same inputs through the native `Engine::lint` API and the WASM
 //! crate's `lint_native()` wrapper, then asserts byte-equal NDJSON output.
@@ -18,8 +18,8 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// Shared engine instance — avoids reconstructing per-fixture (M-3 review fix).
-/// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses (M-7).
+/// Shared engine instance — avoids reconstructing per-fixture.
+/// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses.
 fn shared_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(|| {
@@ -35,13 +35,13 @@ fn shared_engine() -> &'static Engine {
 // ---------------------------------------------------------------------------
 // DiagnosticJson — duplicated from the WASM crate and CLI render.rs.
 // This is intentional: the test must independently produce the same shape
-// as both the CLI and the WASM crate. If any of the three diverge, SC-008
+// as both the CLI and the WASM crate. If any of the three diverge, NDJSON
 // parity fails and this test catches it.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    /// 2-tuple `RuleId` shape per T044 PM OD-2. Mirrors
+    /// 2-tuple `RuleId` shape. Mirrors
     /// [`marque::render::RuleIdJson`] / `crates/wasm/src/lib.rs::RuleIdJson`
     /// to keep this parity test's projection in lockstep with both
     /// emitters.
@@ -52,7 +52,7 @@ struct DiagnosticJson<'a> {
     citation: String,
     fix: Option<FixJson<'a>>,
     /// Decoder-recognized canonical form (issue #699). Mirrors the
-    /// CLI / WASM `recognized_canonical` field for SC-008 NDJSON
+    /// CLI / WASM `recognized_canonical` field for NDJSON
     /// byte-identity. `skip_serializing_if = "Option::is_none"` keeps
     /// the field absent for every non-R001 diagnostic, so existing
     /// fixtures continue to produce identical NDJSON.
@@ -281,7 +281,7 @@ fn fix_parity_invalid_fixtures() {
 }
 
 // ---------------------------------------------------------------------------
-// T070: Parity on prose corpus
+// Parity on prose corpus
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -381,15 +381,13 @@ fn fix_clean_input_unchanged() {
 
 #[test]
 fn lint_with_corrections_config() {
-    // Corrections map NF→NOFORN should produce a C001 diagnostic (the
-    // legacy rule ID; post-T044 this is the 2-tuple
-    // `("capco", "marking.correction.token-typo")` per
-    // `docs/refactor-006/legacy-rule-id-map.md` §1).
+    // Corrections map NF→NOFORN should produce a diagnostic with the
+    // 2-tuple `("capco", "marking.correction.token-typo")`.
     let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
     let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
         .expect("lint with corrections");
-    // T044 PM OD-2: the rule field on the wire is a structured
-    // 2-tuple object, not a flat string.
+    // The rule field on the wire is a structured 2-tuple object,
+    // not a flat string.
     let expected_rule_fragment =
         r#""rule":{"scheme":"capco","predicate_id":"marking.correction.token-typo"}"#;
     assert!(
@@ -425,8 +423,8 @@ fn config_with_invalid_threshold_returns_error() {
 
 #[test]
 fn config_with_classifier_id() {
-    // PR 3c.B Commit 6 retired E001; this test now uses E002
-    // (REL TO missing USA) as the diagnostic-emitting fixture.
+    // Uses a REL TO-missing-USA fixture as the diagnostic-emitting
+    // input.
     let config = r#"{"classifier_id":"TEST-WASM-42"}"#;
     let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", 0.95, Some(config.to_owned()))
         .expect("fix with classifier_id");
@@ -442,9 +440,8 @@ fn config_with_classifier_id() {
 
 #[test]
 fn lint_batch_returns_results_for_each_entry() {
-    // PR 3c.B Commit 6 retired E001 (and the `SECRET//NF` fixture
-    // it drove). The batch entries now use E002-firing input on the
-    // first row and a clean banner on the second.
+    // The batch entries use REL TO-missing-USA input on the first row
+    // and a clean banner on the second.
     let entries = r#"[
         {"id": "a", "text": "SECRET//REL TO GBR\n"},
         {"id": "b", "text": "SECRET//NOFORN\n"}
@@ -590,9 +587,8 @@ fn compute_banner_single_secret_portion() {
     // absent any FD&R-dominator. Primary authority CAPCO-2016
     // §B.3 Table 2 p21 ("Classified + uncaveated + on/after
     // 28 June 2010 → Mark as RELIDO"); grammar reference §H.8
-    // p154 (the RELIDO marking template). Pre-Phase-3 this
-    // returned plain `SECRET`; Phase 3 makes the implicit FD&R
-    // default explicit in the banner.
+    // p154 (the RELIDO marking template). The implicit FD&R
+    // default is made explicit in the banner.
     let banner = marque_wasm::compute_banner_native("(S) Only one portion here.")
         .expect("compute_banner single S");
     assert_eq!(
@@ -625,7 +621,7 @@ fn compute_banner_single_unclassified_portion() {
 #[test]
 fn compute_banner_ts_beats_secret_max_wins() {
     // Classification max: TOP SECRET takes precedence over SECRET.
-    // Phase 3 adds implicit RELIDO (see sibling tests).
+    // Implicit RELIDO applies (see sibling tests).
     let text = "(S) Lower classification.\n(TS) Higher classification.";
     let banner = marque_wasm::compute_banner_native(text).expect("compute_banner TS>S");
     assert_eq!(
@@ -683,8 +679,8 @@ fn compute_banner_with_rel_to() {
 #[test]
 fn compute_banner_mixed_classified_and_unclassified_portions() {
     // Unclassified portions must not drag the banner below the highest
-    // classified level. Phase 3 adds implicit RELIDO on the post-roll-up
-    // bare US SECRET (sibling tests cite the §4.7.5 trigger list).
+    // classified level. Implicit RELIDO applies to the post-roll-up
+    // bare US SECRET.
     let text =
         "(U) Public info.\n(C) Confidential portion.\n(U) More public info.\n(S) Secret item.";
     let banner =
@@ -876,7 +872,7 @@ fn wasm_lint_recognized_canonical_byte_identical_to_cli() {
     // `(TS//SAR-fk)` — drives R001 with a populated
     // `recognized_canonical` field. The native parity projection and
     // the WASM `lint_native` projection MUST produce byte-identical
-    // NDJSON for SC-008 — including the new `recognized_canonical`
+    // NDJSON — including the `recognized_canonical`
     // field. A regression that adds the field on one side and not
     // the other (e.g., CLI updated but WASM mirror missed) trips
     // this test.

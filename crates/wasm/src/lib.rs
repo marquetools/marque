@@ -160,7 +160,7 @@ struct WasmConfig {
     classifier_id: Option<String>,
     confidence_threshold: Option<f32>,
     corrections: Option<HashMap<String, String>>,
-    /// Per-call wall-clock budget in milliseconds (spec 005).
+    /// Per-call wall-clock budget in milliseconds.
     /// `None` / absent → no deadline. Values must satisfy
     /// `is_finite() && >= 0.0`; negative / NaN / Inf are rejected
     /// at parse time. See `parse_deadline_ms` for the validation

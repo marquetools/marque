@@ -15,7 +15,7 @@ use secrecy::ExposeSecret as _;
 /// The `threshold` parameter always takes precedence over any `confidence_threshold`
 /// in `config_json`. This matches the CLI's Layer 4 (CLI flag) override behavior.
 ///
-/// Spec 005 §R4: when `config_json` carries `deadline_ms` and the
+/// When `config_json` carries `deadline_ms` and the
 /// deadline expires during the lint or fix-application pass, this
 /// function returns `Err(...)` carrying a JSON-serialized
 /// `DeadlineExceededBody` (identical shape to the server's 504
@@ -49,14 +49,10 @@ pub fn fix_native(
             let fixed_text = String::from_utf8(result.source.expose_secret().to_vec())
                 .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
 
-            // PR 3c.2.D / D5: emit reads from `result.audit_lines`
-            // (the marque-1.0 v2 stream). SC-008 invariant — must
-            // produce byte-identical NDJSON to the CLI's render path
-            // (`marque/src/render.rs::render_audit_line`). The
-            // parity test at `crates/wasm/tests/audit_v1_0_parity.rs`
-            // pins this. The v1 `result.applied` stream stays
-            // populated by the engine through D7; D-A5 retires it
-            // alongside the schema flip.
+            // Emit reads from `result.audit_lines`. Must produce
+            // byte-identical NDJSON to the CLI's render path
+            // (`marque/src/render.rs::render_audit_line`) — the parity
+            // test at `crates/wasm/tests/audit_v2_0_parity.rs` pins this.
             let scheme = engine.scheme();
             let applied: Vec<Box<serde_json::value::RawValue>> = result
                 .audit_lines

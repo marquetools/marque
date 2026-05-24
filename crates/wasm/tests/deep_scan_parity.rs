@@ -17,7 +17,7 @@
 //!    is `DecoderPosterior`, matching the native engine's output. If
 //!    this stops holding, either the dispatcher is dormant or the
 //!    WASM build's baked priors / vocab have drifted from the native
-//!    build (FR-013a / Gate 1 enforcement).
+//!    build.
 //!
 //! Native-only; cannot run inside `wasm32`.
 
@@ -101,8 +101,8 @@ fn shared_relaxed_engine() -> &'static Engine {
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    /// T044 PM OD-2: 2-tuple `RuleId` wire shape. Mirrors the CLI and
-    /// WASM emitters' `RuleIdJson` for SC-008 byte-identical NDJSON.
+    /// 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for byte-identical NDJSON.
     rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
@@ -111,7 +111,7 @@ struct DiagnosticJson<'a> {
     fix: Option<FixJson<'a>>,
     /// Decoder-recognized canonical form (issue #699). Mirrors the
     /// CLI and WASM emitters' `recognized_canonical` field for
-    /// SC-008 byte-identical NDJSON.
+    /// byte-identical NDJSON.
     #[serde(skip_serializing_if = "Option::is_none")]
     recognized_canonical: Option<&'a str>,
 }
@@ -288,10 +288,9 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
         .get("applied")
         .and_then(|v| v.as_array())
         .expect("fix_native output has an `applied` array");
-    // PR 3c.2.D / D5: marque-1.0 audit records carry the
-    // discriminant ("strict"|"decoder") on the inner
-    // `fix.replacement.discriminant` path, not on a top-level `source`
-    // field. Per PM-D-7 the engine derives `Discriminant` from
+    // Audit records carry the discriminant ("strict"|"decoder") on the
+    // inner `fix.replacement.discriminant` path, not on a top-level
+    // `source` field. The engine derives `Discriminant` from
     // `FixSource` at projection time: BuiltinRule / MigrationTable →
     // "strict"; DecoderPosterior / DecoderClassificationHeuristic →
     // "decoder".

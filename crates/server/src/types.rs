@@ -67,7 +67,7 @@ pub struct LintResponse {
     pub error_count: usize,
     pub warn_count: usize,
     pub fix_count: usize,
-    /// Spec 005 §R3 — `true` when the engine aborted the lint pass
+    /// `true` when the engine aborted the lint pass
     /// because the per-request deadline expired. Older clients that
     /// do not deserialize unknown fields will silently ignore this;
     /// new clients should pair it with the `Marque-Truncated`

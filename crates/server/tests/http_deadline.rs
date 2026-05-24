@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Spec 005 Phase 3b — server-side deadline tests (T036–T039).
+//! Server-side deadline tests.
 //!
 //! Covers the `X-Marque-Deadline` header surface plus the
 //! `Marque-Truncated` response header for partial lint responses
@@ -68,7 +68,7 @@ fn many_banners_payload(count: usize) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// T036 — header truncates lint with 200 + Marque-Truncated header.
+// Header truncates lint with 200 + Marque-Truncated header.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -110,7 +110,7 @@ async fn header_driven_deadline_truncates_lint_response() {
 }
 
 // ---------------------------------------------------------------------------
-// T037 — out-of-range / unparseable header → 400.
+// Out-of-range / unparseable header → 400.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -307,7 +307,7 @@ async fn duplicate_deadline_headers_one_valid_still_400() {
 }
 
 // ---------------------------------------------------------------------------
-// T038 — header omitted runs to completion.
+// Header omitted runs to completion.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -325,7 +325,7 @@ async fn lint_without_header_uses_endpoint_default() {
 }
 
 // ---------------------------------------------------------------------------
-// T039 — fix deadline-exceeded returns 504 with partial-lint body.
+// Fix deadline-exceeded returns 504 with partial-lint body.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
