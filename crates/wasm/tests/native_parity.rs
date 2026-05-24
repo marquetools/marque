@@ -217,7 +217,10 @@ fn lint_parity_invalid_fixtures() {
 #[test]
 fn lint_parity_valid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("valid"));
-    assert!(!txt_files.is_empty(), "parity test requires valid corpus fixtures");
+    assert!(
+        !txt_files.is_empty(),
+        "parity test requires valid corpus fixtures"
+    );
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -292,7 +295,10 @@ fn lint_parity_prose_fixtures() {
         "tests/corpus/prose/ missing — required for prose parity"
     );
     let txt_files = txt_files_in(&prose_dir);
-    assert!(!txt_files.is_empty(), "parity test requires prose corpus fixtures");
+    assert!(
+        !txt_files.is_empty(),
+        "parity test requires prose corpus fixtures"
+    );
 
     for path in &txt_files {
         let source = load_fixture(path);
@@ -315,7 +321,10 @@ fn lint_parity_prose_fixtures() {
 #[test]
 fn fix_parity_valid_fixtures() {
     let txt_files = txt_files_in(&corpus_dir().join("valid"));
-    assert!(!txt_files.is_empty(), "parity test requires valid corpus fixtures");
+    assert!(
+        !txt_files.is_empty(),
+        "parity test requires valid corpus fixtures"
+    );
     let default_threshold = Config::default().confidence_threshold();
 
     for path in &txt_files {

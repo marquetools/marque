@@ -196,10 +196,7 @@ fn unclassified_candidate_rejected_below_secret_floor() {
             "UNCLASSIFIED below SECRET floor must zero-out candidates, got {}",
             candidates.len()
         ),
-        Parsed::Unambiguous(m) => panic!(
-            "expected zero-candidate, got {:?}",
-            effective_level(&m)
-        ),
+        Parsed::Unambiguous(m) => panic!("expected zero-candidate, got {:?}", effective_level(&m)),
     }
 }
 
