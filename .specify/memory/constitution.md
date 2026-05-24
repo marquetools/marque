@@ -7,6 +7,139 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.5.0 → 1.6.0
+
+Bump type: MINOR
+  - Principle II (Zero-Copy, Streaming Core) — new lifecycle bullet
+    requiring Marque-owned content-bearing buffers to wipe on drop
+    via the `secrecy` / `zeroize` machinery. Applies to the public
+    output surface (`FixResult.source`) and internal scratch buffers
+    (`Engine::fix_inner` splice buffers). Public content-bearing
+    fields SHOULD use `secrecy::SecretBox<_>` so every readout site
+    goes through `expose_secret()` (grep-target audit signal);
+    internal scratch buffers MAY use `zeroize::Zeroizing<_>` directly.
+    Caller-supplied input buffers and caller-side downstream
+    destinations remain out of scope — Marque's responsibility ends
+    at the buffers Marque owns.
+  - Principle II rationale extended with the lifecycle / grep-target
+    framing.
+  - Technology Stack table — two new rows: `secrecy` (sensitive-content
+    access discipline) and `zeroize` (memory wipe). Both cite
+    Principle II as the locking rationale.
+
+Modified sections:
+  - Principle II (new bullet + extended rationale).
+  - Technology Stack table (two new rows).
+
+No principles added/removed. No backward-incompatible removals — the
+new requirement applies forward to Marque-owned content surfaces.
+The companion Tier 3 design direction (reshape the API so Marque
+holds less content at all — `FixMode::DeltasOnly` / streaming
+output) is tracked as a separate long-term issue, not codified here.
+==================
+
+Version change: 1.4.0 → 1.5.0
+
+Bump type: MINOR
+  - 
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+==================
+
+Version change: 1.3.1 → 1.4.0
+
+Bump type: MINOR
+  - Principle VII (Crate Discipline and Dependency Hygiene) — dep-graph
+    rule clarified for the engine + rule architecture refactor's
+    keystone window. Earlier wording described `marque-ism` and
+    `marque-scheme` as parallel "peer leaves" of the dep graph;
+    revised wording makes `marque-scheme` the only true leaf and
+    permits `marque-ism → marque-scheme` (which the consolidated plan's
+    Appendix D anticipated for `ProjectedMarking::scope: Scope` and the
+    PR-3c `FixIntent<S>` work). The directionality rule is unchanged:
+    `marque-scheme` MUST NOT depend on `marque-ism`/`marque-core`/
+    `marque-rules`. Rationale paragraph extended with the asymmetry
+    explanation. Canonical dep-graph diagram updated. Both crates
+    remain WASM-safe; the graph stays acyclic.
+  - The PR 3a (pivot type split) work surfaced this clarification.
+    Before the keystone, the "peer leaf" wording was a useful
+    pre-refactor approximation; PR 3a's `ProjectedMarking::scope`
+    field requires the edge, and PR 3c's `FixIntent<S>` is similarly
+    structured.
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+==================
+Version change: 1.3.1 → 1.4.0
+
+Bump type: MINOR
+  - Principle VII (Crate Discipline and Dependency Hygiene) — dep-graph
+    rule clarified for the engine + rule architecture refactor's
+    keystone window. Earlier wording described `marque-ism` and
+    `marque-scheme` as parallel "peer leaves" of the dep graph;
+    revised wording makes `marque-scheme` the only true leaf and
+    permits `marque-ism → marque-scheme` (which the consolidated plan's
+    Appendix D anticipated for `ProjectedMarking::scope: Scope` and the
+    PR-3c `FixIntent<S>` work). The directionality rule is unchanged:
+    `marque-scheme` MUST NOT depend on `marque-ism`/`marque-core`/
+    `marque-rules`. Rationale paragraph extended with the asymmetry
+    explanation. Canonical dep-graph diagram updated. Both crates
+    remain WASM-safe; the graph stays acyclic.
+  - The PR 3a (pivot type split) work surfaced this clarification.
+    Before the keystone, the "peer leaf" wording was a useful
+    pre-refactor approximation; PR 3a's `ProjectedMarking::scope`
+    field requires the edge, and PR 3c's `FixIntent<S>` is similarly
+    structured.
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+==================
+Version change: 1.3.1 → 1.4.0
+
+Bump type: MINOR
+  - Principle VII (Crate Discipline and Dependency Hygiene) — dep-graph
+    rule clarified for the engine + rule architecture refactor's
+    keystone window. Earlier wording described `marque-ism` and
+    `marque-scheme` as parallel "peer leaves" of the dep graph;
+    revised wording makes `marque-scheme` the only true leaf and
+    permits `marque-ism → marque-scheme` (which the consolidated plan's
+    Appendix D anticipated for `ProjectedMarking::scope: Scope` and the
+    PR-3c `FixIntent<S>` work). The directionality rule is unchanged:
+    `marque-scheme` MUST NOT depend on `marque-ism`/`marque-core`/
+    `marque-rules`. Rationale paragraph extended with the asymmetry
+    explanation. Canonical dep-graph diagram updated. Both crates
+    remain WASM-safe; the graph stays acyclic.
+  - The PR 3a (pivot type split) work surfaced this clarification.
+    Before the keystone, the "peer leaf" wording was a useful
+    pre-refactor approximation; PR 3a's `ProjectedMarking::scope`
+    field requires the edge, and PR 3c's `FixIntent<S>` is similarly
+    structured.
+
+Modified sections:
+  - Principle VII (canonical dep-graph diagram + prose).
+  - Principle VII rationale (added asymmetry explanation).
+
+No principles added/removed. No backward-incompatible removals — the
+acyclicity invariant is preserved; the change is a refinement of which
+edges the graph admits.
+
+==================
 Version change: 1.3.0 → 1.3.1
 
 Bump type: PATCH
@@ -233,10 +366,27 @@ heap allocation on the hot path.
   detected (validated by `--features count-allocs` harness where applicable).
 - Cached `LintResult` spans MUST remain valid via fingerprint guarantee; no span
   re-computation on cache hit is permitted.
+- Content-bearing buffers Marque owns MUST wipe on drop. This applies to the
+  public output surface (`FixResult.source`) and to internal scratch buffers
+  (e.g., `Engine::fix_inner`'s splice buffers) — every `Vec<u8>` or equivalent
+  that Marque allocates and that reproduces caller-document content. The
+  implementation MUST use the `secrecy` / `zeroize` machinery, which performs
+  volatile writes the compiler cannot elide. Marque's responsibility ends at
+  the buffers Marque owns: caller-supplied input buffers, caller logs, and
+  caller-side downstream destinations are out of scope by definition. Public
+  content-bearing fields SHOULD use `secrecy::SecretBox<_>` so every readout
+  site goes through `expose_secret()` — the grep target is the audit signal.
+  Internal scratch buffers MAY use `zeroize::Zeroizing<_>` directly when no
+  readout discipline is needed.
 
 **Rationale**: Sensitive content (classified documents) MUST be minimized in
 memory footprint. Zero-copy also enables future secure-enclave (SGX/TrustZone)
-integration without architectural changes.
+integration without architectural changes. The lifecycle property is the
+companion to zero-copy: minimize what Marque holds, and wipe what Marque does
+hold when it's done. The grep-target property of `secrecy::expose_secret()`
+makes every sanctioned content readout site auditable for security reviewers
+without trusting that a log statement somewhere doesn't accidentally print
+the bytes.
 
 ### III. Format-Agnostic Core / WASM Safety
 
@@ -281,13 +431,8 @@ prohibited.
 - **Layer 1 (generated)**: `marque-ism/build.rs` MUST parse ODNI ISM schema
   files at compile time and emit only binary valid/invalid predicates
   (`values.rs`, `validators.rs`, `migrations.rs`), included via
-  `crates/ism/src/generated.rs`. The schema files are consumed via the
-  `ism` and `ism-ismcat` build-dependencies sourced from the
-  [`marquetools/ism-data`](https://github.com/marquetools/ism-data)
-  workspace; the active snapshot is pinned in `marque-ism/Cargo.toml`
-  under `[package.metadata.marque] ism-data-version` (alongside the
-  upstream ODNI label `ism-schema-version`). No remediation logic
-  belongs in generated code.
+  `crates/ism/src/generated.rs`. No remediation logic belongs in generated
+  code.
 - **Layer 2 (hand-written)**: `Rule` implementations (e.g., `marque-capco`)
   MUST consume Layer 1 predicates to detect violations, classify *why* a
   violation occurred, determine fix confidence, and cite the authoritative
@@ -312,12 +457,8 @@ prohibited.
 - `Severity::Off` is a non-firing state. A rule configured `Off` MUST be
   skipped by the engine; an `Off`-severity diagnostic is unrepresentable.
 - The active ODNI schema version MUST be pinned in
-  `[package.metadata.marque] ism-schema-version` (upstream ODNI package
-  label) and `[package.metadata.marque] ism-data-version` (the
-  YYYYMMDD.MAJOR.PATCH snapshot of the `ism-data` workspace whose
-  `ism` / `ism-ismcat` build-deps this crate resolves) in
-  `marque-ism/Cargo.toml`. Schema version bumps MUST be intentional,
-  never silent. New rule crate
+  `[package.metadata.marque] ism-schema-version` in `marque-ism/Cargo.toml`.
+  Schema version bumps MUST be intentional, never silent. New rule crate
   families (e.g., `marque-cui`, a future NATO/FGI/JOINT crate) MUST follow
   this same `build.rs` → generated-predicates pattern with an explicit
   version pin.
@@ -446,31 +587,52 @@ The workspace dependency graph MUST be one-directional and acyclic.
 - The canonical dependency graph is:
 
   ```text
-  marque-ism    ←── marque-core ────────────────────┐
-  marque-ism    ←── marque-rules ←── marque-capco ──┤
-  marque-scheme ←──────────────────  marque-capco ──┤
-                                                    ↓
-                                              marque-engine ←── marque-config
-                                                    ↑
-                                              marque-wasm
-                                                    ↑
-                                marque-extract (non-WASM only)
-                                                    ↑
-                                              marque-server
-                                                    ↑
-                                               marque (CLI)
+  marque-scheme ←── marque-ism ←── marque-core ─────────────────────┐
+                    marque-ism ←── marque-rules ←── marque-capco ──┤
+                    marque-scheme ←─────────────────  marque-capco ──┤
+                                                                    ↓
+                                                              marque-engine ←── marque-config
+                                                                    ↑
+                                                              marque-wasm
+                                                                    ↑
+                                              marque-extract (non-WASM only)
+                                                                    ↑
+                                                              marque-server
+                                                                    ↑
+                                                               marque (CLI)
   ```
 
-  Read `A ←── B` as "`B` depends on `A`". `marque-ism` is the pivot crate
-  (vocabulary, generated CVE enums, `Span`, `IsmAttributes`) and sits at the
-  bottom of every WASM-safe chain. `marque-core` and `marque-rules` are
-  parallel consumers of `marque-ism`; `marque-rules` does **not** depend on
-  `marque-core`. `marque-scheme` is the domain-neutral trait surface for
-  structured marking schemes and has zero runtime dependencies (it does not
-  depend on `marque-ism`, `marque-core`, or `marque-rules`). `marque-capco`
-  consumes `marque-ism`, `marque-rules`, and `marque-scheme` — but **not**
-  `marque-core`. `marque-engine` is the convergence point that consumes all
-  of `marque-ism`, `marque-core`, `marque-rules`, `marque-capco`, and
+  Read `A ←── B` as "`B` depends on `A`".
+
+  **`marque-scheme` is the only true graph leaf.** It is the domain-neutral
+  trait surface for structured marking schemes — `Lattice`, `MarkingScheme`,
+  `Constraint`, `Scope`, `PageRewrite`, the built-in lattice constructors —
+  and MUST NOT depend on `marque-ism`, `marque-core`, `marque-rules`, or any
+  domain crate. This keeps the scheme trait surface reusable across schemes
+  (CAPCO today, CUI / NATO / partner-national tomorrow) without inheriting
+  ODNI-specific vocabulary.
+
+  **`marque-ism` is the foundational vocabulary crate** — ODNI-generated
+  CVE enums, `Span`, the pivot type triple (`ParsedAttrs<'src>` /
+  `CanonicalAttrs` / `ProjectedMarking`). It MAY depend on `marque-scheme`
+  (e.g., `ProjectedMarking::scope: Scope`); this is the sole permitted
+  edge from `marque-ism` and was anticipated by the engine + rule
+  architecture refactor consolidated plan (Appendix D, "PR 3c
+  dependency-graph shift"). `marque-ism` MUST NOT depend on `marque-core`,
+  `marque-rules`, or any domain crate.
+
+  **`marque-core` and `marque-rules` are parallel consumers** of
+  `marque-ism` (and transitively of `marque-scheme`). `marque-rules` does
+  **not** depend on `marque-core`. As of PR 3c (`FixIntent<S>`),
+  `marque-rules` also depends on `marque-scheme` directly so rule-emission
+  values can reference scheme types without going through `marque-ism`;
+  the graph stays acyclic because `marque-scheme` is still leaf-only.
+
+  **`marque-capco`** (the CAPCO domain rule crate) consumes `marque-ism`,
+  `marque-rules`, and `marque-scheme` — but **not** `marque-core`.
+
+  **`marque-engine`** is the convergence point that consumes all of
+  `marque-ism`, `marque-core`, `marque-rules`, `marque-capco`, and
   `marque-config`; this is the only crate that pulls both the
   scanner/parser chain (via `marque-core`) and the rule chain (via
   `marque-capco`) together.
@@ -498,6 +660,17 @@ cannot be refactored cheaply. The `marque-ism` / `marque-scheme` split
 specifically exists so a second marking domain (CUI, NATO, etc.) can reuse
 the scheme trait surface without picking up ODNI-specific vocabulary.
 
+The directionality rule —
+`marque-ism` MAY depend on `marque-scheme` but not vice versa — is the
+sharp edge that makes that property hold. `marque-scheme` is the leaf
+both schemes share; `marque-ism` is the leaf the CAPCO/ISM scheme adds
+on top. A future `marque-cui` crate would sit alongside `marque-ism` (a
+peer foundation, not below it). Earlier wording described both as "peer
+leaves," which was a useful pre-refactor approximation; the keystone
+work (PR 3a / 3c of the engine + rule architecture refactor) makes the
+asymmetry explicit so type definitions like `ProjectedMarking::scope:
+Scope` and `FixIntent<S>` can land without contortion.
+
 ### VIII. Authoritative Source Fidelity
 
 Every grammar implementation flows from a single authoritative source.
@@ -506,19 +679,18 @@ Don't wing it. Don't fabricate citations.
 - **Every grammar has a designated primary source.** For ISM/CAPCO today,
   the primary source is `crates/capco/docs/CAPCO-2016.md` (with the PDF
   original at `crates/capco/docs/original-refs/CAPCO-2016.pdf`), backed by
-  the ODNI ISM XML schemas vendored in the
-  [`marquetools/ism-data`](https://github.com/marquetools/ism-data)
-  workspace and consumed by `marque-ism/build.rs` via the `ism` and
-  `ism-ismcat` build-dependencies. The active snapshot of those crates
-  is pinned in `crates/ism/Cargo.toml` under
-  `[package.metadata.marque] ism-data-version` and re-vendoring is a
-  deliberate migration in `ism-data` followed by a coordinated bump
-  here. Each future grammar MUST declare its equivalent at crate
-  creation: a NATO security-policy manual, a NARA CUI registry snapshot,
-  a partner-national security framework, etc. The source MUST be
-  versioned and vendored — either in `crates/<grammar>/docs/` for
-  reference text or in a dedicated build-dep crate for machine-readable
-  schema bundles; external URLs MUST NOT be the primary source.
+  the ODNI ISM XML schemas in `crates/ism/schemas/ISM-v2022-DEC/`. Each
+  future grammar MUST declare its equivalent at crate creation: a NATO
+  security-policy manual, a NARA CUI registry snapshot, a partner-national
+  security framework, etc. The source MUST be versioned and vendored in
+  `crates/<grammar>/docs/` (or the equivalent); external URLs MUST NOT be
+  the primary source.
+- **Resolving Conflicts.** For the CAPCO grammar, the edition of the manual
+  the repo pins is not the most current version (it's the most current version
+  currently *available* to us). Consequently, we do need to accomodate
+  newer tokens we find in the ISM schemas; we can't have users trying to
+  use valid tokens and getting errors. When in doubt, request guidance
+  from the user.
 - **Source-first implementation.** Anyone implementing a rule, marking
   syntax parser, rewrite, page roll-up, or fix proposal for a grammar MUST
   consult the relevant portions of the primary source first and MUST cover
@@ -537,6 +709,8 @@ Don't wing it. Don't fabricate citations.
   citation so someone checked" cannot be allowed to carry the reviewer's
   trust forward. This applies equally to citations written by humans and
   citations written by AI assistance; neither is exempt from verification.
+  In the case of ISM/CAPCO, ISM schemas may be cited where CAPCO references
+  are unavailable, but only for markings that are truly too new to cite.
 - **Propagation requires re-verification.** When a citation moves — from
   a rule comment into a docs file, from one plan into another, from one
   diagnostic message to a restatement in another — the person (or agent)
@@ -583,6 +757,8 @@ require a constitution amendment with migration rationale.
 | Incremental cache store (v0.2) | heed (LMDB) | Embedded, memory-mapped, ACID |
 | Cache serialization (v0.2) | rmp_serde (MessagePack) | Compact binary; 2–5× smaller than JSON |
 | Document fingerprint | blake3 | Speed; already in dep tree |
+| Sensitive-content access | secrecy | Type-level `expose_secret()` gate, redacted Debug, blocks Clone — auditable readout sites on Marque-owned content (Principle II) |
+| Memory wipe | zeroize | Volatile-write memset compilers cannot elide; RustCrypto, audited — Marque-owned content wipes on drop (Principle II) |
 | WASM packaging | wasm-pack | Best-in-class Rust→WASM compilation |
 
 **Licensing**: All marque source code is under the **Marque License 1.0**
@@ -695,4 +871,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.3.1 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-27
+**Version**: 1.6.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-17

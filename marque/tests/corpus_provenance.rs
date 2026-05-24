@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 5 — SC-002a corpus provenance scan (T055a).
+//! Corpus provenance scan.
 //!
 //! Validates corpus integrity:
 //! (a) Every file under `tests/corpus/` matches a registered path pattern
@@ -49,6 +49,28 @@ fn is_registered_pattern(relative: &str) -> bool {
         // tests/corpus/mangled/threshold.toml; the registered-
         // pattern check was not updated in the same commit)
         ("mangled/", ".toml"),
+        // lattice fixtures: cross-axis dominance worked examples. The
+        // property-test runner and `.expected.json` sidecars are wired
+        // separately. See tests/corpus/lattice/README.md.
+        ("lattice/", ".txt"),
+        ("lattice/", ".expected.json"),
+        ("lattice/", ".md"),
+        // documents/: end-to-end multi-page synthetic-positive document
+        // fixtures rendered from CIA CREST declassified prose with
+        // synthetic CAPCO markings. See tests/corpus/documents/README.md.
+        ("documents/", ".expected.json"),
+        ("documents/marked/", ".md"),
+        ("documents/specs/", ".md"),
+        ("documents/", "/ground_truth.json"),
+        ("documents/", "/README.md"),
+        // foreign/: foreign-banner correctness fixtures. Pure-foreign,
+        // JOINT, NATO-only, mixed-US-foreign-rollup, and FGI-concealed
+        // worked examples per CAPCO-2016 §H.7 pp123-129. Loaded by
+        // `crates/capco/tests/foreign_corpus.rs` (the corpus accuracy
+        // harness in `crates/engine/tests/corpus_accuracy.rs` scans
+        // only valid/invalid/prose).
+        ("foreign/", ".txt"),
+        ("foreign/", ".expected.json"),
     ];
 
     // Top-level files
@@ -94,7 +116,7 @@ fn sc002a_every_corpus_file_matches_registered_pattern() {
 
     assert!(
         violations.is_empty(),
-        "SC-002a: {} file(s) under tests/corpus/ don't match registered patterns:\n{}",
+        "{} file(s) under tests/corpus/ don't match registered patterns:\n{}",
         violations.len(),
         violations.join("\n")
     );
@@ -175,14 +197,14 @@ fn sc002a_no_classifier_id_in_corpus_fixtures() {
 
     assert!(
         violations.is_empty(),
-        "SC-002a(c): {} classifier-id-shaped string(s) in corpus fixtures:\n{}",
+        "{} classifier-id-shaped string(s) in corpus fixtures:\n{}",
         violations.len(),
         violations.join("\n")
     );
 }
 
 // -----------------------------------------------------------------------
-// T055a(d): fixture tokens must come from known CVE enumerations
+// Fixture tokens must come from known CVE enumerations.
 // -----------------------------------------------------------------------
 
 /// Build a set of all known token strings from the ISM CVE enumerations.
@@ -262,6 +284,32 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
 
     // Declassification exemption markers
     for s in &["X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8"] {
+        tokens.insert(*s);
+    }
+
+    // NATO classifications (CAPCO-2016 §H.7) — abbreviated and full forms.
+    // CTS / NS / NC / NR / NU are the canonical portion-form abbreviations
+    // per §G.2 p40. NATO classification routes through the strict
+    // parser as standalone tokens.
+    for s in &[
+        "CTS",
+        "COSMIC TOP SECRET",
+        "NS",
+        "NATO SECRET",
+        "NC",
+        "NATO CONFIDENTIAL",
+        "NR",
+        "NATO RESTRICTED",
+        "NU",
+        "NATO UNCLASSIFIED",
+    ] {
+        tokens.insert(*s);
+    }
+
+    // AEA markings (CAPCO-2016 §H.6) — Atomic Energy Act controls.
+    // ATOMAL is the NATO AEA marking per §G.2 p40 + §H.7 p122; routed
+    // through the AEA axis alongside RD / FRD / TFNI.
+    for s in &["RD", "FRD", "TFNI", "ATOMAL", "CNWDI", "DCNI", "UCNI"] {
         tokens.insert(*s);
     }
 
@@ -376,6 +424,13 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
                 if block.starts_with("REL TO") || block.starts_with("REL ") {
                     continue;
                 }
+                // Skip "FGI ..." blocks (CAPCO-2016 §H.7) — Foreign
+                // Government Information markings carry an open-ended
+                // trigraph/tetragraph list (e.g., "FGI NATO", "FGI GBR DEU")
+                // that is not CVE-enumerated.
+                if block == "FGI" || block.starts_with("FGI ") {
+                    continue;
+                }
                 // Skip SAR blocks — program identifiers are agency-assigned
                 // codewords (not in any CVE enumeration) per CAPCO-2016 §H.5.
                 if block.starts_with("SAR-") || block.starts_with("SPECIAL ACCESS REQUIRED-") {
@@ -437,19 +492,19 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
 
     assert!(
         violations.is_empty(),
-        "SC-002a(d): {} token(s) in corpus fixtures not in CVE vocabulary:\n{}",
+        "{} token(s) in corpus fixtures not in CVE vocabulary:\n{}",
         violations.len(),
         violations.join("\n")
     );
 }
 
 // -----------------------------------------------------------------------
-// Mangled-fixture token-only invariant (whitepaper §5.5 / gap register #19)
+// Mangled-fixture token-only invariant (whitepaper §5.5)
 // -----------------------------------------------------------------------
 //
 // The mangled fixtures under `tests/fixtures/mangled/` are a generated
 // artifact of `tools/corpus-analysis/analyze.py --mode mangled` and a
-// load-bearing input to the SC-004 decoder accuracy gate. Each JSON file
+// load-bearing input to the decoder accuracy gate. Each JSON file
 // has the shape:
 //
 //     { "observed": "...", "expected": "...",
@@ -465,7 +520,7 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
 // keeps the generator pinned to `tests/corpus/valid/`, but a
 // regression in the generator (or a manual edit that didn't get
 // regenerated) would silently leak prose into the harness fixtures
-// and from there into Phase-D telemetry.
+// and from there into decoder telemetry.
 //
 // This test is the post-condition. It walks every mangled JSON file
 // and asserts:

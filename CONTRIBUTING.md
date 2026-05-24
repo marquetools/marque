@@ -36,9 +36,9 @@ Run before opening a PR. CI runs the same gates and will block on failure.
   run the performance regression gate (`scripts/bench-check.sh`).
 
 For changes that touch hot paths (scanner, parser, decoder, engine
-dispatch), run `cargo bench` locally and compare against the SC-001
-(p95 ≤ 16 ms on 10 KB strict input) and SC-005 (linear scaling)
-baselines.
+dispatch), run `cargo bench` locally and compare against the
+interactive-latency (p95 ≤ 16 ms on 10 KB strict input) and
+linear-scaling baselines.
 
 ## Citation discipline (Constitution Principle VIII)
 
@@ -66,11 +66,9 @@ assistance. Neither is exempt from verification.
 
 ## Scheme-adoption PR checklist
 
-A *scheme-adoption PR* lands a new marking scheme — Phase F's CUI
-adapter, or a future NATO / FGI / JOINT / partner-national adapter.
-The four invariants below come from FR-022 of
-`specs/004-constraints-decoder-vocab/spec.md` and Constitution
-Principle IV.
+A *scheme-adoption PR* lands a new marking scheme — a CUI adapter, or
+a future NATO / FGI / JOINT / partner-national adapter. The four
+invariants below come from Constitution Principle IV.
 
 A scheme-adoption PR MUST satisfy all four. A reviewer who cannot
 check every box on the first read should request changes.

@@ -1,0 +1,4 @@
+{
+  "_note": "PR 5 (006 T062-T063) — source-concealed + source-acknowledged FGI commingling per CAPCO-2016 §H.7 p128 line 3153 (Notional Example Page 3 — SECRET//FGI//NOFORN from `(S//RELIDO) + (//DEU S//NF) + (//FGI S//NF)`). Per the §H.7 p124 source-concealed-dominates rule, the banner uses bare `FGI` without trigraph when any portion is source-concealed. E068 + E069 do not fire (banner classification + concealed-FGI marker match the projected page state). No diagnostics expected.",
+  "diagnostics": []
+}

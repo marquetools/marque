@@ -21,26 +21,37 @@ include = [
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 serde = { workspace = true }
-# Parsing the corpus-override JSON file (T065). Unconditional — toml is
-# already pulled in for the project config, and serde_json is small
-# enough that the conditional dependency machinery (`optional + feature
-# enables = ["dep:..."]`) buys nothing here. The corpus_override module
-# is still cfg-gated; this dep just makes it cheap to add.
+# Parsing the corpus-override JSON file. Unconditional —
+# serde_json is small enough that the conditional dependency
+# machinery (`optional + feature enables = ["dep:..."]`) buys nothing
+# here. The corpus_override module is still cfg-gated; this dep just
+# makes it cheap to add.
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-toml = { workspace = true }
+# The `toml` chain (toml + toml_parser + winnow + toml_datetime +
+# toml_writer + serde_spanned) is heavy for WASM where config arrives
+# as a JSON string. Gated behind `toml-loader` (default-on for CLI/
+# server, off for the WASM artifact via the workspace pin's
+# `default-features = false`). See issue #454.
+toml = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 
 [features]
+# `toml-loader` (default-on): enables the `.marque.toml` /
+# `.marque.local.toml` file-loading codepath. CLI and server opt in
+# explicitly via `features = ["toml-loader"]`; the WASM artifact
+# inherits `default-features = false` from the workspace pin and
+# excludes the whole toml chain.
+default = ["toml-loader"]
+toml-loader = ["dep:toml"]
 # Gate the corpus-override parsing codepath. Parsing lives in
-# `crates/config/src/corpus_override.rs` (US2 / T065); the feature gate
+# `crates/config/src/corpus_override.rs`; the feature gate
 # here mirrors the gate in `marque-capco` and `marque-engine` so the
 # WASM artifact (default-features = false on engine, no corpus-override)
 # compiles out the parser entirely. CLI-only, rejected by
-# `marque-server` at the handler layer (FR-013 / T3 enforcement).
-default = []
+# `marque-server` at the handler layer.
 corpus-override = []
 
 [lints]

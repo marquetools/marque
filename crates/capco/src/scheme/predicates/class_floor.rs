@@ -1,0 +1,250 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Class-floor catalog helpers: name → row resolution, span anchors,
+//! policy-satisfaction predicate, and the trait-path catalog walker
+//! (`class_floor_catalog_eval`). Lifted from the monolithic
+//! `predicates.rs` per the issue #466 Stage 2 PR A leaf split
+
+use marque_ism::{CanonicalAttrs, Classification, Span, TokenKind};
+
+use super::super::constraints::class_floor_emit;
+use super::super::*;
+use super::tier2_mask::{classification_is_fgi_or_joint, effective_level_from_bits};
+use crate::fact_bitmask::extract_us_class_level;
+
+/// Returns true if `name` is a catalog row name dispatched by
+/// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`
+/// to route on the table.
+///
+/// Every catalog row's `name` is a canonical predicate ID
+/// containing either `.floor-` or `.ceiling-` (see [`ClassFloorRow`]
+/// docstring). The discriminator is the substring presence — uniquely
+/// scoped to this catalog, since `floor` and `ceiling` are reserved
+/// for class-floor (and class-ceiling) rows by convention.
+///
+/// New catalog rows MUST contain one of these discriminators; the
+/// `class_floor_catalog_naming_convention` test in
+/// `crates/capco/tests/class_floor_catalog.rs` enforces the
+/// invariant at build time so adding a row that doesn't follow the
+/// convention fails CI.
+pub(crate) fn is_class_floor_catalog_name(name: &str) -> bool {
+    name.contains(".floor-") || name.contains(".ceiling-")
+}
+
+/// Resolve a catalog row by `name`. Returns `None` for unknown
+/// names.
+///
+/// Walked only on the trait/validate path (27-row catalog → linear
+/// scan, ≪1 µs) — the walker hot path uses
+/// [`class_floor_catalog`] then [`class_floor_eval_row`] directly
+/// with no name lookup. A build-time perfect-hash lookup
+/// (`phf::Map`) is deferred unless the trait path shows up as a
+/// measurable hotspot in profiling.
+pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorRow> {
+    CLASS_FLOOR_CATALOG.iter().find(|row| row.name == name)
+}
+
+/// Resolve the diagnostic span anchor for a class-floor catalog row.
+///
+/// The span anchors at the marking token (not the classification
+/// token) so the diagnostic UX puts the squiggle under the offending
+/// presence. Reads `row.primary_kind` directly. Falls back to the
+/// first `Classification` token span if no
+/// axis-specific span is found, and finally to `Span::new(0, 0)` if
+/// neither is present.
+pub(crate) fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &ClassFloorRow) -> Span {
+    if let Some(kind) = row.primary_kind
+        && let Some(span) = first_span_of_optional(attrs, kind)
+    {
+        return span;
+    }
+    // Some rows have no single primary kind (e.g., NATO rows have no
+    // marking-side token; `row.primary_kind == None`). Try
+    // classification as a fallback.
+    if let Some(span) = first_span_of_optional(attrs, TokenKind::Classification) {
+        return span;
+    }
+    Span::new(0, 0)
+}
+
+/// Returns the first span of a given token kind in the attrs'
+/// `token_spans`, or `None` if the kind is absent. A companion to
+/// [`class_floor_anchor_span`].
+pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Span> {
+    attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == kind)
+        .map(|t| t.span)
+}
+
+/// Dispatch a single catalog row by name and return at most one
+/// `ConstraintViolation`. The trait-path entry point used by
+/// [`MarkingScheme::validate`] →
+/// [`marque_scheme::constraint::evaluate`] when the catalog row's
+/// `Constraint::Custom` arm fires.
+///
+/// The engine's constraint-catalog bridge invokes this function via
+/// `evaluate_custom` → here, and fields are populated in
+/// [`class_floor_emit`] so no second emitter path is needed.
+///
+/// # Tier-2 bitmask fast path (issue #650)
+///
+/// 23 of the 27 catalog rows have a `bitmask_trigger: Some(_)` field.
+/// The dispatch order is:
+///
+/// 1. **FGI/JOINT early-out**: FGI and JOINT classification levels are absent
+///    from the bitmask chain fields; the structural path handles them via
+///    `class_floor_satisfied` which calls `effective_level()`. Rare path
+///    (FGI/JOINT-classified portions carrying class-floor-tripping markings).
+/// 2. **Trigger mask gate** (23 rows): `(bits & bitmask_trigger) == 0` → no
+///    fire, return empty in O(1) without calling `presence()`.
+/// 3. **Presence confirmation**: for coarse-gate rows
+///    (`bitmask_trigger_exact: false`), call `presence(attrs)` to rule out
+///    false positives from the over-approximating mask.
+/// 4. **Floor/ceiling test** via chain extract: `effective_level_from_bits`
+///    (AtLeast policy) or `extract_us_class_level == Some(Unclassified)` (EqualsU).
+/// 5. **Structural fallthrough** (4 rows, `bitmask_trigger: None`): the
+///    passthrough rows for BUR/HCS-X/KLM/MVL use the existing `class_floor_emit`
+///    path verbatim.
+///
+/// `ConstraintViolation` emission is byte-identical to the structural
+/// form: the fast path reaches `class_floor_emit` on the same inputs
+/// (presence confirmed, floor confirmed not satisfied), and `class_floor_emit`
+/// is unchanged.
+pub(crate) fn class_floor_catalog_eval(
+    attrs: &marque_ism::CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
+    name: &'static str,
+) -> Vec<ConstraintViolation> {
+    let Some(row) = class_floor_row_by_name(name) else {
+        return Vec::new();
+    };
+
+    // ── Step 1: FGI/JOINT early-out ─────────────────────────────────────────
+    // FGI and JOINT classification levels are absent from the bitmask chain
+    // fields (bits 27-29 US, 32-34 NATO). The structural path has the level
+    // via `effective_level()`. Rare path — most class-floor-tripping markings
+    // appear alongside US or NATO classification.
+    if classification_is_fgi_or_joint(attrs) {
+        return class_floor_emit(attrs, row).into_iter().collect();
+    }
+
+    // ── Step 2: Bitmask fast path (23 rows) ──────────────────────────────────
+    if let Some(trigger_mask) = row.bitmask_trigger {
+        let bits_u128 = bits.bits();
+
+        // Trigger short-circuit: bitmask AND must be non-zero.
+        // For exact rows this is the precise presence gate.
+        // For coarse rows it's a cheap no-fire eliminator.
+        if (bits_u128 & trigger_mask) == 0 {
+            return Vec::new();
+        }
+
+        // Presence confirmation: exact rows skip the structural call;
+        // coarse rows must confirm via `presence()` to avoid false positives.
+        if !row.bitmask_trigger_exact && !(row.presence)(attrs) {
+            return Vec::new();
+        }
+
+        // Floor/ceiling test via chain extract.
+        let floor_satisfied = match row.policy {
+            ClassFloorPolicy::AtLeast(floor) => {
+                // `effective_level_from_bits` returns `None` when both US and
+                // NATO chain fields are zero — i.e., no classification at all.
+                // This preserves the structural path's behavior: a marking
+                // without any classification context fails the floor
+                // (mirrors retired-E022 / retired-E027 semantics via
+                // `class_floor_satisfied`'s None arm → false).
+                effective_level_from_bits(bits).is_some_and(|lvl| lvl >= floor)
+            }
+            ClassFloorPolicy::EqualsU => {
+                // EqualsU (UCNI ceiling, §H.6 p116/p118): matches
+                // `class_floor_satisfied`'s EqualsU arm which uses
+                // `attrs.us_classification()`. The US chain (bits 27-29)
+                // is populated from `MarkingClassification::Us` and the US
+                // side of `MarkingClassification::Conflict` — same population
+                // paths as `us_classification()`. NATO/FGI/JOINT zero out the
+                // US chain so `extract_us_class_level` returns `None`, which
+                // correctly fails the EqualsU check (UCNI is US AEA).
+                extract_us_class_level(bits) == Some(Classification::Unclassified)
+            }
+        };
+        if floor_satisfied {
+            return Vec::new();
+        }
+
+        // Fire: diagnostic synthesis is byte-identical to the structural path —
+        // `class_floor_emit` reads row.* fields, not bits. On this (violation)
+        // path, `class_floor_emit` re-invokes `presence()` and
+        // `class_floor_satisfied()` — both were already computed above.
+        // The duplication is confined to the rare violation path (fast-path
+        // value is in the common non-firing case); a dedicated emitter that
+        // accepts precomputed presence/floor state is a follow-on optimization.
+        return class_floor_emit(attrs, row).into_iter().collect();
+    }
+
+    // ── Step 3: Structural fallthrough (4 passthrough rows) ──────────────────
+    // BUR / HCS-X / KLM / MVL: open-vocab ISM tokens with no atom bit.
+    // Uses the existing `class_floor_emit` path verbatim.
+    class_floor_emit(attrs, row).into_iter().collect()
+}
+
+/// Returns true when the classification axis satisfies the floor policy.
+///
+/// The two policy variants take different views of the classification axis:
+///
+/// - **`AtLeast(floor)`** uses `MarkingClassification::effective_level`
+///   so NATO / FGI / JOINT classifications get reciprocal-raised to
+///   their US-equivalent level
+///   (CTS → TS, NS → S, NC → C, NR → R, NU → U). This is the fix
+///   from #324: before the fix, the NATO catalog rows
+///   (BALK / BOHEMIA / ATOMAL) queried `attrs.us_classification()`,
+///   which returns `None` for non-US classification kinds, so the
+///   reciprocal-raised NATO floors always failed and always emitted a
+///   spurious diagnostic — guaranteed false positive on every
+///   well-formed NATO portion. The `effective_level()` accessor
+///   already lives in `marque-ism` and is the canonical answer to
+///   "what's the effective classification level for ordering?";
+///   capco-side we just consume it.
+///
+///   Behavior on a `None` classification (no classification token
+///   parsed at all) stays as "fail the floor" — this preserves
+///   retired-E022 / retired-E027 semantics where a CNWDI / SAR marking
+///   without any classification context is treated as malformed and
+///   the floor diagnostic fires.
+///
+/// - **`EqualsU`** keeps `attrs.us_classification()` semantics. The
+///   UCNI ceiling per CAPCO-2016 §H.6 p116 (DOD UCNI) and §H.6 p118
+///   (DOE UCNI) is "May only be used with UNCLASSIFIED" — strictly the
+///   US-classification system, not reciprocal-raised. A NATO-class
+///   portion carrying UCNI is malformed input (UCNI is US AEA,
+///   parallel to NATO ATOMAL); other rules catch the malformed shape.
+pub(crate) fn class_floor_satisfied(
+    attrs: &marque_ism::CanonicalAttrs,
+    policy: ClassFloorPolicy,
+) -> bool {
+    match policy {
+        ClassFloorPolicy::AtLeast(floor) => match attrs.classification.as_ref() {
+            // Reciprocal-raise via `effective_level()`. NATO / FGI /
+            // JOINT classifications return their US-equivalent level
+            // for the comparison; US classifications return as-is.
+            Some(c) => c.effective_level() >= floor,
+            // No classification parsed at all → fail the floor.
+            // Preserves retired-E022 / retired-E027 behavior on the
+            // "classification is missing" case.
+            None => false,
+        },
+        ClassFloorPolicy::EqualsU => match attrs.us_classification() {
+            // Equals-U is the UCNI ceiling. `Some(Unclassified)` is the
+            // only allowed state; everything else (including `None` for
+            // pure-FGI / NATO / JOINT) fails. Mirrors retired E025
+            // semantics: UCNI is US AEA and a non-US classification
+            // carrying UCNI is malformed.
+            Some(Classification::Unclassified) => true,
+            _ => false,
+        },
+    }
+}

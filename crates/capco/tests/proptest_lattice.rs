@@ -8,14 +8,60 @@
 //! covering the same algebraic laws over generated inputs, exercising the much
 //! larger space of compartment-tree combinations that the fixed samples can't
 //! reach.
+//!
+//! # Audit coverage
+//!
+//! In addition to the original `SciSet`, `SarSet`, `FgiSet`, and `RelToBlock`
+//! tests, this file covers the three per-axis types identified by the
+//! `Lattice` trait split (issue #456 / PR #502) as carrying join-side
+//! observational state:
+//!
+//! - **`DissemSet`** — `relido_observed_unanimous` flag; tests verify that
+//!   `join(a, a) == a` under structural `Eq` across all reachable states.
+//! - **`JointSet`** — `Mixed` / `DisunityCollapse` variants; tests verify all
+//!   three join semilattice laws.
+//! - **`SupersessionSet<TestTok>`** — post-join overlay re-application; tests
+//!   verify the join laws hold on the generic primitive.
+//!
+//! Verdict (post-audit): all three types pass all three join laws (idempotence,
+//! commutativity, associativity) on their structural `Eq`. No trait removals or
+//! representation changes are required. The `JoinSemilattice` claim is sound for
+//! each type.
 
-use marque_capco::lattice::{FgiSet, SarSet, SciSet};
-use marque_ism::{
-    CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
-    SciControlBare, SciControlSystem, SciMarking,
+use marque_capco::lattice::{
+    DisplayOnlyBlock, DissemSet, FgiSet, JointSet, RelToBlock, SarSet, SciSet,
 };
-use marque_scheme::{BoundedLattice, Lattice};
+use marque_ism::{
+    CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker, MarkingClassification,
+    SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlBare,
+    SciControlSystem, SciMarking,
+};
+use marque_scheme::{JoinSemilattice, MeetSemilattice, SupersessionSet};
 use proptest::prelude::*;
+use smol_str::SmolStr;
+use std::collections::BTreeSet;
+
+// ---------------------------------------------------------------------------
+// TestTok — minimal token type for SupersessionSet law tests
+//
+// N dominates A and B (mimicking NOFORN ⊐ REL TO / RELIDO); C is
+// independent. The table is a strict subset of the CAPCO semantics so the
+// tests exercise the generic SupersessionSet primitive rather than the
+// CAPCO-specific overlay logic (which is tested indirectly via DissemSet).
+// ---------------------------------------------------------------------------
+
+/// Minimal four-token enum for `SupersessionSet` property tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum TestTok {
+    A,
+    B,
+    C,
+    N,
+}
+
+/// `N` dominates `A` and `B`; `C` is independent.
+static TEST_SUPERSESSION: &[(TestTok, TestTok)] =
+    &[(TestTok::N, TestTok::A), (TestTok::N, TestTok::B)];
 
 // ---------------------------------------------------------------------------
 // SciSet strategy
@@ -43,12 +89,12 @@ fn arb_sci_compartment() -> impl Strategy<Value = SciCompartment> {
         proptest::collection::vec(arb_uppercase_id(1, 4), 0..=3),
     )
         .prop_map(|(id, subs)| {
-            let sub_boxes: Box<[Box<str>]> = subs
+            let sub_boxes: Box<[SmolStr]> = subs
                 .into_iter()
-                .map(|s| s.into_boxed_str())
+                .map(SmolStr::from)
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SciCompartment::new(id.into_boxed_str(), sub_boxes)
+            SciCompartment::new(id, sub_boxes)
         })
 }
 
@@ -85,12 +131,12 @@ fn arb_sar_compartment() -> impl Strategy<Value = SarCompartment> {
         proptest::collection::vec(arb_uppercase_id(1, 4), 0..=2),
     )
         .prop_map(|(id, subs)| {
-            let sub_boxes: Box<[Box<str>]> = subs
+            let sub_boxes: Box<[SmolStr]> = subs
                 .into_iter()
-                .map(|s| s.into_boxed_str())
+                .map(SmolStr::from)
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SarCompartment::new(id.into_boxed_str(), sub_boxes)
+            SarCompartment::new(id, sub_boxes)
         })
 }
 
@@ -99,7 +145,7 @@ fn arb_sar_program() -> impl Strategy<Value = SarProgram> {
         arb_sar_program_id(),
         proptest::collection::vec(arb_sar_compartment(), 0..=2),
     )
-        .prop_map(|(id, comps)| SarProgram::new(id.into_boxed_str(), comps.into_boxed_slice()))
+        .prop_map(|(id, comps)| SarProgram::new(id, comps.into_boxed_slice()))
 }
 
 fn arb_sar_marking() -> impl Strategy<Value = SarMarking> {
@@ -131,16 +177,21 @@ fn arb_country_code() -> impl Strategy<Value = CountryCode> {
 fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {
     prop_oneof![
         Just(FgiSet::None),
-        Just(FgiSet::bottom()),
+        Just(FgiSet::empty()),
         proptest::collection::vec(arb_country_code(), 0..=4).prop_map(|countries| {
             // Deduplicate — FgiMarker doesn't require uniqueness but the lattice
             // operates on sets; duplicate codes don't change the semantic.
             let mut deduped = countries;
             deduped.sort_by_key(|c| c.as_str().to_owned());
             deduped.dedup_by_key(|c| c.as_str().to_owned());
-            FgiSet::from_marker(Some(&FgiMarker {
-                countries: deduped.into_boxed_slice(),
-            }))
+            // The 0-length sample is the lawful source-concealed FGI banner
+            // form (CAPCO §H.7 p122); non-empty samples are source-
+            // acknowledged. These are distinct enum variants, not a
+            // shared shape, so the lattice strategy reflects that.
+            match FgiMarker::acknowledged(deduped) {
+                Some(m) => FgiSet::from_marker(Some(&m)),
+                None => FgiSet::from_marker(Some(&FgiMarker::SourceConcealed)),
+            }
         }),
         Just(FgiSet::Present {
             concealed: true,
@@ -283,7 +334,10 @@ proptest! {
 
     #[test]
     fn fgi_bottom_is_join_identity(a in arb_fgi_set()) {
-        let bot = FgiSet::bottom();
+        // FgiSet does not implement `BoundedLattice` (open-vocab
+        // CountryCode axis). Use the `empty()` constructor for the
+        // lattice bottom.
+        let bot = FgiSet::empty();
         prop_assert_eq!(a.join(&bot), a.clone());
         prop_assert_eq!(bot.join(&a), a);
     }
@@ -300,27 +354,45 @@ proptest! {
 
     #[test]
     fn fgi_bottom_absorbs_meet(a in arb_fgi_set()) {
-        prop_assert_eq!(a.meet(&FgiSet::bottom()), FgiSet::bottom());
+        // `FgiSet` does not implement `BoundedLattice`; use `empty()`.
+        prop_assert_eq!(a.meet(&FgiSet::empty()), FgiSet::empty());
     }
 
-    #[test]
-    fn fgi_top_propagates_join(a in arb_fgi_set()) {
-        let top = FgiSet::top();
-        prop_assert_eq!(a.join(&top), top);
-    }
+    // There is no `fgi_top_propagates_join` test.
+    // `SourceConcealed` IS a syntactic supersession-top for the join
+    // operation, but `FgiSet` no longer implements `BoundedLattice` per
+    // the open-vocab `CountryCode` precedent — see the doc comment on
+    // `FgiSet` in `crates/capco/src/lattice/fgi.rs`. The supersession
+    // semantic is still exercised by `fgi_concealment_monotone` below.
 
-    // If the join of two sets has concealed=true, meet must not un-conceal.
+    // If join of two sets is concealed, meet of those same two sets must NOT
+    // produce Present{concealed:false}. With P-9-1's fix, meet(concealed, x)
+    // returns x (the acknowledged side), so if a is concealed and b is
+    // acknowledged, meet(a,b) = b (acknowledged) — that is correct because we
+    // are meeting the inputs (a,b), not the join result. The concealment-
+    // monotone property we check here is: if join(a,b) is concealed, then
+    // neither a nor b can produce a false-un-conceal via meet.
     #[test]
     fn fgi_concealment_monotone(a in arb_fgi_set(), b in arb_fgi_set()) {
         let joined = a.join(&b);
         let is_concealed = matches!(&joined, FgiSet::Present { concealed: true, .. });
         if is_concealed {
-            let met = a.meet(&b);
-            // meet of a concealed-join result must not be Present{concealed:false}
-            prop_assert!(
-                !matches!(met, FgiSet::Present { concealed: false, .. }),
-                "meet un-concealed after concealed join: a={a:?}, b={b:?}",
-            );
+            // At least one of a or b carries the concealed flag. The meet of
+            // the two inputs must not produce Present{concealed:false} when
+            // BOTH inputs are concealed (top ⊓ top = top). When exactly one
+            // is concealed (a = top), meet(a,b) = b — which is acknowledged,
+            // not false-un-concealing. So the property we assert: meet of two
+            // inputs whose join is concealed should not claim concealed=false
+            // when both inputs themselves were concealed.
+            let a_concealed = matches!(&a, FgiSet::Present { concealed: true, .. });
+            let b_concealed = matches!(&b, FgiSet::Present { concealed: true, .. });
+            if a_concealed && b_concealed {
+                let met = a.meet(&b);
+                prop_assert!(
+                    matches!(met, FgiSet::Present { concealed: true, .. }),
+                    "meet of two concealed FgiSets must remain concealed: a={a:?}, b={b:?}, met={met:?}",
+                );
+            }
         }
     }
 
@@ -329,19 +401,551 @@ proptest! {
         prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
     }
 
-    // Join-over-meet absorption: a ⊔ (a ⊓ b) = a (holds unconditionally).
+    // P-9-1 (9th-pass): BOTH absorption laws now hold for `FgiSet`.
     //
-    // Note: the symmetric meet-over-join direction (`a ⊓ (a ⊔ b) = a`) does NOT
-    // hold when `b` carries CAPCO's source-concealment flag, because join with a
-    // concealed element produces a concealed result, and the subsequent meet
-    // intersects country sets with the empty set, collapsing to `None`. This is
-    // an intentional deviation from standard lattice absorption, documented in
-    // the `FgiSet` impl and driven by CAPCO §3.3a concealment-supersession
-    // policy. The `fgi_concealment_monotone` test above verifies the policy
-    // holds; do not add `meet_over_join_absorption` or `top_is_meet_identity`
-    // tests for `FgiSet` — they will fail by design.
+    // Join-over-meet: a ⊔ (a ⊓ b) = a (holds unconditionally, same as before).
+    //
+    // Meet-over-join: a ⊓ (a ⊔ b) = a — this also holds after P-9-1 fixed
+    // `FgiSet::meet` to treat the source-concealed form as lattice TOP. The
+    // prior comment said meet-over-join was "an intentional deviation"; that was
+    // written before P-1 (8th-pass) made concealed dominate on join. Once
+    // concealed is join-top, the dual absorption law requires meet(x, top) = x,
+    // which P-9-1 implements. Both absorption laws now hold over the full state
+    // space. Authority: §H.7 p128. Verified 2026-05-16.
     #[test]
     fn fgi_join_over_meet_absorption(a in arb_fgi_set(), b in arb_fgi_set()) {
         prop_assert_eq!(a.join(&a.meet(&b)), a);
+    }
+
+    // Meet-over-join absorption: a ⊓ (a ⊔ b) = a (holds after P-9-1 fix).
+    #[test]
+    fn fgi_meet_over_join_absorption(a in arb_fgi_set(), b in arb_fgi_set()) {
+        prop_assert_eq!(a.meet(&a.join(&b)), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RelToBlock laws
+//
+// A `CapcoMarking` `JoinSemilattice` impl would violate structural-`Eq`
+// idempotence whenever `RelToBlock`'s tetragraph expansion fired.
+// `RelToBlock` IS a sound lattice on its native post-expansion domain
+// (BTreeSet over trigraphs); the unsoundness was a cross-axis fold
+// (`CapcoMarking`) claiming the law on a representation-finer
+// structural `Eq`. These proptests pin the per-axis claim.
+//
+// Strategy: build `Lattice { countries }` over a small CountryCode
+// pool, plus `Bottom`, `Empty`, and `NofornSuperseded` as absorbing /
+// identity states. Tetragraph atoms are NOT generated as inputs
+// because `RelToBlock` lives on the expanded domain; tetragraph
+// expansion happens at `from_attrs_iter` time before the lattice
+// state is built. The strategy reflects what the lattice actually
+// sees.
+// ---------------------------------------------------------------------------
+
+fn arb_rel_to_block() -> impl Strategy<Value = RelToBlock> {
+    prop_oneof![
+        Just(RelToBlock::Bottom),
+        Just(RelToBlock::Empty),
+        Just(RelToBlock::NofornSuperseded),
+        proptest::collection::vec(arb_country_code(), 1..=4).prop_map(|countries| {
+            let set: std::collections::BTreeSet<CountryCode> = countries.into_iter().collect();
+            RelToBlock::Lattice { countries: set }
+        }),
+    ]
+}
+
+proptest! {
+    // Join laws.
+    #[test]
+    fn rel_to_join_idempotent(a in arb_rel_to_block()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn rel_to_join_commutative(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn rel_to_join_associative(
+        a in arb_rel_to_block(),
+        b in arb_rel_to_block(),
+        c in arb_rel_to_block(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn rel_to_join_bottom_identity(a in arb_rel_to_block()) {
+        let bottom = RelToBlock::Bottom;
+        prop_assert_eq!(a.join(&bottom), a.clone());
+        prop_assert_eq!(bottom.join(&a), a);
+    }
+
+    // Meet laws.
+    #[test]
+    fn rel_to_meet_idempotent(a in arb_rel_to_block()) {
+        prop_assert_eq!(a.meet(&a), a);
+    }
+
+    #[test]
+    fn rel_to_meet_commutative(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.meet(&b), b.meet(&a));
+    }
+
+    #[test]
+    fn rel_to_meet_associative(
+        a in arb_rel_to_block(),
+        b in arb_rel_to_block(),
+        c in arb_rel_to_block(),
+    ) {
+        prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
+    }
+
+    // Absorption laws (both directions hold on the meet-bottom +
+    // join-top setup: `Bottom` is meet-absorbing and join-identity;
+    // `NofornSuperseded` is join-top per the doc comment + 11th-pass
+    // fix on `RelToBlock` in `crates/capco/src/lattice/rel_to.rs`).
+    #[test]
+    fn rel_to_join_over_meet_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.join(&a.meet(&b)), a);
+    }
+
+    #[test]
+    fn rel_to_meet_over_join_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.meet(&a.join(&b)), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DisplayOnlyBlock laws
+//
+// `DisplayOnlyBlock` is a `JoinSemilattice` implementor. The inline
+// `#[cfg(test)]` suite in
+// `crates/capco/src/lattice/display_only.rs` covers
+// associativity, identity-with-bottom, empty-absorbs, and
+// NofornSuperseded-absorbs at fixed samples; the proptest suite below
+// pins commutativity, idempotence, and associativity over arbitrary
+// generated inputs.
+//
+// The strategy mirrors `RelToBlock`'s 4-variant shape (Bottom / Empty /
+// NofornSuperseded / Lattice{countries}) so the same absorbing-element
+// structure is exercised. Tetragraph expansion is NOT generated as a
+// strategy input — `DisplayOnlyBlock` lives on the post-expansion
+// trigraph domain; expansion happens at `from_attrs_iter` time before
+// the lattice state is built (same precedent as `RelToBlock`).
+// ---------------------------------------------------------------------------
+
+fn arb_display_only_block() -> impl Strategy<Value = DisplayOnlyBlock> {
+    prop_oneof![
+        Just(DisplayOnlyBlock::Bottom),
+        Just(DisplayOnlyBlock::Empty),
+        Just(DisplayOnlyBlock::NofornSuperseded),
+        proptest::collection::vec(arb_country_code(), 1..=4).prop_map(|countries| {
+            let set: std::collections::BTreeSet<CountryCode> = countries.into_iter().collect();
+            DisplayOnlyBlock::Lattice { countries: set }
+        }),
+    ]
+}
+
+proptest! {
+    // Join laws — commutativity, idempotence, associativity, identity-
+    // with-bottom. A non-commutative `join` body would surface
+    // immediately under `display_only_block_join_commutative`.
+    #[test]
+    fn display_only_block_join_idempotent(a in arb_display_only_block()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn display_only_block_join_commutative(
+        a in arb_display_only_block(),
+        b in arb_display_only_block(),
+    ) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn display_only_block_join_associative(
+        a in arb_display_only_block(),
+        b in arb_display_only_block(),
+        c in arb_display_only_block(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn display_only_block_join_bottom_identity(a in arb_display_only_block()) {
+        let bottom = DisplayOnlyBlock::Bottom;
+        prop_assert_eq!(a.join(&bottom), a.clone());
+        prop_assert_eq!(bottom.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FgiSet::from_attrs_iter — proptest coverage of the constructor
+//
+// The `fgi_join_*` proptests use `FgiSet::from_marker` and only
+// exercise the `FgiSet` algebra in isolation. `FgiSet::from_attrs_iter`
+// is the production page-rollup constructor.
+// The proptests below pin (a) "bulk construction agrees with iterated
+// per-portion construction" and (b) "concealment dominates" over
+// arbitrary multi-portion inputs — extending the `FgiSet` coverage to
+// the actual production entry point.
+// ---------------------------------------------------------------------------
+
+fn arb_portion_with_fgi_marker() -> impl Strategy<Value = CanonicalAttrs> {
+    // Two-branch strategy: portions carrying explicit `FgiMarker`
+    // values, and bare portions with no FGI axis at all. The
+    // `from_attrs_iter` semantic differs across these branches
+    // (acknowledged-vs-concealed-dominates, contribution-vs-no-op).
+    prop_oneof![
+        Just({
+            let mut p = CanonicalAttrs::default();
+            p.fgi_marker = Some(FgiMarker::SourceConcealed);
+            p
+        }),
+        proptest::collection::vec(arb_country_code(), 1..=3).prop_map(|countries| {
+            let mut p = CanonicalAttrs::default();
+            // `acknowledged()` returns `Option<FgiMarker>` — only
+            // populated when the country list is non-empty. The
+            // 1..=3 size bound above guarantees Some.
+            p.fgi_marker = FgiMarker::acknowledged(countries);
+            p
+        }),
+        // Bare portion with classification-derived contribution: a
+        // JOINT classification with at least one non-US producer.
+        // Exercises the `Classification::Joint` branch of
+        // `from_attrs_iter` (which strips USA and contributes the
+        // remaining producers).
+        proptest::collection::vec(arb_country_code(), 1..=3).prop_map(|countries| {
+            let mut p = CanonicalAttrs::default();
+            p.classification = Some(MarkingClassification::Joint(
+                marque_ism::JointClassification {
+                    level: marque_ism::Classification::Secret,
+                    countries: countries.into_boxed_slice(),
+                },
+            ));
+            p
+        }),
+        // Portion with no FGI axis at all — contributes nothing.
+        Just(CanonicalAttrs::default()),
+    ]
+}
+
+proptest! {
+    // Concealed-dominates invariant — §H.7 p128. If any portion in
+    // the input carries `FgiMarker::SourceConcealed`, the resulting
+    // `FgiSet` must be `Present { concealed: true, .. }` regardless
+    // of the other portions.
+    #[test]
+    fn fgi_set_from_attrs_iter_concealed_dominates(
+        portions in proptest::collection::vec(arb_portion_with_fgi_marker(), 1..=4),
+    ) {
+        let any_concealed = portions.iter().any(|p| {
+            matches!(p.fgi_marker, Some(FgiMarker::SourceConcealed))
+        });
+        let result = FgiSet::from_attrs_iter(&portions);
+        if any_concealed {
+            prop_assert!(
+                matches!(
+                    result,
+                    FgiSet::Present { concealed: true, .. }
+                ),
+                "concealed portion in input must yield concealed result: \
+                 result={result:?}",
+            );
+        }
+    }
+
+    // Bulk construction agrees with iterated join. The
+    // `from_attrs_iter` constructor walks portions in document order
+    // and unions per-portion contributions; assembling per-portion
+    // singletons via repeated `FgiSet::join` should produce the same
+    // `FgiSet` value. This pins the "constructor is a fold over
+    // join" property at the production entry point.
+    #[test]
+    fn fgi_set_from_attrs_iter_agrees_with_iterated_join(
+        portions in proptest::collection::vec(arb_portion_with_fgi_marker(), 1..=4),
+    ) {
+        let bulk = FgiSet::from_attrs_iter(&portions);
+        let stepped = portions
+            .iter()
+            .map(|p| FgiSet::from_attrs_iter(std::slice::from_ref(p)))
+            .fold(FgiSet::empty(), |acc, x| acc.join(&x));
+        prop_assert_eq!(bulk, stepped);
+    }
+}
+// ---------------------------------------------------------------------------
+// DissemSet strategies and join-law tests
+//
+// `DissemSet` carries `relido_observed_unanimous: bool` — a join-side
+// aggregation flag that tracks whether every contributing portion carried
+// RELIDO. The audit question: does `join(a, a) == a` hold under structural
+// `Eq` (which compares both `set` and `relido_observed_unanimous`)?
+//
+// Strategy: build `CanonicalAttrs` slices with various subsets of the
+// overlap-sensitive DissemControl tokens (Nf, Rel, Relido, Oc, OcUsgov,
+// Fouo, Displayonly, Eyes) and call `DissemSet::from_attrs_iter`. This
+// exercises:
+//   - Vacuous unanimity path (`empty()`, zero portions, no-RELIDO portions).
+//   - Non-unanimous path (some portions have RELIDO, some don't).
+//   - NOFORN-dominates overlay (strips Rel/Relido/Displayonly/Eyes).
+//   - OC-USGOV supersession overlay (drops OcUsgov when Oc is present).
+//   - RELIDO unanimity overlay (drops Relido when flag=false).
+//
+// Verdict: all three join semilattice laws hold. The `relido_observed_unanimous`
+// flag is computed as `self.flag && other.flag`, and the overlay is
+// idempotent on already-canonical sets — so `join(a, a) == a` is guaranteed
+// by construction. The proptests confirm this empirically across the reachable
+// state space.
+// ---------------------------------------------------------------------------
+
+/// DissemControl tokens relevant to the three supersession overlays:
+/// Nf (dominator), Rel/Relido/Displayonly/Eyes (dominated by Nf),
+/// Oc/OcUsgov (OC-USGOV superseded by OC), and Fouo (independent).
+fn arb_dissem_control() -> impl Strategy<Value = DissemControl> {
+    prop_oneof![
+        Just(DissemControl::Nf),
+        Just(DissemControl::Rel),
+        Just(DissemControl::Relido),
+        Just(DissemControl::Oc),
+        Just(DissemControl::OcUsgov),
+        Just(DissemControl::Fouo),
+        Just(DissemControl::Displayonly),
+        Just(DissemControl::Eyes),
+    ]
+}
+
+/// A single `CanonicalAttrs` portion with only `dissem_us` populated.
+fn arb_dissem_portion() -> impl Strategy<Value = CanonicalAttrs> {
+    // Use proptest::collection::vec — duplicates are fine because
+    // DissemSet::from_attrs_iter unions into a BTreeSet internally.
+    proptest::collection::vec(arb_dissem_control(), 0..=4).prop_map(|controls| {
+        let mut a = CanonicalAttrs::default();
+        a.dissem_us = controls.into_boxed_slice();
+        a
+    })
+}
+
+fn arb_dissem_set() -> impl Strategy<Value = DissemSet> {
+    // 0 portions → empty() (vacuous unanimity). 1–3 portions exercise
+    // the flag-propagation and overlay paths.
+    proptest::collection::vec(arb_dissem_portion(), 0..=3)
+        .prop_map(|portions| DissemSet::from_attrs_iter(&portions))
+}
+
+proptest! {
+    // --- DissemSet join semilattice laws ---
+
+    /// `join(a, a) == a` under structural `Eq` (compares both `set` and
+    /// `relido_observed_unanimous`). Confirms the overlay is idempotent on
+    /// already-canonical inputs and the flag is preserved by `x && x = x`.
+    #[test]
+    fn dissem_join_idempotent(a in arb_dissem_set()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn dissem_join_commutative(a in arb_dissem_set(), b in arb_dissem_set()) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn dissem_join_associative(
+        a in arb_dissem_set(),
+        b in arb_dissem_set(),
+        c in arb_dissem_set(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn dissem_join_empty_identity(a in arb_dissem_set()) {
+        let empty = DissemSet::empty();
+        prop_assert_eq!(a.join(&empty), a.clone());
+        prop_assert_eq!(empty.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JointSet strategies and join-law tests
+//
+// `JointSet` carries two variants with observational state:
+//   - `DisunityCollapse { highest_level, union_non_us_producers }` — the
+//     union of non-US producers across JOINT portions with differing lists.
+//   - `Mixed` — absorbing state once JOINT and non-JOINT portions are mixed.
+//
+// Idempotence concern: does `join(dc, dc) == dc`? Yes — BTreeSet union is
+// idempotent and `Classification::max` is idempotent. The proptests confirm
+// this. Associativity: the `DisunityCollapse` + `UnanimousProducers`
+// interaction propagates `non_us` via BTreeSet union (both associative and
+// commutative), so the three-operand test is exhaustive.
+//
+// Verdict: all three join semilattice laws hold for JointSet.
+// ---------------------------------------------------------------------------
+
+fn arb_classification() -> impl Strategy<Value = Classification> {
+    prop_oneof![
+        Just(Classification::Unclassified),
+        Just(Classification::Confidential),
+        Just(Classification::Secret),
+        Just(Classification::TopSecret),
+    ]
+}
+
+/// Generates a `BTreeSet<CountryCode>` that always contains USA, plus 0–2
+/// additional codes. Models the well-formed `UnanimousProducers.producers`
+/// field (§H.3 p56: USA always in the JOINT producer list).
+fn arb_joint_producers() -> impl Strategy<Value = BTreeSet<CountryCode>> {
+    let usa = CountryCode::try_new(b"USA").expect("static");
+    // Non-USA codes: GBR, CAN, AUS, NZL (skip USA at index 0).
+    proptest::collection::vec(
+        (1..5usize).prop_map(|i| {
+            CountryCode::try_new(&VALID_COUNTRY_CODES[i]).expect("static country codes are valid")
+        }),
+        0..=2,
+    )
+    .prop_map(move |others| {
+        let mut set = BTreeSet::new();
+        set.insert(usa);
+        set.extend(others);
+        set
+    })
+}
+
+/// Generates a `BTreeSet<CountryCode>` of non-US producers (for
+/// `DisunityCollapse.union_non_us_producers`). May be empty.
+fn arb_non_us_producers() -> impl Strategy<Value = BTreeSet<CountryCode>> {
+    // Non-USA codes only: GBR, CAN, AUS, NZL, DEU, FRA, JPN.
+    proptest::collection::vec(
+        (1..VALID_COUNTRY_CODES.len()).prop_map(|i| {
+            CountryCode::try_new(&VALID_COUNTRY_CODES[i]).expect("static country codes are valid")
+        }),
+        0..=3,
+    )
+    .prop_map(|codes| codes.into_iter().collect::<BTreeSet<_>>())
+}
+
+fn arb_joint_set() -> impl Strategy<Value = JointSet> {
+    prop_oneof![
+        Just(JointSet::Bottom),
+        Just(JointSet::Mixed),
+        (arb_classification(), arb_joint_producers())
+            .prop_map(|(level, producers)| { JointSet::UnanimousProducers { level, producers } }),
+        (arb_classification(), arb_non_us_producers()).prop_map(
+            |(highest_level, union_non_us_producers)| JointSet::DisunityCollapse {
+                highest_level,
+                union_non_us_producers,
+            }
+        ),
+    ]
+}
+
+proptest! {
+    // --- JointSet join semilattice laws ---
+
+    /// `join(a, a) == a` for every reachable JointSet state:
+    /// - `Bottom ⊔ Bottom = Bottom` ✓
+    /// - `Mixed ⊔ Mixed = Mixed` ✓
+    /// - `UP(l, p) ⊔ UP(l, p) = UP(l, p)` (same producers → same result) ✓
+    /// - `DC(l, n) ⊔ DC(l, n) = DC(l, n)` (set union idempotent; max idempotent) ✓
+    #[test]
+    fn joint_join_idempotent(a in arb_joint_set()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn joint_join_commutative(a in arb_joint_set(), b in arb_joint_set()) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn joint_join_associative(
+        a in arb_joint_set(),
+        b in arb_joint_set(),
+        c in arb_joint_set(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn joint_join_bottom_identity(a in arb_joint_set()) {
+        let bottom = JointSet::Bottom;
+        prop_assert_eq!(a.join(&bottom), a.clone());
+        prop_assert_eq!(bottom.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SupersessionSet<TestTok> strategies and join-law tests
+//
+// `SupersessionSet` implements only `JoinSemilattice` (not `MeetSemilattice`).
+// The join applies the supersession overlay post-union: tokens that are
+// dominated by a superseding peer in the union are dropped. The audit
+// question: does `join(a, a) == a` hold under structural `Eq`?
+//
+// Analysis: `from_iter_sorted` produces a canonical value (overlay already
+// applied). On `join(a, a)`:
+//   1. `FlatSet(a.set).join(FlatSet(a.set)) = FlatSet(a.set)` (union idempotent).
+//   2. `apply_supersession(a.set, table) = a.set` (already canonical).
+//   3. Result structurally equals `a`. ✓
+//
+// Associativity: `apply_supersession(apply_supersession(S ∪ T) ∪ U) =
+// apply_supersession(S ∪ T ∪ U)` because `apply_supersession` is idempotent
+// on its output (dominated tokens absent ↔ no change on re-application).
+// The proptests confirm empirically across all 2^4 = 16 inputs.
+//
+// Verdict: all three join semilattice laws hold for SupersessionSet<TestTok>.
+// ---------------------------------------------------------------------------
+
+fn arb_test_tok() -> impl Strategy<Value = TestTok> {
+    prop_oneof![
+        Just(TestTok::A),
+        Just(TestTok::B),
+        Just(TestTok::C),
+        Just(TestTok::N),
+    ]
+}
+
+fn arb_supersession_set() -> impl Strategy<Value = SupersessionSet<TestTok>> {
+    proptest::collection::vec(arb_test_tok(), 0..=4)
+        .prop_map(|tokens| SupersessionSet::from_iter_sorted(tokens, TEST_SUPERSESSION))
+}
+
+proptest! {
+    // --- SupersessionSet join semilattice laws ---
+
+    /// `join(a, a) == a` — the post-join overlay re-application on an
+    /// already-canonical input is a no-op (dominated tokens were already
+    /// removed at `from_iter_sorted` time).
+    #[test]
+    fn supersession_join_idempotent(a in arb_supersession_set()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn supersession_join_commutative(
+        a in arb_supersession_set(),
+        b in arb_supersession_set(),
+    ) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn supersession_join_associative(
+        a in arb_supersession_set(),
+        b in arb_supersession_set(),
+        c in arb_supersession_set(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn supersession_join_empty_identity(a in arb_supersession_set()) {
+        let empty = SupersessionSet::new(TEST_SUPERSESSION);
+        prop_assert_eq!(a.join(&empty), a.clone());
+        prop_assert_eq!(empty.join(&a), a);
     }
 }

@@ -2,15 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Confidence — Phase D audit-provenance payload.
+//! Confidence — audit-provenance payload.
 //!
-//! Every [`FixProposal`](crate::FixProposal) carries a `Confidence`
-//! record describing how the engine arrived at the proposal. The
-//! record stores two primary scalar confidence axes —
-//! `recognition` and `rule` — plus optional auxiliary fields
-//! (`region` and `runner_up_ratio`) and a list of named feature
-//! contributions. Together they reconstruct the decoder's scoring
-//! path so an auditor can verify *why* a given fix was promoted.
+//! Every fix proposal carries a `Confidence` record describing how the
+//! engine arrived at the proposal. The record stores two primary scalar
+//! confidence axes — `recognition` and `rule` — plus optional auxiliary
+//! fields (`region` and `runner_up_ratio`) and a list of named feature
+//! contributions. Together they reconstruct the decoder's scoring path
+//! so an auditor can verify *why* a given fix was promoted.
 //!
 //! The engine's current threshold-facing combined score is
 //! `recognition * rule` as exposed by [`Confidence::combined`].
@@ -25,15 +24,36 @@
 //! All scores are `f32`. The decoder scores in `f64` internally
 //! (log-priors and posteriors accumulate across many features), but
 //! the emitted `Confidence` downcasts once at the boundary so the
-//! audit record stays compact and byte-stable. This matches the
-//! foundational-plan invariant line 739-757.
+//! audit record stays compact and byte-stable.
 //!
 //! ## `features` is closed
 //!
-//! [`FeatureId`] is a non-`#[non_exhaustive]` closed enum. A new
-//! feature means a new variant and a coordinated bump of the audit
-//! schema version (`MARQUE_AUDIT_SCHEMA`) — silent additions would
-//! break the auditability contract on already-emitted records.
+//! [`FeatureId`] is a closed enum. The on-the-wire contract is the
+//! `as_str()` table plus the `feature_id_as_str_matches_audit_contract`
+//! pinned-strings test; both update in lock-step when a variant is
+//! added. Pre-1.0 the project carries no downstream audit-record
+//! consumers, so the `MARQUE_AUDIT_SCHEMA` pin (in
+//! `crates/engine/build.rs`) is performative — extending `FeatureId`
+//! does not currently require a schema bump. Re-tighten the
+//! schema-bump contract to "any new variant requires a coordinated
+//! schema bump" before GA.
+//!
+//! ## `features` storage
+//!
+//! `Confidence::features` is a `SmallVec<[FeatureContribution; 4]>`.
+//! Strict-path fixes record zero features and never allocate; decoder-
+//! path fixes record 1–4 features per the empirical distribution of
+//! the corpus, which fits inline. The inline-4 bound matches the
+//! `MessageArgs::feature_ids` / `FixIntent::feature_ids` pattern —
+//! same cardinality, same audit-record proximity. The
+//! `SmallVec` storage is an implementation detail; the field iterates
+//! and indexes the same as a `Vec`, so consumers that only read the
+//! contributions are unaffected. Struct-literal construction must use
+//! `SmallVec::new()` or the [`smallvec!`] macro (the rules crate root
+//! re-exports both so external callers do not need their own
+//! `smallvec` dep).
+
+use smallvec::SmallVec;
 
 /// Multi-axis confidence attached to every [`FixProposal`](crate::FixProposal).
 ///
@@ -55,8 +75,7 @@
 ///   where posterior mass came from.
 ///
 /// Construction happens via [`Confidence::strict`] (for rules that
-/// bypass the decoder) or the decoder's scoring path (Phase 4 / task
-/// T061).
+/// bypass the decoder) or the decoder's scoring path.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Confidence {
     /// Recognizer posterior in `[0.0, 1.0]`.
@@ -69,7 +88,11 @@ pub struct Confidence {
     /// (`None` for strict-path fixes; set by decoder-sourced fixes).
     pub runner_up_ratio: Option<f32>,
     /// Per-feature contributions to `recognition`.
-    pub features: Vec<FeatureContribution>,
+    ///
+    /// Stored as `SmallVec<[FeatureContribution; 4]>` so the inline-4
+    /// case is heap-free. See the module-level docs for the inline-N
+    /// rationale.
+    pub features: SmallVec<[FeatureContribution; 4]>,
 }
 
 impl Confidence {
@@ -93,13 +116,13 @@ impl Confidence {
             rule: rule_confidence,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         }
     }
 
     /// Product of `recognition` and `rule`. The engine's
     /// confidence-threshold gate compares this combined score against
-    /// the configured threshold (FR-016).
+    /// the configured threshold.
     #[inline]
     pub fn combined(&self) -> f32 {
         self.recognition * self.rule
@@ -174,9 +197,12 @@ pub struct FeatureContribution {
 
 /// Closed enumeration of features the decoder can record.
 ///
-/// New variants MUST bump the audit schema version (see
-/// `MARQUE_AUDIT_SCHEMA` in `crates/engine/build.rs`). Treat this
-/// enum as part of the on-the-wire audit contract.
+/// Adding any variant requires a coordinated bump of
+/// `MARQUE_AUDIT_SCHEMA` (in `crates/engine/build.rs`) once Marque has
+/// audit-record consumers. Pre-1.0, the audit-schema pin is performative
+/// — there are no downstream readers yet — so the contract is the
+/// `as_str()` mapping plus the `feature_id_as_str_matches_audit_contract`
+/// pinned-strings test, both updated in lock-step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FeatureId {
     /// Observed form is edit-distance 1 from a canonical token.
@@ -192,7 +218,7 @@ pub enum FeatureId {
     /// The candidate's base rate in the target corpus dominates the
     /// posterior (common-marking prior).
     BaseRateCommonMarking,
-    /// Strict-context classification floor (FR-011) applied — e.g.,
+    /// Strict-context classification floor applied — e.g.,
     /// banner at TOP SECRET forces a strict posterior for
     /// classification tokens at ≥ that level on the same page.
     StrictContextClassification,
@@ -200,6 +226,29 @@ pub enum FeatureId {
     /// the posterior. Recorded so an auditor can identify fixes
     /// produced under organizational overrides vs. stock priors.
     CorpusOverrideInEffect,
+    /// Portion candidate appears more than a short prefix into a line
+    /// whose preceding bytes do not look like a bullet or section
+    /// anchor. Real portion markings nearly always appear at the very
+    /// start of a line, after a bullet (`* `, `- `, `• `), or after
+    /// an enumeration anchor (`1.`, `a)`, `1B.a.3.`); a portion-shaped
+    /// `(x)` deep inside a line of running text is overwhelmingly a
+    /// prose glyph (parenthetical, plural, copyright). Negative delta.
+    LinePositionPenalty,
+    /// Portion candidate's same-line preceding bytes look like a
+    /// bullet or section anchor (`1B.a.3.`, `(a)`, `* `, `- `, ...).
+    /// Cancels the line-position penalty so legitimate enumeration
+    /// patterns common in IC/legal documents are not suppressed.
+    /// Positive delta.
+    BulletAnchorBonus,
+    /// Candidate contains lowercase letters AND the surrounding
+    /// document context is lowercase-dominant. Banner-form markings
+    /// are explicitly required to be uppercase (CAPCO-2016 §D.1
+    /// p27: "The banner line must be in uppercase letters"); portion
+    /// form is silent in the manual but universally uppercase in
+    /// practice. A lowercase candidate inside lowercase prose is
+    /// overwhelmingly prose, not a mangled marking the decoder
+    /// should recover. Negative delta.
+    LowercaseSurroundingContext,
 }
 
 impl FeatureId {
@@ -226,6 +275,9 @@ impl FeatureId {
             FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
             FeatureId::StrictContextClassification => "StrictContextClassification",
             FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
+            FeatureId::LinePositionPenalty => "LinePositionPenalty",
+            FeatureId::BulletAnchorBonus => "BulletAnchorBonus",
+            FeatureId::LowercaseSurroundingContext => "LowercaseSurroundingContext",
         }
     }
 }
@@ -255,7 +307,7 @@ mod tests {
             rule: 0.5,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         assert!((c2.combined() - 0.4).abs() < 1e-6);
     }
@@ -291,6 +343,12 @@ mod tests {
                 "StrictContextClassification",
             ),
             (FeatureId::CorpusOverrideInEffect, "CorpusOverrideInEffect"),
+            (FeatureId::LinePositionPenalty, "LinePositionPenalty"),
+            (FeatureId::BulletAnchorBonus, "BulletAnchorBonus"),
+            (
+                FeatureId::LowercaseSurroundingContext,
+                "LowercaseSurroundingContext",
+            ),
         ];
         for (id, expected) in cases {
             assert_eq!(id.as_str(), *expected, "label drift for {id:?}");
@@ -316,7 +374,7 @@ mod tests {
                 rule: 0.8,
                 region: Some(0.5),
                 runner_up_ratio: Some(2.7),
-                features: vec![FeatureContribution {
+                features: smallvec::smallvec![FeatureContribution {
                     id: FeatureId::EditDistance1,
                     delta: -0.5,
                 }],
@@ -333,7 +391,7 @@ mod tests {
             rule: 0.5,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         let err = c.validate().unwrap_err();
         assert!(
@@ -349,7 +407,7 @@ mod tests {
             rule: -0.1,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         let err = c.validate().unwrap_err();
         assert!(err.contains("rule"), "got: {err}");
@@ -362,7 +420,7 @@ mod tests {
             rule: 0.5,
             region: Some(1.5),
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         let err = c.validate().unwrap_err();
         assert!(err.contains("region"), "got: {err}");
@@ -376,7 +434,7 @@ mod tests {
                 rule: 0.5,
                 region: None,
                 runner_up_ratio: Some(bad),
-                features: Vec::new(),
+                features: SmallVec::new(),
             };
             assert!(
                 c.validate().is_err(),
@@ -393,7 +451,7 @@ mod tests {
             rule: 0.5,
             region: None,
             runner_up_ratio: Some(0.01),
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         assert!(c.validate().is_ok());
     }
@@ -406,7 +464,7 @@ mod tests {
                 rule: 0.5,
                 region: None,
                 runner_up_ratio: None,
-                features: vec![FeatureContribution {
+                features: smallvec::smallvec![FeatureContribution {
                     id: FeatureId::EditDistance1,
                     delta: bad,
                 }],
@@ -427,7 +485,7 @@ mod tests {
             rule: 0.0,
             region: Some(0.0),
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         assert!(c.validate().is_ok());
     }

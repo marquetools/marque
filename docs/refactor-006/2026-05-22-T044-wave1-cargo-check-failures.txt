@@ -1,0 +1,204 @@
+T044 Wave 1 — cargo check failure inventory
+============================================
+
+Date: 2026-05-22
+Branch: feat/T044-rule-id-tuple-migration
+Wave 1 agent: F1 (foundation — type machinery)
+Hand-off target: Wave 2 agents A, B, C, D
+
+This file is the cargo-side output captured at the moment Wave 1
+landed its four commits:
+
+  e7ad6a77  feat(rules): reshape RuleId as 2-tuple (scheme, predicate_id)
+  71d28c37  feat(engine): bump MARQUE_AUDIT_SCHEMA to marque-2.0 (T044)
+  c444d0dd  feat(engine): migrate R001/R002 sentinels to engine scheme tuple
+  ff41f93b  feat(test-utils): ExpectedRuleId structured fixture type for T044
+
+The build IS broken — every downstream `RuleId::new("X")` call site
+now fails E0061 ("this function takes 2 arguments but 1 argument was
+supplied") because the type signature changed from
+`RuleId::new(&'static str)` to
+`RuleId::new(&'static str, &'static str)`. This is intentional. The
+broken-build state IS the Wave 2 work list.
+
+------------------------------------------------------------------
+§1 — `cargo check --workspace --all-targets` summary
+------------------------------------------------------------------
+
+Cargo stops walking the workspace at the first crate that fails to
+compile. After Wave 1, that's `marque-rules` (test binaries) and
+`marque-capco` (lib). Downstream crates (`marque-engine`,
+`marque-wasm`, `marque`, `marque-server`) don't even start checking
+because they depend on `marque-capco`.
+
+Crate failures (in cargo's walk order):
+
+  marque-rules  test message_args_closed_set       (4 errors)
+  marque-rules  test applied_text_correction_seal  (3 errors)
+  marque-rules  test engine_promotion_seal         (2 errors)
+  marque-capco  lib                                (37 errors)
+
+Total errors visible at the moment cargo stops: 46.
+
+The actual call-site count is larger (~106 per the inventory below).
+Cargo elides redundant paths once it's emitted them a few times for
+the same error kind, so the unique file:line list cargo prints is
+not the complete inventory. Use the pre-Wave-1 hand-curated inventory
+at `docs/refactor-006/2026-05-22-T044-callsite-inventory.md` as the
+authoritative work list — Wave 1 confirmed that inventory is correct
+by surfacing the same callsite shapes through the type system.
+
+------------------------------------------------------------------
+§2 — File:line locations cargo emitted before eliding
+------------------------------------------------------------------
+
+These are the locations cargo printed in its --> path lines (sorted,
+de-duplicated). The locations are accurate but the LIST is not
+exhaustive — cargo suppresses redundant emissions for the same error
+kind once it's printed a representative few.
+
+  crates/capco/src/rules.rs:509:9       (E002 rule definition)
+  crates/capco/src/rules.rs:851:9       (E005 rule definition)
+  crates/capco/src/rules.rs:939:9       (E006 rule definition)
+  crates/capco/src/rules_declarative.rs:431:9   (E065 declarative walker)
+  crates/capco/src/rules_declarative.rs:741:9   (E067 declarative walker)
+  crates/capco/src/scheme/sci_per_system.rs:93:52  (RULE_E059 const)
+  crates/rules/tests/applied_text_correction_seal.rs:39:9
+  crates/rules/tests/applied_text_correction_seal.rs:55:33
+  crates/rules/tests/applied_text_correction_seal.rs:72:9
+  crates/rules/tests/engine_promotion_seal.rs:159:9
+  crates/rules/tests/engine_promotion_seal.rs:171:29  (E0599: as_str removed)
+  crates/rules/tests/message_args_closed_set.rs:71:32
+  crates/rules/tests/message_args_closed_set.rs:72:32
+  crates/rules/tests/message_args_closed_set.rs:91:11
+  crates/rules/tests/message_args_closed_set.rs:91:32
+
+Engine-crate locations (engine.rs:1996, 2409, 2411, 2430, 2432, 2434,
+2437, 4341, 5651, 5731, ...) and the bulk of crates/capco/src/rules.rs
+sites (lines 1085, 1326, 1474, 1669, 2028, 2240, 2878, 2909, 3035,
+3140, 3239, 3363, 3470, 3898, 4205, 4348, 4533, 4625, 4667, 4736,
+5021, 5166, 5292, 5303, 5312, 5333, 5357, 6104, 6301, 6557, 6800) are
+NOT in this cargo-emitted snapshot but ARE in the hand-curated
+inventory at §2 of T044-callsite-inventory.md.
+
+------------------------------------------------------------------
+§3 — Wave 2 agent assignment (per architect plan §4)
+------------------------------------------------------------------
+
+Wave 2 Agent A — marque-capco:
+  - 34 sites in crates/capco/src/rules.rs
+  - 2 sites in crates/capco/src/rules_declarative.rs
+  - 3 sites in crates/capco/src/scheme/sci_per_system.rs (incl. RULE_E059 const)
+  - 27+5+7 catalog row renames in crates/capco/src/scheme/{class_floor,
+    constraints/sci_per_system_catalog, constraints/core_catalog}.rs
+  - 10 closure-rule name renames in crates/capco/src/scheme/{closure,
+    closure_table}.rs
+  - All `Rule::id()` impls (28 registered rules) — the trait method
+    returns `RuleId`, so every impl rebuilds the 2-tuple at the call
+    site.
+
+Wave 2 Agent B — marque-engine constraint bridge + test fixtures:
+  - crates/engine/src/engine.rs constraint-bridge at lines 2406-2438:
+    rewrite to no-op pass-through per OD-8 (the catalog row name IS
+    the predicate ID).
+  - crates/engine/src/engine.rs ~16 test-fixture `RuleId::new` sites
+    (E997 / E999 / R999 / S999 / RECORD / PARSED_CACHE_TEST etc.).
+  - crates/engine/src/output.rs ~5 sites (lines 305, 331, 339, 347, 355).
+  - crates/engine/tests/* RuleId::new test-fixture sites in audit.rs,
+    audit_g13_canary.rs (line 529 only — NDJSON literal strings handled
+    by Wave 1), audit_note_sealing_carve_out.rs, rule_panic_isolation.rs.
+  - The R001/R002 DECODER_RULE_ID/R002_RULE_ID sentinels are ALREADY
+    migrated by Wave 1 (commit c444d0dd). Don't re-do that.
+
+Wave 2 Agent C — marque-rules + marque CLI + WASM:
+  - crates/rules/src/audit.rs doc-comment example (line 396).
+  - crates/rules/src/lib.rs doctest at line 1319 — already
+    addressed by Wave 1 (the unit-test module already updates).
+  - crates/rules/tests/*: 9 sites in applied_text_correction_seal.rs,
+    engine_promotion_seal.rs, message_args_closed_set.rs. ONE
+    `.as_str()` call survives at
+    crates/rules/tests/engine_promotion_seal.rs:171:29 — must
+    rewrite to `.scheme()` / `.predicate_id()` accessors or to
+    `.to_string()` wire-string form depending on intent.
+  - marque/src/render.rs DiagnosticJson / AuditFixJson /
+    AuditTextCorrectionJson field-type changes (lines 815, 839, plus
+    the 8 RuleId::new sites at 1022 / 1202 / 1229 / 1274 / 1310 /
+    1352 / 1443 / 1564). The schema-bump-related strings are ALREADY
+    migrated by Wave 1.
+  - crates/wasm/src/lib.rs JSON shape changes parallel to render.rs.
+  - crates/wasm/tests/audit_v1_0_parity.rs expected-JSON + RuleId::new
+    sites (3 sites at 94, 119, 354).
+
+Wave 2 Agent D — corpus fixtures + registration pin + legacy-rule-id-map:
+  - 67 tests/corpus/**/*.expected.json files rewrite per the
+    structured shape (Wave 1 made the legacy flat-string form
+    structurally unrepresentable — see crates/test-utils/src/lib.rs
+    tests::expected_diagnostic_rejects_legacy_flat_string_rule).
+  - crates/capco/tests/post_3b_registration_pin.rs EXPECTED_RULE_IDS
+    update to wire-string form.
+  - docs/refactor-006/legacy-rule-id-map.md assembly (parallel Agent F2
+    work; this agent merges with Wave 2 Agent A's per-rename row
+    contributions).
+
+------------------------------------------------------------------
+§4 — Surface API changes Wave 2 should expect
+------------------------------------------------------------------
+
+`RuleId` is now `Copy`. Consumers can stop cloning. The shape:
+
+  pub struct RuleId { scheme: &'static str, predicate_id: &'static str }
+  pub const fn new(scheme: &'static str, predicate_id: &'static str) -> Self
+  pub const fn scheme(&self) -> &'static str
+  pub const fn predicate_id(&self) -> &'static str
+  impl Display: "<scheme>:<predicate_id>" (canonical wire string)
+
+`as_str()` is REMOVED. Wave 2 must migrate every `.as_str()` call site
+to either:
+  - `.predicate_id()` when the caller wants the predicate alone (rare).
+  - `.to_string()` / `format!("{rule}")` via the new Display impl when
+    the caller wants the wire-string form (common: JSON serialization
+    fallbacks, config-key lookup, log output).
+
+`marque-1.0` → `marque-2.0` schema bump. The Wave 1 commits update:
+  - crates/engine/build.rs (accept-list + default)
+  - crates/engine/src/lib.rs (AUDIT_SCHEMA_IS_V1_0 → AUDIT_SCHEMA_IS_V2_0)
+  - crates/engine/tests/audit_schema_accept_list.rs (test names + pins)
+  - crates/engine/tests/audit_g13_canary.rs lines 462, 591 (NDJSON fixture
+    strings)
+  - marque/src/render.rs + crates/wasm/src/lib.rs imports + no-op sites
+  - crates/rules/src/audit.rs doc-comments (with "(was marque-1.0
+    pre-T044)" archaeological notes)
+
+Wave 2 doesn't need to bump the schema constant further — it's done.
+
+Wave 2 Agent C will need to update the JSON shape that those `let _ =`
+no-op-check sites guard. Per OD-2, the `"rule"` field in audit-record
+NDJSON serializes as a structured `{scheme, predicate_id}` object, NOT
+a wire string.
+
+The reserved schemes (`"engine"`, `"test"`) are documented on the
+`RuleId` type. Wave 2 test fixtures should use `("test", "synthetic.
+<descriptive>-fixture")` for synthetic IDs.
+
+------------------------------------------------------------------
+§5 — Verification steps for Wave 2 entry
+------------------------------------------------------------------
+
+When Wave 2 begins, the entry-point verification is:
+
+  cargo check --workspace --all-targets 2>&1 | grep -cE "^error\["
+  # Should print 46 before any Wave 2 work begins.
+
+  cargo test -p marque-rules --lib 2>&1 | tail -5
+  # Should show 36 tests passing (the new RuleId Wave 1 tests are
+  # already integrated and green).
+
+  cargo test -p marque-test-utils --lib 2>&1 | tail -5
+  # Should show 3 tests passing (ExpectedRuleId round-trip +
+  # ExpectedDiagnostic structured shape + legacy-form rejection).
+
+At the end of Wave 2 (before Wave 3 doc cleanup), `cargo check
+--workspace --all-targets` should be clean.
+
+------------------------------------------------------------------
+End of file. Use this as the input gate for Wave 2 entry.

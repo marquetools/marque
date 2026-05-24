@@ -59,7 +59,7 @@ static AUTOMATON: LazyLock<AhoCorasick> = LazyLock::new(|| {
 /// no `TOP` correction target available. Adding `TOP` to the fuzzy
 /// vocab lets the standard edit-distance path recover the
 /// `TPP→TOP`, `UOP→TOP`, `TDOP→TOP`, `QTOP→TOP`, `TOPW→TOP` family
-/// of typos seen in the SC-004 mangled corpus. The strict parser
+/// of typos seen in the mangled corpus. The strict parser
 /// then re-joins `TOP SECRET` into the canonical multi-word
 /// classification.
 ///
@@ -88,7 +88,10 @@ const CLASSIFICATION_STRUCTURAL_KEYWORDS: &[&str] = &["TOP"];
 /// fuzzy-corrected `COSMIC` / `BOHEMIA` / `ATOMAL` / `BALK` token lands
 /// on the correct classification after strict parsing.
 ///
-/// Authority: CAPCO-2016 §H.7 p147–148 (NATO classification markings).
+/// Authority: CAPCO-2016 §H.2 p55 (Non-US Protective Markings,
+/// referring to Manual Appendix B for NATO Protective Markings).
+/// Vocabulary anchor: §G.1 Table 4 p37, the COSMIC TOP SECRET / ATOMAL /
+/// BALK / BOHEMIA rows under category "2. Non-US Protective Markings".
 const NATO_CLASSIFICATION_KEYWORDS: &[&str] = &["ATOMAL", "BALK", "BOHEMIA", "COSMIC"];
 
 /// SAR structural keywords (CAPCO-2016 §H.5 p100, "SAR-" indicator and
@@ -149,10 +152,65 @@ const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
 /// excessive false-positive fuzzy corrections on unrelated text.
 const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 
+/// NATO portion-form abbreviations not present in `ALL_CVE_TOKENS`.
+///
+/// Covers the five base-level [`crate::NatoClassification`] variants
+/// (`NU`, `NR`, `NC`, `NS`, `CTS`) plus the five **legacy compound**
+/// portion forms (`NCA`, `NSAT`, `CTSA`, `CTS-B`, `CTS-BALK`).
+///
+/// # Legacy compound forms
+///
+/// Per CAPCO-2016 §G.2 p40 + §H.7 p122, fused
+/// classification+sub-marking forms are **structurally wrong** —
+/// ATOMAL is an AEA-axis marking and BOHEMIA/BALK are NATO SAPs in the
+/// SCI position. The parser canonicalizes the legacy text into bare
+/// class + AEA/SCI companion at parse time. The legacy forms remain in
+/// this list because:
+///
+/// 1. The fuzzy-correction pass operates on raw tokens before strict
+///    parsing. `CTSA` is at edit-distance 1 from `CTS` — without it
+///    in the no-fuzz vocabulary, `(//CTSA//NF)` would be silently
+///    corrupted to `(//CTS//NF)` (losing the ATOMAL signal). Same
+///    risk for `NCA` (vs `NC`) and `NSAT` (vs `NS`).
+/// 2. The E066 autofix rule (in `marque-capco`) needs the strict
+///    parser to ACCEPT these forms so it can detect them via raw
+///    token spans and emit the canonical-text fix.
+///
+/// The five base-level forms are NOT emitted by ODNI CVE XML (which
+/// records only vocabulary enum values, not derived portion forms).
+/// Without them in the fuzzy-correction vocabulary,
+/// `fuzzy_correct_tokens` cannot distinguish `CTS` from `TS`
+/// (edit-distance 1) and silently rewrites — destroying the
+/// NATO-longhand fold's output.
+///
+/// Round-trip safety: the strict parser in `marque-core` accepts all
+/// 10 forms as valid non-US portion markings. The five base-level
+/// forms map to a corresponding [`crate::NatoClassification`]
+/// variant; the five legacy compound forms map to a `NatoClassification`
+/// bare class + AEA/SCI companion write. Adding
+/// these tokens to the correction vocab makes `FuzzyVocabMatcher::correct`
+/// return `None` for exact-match inputs (binary-search fast path),
+/// causing `fuzzy_correct_tokens` to pass them through unchanged
+/// (Case 4 verbatim).
+///
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (portion-form column);
+/// §G.2 p40 + §H.7 p122 (the normative anchors for the canonical
+/// AEA-axis / SCI-axis placement of ATOMAL / BOHEMIA / BALK).
+const NATO_PORTION_FORMS: &[&str] = &[
+    // Five base-level portion forms (CAPCO-2016 §G.1 Table 4)
+    "CTS", "NC", "NR", "NS", "NU",
+    // Five legacy compound forms — post-PR-9c.1, the strict parser
+    // canonicalizes these to bare class + AEA/SCI companion. They
+    // stay in the no-fuzz vocabulary so fuzzy correction can't
+    // silently rewrite them to the bare-class form before the strict
+    // parser sees them, and so E066 autofix can detect them.
+    "CTS-B", "CTS-BALK", "CTSA", "NCA", "NSAT",
+];
+
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
 /// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`] ∪
 /// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`] ∪
-/// [`AEA_SCI_STRUCTURAL_KEYWORDS`],
+/// [`AEA_SCI_STRUCTURAL_KEYWORDS`] ∪ [`NATO_PORTION_FORMS`],
 /// sorted and deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
@@ -197,6 +255,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(NATO_CLASSIFICATION_KEYWORDS);
     v.extend_from_slice(AEA_SCI_STRUCTURAL_KEYWORDS);
+    v.extend_from_slice(NATO_PORTION_FORMS);
     v.sort();
     v.dedup();
     v
@@ -327,7 +386,7 @@ mod tests {
         // ODNI's `CVEnumISMDissem.xml` is a UNION enum bundling IC
         // dissem controls (CAPCO source 1) with the ISOO CUI Registry
         // caveat tail (AC, AWP, DL_ONLY, FED_ONLY, FEDCON, NOCON) and
-        // the DOD-SAP `WAIVED` entry. CAPCO-2016 line 283 explicitly
+        // the DOD-SAP `WAIVED` entry. CAPCO-2016 §A.3 p13 explicitly
         // disclaims caveats from its scope. The `build.rs` of
         // `marque-ism` deny-lists those seven tokens so they never
         // enter the IC `DissemControl` enum or `ALL_CVE_TOKENS`. This
@@ -345,7 +404,7 @@ mod tests {
             assert!(
                 vocab.binary_search(forbidden).is_err(),
                 "correction_vocab MUST NOT contain {forbidden:?} — \
-                 it is a non-IC caveat (CAPCO-2016 line 283 \
+                 it is a non-IC caveat (CAPCO-2016 §A.3 p13 \
                  disclaimer) that should be filtered by build.rs's \
                  NON_IC_DISSEM_DENY_LIST"
             );

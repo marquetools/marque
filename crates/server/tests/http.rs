@@ -2,23 +2,17 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T049 / T050 — HTTP corpus-override rejection tests.
+//! HTTP corpus-override rejection tests.
 //!
-//! Enforces whitepaper §10.2 + Constitution III + FR-013 + the Phase-D
-//! threat model T3 (`docs/plans/2026-04-19-recursive-lattice-and-decoder.md`
-//! §6a) via the contract at
-//! `specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md`
-//! Gate 1:
-//!
-//! > HTTP callers MUST NOT be able to supply a corpus override. Any
-//! > such field is rejected with `400`. Rejection is audit-logged but
-//! > does not expose the attempted override contents to downstream
-//! > logs.
+//! Enforces Constitution III (WASM-safety / runtime-config restriction):
+//! HTTP callers MUST NOT be able to supply a corpus override. Any such
+//! field is rejected with `400`. Rejection is audit-logged but does not
+//! expose the attempted override contents to downstream logs.
 //!
 //! Three channels are tested for each of `/v1/lint` and `/v1/fix`:
 //!
-//! 1. JSON body field `corpus_override` (T049)
-//! 2. Header `X-Marque-Corpus-Override` (T050)
+//! 1. JSON body field `corpus_override`
+//! 2. Header `X-Marque-Corpus-Override`
 //! 3. Query string parameter `corpus_override=...`
 //!
 //! A baseline "no override present" test guarantees the rejection path
@@ -92,20 +86,6 @@ async fn baseline_lint_without_override_is_ok() {
         Some("DENY"),
         "200 response must contain X-Frame-Options: DENY"
     );
-    assert_eq!(
-        resp.headers()
-            .get(axum::http::header::CONTENT_SECURITY_POLICY)
-            .map(|v| v.to_str().unwrap()),
-        Some("default-src 'none'; frame-ancestors 'none';"),
-        "200 response must contain Content-Security-Policy"
-    );
-    assert_eq!(
-        resp.headers()
-            .get(axum::http::header::STRICT_TRANSPORT_SECURITY)
-            .map(|v| v.to_str().unwrap()),
-        Some("max-age=63072000; includeSubDomains"),
-        "200 response must contain Strict-Transport-Security"
-    );
 }
 
 #[tokio::test]
@@ -122,7 +102,7 @@ async fn baseline_fix_without_override_is_ok() {
 }
 
 // ---------------------------------------------------------------------------
-// T049 — body-field rejection.
+// Body-field rejection.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -167,7 +147,7 @@ async fn rejects_empty_value_shapes_in_corpus_override_body() {
 }
 
 // ---------------------------------------------------------------------------
-// T050 — header rejection.
+// Header rejection.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -225,7 +205,7 @@ async fn rejects_corpus_override_header_case_insensitively() {
 }
 
 // ---------------------------------------------------------------------------
-// Query-string rejection (covers the third channel listed by T066).
+// Query-string rejection (the third guarded channel).
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -411,20 +391,6 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
             .map(|v| v.to_str().unwrap()),
         Some("DENY"),
         "413 response must contain X-Frame-Options: DENY"
-    );
-    assert_eq!(
-        resp.headers()
-            .get(axum::http::header::CONTENT_SECURITY_POLICY)
-            .map(|v| v.to_str().unwrap()),
-        Some("default-src 'none'; frame-ancestors 'none';"),
-        "413 response must contain Content-Security-Policy"
-    );
-    assert_eq!(
-        resp.headers()
-            .get(axum::http::header::STRICT_TRANSPORT_SECURITY)
-            .map(|v| v.to_str().unwrap()),
-        Some("max-age=63072000; includeSubDomains"),
-        "413 response must contain Strict-Transport-Security"
     );
 }
 

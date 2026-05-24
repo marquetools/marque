@@ -1,0 +1,79 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP64B00346R000300140008-0",
+    "title": "LETTER FROM PRESIDENT TRANSMITTING DISARMAMENT AGENCY BILL TO CONGRESS",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP64B00346R000300140008-0/CIA-RDP64B00346R000300140008-0.pdf",
+    "cab": {
+      "classified_by": "HALI S. SSPA, NSA",
+      "derived_from": "Multiple Sources",
+      "declassify_on": "N/A to FRD portions, 20250102"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//FRD//NOFORN//NNPI",
+        "paragraphs": [
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "BEST COPY Available",
+            "is_table": false
+          },
+          {
+            "mark": "S//FRD//NF",
+            "text": "LETTkk PRm PRRaDDRrt TRANSITTTINe BIBABlAMaPT AORIGY aILL TO COm",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "Dear Mr. Preeident (ver Letter to Senate) Dear Mr. Spenicer (Jer Idamtioal Lotter to Mouse)",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "I am trenamitting berewith ror consideration by the Congress draft legislation to carry out the recommendation in my May 25 mesaage that a new Umited States Disarmament Agency be oroated.",
+            "is_table": false
+          },
+          {
+            "mark": "S//FRD//NF",
+            "text": "Today, the ability of man to mster his eaviroument outpaees ais ability to gombrol himelf, wmile the world growe ever more interdepunadent and maile the peoples of earth: oan new leok beyond this planet to a new age of Disoovery; they have not yet been able to banish the primmitive threat of war. Moanmtaile, maman inventivemess has made the weapons of war vastly more destruetive, In the segond half of the 2oth Gentury nations yossess the expiosive power to destroy most of the earth's population and oivilization as we now knon it.",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "The question before us is whether we must live indefinitely with these weapons under precarious national control or whether we can eliminate them or subject them to control by international agreement.",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "SECRET//FRD//NOFORN//NNPI",
+        "paragraphs": [
+          {
+            "mark": "S//FRD//NF",
+            "text": "All matiems, large or smmll, free or totaliteriam) hiave in comon the will to preserve tmeir mistempe and to proteet thmir ditismms, mie is We comem intereat, whick ofrers Bame premims ox pregrees in ourming' time threat of war and of the armm reve,",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "\"Thlere are mny mho do mot believe that the wommpn foar Ci ruislear war and the ceumom deternimmbion to survive are s trong enough to oompel natioms as divuree ax the United States and the Boriet Vaiom to seek gmmine ugreemont to comtrol and lidt teir armmmonts.",
+            "is_table": false
+          },
+          {
+            "mark": "S//FRD//NF",
+            "text": "But the altaramtive te efreetive agreegube limting mrma and armmd rurees is gril, Ws are in an arms rece, and an arme rese bee ofiem iomds imaerebiy to wr, Rvury few years a revoinsiom in weapems beelmeiogy taimee plaes, Piret Game the splittimg or the atok and then the U, a, amd the J.s.s.R. began wo ammss rmaloer woapons or all sises and Weighnte. Wow a single bomde can damge an aree or hSo square miles.",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "A second revolution eame dith the developuant or intertioret-inental missilos armed with megaton warmeeds. Avery Cri of the earth is now under threat of devastating attaok, rth the U.s. and the V.a.a.x. mve maalles mioh oan travel ri trpeeds over lo,ooo miles per hour over distanoes of mort Bhus: T,OO miles, and rind their targets aoourately,",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

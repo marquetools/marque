@@ -9,7 +9,13 @@ version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "WASM target for marque — web worker and browser integration"
-repository.workspace = true
+# Inlined (not `repository.workspace = true`) — wasm-pack 0.15.0+ parses
+# the manifest with a TOML reader that doesn't resolve Cargo's workspace
+# inheritance for `package.repository` and fails with
+# `invalid type: map, expected a string for key 'package.repository'`.
+# Other inherited fields (`edition`, `rust-version`) are not affected.
+# Keep the value in lock-step with workspace `Cargo.toml [workspace.package].repository`.
+repository = "https://github.com/marquetools/marque"
 license-file = "LICENSE.md"
 include = [
   "Cargo.toml",
@@ -70,6 +76,37 @@ wasm-opt = [  # tool options:
 
 [package.metadata.wasm-pack.profile.release-web.wasm-bindgen]
 split-linked-modules = true
+
+[package.metadata.wasm-pack.profile.release-monoaudit]
+# Mirrors `release-web` optimization sequencing while preserving
+# symbol attribution for `twiggy monos` by omitting
+# `--strip-toolchain-annotations` and enabling DWARF below.
+wasm-opt = [
+  "--enable-bulk-memory-opt",
+  "--enable-bulk-memory",
+  "--enable-extended-const",
+  "--enable-multivalue",
+  "--enable-nontrapping-float-to-int",
+  "--enable-reference-types",
+  "--enable-sign-ext",
+  "--enable-simd",
+  "--enable-tail-call",
+  "--type-refining-gufa",
+  "--generate-global-effects",
+  "-O3",
+  "--monomorphize",
+  "--precompute-propagate",
+  "--low-memory-unused",
+  "--gufa",
+  "-O3",
+  "--converge",
+  "-O4",
+]
+
+[package.metadata.wasm-pack.profile.release-monoaudit.wasm-bindgen]
+split-linked-modules = true
+# Preserve debug names so `twiggy monos` can attribute monomorphizations.
+dwarf-debug-info = true
 
 [package.metadata.wasm-pack.profile.release-cloud]
 wasm-opt = [
@@ -133,6 +170,13 @@ wasm-opt = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# `blake3::Hash` is the wire type for the current audit-record schema
+# `original_digest` / `bytes_digest` fields. The WASM renderer formats
+# `blake3:<hex>` byte-identical to the CLI surface. The workspace pin
+# carries `default-features = false, features = ["pure"]` so the WASM
+# build path is pure-Rust (no SIMD asm); Constitution III WASM-safety
+# preserved.
+blake3 = { workspace = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 humantime = { workspace = true }
 # `marque-config` and `marque-engine` are pinned at the workspace level
@@ -142,11 +186,27 @@ humantime = { workspace = true }
 # gated feature inappropriate for WASM) to either crate's defaults,
 # the workspace-level pin closes that channel; the secondary
 # `compile_error!` in `src/lib.rs` stays as a third line of defense.
+#
+# `marque-capco` is already transitive via `marque-engine` (verified
+# `cargo tree`: marque-engine → marque-capco). The direct dep entry
+# here is intentional — `src/lib.rs` imports `CapcoScheme` and the
+# WASM lib's public API references `Diagnostic<CapcoScheme>` /
+# `AppliedFix<CapcoScheme>` directly, so listing it as a direct
+# runtime dep makes that surface explicit rather than relying on a
+# silent transitive import. Constitution III: `marque-capco` is in
+# the WASM-safe set (scheme + ism + rules + core + capco), so no
+# surface expansion vs. the transitive shape.
+marque-capco = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
 marque-engine = { workspace = true, default-features = false }
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
+marque-scheme = { workspace = true }
+# Constitution Principle II — readout discipline at the WASM ↔ JS boundary.
+# `FixResult.source` is `SecretBox<[u8]>`; `expose_secret()` calls are the
+# grep target.
+secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
 spinning_top = { version = "0.3.0", optional = true }
@@ -154,13 +214,12 @@ talc = { version = "5.0.3", optional = true }
 wasm-bindgen = { workspace = true }
 
 [dev-dependencies]
-marque-capco = { workspace = true }
-marque-config = { workspace = true }
-marque-engine = { workspace = true }
-marque-rules = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-# T088 — `wasm-pack test --node` parity harness uses wasm-bindgen-test
+# marque-capco / marque-config / marque-engine / marque-rules /
+# serde / serde_json are already declared under [dependencies] above
+# and inherit into dev-dep scope automatically. Test files
+# (tests/*.rs) reference them via the [dependencies] entries; no
+# duplicate dev-dep declarations needed.
+# The `wasm-pack test --node` parity harness uses wasm-bindgen-test
 # to drive `lint_native` from inside the wasm32 target. Native parity
 # (`tests/native_parity.rs`) covers algorithmic equivalence; this
 # dev-dep enables byte-equal NDJSON parity across the actual WASM
@@ -179,14 +238,16 @@ wasm-bindgen-test = "=0.3.70"
 # The .cargo/config.toml entry sets `-C target-feature=+simd128` for wasm32-unknown-unknown,
 # which activates SIMD code paths in memchr and other SIMD-aware crates at compile time.
 #
-# Phase-C–E boundary: the `corpus-override` feature MUST NOT be declared
-# here, and `marque-engine` above is pinned to `default-features = false`,
-# so the override codepath cannot reach this artifact. Enforced further at
-# T067 with a `compile_error!` guard under
+# The `corpus-override` feature MUST NOT be declared here, and
+# `marque-engine` above is pinned to `default-features = false`, so the
+# override codepath cannot reach this artifact. Enforced further by a
+# `compile_error!` guard under
 # `#[cfg(all(target_arch = "wasm32", feature = "corpus-override"))]` in
 # `src/lib.rs` — redundant with the missing-feature-declaration path, but
 # closes the door a second time so an inadvertent future commit cannot
-# drift this invariant silently (Constitution III + FR-013 + T3).
+# drift this invariant silently (Constitution III WASM-safety: WASM
+# cannot accept runtime config that expands the engine's semantic
+# surface, e.g. decoder priors).
 default = ["web"]
 
 # Single-threaded allocator: WasmDynamicTalc grows via memory.grow, no spinlock overhead.

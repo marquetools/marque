@@ -18,18 +18,14 @@
 //!   005). Variants: `DeadlineExceeded { partial_lint }` and
 //!   `InvalidThreshold(_)`. `#[non_exhaustive]` so future runtime
 //!   conditions (memory budgets, per-rule deadlines, cancellation
-//!   tokens) can land non-breaking. **Phase 1 status:** the type
-//!   surface ships, but `DeadlineExceeded` cannot currently fire —
-//!   `fix_with_options` ignores `opts.deadline` until Phase 2
-//!   wiring lands (tasks T010–T012). Only `InvalidThreshold` is
-//!   observable today.
+//!   tokens) can land non-breaking.
 //!
 //! Keeping the two enums separate means matching on one does not
 //! force callers to pattern against variants they could never
 //! encounter at the corresponding lifecycle stage.
 //!
 //! `EngineConstructionError`'s `RewriteCycle` and
-//! `UnannotatedCustomAxes` variants are emitted by the Phase 3
+//! `UnannotatedCustomAxes` variants are emitted by the
 //! scheduler (`Engine::new` runs Kahn's algorithm over
 //! `PageRewrite::reads` / `writes`); `UnknownRuleOverride` and
 //! `ConflictingRuleOverride` come from the rule-override
@@ -37,7 +33,7 @@
 
 use crate::engine::InvalidThreshold;
 use crate::output::LintResult;
-use marque_scheme::{CategoryId, RewriteId};
+use marque_scheme::{ApplyIntentError, CategoryId, RewriteId};
 
 /// Errors that will be raised while constructing an `Engine`.
 ///
@@ -73,8 +69,8 @@ pub enum EngineConstructionError {
     /// so the per-entry payload is still `'static`; only the
     /// container is heap-allocated.
     ///
-    /// Fired by the Phase 3 scheduler when `Engine::new` runs Kahn's
-    /// algorithm over the rewrite graph (tasks T031–T032).
+    /// Fired by the scheduler when `Engine::new` runs Kahn's
+    /// algorithm over the rewrite graph.
     RewriteCycle {
         axis: CategoryId,
         members: Box<[RewriteId]>,
@@ -121,6 +117,30 @@ pub enum EngineConstructionError {
         keys: Box<[String]>,
         severities: Box<[String]>,
     },
+    /// A [`PageRewrite`] carries a `CategoryAction::Intent` whose
+    /// [`ReplacementIntent`] references a token that does not route
+    /// to any category in the scheme. The rewrite is a scheme-
+    /// authoring bug — the engine catches it at construction time
+    /// rather than letting the intent silently no-op on the first page
+    /// that triggers it.
+    ///
+    /// The `error` field carries the [`ApplyIntentError`] returned
+    /// by the validation walk (`UnknownToken` in practice, since
+    /// `IntentRejectsLattice` is a runtime-only condition).
+    ///
+    /// The `fact_label` field carries the `Debug`-formatted offending
+    /// [`FactRef`] (e.g., `"Cve(TokenId(4294967295))"`) so the Display
+    /// message points the scheme-author at the specific token, not
+    /// just the rewrite.
+    ///
+    /// [`PageRewrite`]: marque_scheme::PageRewrite
+    /// [`ReplacementIntent`]: marque_scheme::ReplacementIntent
+    /// [`FactRef`]: marque_scheme::FactRef
+    InvalidIntentInPageRewrite {
+        rewrite_id: RewriteId,
+        fact_label: String,
+        error: ApplyIntentError,
+    },
 }
 
 impl EngineConstructionError {
@@ -137,7 +157,9 @@ impl EngineConstructionError {
     ///   the developer ships a corrected build.
     pub fn exit_code(&self) -> i32 {
         match self {
-            Self::RewriteCycle { .. } | Self::UnannotatedCustomAxes { .. } => 69,
+            Self::RewriteCycle { .. }
+            | Self::UnannotatedCustomAxes { .. }
+            | Self::InvalidIntentInPageRewrite { .. } => 69,
             Self::UnknownRuleOverride { .. } | Self::ConflictingRuleOverride { .. } => 65,
         }
     }
@@ -182,6 +204,15 @@ impl std::fmt::Display for EngineConstructionError {
                     " — specify only one form (either the rule ID or the rule name), not both with different severities"
                 )
             }
+            Self::InvalidIntentInPageRewrite {
+                rewrite_id,
+                fact_label,
+                error,
+            } => write!(
+                f,
+                "page-rewrite {rewrite_id:?} carries a CategoryAction::Intent with an \
+                 unroutable token reference {fact_label}: {error}"
+            ),
         }
     }
 }
@@ -294,6 +325,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn invalid_intent_in_page_rewrite_exit_code_is_unavailable() {
+        let err = EngineConstructionError::InvalidIntentInPageRewrite {
+            rewrite_id: "test-rewrite",
+            fact_label: "Cve(TokenId(4294967295))".to_string(),
+            error: ApplyIntentError::UnknownToken,
+        };
+        assert_eq!(
+            err.exit_code(),
+            69,
+            "scheme-author defect (Intent payload references an unroutable token) \
+             → EX_UNAVAILABLE, same class as RewriteCycle / UnannotatedCustomAxes"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // EngineConstructionError::Display — round-trip every variant. Smoke
     // checks key strings appear so the message stays useful when a
@@ -310,6 +356,28 @@ mod tests {
         assert!(msg.contains("page-rewrite cycle"), "got: {msg}");
         assert!(msg.contains("alpha"), "got: {msg}");
         assert!(msg.contains("beta"), "got: {msg}");
+    }
+
+    #[test]
+    fn invalid_intent_in_page_rewrite_display_names_rewrite_and_fact() {
+        let err = EngineConstructionError::InvalidIntentInPageRewrite {
+            rewrite_id: "nodis-implies-noforn",
+            fact_label: "Cve(TokenId(4294967295))".to_string(),
+            error: ApplyIntentError::UnknownToken,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("nodis-implies-noforn"),
+            "rewrite id missing: {msg}"
+        );
+        assert!(
+            msg.contains("Cve(TokenId(4294967295))"),
+            "fact label missing: {msg}",
+        );
+        assert!(
+            msg.contains("unroutable token"),
+            "expected message to identify the failure mode: {msg}",
+        );
     }
 
     #[test]

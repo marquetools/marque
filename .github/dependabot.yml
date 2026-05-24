@@ -12,17 +12,13 @@
 version: 2
 
 updates:
-  
   # ── Rust (Cargo) ──────────────────────────────────────────────────
   - package-ecosystem: cargo
-    directories: 
-      - /
-      - "crates/*/"
-      - "marque/"
+    directory: /
     schedule:
       interval: weekly
       day: monday
-      time: "03:00"
+      time: "09:00"
       timezone: America/New_York
     open-pull-requests-limit: 10
     labels:
@@ -30,65 +26,33 @@ updates:
       - rust
     commit-message:
       prefix: "chore(deps):"
-    groups:
-      rust-dependencies:
-        group-by: dependency-name
-    cooldown:
-      default-days: 10
-      semver-major-days: 30
-      exclude:
-        - "marque-*"
-        - "marque"
-        - "recoco-*"
 
   # ── npm (demo package) ────────────────────────────────────────────
   - package-ecosystem: npm
-    directories:
-      - demo/
-      - site/
+    directory: /demo
     schedule:
       interval: weekly
       day: monday
-      time: "03:00"
+      time: "09:00"
       timezone: America/New_York
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - dependencies
       - javascript
     commit-message:
       prefix: "chore(deps):"
-    groups:
-      npm-dependencies:
-        group-by: dependency-name
-    cooldown:
-      default-days: 10
-      semver-major-days: 30
-      exclude: 
-        - "@marque/*"
-        - "@knitli/*"
 
   # ── GitHub Actions ────────────────────────────────────────────────
   - package-ecosystem: github-actions
-    directories:
-      - .github/actions/
-      - .github/workflows
-      - .github/
+    directory: /
     schedule:
       interval: weekly
       day: monday
-      time: "03:00"
+      time: "09:00"
       timezone: America/New_York
-    open-pull-requests-limit: 20
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - ci
     commit-message:
       prefix: "chore(ci):"
-    groups:
-      actions-dependencies:
-        group-by: dependency-name
-    cooldown:
-      default-days: 10
-      exclude:
-        - "marquetools/*"
-

@@ -16,21 +16,102 @@
 //! pre-computed order without re-sorting.
 
 use marque_scheme::{
-    CategoryAction, CategoryId, CategoryPredicate, MarkingScheme, PageRewrite, RewriteId,
+    ApplyIntentError, CategoryAction, CategoryId, CategoryPredicate, FactRef, MarkingScheme,
+    PageRewrite, ReplacementIntent, RewriteId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::errors::EngineConstructionError;
+
+/// Validates every [`CategoryAction::Intent`] in the scheme's
+/// page-rewrites table by walking each intent's [`FactRef`]s and
+/// confirming the scheme can route each one via
+/// [`MarkingScheme::category_of`].
+///
+/// Returns
+/// [`EngineConstructionError::InvalidIntentInPageRewrite`](crate::errors::EngineConstructionError::InvalidIntentInPageRewrite)
+/// on the first unroutable `FactRef` found. Downstream `project()`
+/// calls can then trust that every `CategoryAction::Intent` they
+/// encounter is well-formed at engine-construction time, even though
+/// the runtime executor still handles per-intent errors defensively
+/// (Constitution VI: `Engine::lint`'s hot path must not unwind into
+/// Tower middleware).
+///
+/// Both `FactRef::Cve` and `FactRef::OpenVocab` references are checked
+/// uniformly: every scheme that implements
+/// [`MarkingScheme::category_of`] handles both variants, so the
+/// validation pass is symmetric.
+///
+/// Per-intent walk:
+///
+/// - `FactAdd { token, .. }` validates `token`.
+/// - `FactRemove { facts, .. }` validates every `FactRef` in `facts`.
+/// - `Recanonicalize { .. }` carries no `FactRef`; nothing to validate.
+pub(crate) fn validate_intent_rewrites<S>(
+    scheme: &S,
+    rewrites: &[PageRewrite<S>],
+) -> Result<(), EngineConstructionError>
+where
+    S: MarkingScheme,
+{
+    for rw in rewrites {
+        if let CategoryAction::Intent(intent) = &rw.action {
+            for fact in intent_fact_refs(intent) {
+                if scheme.category_of(fact).is_none() {
+                    return Err(EngineConstructionError::InvalidIntentInPageRewrite {
+                        rewrite_id: rw.id,
+                        fact_label: format!("{fact:?}"),
+                        error: ApplyIntentError::UnknownToken,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Walk every [`FactRef`] inside a [`ReplacementIntent`].
+///
+/// Returned as a `Vec<&FactRef<S>>` rather than an `impl Iterator` so
+/// the implementation stays readable without pulling in the `either`
+/// crate. `FactAdd` contributes one fact; `FactRemove` contributes
+/// one or more (SmallVec `[_; 2]` inline capacity covers the
+/// single-fact common case + the atomic-cluster pair); `Recanonicalize`
+/// contributes none.
+fn intent_fact_refs<S>(intent: &ReplacementIntent<S>) -> Vec<&FactRef<S>>
+where
+    S: MarkingScheme + ?Sized,
+{
+    match intent {
+        ReplacementIntent::FactAdd { token, .. } => vec![token],
+        ReplacementIntent::FactRemove { facts, .. } => facts.iter().collect(),
+        // No FactRefs to validate; the renderer handles
+        // recanonicalization at fix-application time.
+        ReplacementIntent::Recanonicalize { .. } => Vec::new(),
+        // `ReplacementIntent` is `#[non_exhaustive]`. A future variant
+        // that introduces new `FactRef`s MUST be handled explicitly
+        // here so engine-construction-time validation covers it.
+        // `unreachable!()` is safe at this site — `intent_fact_refs`
+        // is called from `Engine::new`'s validation pass, not from
+        // the `lint`/`fix` hot path, so a panic surfaces at startup
+        // (the correct loud-failure surface) rather than mid-request.
+        _ => unreachable!(
+            "intent_fact_refs: new ReplacementIntent variant not handled — \
+             add an explicit match arm and update validate_intent_rewrites \
+             coverage before shipping the variant",
+        ),
+    }
+}
 
 /// Compute the topological order of `rewrites` by their `reads` /
 /// `writes` axes.
 ///
 /// Returns the ordered list of `RewriteId`s. Rewrites that have no
 /// predecessor (neither read nor write a category another rewrite
-/// writes) retain their declaration order relative to each other
-/// (FR-007: declaration-order independence for *cycle-free*
-/// inputs — but for rewrites with no edge between them, the only
-/// stable answer is declaration order).
+/// writes) retain their declaration order relative to each other.
+/// Dataflow edges fully determine the order for cycle-free inputs; for
+/// rewrites with no edge between them, the only stable answer is
+/// declaration order.
 ///
 /// # Errors
 ///
@@ -277,8 +358,20 @@ fn rewrite_is_custom<S: MarkingScheme + ?Sized>(rw: &PageRewrite<S>) -> bool {
     // Match on explicit references so the predicate stays correct
     // even if a future variant introduces non-`Copy` payloads that
     // default-binding-mode ergonomics won't cover.
-    matches!(&rw.trigger, CategoryPredicate::Custom(_))
-        || matches!(&rw.action, CategoryAction::Custom(_))
+    let trigger_is_custom = matches!(&rw.trigger, CategoryPredicate::Custom(_));
+    let action_is_custom = match &rw.action {
+        CategoryAction::Custom(_) => true,
+        // `Intent` carries a data-shaped `ReplacementIntent` whose
+        // category routing is statically validated at `Engine::new`;
+        // its `reads` / `writes` annotations are author-declared via
+        // `PageRewrite::declarative`, just like other declarative
+        // actions. Treat it as non-custom so empty axes are tolerated.
+        CategoryAction::Intent(_) => false,
+        CategoryAction::Clear { .. }
+        | CategoryAction::Replace { .. }
+        | CategoryAction::Promote { .. } => false,
+    };
+    trigger_is_custom || action_is_custom
 }
 
 /// Pick a category from the rewrite cycle to name in the error.
@@ -302,10 +395,12 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
     let mut reads: BTreeSet<CategoryId> = BTreeSet::new();
     let mut writes: BTreeSet<CategoryId> = BTreeSet::new();
     for &i in indexes {
-        // Use `extend()` as a concise, idiomatic way to add all categories
-        // from this rewrite into the aggregate read/write sets.
-        reads.extend(rewrites[i].reads.iter().copied());
-        writes.extend(rewrites[i].writes.iter().copied());
+        for r in rewrites[i].reads {
+            reads.insert(*r);
+        }
+        for w in rewrites[i].writes {
+            writes.insert(*w);
+        }
     }
     let picked = reads.intersection(&writes).next().copied();
     debug_assert!(
@@ -323,9 +418,22 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
 mod tests {
     use super::*;
     use marque_scheme::{
-        Category, Constraint, ConstraintViolation, Lattice, Parsed, Scope, Template, TokenId,
-        TokenRef,
+        Category, Citation, Constraint, ConstraintViolation, JoinSemilattice, MeetSemilattice,
+        Parsed, Scope, SectionLetter, Template, TokenId, TokenRef,
     };
+
+    // Test-fixture sentinel Citation (Constitution V Principle V test
+    // carve-out). Routes through `AuthoritativeSource::EngineInternal`
+    // so Display renders `[engine-internal]` and the value carries no
+    // false CAPCO §-claim.
+    const TEST_CITATION: Citation = Citation::new(
+        marque_scheme::AuthoritativeSource::EngineInternal,
+        marque_scheme::SectionRef::new(SectionLetter::A),
+        match core::num::NonZeroU16::new(1) {
+            Some(n) => n,
+            None => unreachable!(),
+        },
+    );
 
     // Minimal scheme used to exercise the scheduler without pulling in
     // marque-capco (unit tests within `marque-engine` should not force
@@ -336,10 +444,13 @@ mod tests {
     #[derive(Clone, Debug, PartialEq, Eq, Default)]
     struct StubMarking;
 
-    impl Lattice for StubMarking {
+    impl JoinSemilattice for StubMarking {
         fn join(&self, _other: &Self) -> Self {
             Self
         }
+    }
+
+    impl MeetSemilattice for StubMarking {
         fn meet(&self, _other: &Self) -> Self {
             Self
         }
@@ -351,6 +462,10 @@ mod tests {
         type Token = TokenId;
         type Marking = StubMarking;
         type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
+        // See evaluator.rs for the binding rationale.
+        type Parsed<'src> = ();
+        type Canonical = ();
         fn name(&self) -> &str {
             "stub"
         }
@@ -384,6 +499,14 @@ mod tests {
         fn render_banner(&self, _: &Self::Marking) -> String {
             String::new()
         }
+        fn render_canonical(
+            &self,
+            _: &Self::Marking,
+            _: &marque_scheme::RenderContext,
+            _: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
+        }
     }
 
     const CAT_X: CategoryId = CategoryId(1);
@@ -397,7 +520,7 @@ mod tests {
     ) -> PageRewrite<StubScheme> {
         PageRewrite::declarative(
             id,
-            "test",
+            TEST_CITATION,
             CategoryPredicate::Empty { category: CAT_X },
             CategoryAction::Clear { category: CAT_X },
             reads,

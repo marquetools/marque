@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Spec 005 Phase 3c — T044: byte-identical NDJSON parity between
+//! Byte-identical NDJSON parity between
 //! `lint_native(text, deadline_ms)` (the WASM-target entry point
 //! exercised here on native) and the equivalent native engine call
 //! `Engine::lint_with_options(text, &LintOptions { deadline: Some(_) })`.
 //!
 //! The non-deadline parity is already pinned at full corpus scope by
-//! `tests/native_parity.rs` (SC-008). This file extends that contract
+//! `tests/native_parity.rs`. This file extends that contract
 //! to the deadline path: a configured `deadline_ms` MUST NOT alter the
 //! NDJSON shape relative to a deadline-free call on the same fixture
 //! when the deadline does not trip, and a pre-expired deadline MUST
@@ -33,7 +33,7 @@
 
 use marque_config::Config;
 use marque_engine::{Engine, LintOptions};
-use marque_rules::Diagnostic;
+use marque_rules::{Diagnostic, RuleId};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
@@ -48,17 +48,43 @@ fn engine() -> Engine {
 
 // Native-side projection used to render the NDJSON expected from the
 // engine — matches the shape `marque-wasm` and `marque/src/render.rs`
-// produce, so any divergence between the three surfaces SC-008 fails
-// here (mirrors `tests/native_parity.rs`).
+// produce, so any divergence between the three surfaces fails the
+// parity check here (mirrors `tests/native_parity.rs`).
 
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
-    rule: &'a str,
+    /// 2-tuple `RuleId` wire shape. Mirrors the CLI and
+    /// WASM emitters' `RuleIdJson` for byte-identical NDJSON.
+    rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
-    message: &'a str,
-    citation: &'a str,
+    message: MessageJson<'a>,
+    citation: String,
     fix: Option<FixJson<'a>>,
+    /// Decoder-recognized canonical form (issue #699). Mirrors the
+    /// CLI and WASM emitters' `recognized_canonical` field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recognized_canonical: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct RuleIdJson<'a> {
+    scheme: &'a str,
+    predicate_id: &'a str,
+}
+
+impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
+    fn from(r: &'a RuleId) -> Self {
+        Self {
+            scheme: r.scheme(),
+            predicate_id: r.predicate_id(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MessageJson<'a> {
+    template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,39 +96,66 @@ struct SpanJson {
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     source: &'static str,
-    replacement: &'a str,
+    intent_kind: &'static str,
+    replacement: Option<&'a str>,
     confidence: f32,
     migration_ref: Option<&'a str>,
 }
 
-fn diag_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
+    match source {
+        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
+        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
+        marque_rules::FixSource::MigrationTable => "MigrationTable",
+        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+        marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
+    }
+}
+
+fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
+    // Principle II readout — deadline-parity mirror (issue #699).
+    let recognized_canonical = d
+        .recognized_canonical
+        .as_ref()
+        .and_then(|sb| std::str::from_utf8(secrecy::ExposeSecret::expose_secret(sb)).ok());
     DiagnosticJson {
-        rule: d.rule.as_str(),
+        rule: (&d.rule).into(),
         severity: d.severity.as_str(),
         span: SpanJson {
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: match f.source {
-                marque_rules::FixSource::BuiltinRule => "BuiltinRule",
-                marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
-                marque_rules::FixSource::MigrationTable => "MigrationTable",
-                marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
-                marque_rules::FixSource::DecoderClassificationHeuristic => {
-                    "DecoderClassificationHeuristic"
-                }
-            },
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: match &f.replacement {
+                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    _ => "Unknown",
+                },
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
+                intent_kind: "TextCorrection",
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
+            }),
+            (None, None) => None,
+        },
+        recognized_canonical,
     }
 }
 
-fn render_ndjson(diagnostics: &[Diagnostic]) -> String {
+fn render_ndjson(diagnostics: &[Diagnostic<marque_capco::CapcoScheme>]) -> String {
     let mut buf = Vec::with_capacity(diagnostics.len() * 256);
     for d in diagnostics {
         serde_json::to_writer(&mut buf, &diag_to_json(d)).expect("infallible: writing to Vec");
@@ -158,7 +211,7 @@ fn wasm_deadline_ms_generous_matches_native_full_lint() {
     );
     assert_eq!(
         baseline_native, wasm_with_deadline,
-        "WASM lint_native(deadline_ms=60000) must equal native engine.lint() byte-for-byte (SC-008)"
+        "WASM lint_native(deadline_ms=60000) must equal native engine.lint() byte-for-byte"
     );
 }
 
@@ -292,8 +345,8 @@ fn wasm_deadline_ms_does_not_invalidate_engine_cache() {
 
 #[test]
 fn wasm_rejects_negative_deadline_ms() {
-    // T041 validation — negative `deadline_ms` is rejected before any
-    // engine work. JS callers should never construct this; rejecting
+    // Negative `deadline_ms` is rejected before any engine work.
+    // JS callers should never construct this; rejecting
     // catches a serialization or transformation bug.
     let cfg = r#"{"deadline_ms": -1}"#;
     let err = marque_wasm::lint_native("(S//NF)", Some(cfg.to_owned()))
@@ -306,7 +359,7 @@ fn wasm_rejects_negative_deadline_ms() {
 
 #[test]
 fn wasm_rejects_non_finite_deadline_ms() {
-    // Defense in depth for T041 — non-finite `deadline_ms` values are
+    // Defense in depth — non-finite `deadline_ms` values are
     // rejected before reaching the engine. There are two layers:
     //
     // 1. `serde_json` itself rejects `1e500` (overflows to f64::INFINITY)

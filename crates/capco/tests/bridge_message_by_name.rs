@@ -1,0 +1,471 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Tests for `CapcoScheme::message_by_name` — the engine-bridge
+//! message hook.
+//!
+//! `message_by_name` returns a closed `Message` (template + args), not
+//! a free-form string. The bridge
+//! invariant that this file pins is structurally enforced by the
+//! closed-args / closed-template invariants in `crates/rules/src/
+//! message.rs`:
+//!
+//! - **No `TokenId` debug leakage** — `MessageArgs` carries
+//!   `Option<TokenId>` and `Option<CategoryId>` only; raw bytes /
+//!   debug strings are unrepresentable by construction.
+//! - **No free-form prose** — `MessageTemplate` is a closed enum;
+//!   the engine emits the variant label, never a `format!`-built
+//!   sentence.
+//!
+//! Two test layers:
+//!
+//! 1. **Unit tests** (`message_by_name_*`) — call the inherent method
+//!    directly on `CapcoScheme` and assert (a) each known dyadic
+//!    constraint name returns `Some(message)` with the expected
+//!    template + category and (b) unknown names return `None`.
+//!
+//! 2. **Integration tests** (`bridge_emits_typed_message_*`) — run
+//!    `Engine::lint` on a triggering input and assert that the
+//!    emitted `Diagnostic.message` carries the expected closed-set
+//!    identification (`MessageTemplate` + `MessageArgs.category`)
+//!    rather than a generic fallback.
+
+use marque_capco::scheme::{CAT_DISSEM, CAT_JOINT_CLASSIFICATION, CAT_NON_IC_DISSEM};
+use marque_capco::{CapcoRuleSet, CapcoScheme};
+use marque_config::Config;
+use marque_engine::{Engine, FixedClock};
+use marque_ism::{CanonicalAttrs, MarkingType};
+use marque_rules::MessageTemplate;
+use marque_scheme::MarkingScheme;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn engine() -> Engine {
+    Engine::with_clock(
+        Config::default(),
+        vec![Box::new(CapcoRuleSet::new())],
+        CapcoScheme::new(),
+        Box::new(FixedClock::new(std::time::UNIX_EPOCH)),
+    )
+    .expect("default CAPCO scheme must construct without rewrite cycles")
+}
+
+/// Empty `CanonicalAttrs` used for unit-level `message_by_name` calls where
+/// the method body does not inspect `attrs`.
+fn empty_attrs() -> CanonicalAttrs {
+    CanonicalAttrs::default()
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests — message_by_name returns Some(Message) with expected shape
+// ---------------------------------------------------------------------------
+
+/// E015 dyadic Requires row: non-US classification requires a dissem control.
+#[test]
+fn message_by_name_e015_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "portion.classification.non-us-requires-dissem",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("E015 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::RequiredByPresence,
+        "E015 maps to the RequiredByPresence template; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_DISSEM),
+        "E015 must identify the dissem axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// E016 dyadic Conflicts row: JOINT ⊥ RESTRICTED.
+#[test]
+fn message_by_name_e016_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "portion.classification.joint-conflicts-restricted",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("E016 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E016 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_JOINT_CLASSIFICATION),
+        "E016 must identify the JOINT classification axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// E036 dyadic Conflicts row: JOINT ⊥ HCS.
+#[test]
+fn message_by_name_e036_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "portion.classification.joint-conflicts-hcs",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("E036 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E036 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_JOINT_CLASSIFICATION),
+        "E036 must identify the JOINT classification axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// capco/noforn-conflicts-rel-to dyadic Conflicts row (→ E053): NOFORN ⊥ REL TO.
+#[test]
+fn message_by_name_noforn_conflicts_rel_to_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "portion.dissem.noforn-conflicts-rel-to",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("capco/noforn-conflicts-rel-to must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "noforn-conflicts-rel-to maps to the ConflictsWith template; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_DISSEM),
+        "noforn-conflicts-rel-to must identify the dissem axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// E037 dyadic Conflicts row: NODIS ⊥ EXDIS.
+#[test]
+fn message_by_name_e037_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "portion.dissem.nodis-conflicts-exdis",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("E037 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E037 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_NON_IC_DISSEM),
+        "E037 must identify the non-IC dissem axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// E054 dyadic Conflicts row: RELIDO ⊥ NOFORN.
+#[test]
+fn message_by_name_e054_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "portion.dissem.relido-conflicts-noforn",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("E054 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E054 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_DISSEM),
+        "E054 must identify the dissem axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// Unknown constraint names must return None so the bridge falls back to the
+/// engine's generic-template path (which still emits a closed Message —
+/// the engine's fallback uses `MessageTemplate::ConflictsWith` with empty
+/// args per `Engine::bridge_constraint_diagnostic`, but the per-row
+/// identification is lost).
+#[test]
+fn message_by_name_returns_none_for_unknown_name() {
+    let scheme = CapcoScheme::new();
+    assert!(
+        scheme
+            .message_by_name("no-such-constraint", &empty_attrs(), MarkingType::Portion)
+            .is_none(),
+        "unknown name must return None"
+    );
+    // Custom-arm constraint names should also return None — they have
+    // their own well-formed messages from the predicate body helpers.
+    // (`class-floor/*` + `marking.sci.*` rows are bridge-resolved via
+    // row lookup; E012 stays a predicate-body Custom row and returns
+    // None.)
+    assert!(
+        scheme
+            .message_by_name(
+                "E012/dual-classification",
+                &empty_attrs(),
+                MarkingType::Portion
+            )
+            .is_none(),
+        "Custom-arm constraint E012 must return None (message lives in the predicate body)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Class-floor + sci-per-system bridge coverage
+// ---------------------------------------------------------------------------
+
+/// Class-floor catalog rows (27 rows; `class-floor/*` and `E058/*`
+/// prefixes) must resolve to `MessageTemplate::ClassificationFloorViolated`
+/// via the bridge's prefix dispatch. The category arg reflects the row's
+/// `primary_kind` — SciSystem rows route to `CAT_SCI`, DissemControl rows
+/// to `CAT_DISSEM`, etc.
+#[test]
+fn message_by_name_class_floor_hcs_comp_sub_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "banner.classification.floor-hcs-comp-sub",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("banner.classification.floor-hcs-comp-sub must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ClassificationFloorViolated,
+        "class-floor rows map to ClassificationFloorViolated; got {:?}",
+        msg.template(),
+    );
+    // HCS-comp-sub's primary_kind is SciSystem → CAT_SCI.
+    assert_eq!(
+        msg.args().category,
+        Some(marque_capco::scheme::CAT_SCI),
+        "banner.classification.floor-hcs-comp-sub must identify the SCI axis (primary_kind=SciSystem); got {:?}",
+        msg.args().category,
+    );
+}
+
+/// E058-prefixed class-floor row (legacy-rule-replacement form) must
+/// resolve identically to the `class-floor/`-prefixed form.
+#[test]
+fn message_by_name_class_floor_e058_cnwdi_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "banner.aea.floor-cnwdi",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("banner.aea.floor-cnwdi must return Some(...)");
+    assert_eq!(msg.template(), MessageTemplate::ClassificationFloorViolated);
+    // CNWDI's primary_kind is AeaMarking → CAT_AEA.
+    assert_eq!(
+        msg.args().category,
+        Some(marque_capco::scheme::CAT_AEA),
+        "banner.aea.floor-cnwdi must identify the AEA axis (primary_kind=AeaMarking); got {:?}",
+        msg.args().category,
+    );
+}
+
+/// SCI per-system catalog rows (5 rows; `marking.sci.*` prefix)
+/// must resolve to `MessageTemplate::RequiredByPresence` with
+/// `CAT_SCI`.
+#[test]
+fn message_by_name_sci_per_system_hcs_o_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "marking.sci.hcs-o-companions",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("marking.sci.hcs-o-companions must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::RequiredByPresence,
+        "sci-per-system rows map to RequiredByPresence; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(marque_capco::scheme::CAT_SCI),
+        "marking.sci.* must identify the SCI axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// Unknown `class-floor/`-prefixed names fall through to `None` (no
+/// catalog row match). The bridge's `message_by_name` only resolves
+/// rows that actually exist in `CLASS_FLOOR_CATALOG`; a typo-class
+/// name doesn't get a free template.
+#[test]
+fn message_by_name_class_floor_unknown_label_returns_none() {
+    let scheme = CapcoScheme::new();
+    assert!(
+        scheme
+            .message_by_name(
+                "banner.classification.floor-no-such-row",
+                &empty_attrs(),
+                MarkingType::Portion
+            )
+            .is_none(),
+        "unknown class-floor/* label must return None (no catalog match)"
+    );
+}
+
+/// The typed Citation lives directly on `Constraint.label` (not in a
+/// `citation_by_name` bridge fallback). This test reads the
+/// `Constraint::Custom { label }` field directly to confirm the per-row
+/// citation matches the documented anchor — `banner.classification.floor-hcs-comp-sub`
+/// at §H.4 p60 (SCI section start).
+#[test]
+fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
+    let scheme = CapcoScheme::new();
+    let row = scheme
+        .constraints()
+        .iter()
+        .find(|c| c.name() == "banner.classification.floor-hcs-comp-sub")
+        .expect("banner.classification.floor-hcs-comp-sub must appear in the catalog");
+    let cite = row.label();
+    assert_eq!(
+        cite,
+        capco(SectionLetter::H, 4, 60),
+        "banner.classification.floor-hcs-comp-sub citation must be §H.4 p60; got {cite}",
+    );
+    assert_eq!(cite.document, AuthoritativeSource::Capco2016);
+}
+
+/// The typed Citation lives directly on `Constraint.label`. Mirror of
+/// the class-floor test for the SCI per-system catalog.
+#[test]
+fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
+    let scheme = CapcoScheme::new();
+    let row = scheme
+        .constraints()
+        .iter()
+        .find(|c| c.name() == "marking.sci.hcs-o-companions")
+        .expect("marking.sci.hcs-o-companions must appear in the catalog");
+    let cite = row.label();
+    assert_eq!(
+        cite,
+        capco(SectionLetter::H, 4, 64),
+        "marking.sci.hcs-o-companions citation must be §H.4 p64; got {cite}",
+    );
+    assert_eq!(cite.document, AuthoritativeSource::Capco2016);
+}
+
+/// Passthrough class-floor rows route to
+/// `AuthoritativeSource::EngineInternal` (they reference
+/// marque-applied.md, not CAPCO-2016). Read directly from the row's
+/// typed Citation `label`.
+#[test]
+fn class_floor_passthrough_carries_engine_internal_citation() {
+    use marque_scheme::AuthoritativeSource;
+    let scheme = CapcoScheme::new();
+    let row = scheme
+        .constraints()
+        .iter()
+        .find(|c| c.name() == "banner.classification.floor-passthrough-bur")
+        .expect("banner.classification.floor-passthrough-bur must appear in the catalog");
+    let cite = row.label();
+    // Passthrough rows reference marque-applied.md, not CAPCO. The
+    // citation routes through AuthoritativeSource::EngineInternal so
+    // Display renders `[engine-internal]`.
+    assert_eq!(
+        cite.document,
+        AuthoritativeSource::EngineInternal,
+        "passthrough rows must route to EngineInternal; got {:?}",
+        cite.document,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Integration tests — engine bridge emits typed Message with expected shape
+// ---------------------------------------------------------------------------
+
+/// E037 (NODIS ⊥ EXDIS): the diagnostic must carry the
+/// `ConflictsWith` template + `CAT_NON_IC_DISSEM` category from
+/// `message_by_name`.
+///
+/// Input `(S//NF//ND/XD)` carries both NODIS and EXDIS alongside NOFORN
+/// (so E038 does not also fire for "no NOFORN"). The bridge must emit
+/// E037 with the typed message supplied by `message_by_name`.
+#[test]
+fn bridge_emits_typed_message_for_e037() {
+    let result = engine().lint(b"(S//NF//ND/XD)\n");
+    let e037 = result
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.predicate_id() == "portion.dissem.nodis-conflicts-exdis")
+        .expect("E037 must fire on (S//NF//ND/XD)");
+
+    assert_eq!(
+        e037.message.template(),
+        MessageTemplate::ConflictsWith,
+        "E037 must carry the ConflictsWith template after the message_by_name hook; \
+         got: {:?}",
+        e037.message.template(),
+    );
+    assert_eq!(
+        e037.message.args().category,
+        Some(CAT_NON_IC_DISSEM),
+        "E037 must identify the non-IC dissem axis; got: {:?}",
+        e037.message.args().category,
+    );
+}
+
+/// E054 (RELIDO ⊥ NOFORN): the diagnostic must carry the
+/// `ConflictsWith` template + `CAT_DISSEM` category.
+///
+/// Input `(S//NF/RELIDO)` carries both NOFORN and RELIDO together.
+/// The bridge must emit E054 with the typed message from
+/// `message_by_name`.
+#[test]
+fn bridge_emits_typed_message_for_e054() {
+    let result = engine().lint(b"(S//NF/RELIDO)\n");
+    let e054 = result
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.predicate_id() == "portion.dissem.relido-conflicts-noforn")
+        .expect("E054 must fire on (S//NF/RELIDO)");
+
+    assert_eq!(
+        e054.message.template(),
+        MessageTemplate::ConflictsWith,
+        "E054 must carry the ConflictsWith template after the message_by_name hook; \
+         got: {:?}",
+        e054.message.template(),
+    );
+    assert_eq!(
+        e054.message.args().category,
+        Some(CAT_DISSEM),
+        "E054 must identify the dissem axis; got: {:?}",
+        e054.message.args().category,
+    );
+}

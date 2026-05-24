@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.3 p57 — JOINT disunity across portions migrates to FGI [LIST] at banner roll-up (Derivative Use bullets). Fires W004 joint-disunity-collapse at the page-finalization snapshot.",
+  "diagnostics": [
+    {"rule": {"scheme": "capco", "predicate_id": "page.fgi.joint-disunity-collapses-to-fgi"}, "span": {"start": 84, "end": 84}}
+  ]
+}

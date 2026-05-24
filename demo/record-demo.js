@@ -35,7 +35,7 @@ const { chromium } = require('playwright');
 const http  = require('http');
 const fs    = require('fs');
 const path  = require('path');
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -426,18 +426,9 @@ async function outro(page) {
 
       const mp4Out = outFile.replace(/\.webm$/i, '.mp4');
       try {
-        execFileSync(
-          'ffmpeg',
-          [
-            '-y',
-            '-loglevel', 'error',
-            '-i', outFile,
-            '-c:v', 'libx264',
-            '-preset', 'fast',
-            '-crf', '18',
-            '-movflags', '+faststart',
-            mp4Out
-          ],
+        execSync(
+          `ffmpeg -y -loglevel error -i "${outFile}" ` +
+          `-c:v libx264 -preset fast -crf 18 -movflags +faststart "${mp4Out}"`,
           { stdio: 'pipe' }
         );
         console.log(`MP4 saved:   ${mp4Out}`);

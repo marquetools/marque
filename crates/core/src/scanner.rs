@@ -5,7 +5,9 @@
 //! Phase 1: candidate detection — finds potential classification markings in a byte buffer.
 //!
 //! Uses `memchr` for SIMD-accelerated boundary detection. Zero heap allocation
-//! beyond the output `Vec<MarkingCandidate>`. Never invokes the parser.
+//! for inputs producing ≤16 candidates; the output
+//! `SmallVec<[MarkingCandidate; 16]>` keeps its buffer inline. Never invokes
+//! the parser.
 //!
 //! # Strategy
 //! - Portion candidates: scan for `(` with `memchr`, walk to `)`, apply
@@ -14,8 +16,10 @@
 //!   known classification prefix (UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP SECRET).
 //! - CAB candidates: scan for "Classified By:" label, walk to end of block.
 
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
+use marque_scheme::Span;
 use memchr::memchr_iter;
+use smallvec::SmallVec;
 
 /// Phase 1 scanner. Stateless; call [`Scanner::scan`] on any byte buffer.
 pub struct Scanner;
@@ -23,10 +27,12 @@ pub struct Scanner;
 impl Scanner {
     /// Scan `source` for classification marking candidates.
     ///
-    /// Returns candidates in source order. Allocation is proportional to
-    /// the number of candidates found, not source length.
-    pub fn scan(source: &[u8]) -> Vec<MarkingCandidate> {
-        let mut candidates = Vec::new();
+    /// Returns candidates in source order. Zero heap allocation for the
+    /// typical case (≤16 candidates); past 16, the `SmallVec` spills to a
+    /// heap-allocated buffer proportional to the candidate count, not
+    /// source length.
+    pub fn scan(source: &[u8]) -> SmallVec<[MarkingCandidate; 16]> {
+        let mut candidates: SmallVec<[MarkingCandidate; 16]> = SmallVec::new();
 
         Self::scan_portions(source, &mut candidates);
         Self::scan_banners(source, &mut candidates);
@@ -55,10 +61,10 @@ impl Scanner {
     /// PageBreak spans are zero-length and carry no parsable content; the
     /// parser will reject them, so the engine must filter them out *before*
     /// calling `parser.parse`.
-    fn scan_page_breaks(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_page_breaks(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         // Form-feed: every `\f` is a hard page break in pretty much every
-        // ASCII document convention. memchr is overkill at this scale but
-        // matches the rest of the scanner's idiom.
+        // ASCII document convention. `memchr` strides over the buffer via
+        // SIMD; matches the rest of the scanner's idiom.
         for pos in memchr_iter(b'\x0c', source) {
             out.push(MarkingCandidate {
                 span: Span::new(pos, pos),
@@ -66,26 +72,39 @@ impl Scanner {
             });
         }
         // Three-or-more consecutive `\n` is a soft page break under our
-        // heuristic. We emit one candidate at the third newline, then skip
-        // ahead until we leave the run, so a single blank gap between
-        // paragraphs (`\n\n`) does NOT trip the reset.
+        // heuristic. `memchr_iter` strides over newlines via SIMD; we use
+        // the bytes between consecutive newlines to decide whether the run
+        // continues. A gap of only `\r` bytes (covers `\r\n\r\n` CRLF runs)
+        // counts as continuous; any other byte breaks the run, so a single
+        // blank gap between paragraphs (`\n\n`) does NOT trip the reset.
+        //
+        // Run-emission semantics intentionally match the prior byte-iter
+        // loop: we emit on the THIRD newline of a run (equality, not `>=`)
+        // and do not reset after emit, so a longer run (`\n\n\n\n\n+`)
+        // still emits exactly one PageBreak — at the third newline.
         let mut run = 0usize;
-        for (i, &b) in source.iter().enumerate() {
-            if b == b'\n' {
+        let mut prev_pos = None;
+        for pos in memchr_iter(b'\n', source) {
+            let continuous = match prev_pos {
+                Some(p) => source[p + 1..pos].iter().all(|&b| b == b'\r'),
+                None => true,
+            };
+            if continuous {
                 run += 1;
-                if run == 3 {
-                    out.push(MarkingCandidate {
-                        span: Span::new(i, i),
-                        kind: MarkingType::PageBreak,
-                    });
-                }
-            } else if b != b'\r' {
-                run = 0;
+            } else {
+                run = 1;
             }
+            if run == 3 {
+                out.push(MarkingCandidate {
+                    span: Span::new(pos, pos),
+                    kind: MarkingType::PageBreak,
+                });
+            }
+            prev_pos = Some(pos);
         }
     }
 
-    fn scan_portions(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_portions(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         // Find every `(` and walk forward to the matching `)`.
         for start in memchr_iter(b'(', source) {
             if let Some(end) = find_portion_end(source, start) {
@@ -101,7 +120,7 @@ impl Scanner {
         }
     }
 
-    fn scan_banners(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_banners(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         // Classification prefixes that can start a banner line.
         // Full-form US classifications are listed first. Abbreviated US forms
         // (`TS//`, `S//`, `C//`, `U//`) are included so rules like E001 (portion
@@ -111,6 +130,7 @@ impl Scanner {
         // markings with the RESTRICTED level.
         const BANNER_PREFIXES: &[&[u8]] = &[
             b"TOP SECRET",
+            b"COSMIC TOP SECRET",
             b"TS//",
             b"SECRET",
             b"S//",
@@ -120,6 +140,13 @@ impl Scanner {
             b"UNCLASSIFIED",
             b"U//",
             b"//",
+            // NATO longhand banner forms — the strict parser accepts
+            // `NATO SECRET` / `COSMIC TOP SECRET` etc.; these prefixes
+            // allow the decoder to recover abbreviated forms like
+            // `NATO S` / `NATO TS` via `try_nato_fold`. Without this,
+            // the decoder never sees these candidates.
+            // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+            b"NATO ",
         ];
 
         for line in source.split(|&b| b == b'\n') {
@@ -137,7 +164,7 @@ impl Scanner {
         }
     }
 
-    fn scan_cab(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_cab(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         const CAB_LABEL: &[u8] = b"Classified By:";
         let mut search_from = 0;
         while let Some(rel) = find_subsequence(&source[search_from..], CAB_LABEL) {
@@ -295,6 +322,70 @@ mod tests {
             candidates.iter().all(|c| c.kind != MarkingType::PageBreak),
             "double newline should not produce a PageBreak candidate"
         );
+    }
+
+    #[test]
+    fn detects_page_break_crlf_blank_line_run() {
+        // CRLF-terminated paragraphs ("\r\n\r\n\r\n") are a three-newline run
+        // where the inter-newline gaps are pure `\r` bytes. The scanner must
+        // treat `\r`-only gaps as continuous so Windows-style line endings
+        // produce the same PageBreak as Unix-style `\n\n\n`.
+        //
+        // Byte positions: p(0) a(1) g(2) e(3) 1(4) \r(5) \n(6) \r(7) \n(8)
+        //                 \r(9) \n(10) p(11) ...
+        // Third newline at offset 10.
+        let src = b"page1\r\n\r\n\r\npage2";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 10);
+        assert_eq!(breaks[0].span.end, 10);
+    }
+
+    #[test]
+    fn single_emit_on_six_newline_run() {
+        // Regression guard: a longer run (six consecutive `\n`) must still
+        // emit exactly ONE PageBreak, at the third newline. The equality
+        // check on `run == 3` (not `>=`) is what preserves this property;
+        // a careless "reset run after emit" refactor would emit twice on
+        // a six-newline run. Pin the behavior so a future refactor that
+        // introduces post-emit reset fails here.
+        //
+        // Byte positions: a(0) \n(1) \n(2) \n(3) \n(4) \n(5) \n(6) b(7).
+        // Third newline at offset 3.
+        let src = b"a\n\n\n\n\n\nb";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 3);
+        assert_eq!(breaks[0].span.end, 3);
+    }
+
+    #[test]
+    fn empty_gap_between_newlines_counts_as_continuous() {
+        // Adjacent newlines have an empty inter-newline gap. The
+        // `\r`-transparency check (`source[p+1..pos].iter().all(|&b| b == b'\r')`)
+        // returns vacuously `true` on an empty slice, which is the load-bearing
+        // property that makes pure-LF `\n\n\n` emit a PageBreak. This pins the
+        // vacuous-truth case explicitly so a future tighter predicate that
+        // doesn't preserve it (e.g., `gap.is_empty() || gap.iter().all(...)`)
+        // would still pass, but a buggier one (e.g., `!gap.is_empty() && ...`)
+        // would fail here independently of the other page-break tests.
+        let src = b"\n\n\n";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 2);
+        assert_eq!(breaks[0].span.end, 2);
     }
 
     #[test]
