@@ -58,7 +58,7 @@ jobs:
 
       - name: Set up environment
         continue-on-error: true
-        uses: jdx/mise-action@1c5f70fd400ce6c745085c93ea80026272f8d346
+        uses: jdx/mise-action@5b45072a5ed4128fb3b45f33168ef2b8dc66dd63
         if: matrix.language != 'actions'
         with:
           install: true
