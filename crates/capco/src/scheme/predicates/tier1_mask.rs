@@ -5,11 +5,10 @@
 //! Tier-1 `Constraint::Custom` predicates compiled to [`FactBitmask`]
 //! trigger/suppressor mask tests.
 //!
-//! # Scope (PR-E / issue #371)
+//! # Scope (issue #371)
 //!
 //! The four named-dispatch rows that lift cleanly to pure-presence
-//! bitmask logic per the §8 audit in
-//! `docs/plans/2026-05-20-371-factbitmask-refactor.md`:
+//! bitmask logic:
 //!
 //! | Rule | Trigger | Suppressor | Citation |
 //! |------|---------|------------|----------|
@@ -20,21 +19,15 @@
 //!
 //! # Semantics vs the retired structural helpers
 //!
-//! Pre-PR-E, the same four predicates were structural slice walks in
-//! `crates/capco/src/scheme/constraints/helpers.rs` (`e021_rd_frd_requires_noforn`,
-//! `e024_rd_precedence`, `e038_dos_dissem_requires_noforn`,
-//! `e070_frd_tfni_precedence`). PR-E retires those helpers and routes
-//! the dispatch in `predicates/satisfies.rs` to the mask forms here.
-//!
-//! The mask form is observationally equivalent to the retired
-//! structural form — same trigger/suppressor logic, same diagnostic
+//! The mask form is observationally equivalent to a structural slice
+//! walk — same trigger/suppressor logic, same diagnostic
 //! synthesis (message, citation, span, severity), same byte-identical
 //! `ConstraintViolation` output. The proptest at
 //! `crates/capco/tests/proptest_tier1_mask.rs` enforces parity against
 //! an independent oracle re-derived from CAPCO-2016 §H.6 / §H.9
 //! verbatim.
 //!
-//! # Amortized `derive_bits` dispatch (this PR)
+//! # Amortized `derive_bits` dispatch
 //!
 //! `marque_scheme::constraint::evaluate` calls `scheme.precompute_bits`
 //! once per marking before the constraint loop, then threads the
@@ -51,7 +44,7 @@
 //! input axis (typically `attrs.aea_markings.is_empty()` or
 //! `attrs.non_ic_dissem.is_empty()`) before entering the bitmask logic.
 //! On the overwhelmingly common no-trigger path this skips the
-//! mask-evaluation work entirely. The structural body's pre-PR-E early
+//! mask-evaluation work entirely. A structural body's early
 //! returns had a similar shape; the cost of this module is bounded
 //! above by the structural cost the retired helpers were already
 //! paying — corpus parity and `lint_latency` non-regression gate the
@@ -165,8 +158,8 @@ pub(crate) fn e024_rd_precedence(
 /// The structural form (retired) checked NOFORN via
 /// [`satisfies_attrs`] with `TokenRef::Token(TOK_NOFORN)`. The
 /// `NOFORN` bit in [`derive_bits`] reads from `attrs.dissem_iter()`
-/// — the same set the structural call resolves over (post PR 9b /
-/// FR-046, `dissem_iter()` walks both `dissem_us` and `dissem_nato`).
+/// — the same set the structural call resolves over (`dissem_iter()`
+/// walks both `dissem_us` and `dissem_nato`).
 /// Behavior matches byte-for-byte.
 pub(crate) fn e038_dos_dissem_requires_noforn(
     attrs: &CanonicalAttrs,

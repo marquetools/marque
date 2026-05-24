@@ -43,7 +43,7 @@ pub(super) struct DeprecatedDissemRule;
 /// Citations E006 may emit on diagnostics. §F has no numbered
 /// subsections; the bare-section page anchor at p35 marks the
 /// start of the §F "Legacy Control Markings" passage. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const DEPRECATED_DISSEM_AUTHORITIES: &[Citation] = &[capco_section(SectionLetter::F, 35)];
 
@@ -98,15 +98,10 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
             // shorthand entries today (`25X1-` / `50X1-` X-shorthand
             // patterns per CAPCO-2016 §E.6 p34), and the
             // `is_dissem_replacement` filter above rejects every one of
-            // them BEFORE reaching this point. No form-pair entry has
-            // existed in `MIGRATIONS` since T035c-4 (legacy IDs E001 /
-            // E009, now migrated to the wire strings cited above).
-            // Tracked as a follow-up: the `MIGRATIONS` doc-comment in
-            // `crates/ism/build.rs` still references the legacy E001 /
-            // E009 rule IDs and the removed `is_abbreviation_expansion`
-            // guard; updating that doc is engine-crate territory under
-            // Constitution VII §IV and cannot land in this CAPCO PR.
-            // Constitution V Principle V (G13): the original document
+            // them BEFORE reaching this point. The `MIGRATIONS` table
+            // holds no portion↔banner form-pair entries — that fix path
+            // is owned by the renderer's `Recanonicalize` route.
+            // Audit content-ignorance (Constitution V): the original document
             // bytes (`token.text`) and the canonical replacement
             // (`entry.replacement`) do NOT flow into the typed
             // `Message`. The replacement is on the permitted-identifier
@@ -196,7 +191,7 @@ pub(crate) fn is_dissem_replacement(replacement: &str) -> bool {
 pub(super) struct NonIcInClassifiedBannerRule;
 
 /// Citations W003 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const NON_IC_IN_CLASSIFIED_BANNER_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 9, 169)];
 
@@ -270,7 +265,7 @@ impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
 
-            // G13: drop the runtime token-text interpolation. Template
+            // Audit content-ignorance: drop the runtime token-text interpolation. Template
             // identifies the violation class; the affected category is
             // CAT_NON_IC_DISSEM.
             let _ = nic; // emit-class is known without the runtime value

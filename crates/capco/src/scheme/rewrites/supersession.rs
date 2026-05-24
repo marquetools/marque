@@ -37,7 +37,7 @@
 //! ([`marque_capco::lattice::NonIcDissemSet::from_attrs_iter`])
 //! which carries the same supersession semantics. These two rows
 //! mirror the lattice fix so the scheme path stays in shape for
-//! Phase D/E runtime wiring. End-to-end behavior today is visible
+//! runtime wiring. End-to-end behavior today is visible
 //! through `scheme.project(Scope::Page, ...)` exercising the
 //! lattice helper.
 
@@ -69,8 +69,6 @@ pub(super) fn supersession_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //
         // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_SBU_NF)` — fires
         // when SBU-NF is present on the page's `non_ic_dissem` axis.
-        // (Resolved by the `capco_category_contains` extension in
-        // PR 3c.B Sub-PR 8.F.2.)
         //
         // Action: `Intent(FactRemove { Cve(TOK_SBU), Scope::Page })`
         // — drops bare SBU. Per-intent no-op

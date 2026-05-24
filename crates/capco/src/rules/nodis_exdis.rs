@@ -22,30 +22,24 @@ use marque_scheme::{Citation, FactRef, ReplacementIntent, Scope, SectionLetter, 
 use crate::scheme::CapcoScheme;
 
 // ===========================================================================
-// T035c-21 PR-B: NODIS / EXDIS page-level + portion-level rules (§H.9)
+// NODIS / EXDIS page-level + portion-level rules (§H.9)
 // ===========================================================================
 //
-// Three hand-written rules that can't ride the declarative-constraint
-// path. E039 and E040 read `ctx.page_marking` (the composite
-// `ProjectedMarking` projection — banner-validation surface, PR 9b
-// T133 / FR-006); E041 is portion-only and reads its dispatch attrs
-// directly. None of the three has a single-span text replacement the
-// declarative path can synthesize:
+// Two hand-written rules that can't ride the declarative-constraint
+// path. The banner-clear rule reads `ctx.page_marking` (the composite
+// `ProjectedMarking` banner-validation projection); the portion
+// supersession rule reads its dispatch attrs directly. Neither has a
+// single-span text replacement the declarative path can synthesize:
 //
-//   E039  — REL TO not authorized in banner when any portion has NODIS
-//           or EXDIS. No fix (removing REL TO from a banner is multi-
-//           span and requires human judgment on what to convey instead).
-//   E040  — Banner must roll up NODIS (or EXDIS if no NODIS anywhere).
-//           Insertion fix when banner already has a Non-IC dissem
-//           category block; no-fix Error otherwise.
-//   E041  — In a portion with both NODIS and EXDIS, NODIS supersedes
-//           EXDIS. Warn-severity with no fix. Portion-only; the
-//           banner case is owned by E037 (mutual exclusion, Error).
-//           See the in-rule "# No auto-fix" section for why the
-//           supersession is not auto-applied.
+//   - REL TO is not authorized in the banner when any portion has NODIS
+//     or EXDIS. No fix (removing REL TO from a banner is multi-span and
+//     requires human judgment on what to convey instead).
+//   - In a portion with both NODIS and EXDIS, NODIS supersedes EXDIS
+//     (Warn, intent-only FactRemove). Portion-only; the banner-level
+//     mutual exclusion is a declarative catalog row.
 
 // ---------------------------------------------------------------------------
-// Rule: E039 — REL TO not allowed in banner when portion has NODIS/EXDIS
+// Rule: REL TO not allowed in banner when portion has NODIS/EXDIS
 // ---------------------------------------------------------------------------
 
 /// Fires when the banner's REL TO list is populated and any portion on
@@ -67,75 +61,51 @@ use crate::scheme::CapcoScheme;
 /// diagnostic with no fix; the user decides manually.
 pub(super) struct NodisExdisClearsBannerRelToRule;
 
-/// E037 secondary CAPCO §-citations.
+/// Secondary CAPCO §-citation for the NODIS/EXDIS mutual-exclusion
+/// declarative catalog row.
 ///
-/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
-/// pre-migration string form `"CAPCO-2016 §H.9 p172 + p174"` into a
-/// single `capco(SectionLetter::H, 9, 172)` value on the diagnostic
-/// emitted by the declarative `Conflicts` row at
-/// `crates/capco/src/scheme/constraints/core_catalog.rs::core_constraints()`
-/// (search for `"portion.dissem.nodis-conflicts-exdis"`). The cross-reference
-/// to p174 (NODIS authority — the mutual-exclusion rule is stated
-/// verbatim on both sides) survived in the catalog row's doc-comment
-/// but was un-checked.
-///
-/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
-/// Commit 4 authorship per Constitution VIII propagation rule: §H.9
-/// p174 (NODIS Relationship(s) to Other Markings) states "NODIS and
-/// EXDIS markings cannot be used together", mirroring §H.9 p172's
-/// EXDIS-side wording. Both passages are operative for E037.
+/// The typed `Citation` on the emitted diagnostic carries one passage
+/// (§H.9 p172). This constant pins the cross-reference to p174
+/// structurally: §H.9 p174 (NODIS Relationship(s) to Other Markings)
+/// states "NODIS and EXDIS markings cannot be used together", mirroring
+/// §H.9 p172's EXDIS-side wording. Both passages are operative.
 ///
 /// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
 pub(crate) const NODIS_EXDIS_MUTEX_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
 
-/// E038 secondary CAPCO §-citations.
+/// Secondary CAPCO §-citation for the NODIS/EXDIS requires-NOFORN
+/// declarative catalog row.
 ///
-/// PR 10.A.1 Commit 4: identical mechanism to [`NODIS_EXDIS_MUTEX_CROSS_REFS`] —
-/// the declarative `Custom` row at
-/// `core_constraints()::"portion.dissem.nodis-or-exdis-requires-noforn"` carries
-/// only the primary §H.9 p172 anchor. The cross-reference to p174
-/// (NODIS "Requires NOFORN") survived in the catalog row's
-/// doc-comment but was un-checked.
-///
-/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
-/// Commit 4 authorship per Constitution VIII propagation rule: §H.9
-/// p174 (NODIS Relationship(s) to Other Markings) carries the same
-/// "Requires NOFORN" clause that the rule's primary citation at p172
-/// establishes for EXDIS. Both passages are operative for E038.
+/// The catalog row carries the primary §H.9 p172 anchor. §H.9 p174
+/// (NODIS Relationship(s) to Other Markings) carries the same "Requires
+/// NOFORN" clause that p172 establishes for EXDIS; this constant pins
+/// that cross-reference structurally. Both passages are operative.
 ///
 /// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
 pub(crate) const NODIS_EXDIS_REQUIRES_NOFORN_CROSS_REFS: &[Citation] =
     &[capco(SectionLetter::H, 9, 174)];
 
-/// E039 secondary CAPCO §-citations.
+/// Secondary CAPCO §-citation for `NodisExdisClearsBannerRelToRule`.
 ///
-/// PR 10.A.1 Commit 4: the migration to typed `Citation` collapsed the
-/// pre-migration string form `"CAPCO-2016 §H.9 p172 + p174 (NODIS)"`
-/// into a single `capco(SectionLetter::H, 9, 172)` value on the emitted
-/// diagnostic. The cross-reference to p174 (NODIS authority — the
-/// EXDIS rule at p172 is mirrored verbatim for NODIS at p174) survived
-/// in the rule's doc-comment but was un-checked. This constant pins
-/// the dropped cross-reference structurally.
-///
-/// Re-verified against `crates/capco/docs/CAPCO-2016.md` at PR 10.A.1
-/// Commit 4 authorship per Constitution VIII propagation rule: §H.9
-/// p174 (NODIS Relationship(s) to Other Markings) carries the same
-/// "REL TO not authorized in banner when portion contains NODIS"
-/// rule that the rule's primary citation at p172 establishes for
-/// EXDIS. Both passages are operative for E039.
+/// The typed `Citation` on the emitted diagnostic carries one passage
+/// (§H.9 p172 — EXDIS). §H.9 p174 (NODIS Relationship(s) to Other
+/// Markings) carries the same "REL TO not authorized in banner when
+/// portion contains NODIS" rule that p172 establishes for EXDIS; this
+/// constant pins that cross-reference structurally. Both passages are
+/// operative.
 ///
 /// `#[allow(dead_code)]`: see [`DECLASSIFY_MISPLACED_CROSS_REFS`] for the rationale.
 #[allow(dead_code)]
 pub(crate) const NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS: &[Citation] =
     &[capco(SectionLetter::H, 9, 174)];
 
-/// Citations E039 may emit on diagnostics. Combines the primary
-/// `Diagnostic.citation` value (§H.9 p172 — EXDIS) with the
-/// [`NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS`] cross-references (§H.9 p174 — NODIS). See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
-/// contract.
+/// Citations `NodisExdisClearsBannerRelToRule` may emit on diagnostics.
+/// Combines the primary `Diagnostic.citation` value (§H.9 p172 — EXDIS)
+/// with the [`NODIS_EXDIS_CLEARS_REL_TO_CROSS_REFS`] cross-reference
+/// (§H.9 p174 — NODIS). See [`Rule::cited_authorities`] for the
+/// corpus-fidelity gate contract.
 const NODIS_EXDIS_CLEARS_BANNER_REL_TO_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 9, 172),
     capco(SectionLetter::H, 9, 174),
@@ -177,11 +147,9 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
             return vec![];
         }
 
-        // PR 9b (T133): banner-validation reads `ctx.page_marking`
-        // (the `ProjectedMarking`) instead of going through
-        // `PageContext::expected_non_ic_dissem`. The projection's
-        // `non_ic_dissem` field carries the same supersession-
-        // resolved roll-up.
+        // Banner-validation reads `ctx.page_marking` (the
+        // `ProjectedMarking`). Its `non_ic_dissem` field carries the
+        // supersession-resolved roll-up.
         let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
         };
@@ -204,16 +172,16 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
         // `attrs.rel_to.is_empty()` guard above means we reach this site
         // only when `rel_to` is non-empty, therefore the `find()` MUST
         // succeed. The `else` arm is defense-in-depth against future parser
-        // changes that would violate the invariant; uses the same let-else
-        // shape as S010, with a `debug_assert!` on the invariant itself
-        // (not on a constant) so dev/test builds panic loud if the parser
-        // ever drops the RelToBlock span while keeping `rel_to` populated.
+        // changes that would violate the invariant; the `debug_assert!`
+        // on the invariant itself makes dev/test builds panic loud if
+        // the parser ever drops the RelToBlock span while keeping
+        // `rel_to` populated.
         debug_assert!(
             attrs
                 .token_spans
                 .iter()
                 .any(|t| t.kind == TokenKind::RelToBlock),
-            "E039: candidate with non-empty rel_to has no RelToBlock token span \
+            "candidate with non-empty rel_to has no RelToBlock token span \
              (parser invariant violation; see parse_rel_to_with_spans call sites \
              in marque-core::parser)"
         );
@@ -247,7 +215,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 }
 
 // ---------------------------------------------------------------------------
-// Rule: E041 — Portion-level NODIS supersedes EXDIS
+// Rule: Portion-level NODIS supersedes EXDIS
 // ---------------------------------------------------------------------------
 
 /// Fires when a portion carries BOTH NODIS and EXDIS. Emits a
@@ -267,46 +235,38 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 /// # Scope
 ///
 /// Portion-only per both source passages ("in the portion mark").
-/// The banner-level mutual exclusion is E037's territory — it fires
-/// as `Error` there with no fix because banner-level resolution
-/// depends on which portions carry which token (see E040's roll-up
-/// rule for how the banner should be composed).
+/// The banner-level mutual exclusion is a declarative catalog row that
+/// fires as `Error` with no fix, because banner-level resolution
+/// depends on which portions carry which token.
 ///
-/// # Interaction with E037
+/// # Interaction with the mutual-exclusion rule
 ///
-/// E037 also fires in portion context (it's a general "NODIS and
-/// EXDIS cannot coexist" rule per §H.9 p172 + p174). When a portion
-/// has both tokens, both rules fire:
-/// - E037 (`Error`, no fix) states the violation.
-/// - E041 (`Warn`, intent-only `FactRemove`) states the supersession
-///   rule: NODIS wins, so EXDIS is removed from the portion marking.
-///
-/// E037 emits no `FixProposal`, so the FR-016 deterministic ordering
-/// (lex-min rule id wins on overlap) does not block E041's fix from
-/// applying — E041 is the only diagnostic in the candidate-span group
-/// that contributes an intent. After the engine applies E041, re-linting
-/// the resulting portion clears both diagnostics.
+/// A declarative catalog row also fires in portion context (the general
+/// "NODIS and EXDIS cannot coexist" rule per §H.9 p172 + p174). When a
+/// portion has both tokens, both fire: the catalog row (`Error`, no fix)
+/// states the violation, and this rule (`Warn`, intent-only
+/// `FactRemove`) states the supersession — NODIS wins, EXDIS is removed.
+/// The catalog row emits no fix, so deterministic fix-ordering does not
+/// block this rule's fix from applying. After the engine applies it,
+/// re-linting the resulting portion clears both diagnostics.
 ///
 /// # Severity and auto-fix surface
 ///
 /// `Warn` default severity. The engine's intent-only synthesis path
 /// auto-applies the fix for every severity *except* `Severity::Suggest`
 /// (see `crates/engine/src/engine.rs::synthesize_intent_only_fixes`),
-/// so the default emission auto-fixes. Orgs that want to surface
-/// the supersession without applying it can configure
-/// `E041 = "suggest"` in `.marque.toml`; orgs that want the violation
-/// promoted to an error can configure `E041 = "error"`.
+/// so the default emission auto-fixes. Orgs can configure the rule to
+/// `"suggest"` (surface without applying) or `"error"` in `.marque.toml`.
 ///
-/// # Auto-fix mechanism (PR 3c.B Sub-PR 8.E.2 — unblocks E041, primary rule named in #106)
+/// # Auto-fix mechanism
 ///
-/// Pre-PR-3c.B-Sub-PR-8.E.2 this rule shipped as a no-fix diagnostic.
-/// The blocker was that a byte-precise legacy [`FixProposal`] would
-/// need to splice EXDIS *plus* an adjacent within-category `/`
-/// separator, but the parser only emits `TokenKind::Separator` for
-/// between-category `//` delimiters — within-category `/` bytes are
-/// gap bytes that no `TokenSpan` covers. Constructing the legacy
-/// proposal from rule-level position info risked over-running on
-/// edge inputs and corrupting the audit record per Constitution V.
+/// A byte-precise text replacement would need to splice EXDIS *plus* an
+/// adjacent within-category `/` separator, but the parser only emits
+/// `TokenKind::Separator` for between-category `//` delimiters —
+/// within-category `/` bytes are gap bytes that no `TokenSpan` covers.
+/// Constructing a byte-precise replacement from rule-level position info
+/// risks over-running on edge inputs and corrupting the audit record
+/// (Constitution V).
 ///
 /// The intent-only emission path obviates that gap. The rule emits
 /// `FixIntent { ReplacementIntent::FactRemove { TOK_EXDIS, Portion } }`
@@ -315,21 +275,17 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 /// `synthesize_intent_only_fixes` calls `CapcoScheme::apply_intent`
 /// to remove EXDIS from the marking's `non_ic_dissem` axis, then
 /// re-renders the portion via `MarkingScheme::render_canonical`
-/// (delegated to `render_portion`). The synthesized
-/// `FixProposal.span` covers the full candidate, so the
-/// within-category `/` byte is replaced as part of the re-rendered
-/// portion — no parser change required. Issue #106 remains open as
-/// a tracking ticket for any future rule that genuinely needs
-/// byte-precise within-category separator info (i.e., a rule that
-/// cannot route through re-rendering); E041 itself no longer
-/// blocks on it.
+/// (delegated to `render_portion`). The synthesized `FixProposal.span`
+/// covers the full candidate, so the within-category `/` byte is
+/// replaced as part of the re-rendered portion — no parser change
+/// required.
 pub(super) struct NodisSupersedesExdisInPortionRule;
 
-/// Citations E041 may emit on diagnostics. Primary anchor §H.9 p174
+/// Citations this rule may emit on diagnostics. Primary anchor §H.9 p174
 /// (NODIS — the dominating token); the §H.9 p172 (EXDIS) cross-
 /// reference is also operative because both passages state the
 /// supersession rule verbatim. See [`Rule::cited_authorities`] for
-/// the F.1 corpus-fidelity gate contract.
+/// the corpus-fidelity gate contract.
 const NODIS_SUPERSEDES_EXDIS_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 9, 174),
     capco(SectionLetter::H, 9, 172),
@@ -395,18 +351,16 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
             return vec![];
         };
 
-        // PR 3c.B Sub-PR 8.E.2 — intent-only emission (unblocks E041 in #106).
-        // The diagnostic's `span` points at the EXDIS token (the
-        // user-facing pointer); `candidate_span` is the full portion
-        // candidate so the engine's `synthesize_intent_only_fixes`
-        // knows which scope-bytes to re-render after
-        // `CapcoScheme::apply_intent` removes EXDIS from the
-        // marking's non-IC-dissem axis. The within-category `/`
-        // separator that previously blocked byte-precise splicing is
-        // sidestepped because the engine replaces the full
-        // candidate_span with the re-rendered output — no parser
-        // change required (see the `# Auto-fix mechanism` section in
-        // the rustdoc above for the issue-#106 sidestep rationale).
+        // Intent-only emission. The diagnostic's `span` points at the
+        // EXDIS token (the user-facing pointer); `candidate_span` is the
+        // full portion candidate so the engine's
+        // `synthesize_intent_only_fixes` knows which scope-bytes to
+        // re-render after `CapcoScheme::apply_intent` removes EXDIS from
+        // the marking's non-IC-dissem axis. The within-category `/`
+        // separator that would block byte-precise splicing is sidestepped
+        // because the engine replaces the full candidate_span with the
+        // re-rendered output — no parser change required (see the
+        // `# Auto-fix mechanism` section in the rustdoc above).
         vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),

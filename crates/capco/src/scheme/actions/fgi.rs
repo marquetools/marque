@@ -4,22 +4,20 @@
 
 //! FGI (Foreign Government Information) helpers — foreign-source
 //! extraction and FGI-marker merge logic used by the lattice path's
-//! G-4c / G-5 FGI composition. Lifted from the monolithic
-//! `actions.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! G-4c / G-5 FGI composition.
 
 use marque_ism::MarkingClassification;
 
 /// Extract the set of foreign country codes contributing to FGI
 /// semantics from a `MarkingClassification`.
 ///
-/// G-4c (PR 4b-B 9th-pass follow-up): used by the lattice path's
+/// Used by the lattice path's
 /// solely-non-US FGI suppression branch to detect source loss when
 /// `ClassificationLattice`'s OrdMax winner discards a foreign source
 /// observed on a lower-level portion. The semantics mirror the
 /// country-extraction step of the retired
 /// `PageContext::expected_fgi_marker` accessor (deleted with the
-/// `PageContext::expected_*` surface in PR 4b-E) so the lattice and
+/// `PageContext::expected_*` surface) so the lattice and
 /// scheme projection paths agree on which portions contribute which
 /// producers to the FGI axis. The lattice-native form lives in
 /// `FgiSet::from_attrs_iter` (see `crates/capco/src/lattice/fgi.rs`);
@@ -55,7 +53,7 @@ use marque_ism::MarkingClassification;
 ///
 /// The caller collects into a `BTreeSet` for deduplication.
 ///
-/// P-9-2 (9th-pass): changed return type from `Vec<CountryCode>` to
+/// Return type is `Option<Vec<CountryCode>>` rather than
 /// `Option<Vec<CountryCode>>` to propagate the concealed signal.
 /// Pre-fix, source-concealed FGI portions returned an empty `Vec`,
 /// indistinguishable from "no FGI at all" — the G-4c equality check
@@ -109,7 +107,7 @@ pub(crate) fn extract_foreign_sources(
 /// source-concealed sentinel and unioning the producer country
 /// sets when both sides carry acknowledged markers.
 ///
-/// G-5 (PR 4b-B follow-up): pre-fix, the `join_via_lattice` FGI
+/// Without this, the `join_via_lattice` FGI
 /// composition discarded `expected_fgi_marker`'s
 /// classification-derived producers whenever an explicit FGI marker
 /// existed. This helper unions both sources so the lattice output
@@ -125,7 +123,7 @@ pub(crate) fn merge_fgi_markers(
         (Some(x), None) | (None, Some(x)) => Some(x),
         // Source-concealed dominates per §H.7 pp123-124 — bare `FGI`
         // (no LIST) is the most-restrictive marker. Either operand
-        // carrying it produces SourceConcealed. CV-4 (PR 4b-B 8th-pass):
+        // carrying it produces SourceConcealed.
         // pre-CV-4 cited `§H.7 p123`; verified 2026-05-16 against
         // CAPCO-2016.md — the §H.7 block begins on p123 but the
         // load-bearing supersession sentence ("If any document

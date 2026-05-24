@@ -24,7 +24,7 @@
 //! message that ships with the build-time gate.
 
 /// BLAKE3 digest (lowercase hex) of
-/// `crates/capco/docs/CAPCO-2016.md` at PR 10.A.2 authorship.
+/// `crates/capco/docs/CAPCO-2016.md`.
 ///
 /// Computed via `b3sum crates/capco/docs/CAPCO-2016.md` from the workspace root
 /// (or `b3sum docs/CAPCO-2016.md` from `crates/capco/`).

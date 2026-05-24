@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase-3 transmutation stubs (8 rows) from the §3.4.1 / §3.4.3
-//! roster in `marque-applied.md`. Each row declares
+//! Transmutation stubs (8 rows) from the transmutation
+//! roster. Each row declares
 //! `Custom(never_fires)` + `Custom(noop_action)`; only the
 //! `reads` / `writes` axis annotations are consumed today
 //! (by the Kahn scheduler). Lifted from the monolithic
 //! `rewrites.rs` per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_scheme::{CategoryAction, CategoryPredicate, PageRewrite, SectionLetter, capco};
 
@@ -36,7 +35,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // per-entry doc-comment, not in `reads`; declaring it would
     // cycle against entries 2 and 3 (each writes FGI_MARKER and
     // would read it through their own predicate-scan). Reciprocal
-    // class raise is parser-side per §3.4.1 Note (i), so CLASS is
+    // class raise is parser-side, so CLASS is
     // not in `writes`.
     const E1_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const E1_WRITES: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
@@ -44,7 +43,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // Entry 2 (consultant §3.4.1 #2): bare-FGI-R rollup on US
     // contact. Narrow-form reads: CLASS only (see Entry 1 note
     // on predicate-scan vs dataflow reads). Class lift to ≥ C is
-    // parser-side per §3.4.1 Note (i).
+    // parser-side.
     const E2_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const E2_WRITES: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
 
@@ -55,7 +54,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // is explicit that JOINT does NOT carry forward to the
     // banner line in US documents, so this rewrite consumes
     // JOINT state without writing it back; class lift is
-    // parser-side per §3.4.1 Note (i).
+    // parser-side.
     const E3_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION, CAT_JOINT_CLASSIFICATION];
     const E3_WRITES: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
 
@@ -84,7 +83,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // dataflow reads — predicate also scans `non_ic_dissem`
     // field for SBU-NF). Per Phase-3 pragmatic mapping
     // (plan §8 Q1), the non-IC dissem axis is folded into
-    // CAT_DISSEM until Phase D/E exposes a separate
+    // CAT_DISSEM until a separate axis is exposed for a
     // `CAT_NON_IC_DISSEM`.
     const E6A_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const E6A_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
@@ -127,10 +126,9 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // RD-SIGMA atom. The `lattice::AeaSet` `Product`
         // composition implements this as the union of axis 3
         // (SIGMA numbers) when axis 1's supersession join lands
-        // on `Rd`; see `docs/plans/2026-05-01-lattice-design.md`
-        // §7.5 Example 1 for the worked end-to-end case.
+        // on `Rd`.
         //
-        // PR 4b-A (this row's doc-comment update) cites BOTH
+        // This row cites BOTH
         // §H.6 p108-109 and §H.6 p113 in this comment so future
         // readers find the rule from whichever subsection they
         // open first. The row's `citation` field stays
@@ -147,7 +145,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         //
         // Phase-3 stub: trigger is `never_fires` and action is
         // `noop_action` because runtime dispatch stays in
-        // `PageContext` until Phase D/E (specifically, PR 4b-B
+        // the hand-coded aggregator until the lattice path (
         // wires the runtime `AeaSet`-driven mutation through
         // `CapcoScheme::project(Scope::Page, ...)`). Only the
         // `reads` / `writes` annotations are consumed (by the
@@ -170,7 +168,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // line." Trigger surface is bare-FGI portion contacting
         // US-class; effect is FGI banner rollup. Reciprocal
         // class raise is performed at portion-parse-time per
-        // `marque-applied.md` §3.4.1 Note (i), NOT as a rewrite
+        // the transmutation roster, NOT as a rewrite
         // transform — CLASS is not in `writes`.
         //
         // Monotonicity: monotone-additive on FGI axis (concealed
@@ -185,12 +183,12 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // false-cycle against entries 2 and 3. The scheduler's
         // coarse "writes determines order" model is sufficient
         // because the three rewrites' FGI outputs are
-        // commutative shape-modifications. If Phase D/E
+        // commutative shape-modifications. If a future change
         // discovers a real dataflow dep on the FGI state, add
         // FGI_MARKER to `reads` then.
         //
         // Shared §-citation with Entry 7 is admissible under
-        // D13: this entry is the rollup TRIGGER (bare-FGI
+        // this entry is the rollup TRIGGER (bare-FGI
         // contacts US-class); Entry 7 is the idempotent
         // generalization that runs after 1–3 settle.
         //
@@ -213,7 +211,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // `[list]`. Class lift to ≥ C (RESTRICTED is not an
         // authorized US classification, so the reciprocal raise
         // floors at C) is parser-side per
-        // `marque-applied.md` §3.4.1 Note (i), NOT a rewrite
+        // the transmutation roster, NOT a rewrite
         // transform — CLASS is not in `writes`.
         //
         // Monotonicity: monotone-additive on FGI axis
@@ -250,7 +248,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // the non-US JOINT members; banner class is the
         // highest-US-class of all portions, established
         // parser-side per §H.3 p57 + `marque-applied.md`
-        // §3.4.1 Note (i) — JOINT does NOT carry forward to the
+        // JOINT does NOT carry forward to the
         // banner line in US documents, so this rewrite consumes
         // JOINT state without writing it back, and CLASS is not
         // in `writes`.
@@ -295,7 +293,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // after 1, 2, 3.
         //
         // Shared §-citation with Entry 1 is admissible under
-        // D13: Entry 1 is the trigger (bare-FGI contacts
+        // Entry 1 is the trigger (bare-FGI contacts
         // US-class); this entry is the idempotent cleanup that
         // runs after 1–3 settle.
         //
@@ -371,7 +369,7 @@ pub(super) fn transmutation_stub_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Phase-3 axis-mapping pragmatic (plan §8 Q1): SBU/SBU-NF
         // live in `CanonicalAttrs.non_ic_dissem` but no
         // `CAT_NON_IC_DISSEM` CategoryId is exposed yet, so the
-        // write axis is `CAT_DISSEM`. Phase D/E may add the
+        // write axis is `CAT_DISSEM`. A future change may add the
         // separate axis.
         //
         // Phase-3 stub: see Entry 4 doc-comment.
