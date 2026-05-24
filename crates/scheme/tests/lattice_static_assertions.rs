@@ -7,8 +7,8 @@
 //!
 //! Locks the [`SupersessionSet`] trait-impl shape — [`JoinSemilattice`]
 //! only, no [`MeetSemilattice`], no `Bounded*` halves — at build time.
-//! Catches the D3 drift class (silently adding or removing a trait
-//! impl on a built-in lattice constructor) before any test binary
+//! Catches the drift class where a trait impl is silently added or
+//! removed on a built-in lattice constructor, before any test binary
 //! runs. Complements the `marque-capco` pin at
 //! `crates/capco/tests/lattice_static_assertions.rs`, which covers
 //! the per-axis domain lattice types built on top of these
@@ -16,8 +16,7 @@
 //!
 //! ## Why join-only
 //!
-//! The `Lattice` trait split — issue #456 / implementing PR #502,
-//! addendum at `docs/plans/2026-05-01-lattice-design.md` §12 —
+//! The `Lattice` trait split — issue #456 / implementing PR #502 —
 //! separated [`JoinSemilattice`] from [`MeetSemilattice`] precisely
 //! because [`SupersessionSet`] cannot satisfy the dual absorption law
 //! `a ⊓ (a ⊔ b) = a`. Its post-join supersession overlay drops

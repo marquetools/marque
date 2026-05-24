@@ -108,9 +108,7 @@ impl<S: MarkingScheme + ?Sized> Hash for FactRef<S> {
     }
 }
 
-/// Three structural fix variants — see
-/// `specs/006-engine-rule-refactor/architecture.md` "What fixes
-/// are."
+/// Three structural fix variants.
 ///
 /// - [`ReplacementIntent::FactAdd`] — add a token to the projected
 ///   fact set at a given scope. Repairs `Constraint::Requires`
@@ -257,8 +255,7 @@ impl<S: MarkingScheme> ReplacementIntent<S> {
 /// A narrowing of [`Scope`] that excludes `Scope::Diff`.
 /// `Scope::Diff` is a rule-context query mode, not a
 /// projection-output scope, so it is not a meaningful
-/// recanonicalization target — see
-/// `specs/006-engine-rule-refactor/architecture.md` type-sketch.
+/// recanonicalization target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecanonScope {
     /// Recanonicalize a single portion's rendering.

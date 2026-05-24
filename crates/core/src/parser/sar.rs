@@ -15,7 +15,7 @@ use super::*;
 /// SAR indicator AND the remainder is grammatically non-empty. Each returned
 /// [`TokenSpan`] carries absolute byte offsets into the source.
 ///
-/// Grammar (see spec `specs/002-sar-implementation/spec.md` §R2):
+/// Grammar:
 ///
 /// ```text
 /// SAR_BLOCK    := INDICATOR PROGRAM ("/" PROGRAM)*

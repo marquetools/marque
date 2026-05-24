@@ -614,7 +614,7 @@ fn env_var_overrides_closure_rule_file_value() {
             .map(String::as_str),
         Some("warn"),
         "MARQUE_CLOSURE_RULES_* env var must override file-level value \
-         (wire-string convergence post-T044)"
+         (wire-string convergence)"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -645,7 +645,7 @@ fn env_var_adds_closure_rule_when_absent_in_file() {
             .map(String::as_str),
         Some("error"),
         "MARQUE_CLOSURE_RULES_* env var must add entry absent in file \
-         (wire-string convergence post-T044)"
+         (wire-string convergence)"
     );
     let _ = fs::remove_dir_all(&dir);
 }

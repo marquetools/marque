@@ -13,9 +13,6 @@
 //! 2. Types satisfying only `JoinSemilattice` do NOT satisfy `Lattice`.
 //! 3. Bounded variants (`BoundedJoinSemilattice`, `BoundedMeetSemilattice`)
 //!    compose to `BoundedLattice` via the blanket impl.
-//!
-//! See `docs/plans/2026-05-01-lattice-design.md` section 4.10 for the
-//! algebraic rationale.
 
 use marque_scheme::lattice::{
     BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice,

@@ -22,8 +22,6 @@
 #[cfg(all(target_arch = "wasm32", feature = "corpus-override"))]
 compile_error!(
     "marque-wasm must not be built with the `corpus-override` feature on wasm32. \
-     T3 enforcement per docs/security/WHITEPAPER.md §10.3 and \
-     specs/004-constraints-decoder-vocab/contracts/cli-server-wasm-gates.md Gate 1. \
      WASM uses build-time-baked priors only; runtime override is by design \
      unreachable in the WASM artifact."
 );

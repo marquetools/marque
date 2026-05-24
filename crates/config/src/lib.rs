@@ -59,14 +59,14 @@ pub enum ConfigError {
     /// `.marque.toml` contains a `[user]` section.
     #[error(
         "committed config file {path} contains a [user] section — classifier identity \
-         must live only in .marque.local.toml or env vars (FR-010)"
+         must live only in .marque.local.toml or env vars"
     )]
     UserSectionInCommitted { path: PathBuf },
 
     /// Schema version in config doesn't match compiled schema.
     #[error(
         "schema version mismatch: config says {config_version:?} but marque was compiled \
-         against {compiled_version:?} (FR-011). Update [capco] version in .marque.toml."
+         against {compiled_version:?}. Update [capco] version in .marque.toml."
     )]
     SchemaVersionMismatch {
         config_version: String,

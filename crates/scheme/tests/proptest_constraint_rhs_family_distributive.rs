@@ -4,9 +4,6 @@
 
 //! Property test: distributive expansion of `Constraint::ConflictsWithFamily`.
 //!
-//! Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
-//! finding M3 (lattice-preflight):
-//!
 //! The family-predicate form is **distributively equivalent** to one
 //! `Constraint::Conflicts` row per token in the marking that matches the
 //! predicate:
