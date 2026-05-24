@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 7b D-7.12 / D-7.15 — CLI exit-code precedence locks.
+//! CLI exit-code precedence locks.
 //!
 //! Exercises the binary's per-document exit-code branch:
 //!
@@ -22,10 +22,9 @@
 //!
 //! R002 is not exercised here because no production Localized rule
 //! emits a `FixIntent`-shape fix today, so R002 is structurally
-//! unreachable through the existing CAPCO ruleset (architect
-//! pre-flight §1). When a future Localized FixIntent rule lands and
-//! a synthetic R002-triggering fixture becomes available, the
-//! R002 case slots in cleanly here.
+//! unreachable through the existing CAPCO ruleset. When a future
+//! Localized FixIntent rule lands and a synthetic R002-triggering
+//! fixture becomes available, the R002 case slots in cleanly here.
 //!
 //! See `merge_exit_code`'s doc comment in `marque/src/main.rs` for
 //! the precedence-chain rationale and the
@@ -61,60 +60,55 @@ fn fix_clean_input_exits_zero() {
 
 #[test]
 fn fix_with_warning_only_exits_two() {
-    // W003 (non-IC dissem control in classified banner, §H.9) is
+    // The non-ic-dissem-in-classified-banner rule (§H.9) is
     // `Severity::Warn` and emits no fix — a "manual review required"
     // signal, not an automatable rewrite. The fixture
     // `invalid/classified_banner_limdis.txt` (`SECRET//LIMDIS`)
-    // produces exactly one diagnostic: W003 at span 8..14.
+    // produces exactly one diagnostic at span 8..14.
     //
     // The exit-code precedence chain in `marque::main::merge_exit_code`
     // routes Warn-only documents to `EX_DIAG_WARN = 2`. This test
     // pins the integration shape: the spawned `marque` binary, given
-    // a real Warn-only fixture, returns exit code 2 — not the
-    // vacuous "fixture missing → exit 0" sentinel the pre-Copilot
-    // version did (Copilot round-1 finding #1).
+    // a real Warn-only fixture, returns exit code 2.
     //
     // The `fix` exit code is verified first; the diagnostic-stream
     // belt-and-suspenders runs through `check` (which writes the
     // diagnostic JSON to stdout — `fix` emits no stdout when there
-    // are no fixes to apply, which is exactly the W003 no-fix
-    // shape).
+    // are no fixes to apply, which is exactly the no-fix shape).
     marque()
         .args(["fix", "--dry-run", "--format", "json"])
         .arg(fixture("invalid/classified_banner_limdis.txt"))
         .assert()
         .code(2);
 
-    // Confirm the diagnostic stream actually carries W003 / Warn —
-    // a future change that retired W003 or flipped its severity
-    // would silently fall back to EX_OK without this guard.
+    // Confirm the diagnostic stream actually carries the
+    // non-ic-dissem-in-classified-banner Warn — a future change that
+    // retired the rule or flipped its severity would silently fall
+    // back to EX_OK without this guard.
     let check = marque()
         .args(["check", "--format", "json"])
         .arg(fixture("invalid/classified_banner_limdis.txt"))
         .assert()
         .code(2);
     let stdout = String::from_utf8_lossy(&check.get_output().stdout).into_owned();
-    // T044 PM OD-2: `rule` field on the wire is a structured 2-tuple
-    // object. Legacy `W003` →
-    // `("capco", "page.dissem.non-ic-dissem-in-classified-banner")`
-    // per `docs/refactor-006/legacy-rule-id-map.md` §1.
+    // The `rule` field on the wire is a structured 2-tuple object.
     let expected_rule_fragment = r#""rule":{"scheme":"capco","predicate_id":"page.dissem.non-ic-dissem-in-classified-banner"}"#;
     assert!(
         stdout.contains(expected_rule_fragment),
-        "expected the non-ic-dissem-in-classified-banner rule (legacy W003) in diagnostic stream; got: {stdout}"
+        "expected the non-ic-dissem-in-classified-banner rule in diagnostic stream; got: {stdout}"
     );
     assert!(
         stdout.contains("\"severity\":\"warn\""),
-        "expected severity=warn for the legacy-W003 rule; got: {stdout}"
+        "expected severity=warn for the non-ic-dissem-in-classified-banner rule; got: {stdout}"
     );
 }
 
 #[test]
 fn fix_with_error_exits_one() {
-    // E002 fires on `invalid/missing_usa_trigraph.txt` (REL TO
-    // missing USA). With `--dry-run`, the re-lint after applying
-    // the fix should see fewer diagnostics, but if any error
-    // remains we exit `EX_DIAG_ERROR`. If the fix clears all
+    // The rel-to-missing-usa rule fires on
+    // `invalid/missing_usa_trigraph.txt`. With `--dry-run`, the re-lint
+    // after applying the fix should see fewer diagnostics, but if any
+    // error remains we exit `EX_DIAG_ERROR`. If the fix clears all
     // errors, we exit `EX_OK` — both outcomes are valid.
     let assert = marque()
         .args(["fix", "--dry-run", "--format", "json"])
@@ -123,7 +117,7 @@ fn fix_with_error_exits_one() {
     let code = assert.get_output().status.code().unwrap_or(-1);
     assert!(
         code == 0 || code == 1,
-        "fix --dry-run on E002 fixture should exit 0 (auto-fixed) \
+        "fix --dry-run on the rel-to-missing-usa fixture should exit 0 (auto-fixed) \
          or 1 (residual error); got {code}"
     );
 }
@@ -141,8 +135,8 @@ fn check_clean_exits_zero() {
 
 #[test]
 fn check_error_exits_one() {
-    // Baseline: `check` with an E002 fixture → 1. Pins the
-    // `EX_DIAG_ERROR` constant.
+    // Baseline: `check` with the rel-to-missing-usa fixture → 1. Pins
+    // the `EX_DIAG_ERROR` constant.
     marque()
         .args(["check", "--format", "json"])
         .arg(fixture("invalid/missing_usa_trigraph.txt"))

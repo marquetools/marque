@@ -1449,10 +1449,7 @@ mod dissem_set {
         // unanimity-AND-propagation rule.
         let default = DissemSet::default();
         assert_eq!(default, empty, "Default == empty()");
-        assert!(
-            default.relido_unanimous(),
-            "Default is vacuously unanimous"
-        );
+        assert!(default.relido_unanimous(), "Default is vacuously unanimous");
         assert!(default.as_set().is_empty(), "Default is the empty bag");
     }
 

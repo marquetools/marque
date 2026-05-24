@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `marque --version` schema-discoverability pin (PR 3c.2.D / D9).
+//! `marque --version` schema-discoverability pin.
 //!
-//! Per `contracts/audit-record.md` §"Schema discoverability (D3)",
-//! the active audit-record schema name MUST be discoverable by
+//! The active audit-record schema name must be discoverable by
 //! external consumers without parsing audit records. The CLI
 //! surfaces it via `marque --version`:
 //!
 //! ```text
 //! marque 0.3.0
-//! audit_schema: marque-1.0
+//! audit_schema: marque-2.0
 //! ```
 //!
 //! Shell scripts grep for `^audit_schema:` to detect schema-major
@@ -18,10 +17,9 @@
 //! silent `--version` reformat surfaces as a CI failure.
 //!
 //! The schema value is sourced from
-//! `marque_engine::AUDIT_SCHEMA_VERSION` (FR-034 single source of
-//! truth) at compile time — the const flows from
-//! `crates/engine/build.rs`'s accept-list through the
-//! `env!("MARQUE_AUDIT_SCHEMA")` re-export.
+//! `marque_engine::AUDIT_SCHEMA_VERSION` (single source of truth) at
+//! compile time — the const flows from `crates/engine/build.rs`'s
+//! accept-list through the `env!("MARQUE_AUDIT_SCHEMA")` re-export.
 
 use std::process::Command;
 

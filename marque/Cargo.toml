@@ -23,12 +23,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-# PR 3c.2.D / D4: `blake3::Hash` is the wire type for the `marque-1.0`
-# audit-record `original_digest` / `bytes_digest` fields. The renderer
-# formats `blake3:<hex>` per `contracts/audit-record.md` §137 / §151.
-# The same `pure`-feature surface flows through `marque-rules` and
-# `marque-engine` (PM-D-6); the CLI inherits transitively but the
-# direct dep here makes the wire-format formatting explicit at the
+# `blake3::Hash` is the wire type for the audit-record
+# `original_digest` / `bytes_digest` fields. The renderer formats
+# `blake3:<hex>`. The same `pure`-feature surface flows through
+# `marque-rules` and `marque-engine`; the CLI inherits transitively but
+# the direct dep here makes the wire-format formatting explicit at the
 # emit boundary.
 blake3 = { workspace = true }
 clap = { workspace = true }
@@ -63,11 +62,11 @@ assert_cmd = { workspace = true }
 tempfile = { workspace = true }
 
 [features]
-# Phase-D / US2 wiring. The CLI is the one target that ships the
-# corpus-override surface — server rejects it at the handler layer,
-# WASM excludes it at compile time (Constitution III + FR-013 + T3).
-# Proxying through `marque-engine/corpus-override` pulls the matching
-# gates in capco + config along with it.
+# The CLI is the one target that ships the corpus-override surface —
+# server rejects it at the handler layer, WASM excludes it at compile
+# time (Constitution III). Proxying through
+# `marque-engine/corpus-override` pulls the matching gates in capco +
+# config along with it.
 default = []
 # Harness pass-throughs for convenience on the CLI crate; individual
 # harnesses are exercised from `marque-capco` and `marque-engine`

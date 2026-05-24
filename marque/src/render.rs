@@ -47,8 +47,7 @@ use serde::Serialize;
 use std::path::Path;
 
 /// JSON projection of a [`RuleId`] as a `{scheme, predicate_id}` 2-tuple
-/// object (T044 PM OD-2 structured-object shape; `contracts/audit-record.md`
-/// "Post-`marque-1.0` RuleId migration" §128-176).
+/// object.
 ///
 /// Borrows the two `&'static str` segments out of the `RuleId` without
 /// allocation. CLI text output uses the `Display` wire-string form
@@ -57,7 +56,7 @@ use std::path::Path;
 /// `rule.scheme == "engine"` to surface engine-internal records).
 ///
 /// Mirrored on the WASM side by `crates/wasm/src/lib.rs::RuleIdJson` for
-/// byte-identical NDJSON parity (SC-008).
+/// byte-identical NDJSON parity.
 #[derive(Debug, Serialize)]
 pub struct RuleIdJson<'a> {
     pub scheme: &'a str,
@@ -158,10 +157,10 @@ pub fn render_human(
     // are consumed by tooling (CI scripts, editor plugins, ABAC consumers)
     // that should not have to strip branding text out of the `message`
     // field.
-    // PR 3c.2.C C5: `diag.message` is now a typed `Message` with no
-    // `Display` impl by design. Render the closed-template label;
-    // future renderer expansion can derive richer human text from
-    // `(template, args, source, span)` per PM-C-5.
+    // `diag.message` is a typed `Message` with no `Display` impl by
+    // design. Render the closed-template label; future renderer
+    // expansion can derive richer human text from
+    // `(template, args, source, span)`.
     writeln!(
         out,
         "{path_label}:{line}:{col_start} {level_styled}{rule_styled} {} {}",
@@ -206,13 +205,13 @@ pub fn render_human(
             // surface the wording difference so the reader doesn't
             // think it will be auto-applied.
             //
-            // Post Commit 10 the renderer cannot show the exact
-            // replacement bytes here — `FixIntent` carries the
-            // structural intent only, and the renderer is on the
-            // diagnostic path (no engine projection available). C001
-            // text-correction diagnostics still carry their canonical
-            // replacement bytes via `text_correction`, so those
-            // render the legacy "replace with X" form.
+            // The renderer cannot show the exact replacement bytes
+            // here — `FixIntent` carries the structural intent only,
+            // and the renderer is on the diagnostic path (no engine
+            // projection available). Text-correction diagnostics still
+            // carry their canonical replacement bytes via
+            // `text_correction`, so those render the "replace with X"
+            // form.
             let hint = if let Some(tc) = &diag.text_correction {
                 match diag.severity {
                     marque_rules::Severity::Suggest => {
@@ -330,18 +329,16 @@ fn paint(color: bool, style: AnsiStyle, text: &str) -> String {
 /// Marked `additionalProperties: false` in the schema, so this struct must
 /// not include extra fields.
 ///
-/// PR 3c.2.C C5 changed the `message` and `citation` fields' wire
-/// shape per PM-C-7:
-/// - `message` is now a structured object `{ "template": "..." }`
-///   (was a free-form string). Future iterations expand `args`.
-/// - `citation` is now the [`Display`] form of typed [`Citation`]
+/// Wire shape of the `message` and `citation` fields:
+/// - `message` is a structured object `{ "template": "..." }`.
+///   Future iterations expand `args`.
+/// - `citation` is the [`Display`] form of typed [`Citation`]
 ///   — `§<L>.<sub> p<page>` for CAPCO sources, `[config]` /
 ///   `[engine-internal]` for sentinel sources.
 #[derive(Debug, Serialize)]
 pub struct DiagnosticJson<'a> {
-    /// 2-tuple `RuleId` shape per T044 PM OD-2 (structured-object
-    /// `{scheme, predicate_id}`). Pre-T044 this was a flat
-    /// `"rule": "E001"` string; post-T044 it is
+    /// 2-tuple `RuleId` shape (structured-object
+    /// `{scheme, predicate_id}`), e.g.
     /// `"rule": {"scheme": "capco", "predicate_id": "..."}`.
     pub rule: RuleIdJson<'a>,
     pub severity: &'a str,
@@ -354,8 +351,9 @@ pub struct DiagnosticJson<'a> {
     /// recognized`) diagnostics today; `skip_serializing_if` keeps the
     /// field absent for every other rule so existing NDJSON consumers
     /// see no shape change. Audit-side NDJSON does NOT mirror this
-    /// field — Constitution V Principle V / G13 (the audit envelope
-    /// carries only the BLAKE3 digest + structural intent).
+    /// field — per Constitution V Principle V (audit content-ignorance),
+    /// the audit envelope carries only the BLAKE3 digest + structural
+    /// intent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recognized_canonical: Option<&'a str>,
 }
@@ -368,10 +366,8 @@ pub struct SpanJson {
 
 /// Structured JSON projection of a [`Message`].
 ///
-/// PR 3c.2.C C5 introduced this wrapper per PM-C-7's structured-JSON
-/// shape requirement. Phase 1 carries the [`MessageTemplate::as_str`]
-/// canonical label; per-template arg expansion lands when consumers
-/// need it.
+/// This wrapper carries the [`MessageTemplate::as_str`] canonical
+/// label; per-template arg expansion lands when consumers need it.
 #[derive(Debug, Serialize)]
 pub struct MessageJson<'a> {
     pub template: &'a str,
@@ -470,14 +466,11 @@ pub fn render_human_result(
 //
 // The `schema` field is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`,
 // which `crates/engine/build.rs` validates against the closed accept-list
-// `["marque-2.0"]` (was `["marque-1.0"]` pre-T044). PR 3c.2.D retired the
-// pre-cutover `mvp-1` / `mvp-2` / `mvp-3` shapes atomically with the v2
-// `AppliedFix` reshape, BLAKE3 digesting, closed `MessageTemplate` JSON
-// serialization, and `Canonical<S>` provenance wiring, to close the G13
-// audit-content-ignorance channel structurally. T044 then bumped to
-// `marque-2.0` alongside the `RuleId` 2-tuple migration.
+// `["marque-2.0"]`. The audit envelope carries only the BLAKE3 digest +
+// structural intent so document content never reaches the audit stream
+// (audit content-ignorance).
 //
-// FR-014 (single-schema-per-build) is upheld at two layers:
+// Single-schema-per-build is upheld at two layers:
 //   1. `crates/engine/build.rs` panics on unknown values — only the
 //      accepted version can reach the emitter.
 //   2. The emitter chooses the matching struct shape from the const.
@@ -515,33 +508,29 @@ fn intent_kind_str(intent: &marque_scheme::ReplacementIntent<CapcoScheme>) -> &'
 }
 
 // ---------------------------------------------------------------------------
-// `marque-1.0` audit-record JSON projection (PR 3c.2.D)
+// Audit-record JSON projection
 //
-// Per `specs/006-engine-rule-refactor/contracts/audit-record.md` body §
-// (active spec post-cutover). The CLI emit path reads
-// `FixResult.audit_lines` via `render_audit_line`.
+// The CLI emit path reads `FixResult.audit_lines` via `render_audit_line`.
 //
-// SC-008 invariant: byte-identical NDJSON output between the CLI
-// (`marque/src/render.rs`) and WASM (`crates/wasm/src/lib.rs`) emitters.
-// The two crates carry parallel struct definitions deliberately (per
-// architect D-D-1 — shared `marque-audit-render` crate deferred to
-// post-PR-10). The WASM-side mirror in `crates/wasm/src/lib.rs` MUST
-// stay byte-identical; `crates/wasm/tests/audit_v1_0_parity.rs`
-// pins this at integration-test time.
+// Byte-identical NDJSON output between the CLI (`marque/src/render.rs`) and
+// WASM (`crates/wasm/src/lib.rs`) emitters is an invariant. The two crates
+// carry parallel struct definitions deliberately (a shared
+// `marque-audit-render` crate is deferred). The WASM-side mirror in
+// `crates/wasm/src/lib.rs` MUST stay byte-identical;
+// `crates/wasm/tests/audit_v1_0_parity.rs` pins this at integration-test
+// time.
 // ---------------------------------------------------------------------------
 
-/// JSON projection of a `marque-1.0` `AppliedFix<CapcoScheme>` audit
-/// record. Top-level outer shape per contract §107-178.
+/// JSON projection of an `AppliedFix<CapcoScheme>` audit record.
 ///
-/// PM-D-2: `input` stays at top level (architect D-D-2 ratified); the
-/// contract example does not show it but the field is structurally
-/// peer-level to `timestamp` / `classifier_id` / `dry_run`.
+/// `input` sits at top level, structurally peer-level to `timestamp` /
+/// `classifier_id` / `dry_run`.
 #[derive(Debug, Serialize)]
 pub struct AuditRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub schema: &'static str,
-    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    /// 2-tuple `RuleId`. See [`RuleIdJson`].
     pub rule: RuleIdJson<'a>,
     pub severity: &'static str,
     pub span: SpanJson,
@@ -550,9 +539,8 @@ pub struct AuditRecordJsonV1_0<'a> {
     pub timestamp: String,
     /// Classifier identity. Emitted as `null` rather than elided when
     /// absent so audit consumers can detect "classifier_id field
-    /// expected but not configured" deterministically — same shape as
-    /// v3 (mvp-3) emitted to preserve consumer behavior across the
-    /// schema flip. PM-D-2 ratifies `classifier_id` stays at top level.
+    /// expected but not configured" deterministically. Stays at top
+    /// level.
     pub classifier_id: Option<&'a str>,
     pub dry_run: bool,
     /// Caller-supplied input identifier (file path / `-` for stdin).
@@ -561,8 +549,7 @@ pub struct AuditRecordJsonV1_0<'a> {
     pub input: Option<&'a str>,
 }
 
-/// `AppliedFixDetail<S>` projection per contract §123-152 (`fix`
-/// sub-object).
+/// `AppliedFixDetail<S>` projection (the `fix` sub-object).
 #[derive(Debug, Serialize)]
 pub struct AuditFixJson<'a> {
     pub replacement: AuditReplacementJson<'a>,
@@ -570,8 +557,7 @@ pub struct AuditFixJson<'a> {
     pub original_digest: String,
 }
 
-/// `AppliedReplacement<S>` projection per contract §124-148
-/// (`fix.replacement` sub-object).
+/// `AppliedReplacement<S>` projection (the `fix.replacement` sub-object).
 #[derive(Debug, Serialize)]
 pub struct AuditReplacementJson<'a> {
     pub discriminant: &'static str,
@@ -579,11 +565,11 @@ pub struct AuditReplacementJson<'a> {
     pub confidence: AuditConfidenceJson<'a>,
 }
 
-/// `Canonical<S>` projection per contract §253-291.
+/// `Canonical<S>` projection.
 ///
 /// The `source` discriminator is `"cve"` for [`TokenSource::Cve`] and
 /// `"open_vocab"` for [`TokenSource::OpenVocab`]. The two arms emit
-/// different optional fields per contract §259-286.
+/// different optional fields.
 #[derive(Debug, Serialize)]
 pub struct AuditCanonicalJson<'a> {
     pub source: &'static str,
@@ -596,7 +582,7 @@ pub struct AuditCanonicalJson<'a> {
     pub bytes_digest: String,
 }
 
-/// `Confidence` projection per contract §140-147.
+/// `Confidence` projection.
 #[derive(Debug, Serialize)]
 pub struct AuditConfidenceJson<'a> {
     pub recognition: f32,
@@ -607,21 +593,19 @@ pub struct AuditConfidenceJson<'a> {
     pub features: Vec<AuditFeatureJson<'a>>,
 }
 
-/// `FeatureContribution` projection per contract §146 (closed-set
-/// `FeatureId` labels).
+/// `FeatureContribution` projection (closed-set `FeatureId` labels).
 #[derive(Debug, Serialize)]
 pub struct AuditFeatureJson<'a> {
     pub id: &'a str,
     pub delta: f32,
 }
 
-/// `Message` projection per contract §154-166.
+/// `Message` projection.
 ///
-/// `template` is the closed [`MessageTemplate::as_str`] wire form
-/// (per PM-D-12 the contract example is illustrative — the variant
-/// name verbatim is the wire form). `args` is the closed
-/// [`MessageArgs`] permitted-set per contract §316-323; empty /
-/// `None` fields elide so the JSON object is minimal.
+/// `template` is the closed [`MessageTemplate::as_str`] wire form (the
+/// variant name verbatim). `args` is the closed [`MessageArgs`]
+/// permitted-set; empty / `None` fields elide so the JSON object is
+/// minimal.
 #[derive(Debug, Serialize)]
 pub struct AuditMessageJson<'a> {
     pub template: &'static str,
@@ -635,16 +619,15 @@ pub struct AuditMessageJson<'a> {
 
 /// JSON projection of an [`AppliedTextCorrection`] audit record.
 ///
-/// The text-correction NDJSON line type per contract §388-402. Carries
-/// a corpus-derived canonical replacement string (Constitution V
-/// Principle V permitted identifier: a `SmolStr` token canonical, never
-/// document content).
+/// The text-correction NDJSON line type. Carries a corpus-derived
+/// canonical replacement string (a Constitution V Principle V permitted
+/// identifier: a `SmolStr` token canonical, never document content).
 #[derive(Debug, Serialize)]
 pub struct TextCorrectionRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub schema: &'static str,
-    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    /// 2-tuple `RuleId`. See [`RuleIdJson`].
     pub rule: RuleIdJson<'a>,
     pub severity: &'static str,
     pub span: SpanJson,
@@ -652,8 +635,8 @@ pub struct TextCorrectionRecordJsonV1_0<'a> {
     pub replacement: &'a str,
     pub source: &'static str,
     pub confidence: AuditConfidenceJson<'a>,
-    /// Citation reference; `None` for C001 corrections-map matches,
-    /// `Some(...)` for E006-style deprecation migrations.
+    /// Citation reference; `None` for corrections-map matches,
+    /// `Some(...)` for deprecation migrations.
     pub migration_ref: Option<&'a str>,
     pub message: AuditMessageJson<'a>,
     pub timestamp: String,
@@ -664,10 +647,10 @@ pub struct TextCorrectionRecordJsonV1_0<'a> {
     pub input: Option<&'a str>,
 }
 
-/// Format a BLAKE3 hash for the `marque-1.0` audit record's
-/// `original_digest` / `canonical.bytes_digest` fields.
+/// Format a BLAKE3 hash for the audit record's `original_digest` /
+/// `canonical.bytes_digest` fields.
 ///
-/// Wire form: `"blake3:<64-hex>"` per contract §137 / §151.
+/// Wire form: `"blake3:<64-hex>"`.
 fn blake3_audit_string(hash: &blake3::Hash) -> String {
     format!("blake3:{}", hash.to_hex())
 }
@@ -701,7 +684,7 @@ fn category_label(scheme: &CapcoScheme, category_id: marque_scheme::CategoryId) 
 }
 
 /// Project a [`Canonical<CapcoScheme>`] into the audit-record JSON
-/// shape per contract §253-291.
+/// shape.
 fn project_canonical_to_json<'a>(
     scheme: &'a CapcoScheme,
     canonical: &marque_scheme::Canonical<CapcoScheme>,
@@ -710,8 +693,8 @@ fn project_canonical_to_json<'a>(
     let digest = blake3_audit_string(precomputed_bytes_digest);
     match canonical.source() {
         TokenSource::Cve(token_id) => {
-            // PR 3c.2.D PM-D-10: closed-CVE provenance projects the
-            // namespaced `Category.Token` form via
+            // Closed-CVE provenance projects the namespaced
+            // `Category.Token` form via
             // `Vocabulary::qualified_token_label`. CapcoScheme binds
             // `type Token = TokenId` so the `&S::Token` accessor
             // takes a `&TokenId` directly. The default `"unknown.unknown"`
@@ -747,7 +730,7 @@ fn project_canonical_to_json<'a>(
 }
 
 /// Project a [`marque_rules::Confidence`] into the audit-record JSON
-/// shape per contract §140-147.
+/// shape.
 fn project_confidence_to_json(confidence: &marque_rules::Confidence) -> AuditConfidenceJson<'_> {
     AuditConfidenceJson {
         recognition: confidence.recognition,
@@ -767,7 +750,7 @@ fn project_confidence_to_json(confidence: &marque_rules::Confidence) -> AuditCon
 }
 
 /// Project a [`marque_rules::Message`] into the audit-record JSON
-/// shape per contract §154-166.
+/// shape.
 ///
 /// `args` is a partial-emit map: only populated fields appear (empty
 /// / `None` fields elide). Per Constitution V Principle V, every
@@ -848,13 +831,10 @@ fn project_message_to_json<'a>(
             serde_json::Value::Array(
                 m.contributing_rule_ids
                     .iter()
-                    // T044: `RuleId.as_str()` is removed; the canonical
-                    // wire-string form is `Display`-produced
-                    // `"<scheme>:<predicate_id>"`. The `args` field on
-                    // the `MessageArgs` projection is a partial-emit
-                    // map; keeping the value a string here matches the
-                    // existing shape (no behavior change for audit
-                    // consumers beyond the wire-string format).
+                    // The canonical wire-string form is
+                    // `Display`-produced `"<scheme>:<predicate_id>"`.
+                    // The `args` field on the `MessageArgs` projection
+                    // is a partial-emit map; the value is a string here.
                     .map(|r| serde_json::Value::String(r.to_string()))
                     .collect(),
             ),
@@ -867,8 +847,7 @@ fn project_message_to_json<'a>(
     }
 }
 
-/// Convert a v2 `AppliedFix<CapcoScheme>` into the `marque-1.0` audit
-/// JSON shape per contract §107-178.
+/// Convert an `AppliedFix<CapcoScheme>` into the audit JSON shape.
 pub fn applied_fix_to_audit_json_v1_0<'a>(
     scheme: &'a CapcoScheme,
     fix: &'a marque_rules::audit::AppliedFix<CapcoScheme>,
@@ -908,8 +887,8 @@ pub fn applied_fix_to_audit_json_v1_0<'a>(
     }
 }
 
-/// Convert an [`AppliedTextCorrection`] into the `marque-1.0` text-
-/// correction NDJSON line per contract §388-402.
+/// Convert an [`AppliedTextCorrection`] into the text-correction NDJSON
+/// line.
 pub fn text_correction_to_audit_json_v1_0<'a>(
     scheme: &'a CapcoScheme,
     tc: &'a AppliedTextCorrection,
@@ -937,18 +916,15 @@ pub fn text_correction_to_audit_json_v1_0<'a>(
 }
 
 /// Serialize a single [`AuditLine<CapcoScheme>`] to a `serde_json::Value`
-/// in the `marque-2.0` shape (dispatcher; was `marque-1.0` pre-T044).
+/// in the `marque-2.0` shape (dispatcher).
 ///
 /// Two arms project to disjoint NDJSON record types:
-/// - [`AuditLine::AppliedFix`] → `{"type": "applied_fix", ...}` per
-///   contract §107-178.
-/// - [`AuditLine::TextCorrection`] → `{"type": "text_correction", ...}`
-///   per contract §388-402.
+/// - [`AuditLine::AppliedFix`] → `{"type": "applied_fix", ...}`.
+/// - [`AuditLine::TextCorrection`] → `{"type": "text_correction", ...}`.
 ///
 /// Non-exhaustive guard returns `serde_json::Value::Null` for any
-/// future variant — the canary scan at
-/// `crates/engine/tests/audit_g13_canary.rs` (T055) catches this if it
-/// fires.
+/// future variant — the audit content-ignorance canary at
+/// `crates/engine/tests/audit_g13_canary.rs` catches this if it fires.
 pub fn audit_line_to_json_v1_0(
     scheme: &CapcoScheme,
     line: &AuditLine<CapcoScheme>,
@@ -963,8 +939,9 @@ pub fn audit_line_to_json_v1_0(
                 .unwrap_or(serde_json::Value::Null)
         }
         // `AuditLine` is `#[non_exhaustive]`; a future variant lands
-        // as `Null` until the renderer adds an arm. The T055 G13
-        // canary catches the emitted-line shape regression in CI.
+        // as `Null` until the renderer adds an arm. The audit
+        // content-ignorance canary catches the emitted-line shape
+        // regression in CI.
         //
         // **Parallel-update requirement.** When a new `AuditLine`
         // variant lands in `marque-rules::audit`, three call sites
@@ -972,31 +949,28 @@ pub fn audit_line_to_json_v1_0(
         // (CLI), the WASM renderer at `crates/wasm/src/lib.rs`, and
         // the canary's `render_audit_line_to_json` at
         // `crates/engine/tests/audit_g13_canary.rs`. A silent
-        // `Value::Null` from any of the three would defeat the G13
+        // `Value::Null` from any of the three would defeat the
         // content-ignorance canary's regression detection — the
         // canary sweeps the corpus and asserts no input substring
         // appears in the emitted JSON, but a `Null` arm emits
         // nothing for the canary to scan, so a future variant that
         // accidentally leaked content would pass the sweep
-        // vacuously. Pre-PR 3c.2.D fixup F-10.
+        // vacuously.
         _ => serde_json::Value::Null,
     }
 }
 
-/// Emit a single `marque-1.0` audit record as NDJSON to `stderr`.
+/// Emit a single audit record as NDJSON to `stderr`.
 ///
-/// Per PM-D-1 the v1.0 emit path is the marque-1.0 wire-format path
-/// the renderer migration in PR 3c.2.D / D4 wires. Reads from the
-/// engine's [`marque_engine::FixResult::audit_lines`] (v2 stream)
-/// rather than the v1 [`marque_engine::FixResult::applied`] stream —
-/// `audit_lines` preserves cross-record promotion order across both
-/// the marking-fix arm and the text-correction arm (PM-D-8).
+/// Reads from the engine's
+/// [`marque_engine::FixResult::audit_lines`], which preserves
+/// cross-record promotion order across both the marking-fix arm and the
+/// text-correction arm.
 ///
 /// Routes through [`audit_line_to_json_v1_0`] for the wire-format
 /// projection, then serializes to NDJSON with a trailing newline. On
-/// serialization failure emits a JSON error frame on the audit
-/// stream (FR-005a fallback) so the audit channel remains
-/// well-formed.
+/// serialization failure emits a JSON error frame on the audit stream
+/// so the audit channel remains well-formed.
 pub fn render_audit_line(
     stderr: &mut dyn std::io::Write,
     scheme: &CapcoScheme,
@@ -1006,9 +980,9 @@ pub fn render_audit_line(
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
     let _ = AUDIT_SCHEMA_IS_V2_0;
-    // T044: `RuleId.as_str()` is removed; the `Display` impl renders
-    // the canonical wire-string form `"<scheme>:<predicate_id>"`, which
-    // is what the error-frame fallback channel surfaces to humans.
+    // The `Display` impl renders the canonical wire-string form
+    // `"<scheme>:<predicate_id>"`, which is what the error-frame
+    // fallback channel surfaces to humans.
     let rule_id: String = match line {
         AuditLine::AppliedFix(fix) => fix.rule.to_string(),
         AuditLine::TextCorrection(tc) => tc.rule.to_string(),
@@ -1031,8 +1005,8 @@ pub fn render_audit_line(
 
 /// Emit an error frame on the audit stream when serialization fails.
 ///
-/// FR-005a fallback: every line on the audit stream must be a complete JSON
-/// object. The error frame is the last resort when the normal serializer has
+/// Every line on the audit stream must be a complete JSON object. The
+/// error frame is the last resort when the normal serializer has
 /// already failed, so it JSON-escapes its inputs via `serde_json::to_string`
 /// to guarantee well-formed output even if the error message contains quotes
 /// or backslashes.
@@ -1099,13 +1073,11 @@ mod tests {
         _message: &str,
         fix: Option<FixIntent<CapcoScheme>>,
     ) -> Diagnostic<CapcoScheme> {
-        // PR 3c.2.C C5: typed Message + Citation. Test fixtures use a
-        // generic template/citation; the test bodies inspect rule/span/
-        // severity, not message content.
-        // T044: helper now takes a constructed `RuleId` directly so the
-        // 2-tuple form is visible at every call site (the `&'static str`
-        // single-arg shape was tied to the pre-T044 `RuleId::new(id)`
-        // constructor).
+        // Typed Message + Citation. Test fixtures use a generic
+        // template/citation; the test bodies inspect rule/span/
+        // severity, not message content. The helper takes a constructed
+        // `RuleId` directly so the 2-tuple form is visible at every
+        // call site.
         Diagnostic::new(
             rule,
             Severity::Fix,
@@ -1172,12 +1144,10 @@ mod tests {
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
         let fix = make_intent_fix();
-        // T044: legacy `E001` retired (PR 3c.B Commit 6); test fixture
-        // uses the canonical illustrative tuple
-        // `("capco", "banner.classification.usa-trigraph")` matching
-        // F1's lib.rs unit-test convention. The renderer's `[{}]`
-        // formatter now emits the `Display` wire-string form
-        // `<scheme>:<predicate_id>`.
+        // Test fixture uses the illustrative tuple
+        // `("capco", "banner.classification.usa-trigraph")`. The
+        // renderer's `[{}]` formatter emits the `Display` wire-string
+        // form `<scheme>:<predicate_id>`.
         let diag = make_diagnostic(
             RuleId::new("capco", "banner.classification.usa-trigraph"),
             span,
@@ -1190,11 +1160,10 @@ mod tests {
         let rendered = String::from_utf8(out).unwrap();
 
         // Header line: path:line:col with level + rule + template label.
-        // PR 3c.2.C C5: the message column renders the closed-template
-        // label, no longer a free-form sentence; `make_diagnostic`
-        // uses `MessageTemplate::BannerRollupMismatch`.
-        // T044: the rule label is the wire-string form
-        // `"<scheme>:<predicate_id>"` (Display impl) per PM OD-3.
+        // The message column renders the closed-template label, not a
+        // free-form sentence; `make_diagnostic` uses
+        // `MessageTemplate::BannerRollupMismatch`. The rule label is the
+        // wire-string form `"<scheme>:<predicate_id>"` (Display impl).
         assert!(rendered.contains("banner.txt:1:17 fix[capco:banner.classification.usa-trigraph]"));
         assert!(rendered.contains("BannerRollupMismatch"));
         // Location arrow
@@ -1207,18 +1176,18 @@ mod tests {
             rendered.contains("                ^^"),
             "expected caret at col 17; got:\n{rendered}"
         );
-        // Post-Commit-10: FixIntent carries no replacement bytes (the
-        // renderer is on the diagnostic path; no engine projection
-        // available). The hint shows the auto-fixable signal +
-        // confidence, not the literal replacement.
+        // FixIntent carries no replacement bytes (the renderer is on
+        // the diagnostic path; no engine projection available). The
+        // hint shows the auto-fixable signal + confidence, not the
+        // literal replacement.
         assert!(
             rendered.contains("auto-fixable; confidence 100%"),
             "expected auto-fixable hint; got:\n{rendered}"
         );
-        // Citation footer. PR 3c.2.C C5: typed `Citation` Display
-        // emits the bare `§<L>.<sub> p<N>` shape (no "CAPCO-2016"
-        // prefix); the prefix lives in the renderer's surrounding
-        // text or in the JSON `document` field for non-CAPCO sources.
+        // Citation footer. Typed `Citation` Display emits the bare
+        // `§<L>.<sub> p<N>` shape (no "CAPCO-2016" prefix); the prefix
+        // lives in the renderer's surrounding text or in the JSON
+        // `document` field for non-CAPCO sources.
         assert!(rendered.contains("= citation: §A.6 p15"));
     }
 
@@ -1226,7 +1195,7 @@ mod tests {
     fn render_human_without_color_has_no_ansi_escapes() {
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        // T044: 2-tuple form; see canonical-illustrative comment above.
+        // 2-tuple form; see the illustrative comment above.
         let diag = make_diagnostic(
             RuleId::new("capco", "banner.classification.usa-trigraph"),
             span,
@@ -1247,7 +1216,7 @@ mod tests {
     fn render_human_with_color_emits_ansi_escapes() {
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        // T044: 2-tuple form; see canonical-illustrative comment above.
+        // 2-tuple form; see the illustrative comment above.
         let diag = make_diagnostic(
             RuleId::new("capco", "banner.classification.usa-trigraph"),
             span,
@@ -1271,13 +1240,13 @@ mod tests {
         // MUST NOT carry the suffix — they keep the template label
         // byte-identical so downstream tooling does not have to strip it.
         //
-        // PR 3c.2.C C5: `Diagnostic.message` is now a closed `Message`
-        // (template + args). The rendered human header shows the
-        // template label (e.g. `BannerRollupMismatch`); the NDJSON
-        // emits the same label under `message.template`.
+        // `Diagnostic.message` is a closed `Message` (template + args).
+        // The rendered human header shows the template label (e.g.
+        // `BannerRollupMismatch`); the NDJSON emits the same label
+        // under `message.template`.
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        // T044: 2-tuple form; see canonical-illustrative comment above.
+        // 2-tuple form; see the illustrative comment above.
         let diag = make_diagnostic(
             RuleId::new("capco", "banner.classification.usa-trigraph"),
             span,
@@ -1308,13 +1277,11 @@ mod tests {
 
     #[test]
     fn render_human_diagnostic_without_fix_omits_hint() {
-        // E008-style: no fix proposal, caret only.
-        // PR 3c.2.C C5: typed Message + Citation via make_diagnostic.
+        // Unrecognized-token style: no fix proposal, caret only.
+        // Typed Message + Citation via make_diagnostic.
         let src = b"SECRET//XYZZY//NOFORN\n";
         let span = Span::new(8, 13);
         let diag = Diagnostic::new(
-            // T044: `E008` → `("capco", "marking.metadata.unrecognized-token")`
-            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
             RuleId::new("capco", "marking.metadata.unrecognized-token"),
             Severity::Error,
             span,
@@ -1342,8 +1309,6 @@ mod tests {
         let span = Span::new(20, 23);
         let fix = make_intent_fix();
         let diag = Diagnostic::new(
-            // T044: `S004` → `("capco", "portion.dissem.rel-to-trigraph-suggest")`
-            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
             RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest"),
             Severity::Suggest,
             span,
@@ -1356,20 +1321,19 @@ mod tests {
         render_human(&mut out, "rel.txt", src, &diag, false).unwrap();
         let rendered = String::from_utf8(out).unwrap();
 
-        // Header carries the "suggest" level string, not "error" / "fix".
-        // T044: header includes the wire-string form `<scheme>:<predicate_id>`.
+        // Header carries the "suggest" level string, not "error" / "fix",
+        // including the wire-string form `<scheme>:<predicate_id>`.
         let expected_header = "suggest[capco:portion.dissem.rel-to-trigraph-suggest]";
         assert!(
             rendered.contains(expected_header),
             "header must read {expected_header}; got:\n{rendered}"
         );
-        // PR 3c.2.C C5: the fixture uses `make_intent_fix()` (a
-        // `FixIntent` carrying a structural `Recanonicalize` intent),
-        // not a `TextCorrection`. Per the renderer at `render.rs:187-204`,
-        // the "did you mean X" prose only fires when `text_correction`
-        // is set with the candidate bytes; when only a `FixIntent` is
-        // present the Suggest-severity branch renders the generic
-        // "(suggested fix; confidence ...)" hint.
+        // The fixture uses `make_intent_fix()` (a `FixIntent` carrying
+        // a structural `Recanonicalize` intent), not a
+        // `TextCorrection`. The "did you mean X" prose only fires when
+        // `text_correction` is set with the candidate bytes; when only
+        // a `FixIntent` is present the Suggest-severity branch renders
+        // the generic "(suggested fix; confidence ...)" hint.
         assert!(
             rendered.contains("(suggested fix; confidence"),
             "Suggest hint must read \"(suggested fix; confidence ...)\"; got:\n{rendered}"
@@ -1391,7 +1355,7 @@ mod tests {
         let span = Span::new(20, 23);
         let fix = make_intent_fix();
         let diag = Diagnostic::new(
-            // T044: see canonical map row for `S004`.
+            // The rel-to-trigraph-suggest rule; see the row above.
             RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest"),
             Severity::Suggest,
             span,
@@ -1428,17 +1392,14 @@ mod tests {
         let src = b"SECRET//REL TO USA, FVEY\n";
         let span = Span::new(20, 24);
         let diag = Diagnostic::new(
-            // T044: `S999` → `("test", "synthetic.s999-fixture")` per
-            // `docs/refactor-006/legacy-rule-id-map.md` §10 (reserved
-            // `test` scheme for synthetic Constitution V Principle V
-            // test-fixture identifiers).
+            // The reserved `test` scheme holds synthetic test-fixture
+            // identifiers (Constitution V Principle V).
             RuleId::new("test", "synthetic.s999-fixture"),
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
-            // S999 is a hypothetical test rule with no CAPCO citation;
-            // use the EngineInternal sentinel per PM-C-4 so citation-lint
-            // skips the entry.
+            // This hypothetical test rule has no CAPCO citation; use the
+            // EngineInternal sentinel so citation-lint skips the entry.
             marque_scheme::Citation::new(
                 marque_scheme::AuthoritativeSource::EngineInternal,
                 marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
@@ -1451,7 +1412,7 @@ mod tests {
         render_human(&mut out, "rel.txt", src, &diag, false).unwrap();
         let rendered = String::from_utf8(out).unwrap();
 
-        // T044: rule label is the wire-string form.
+        // Rule label is the wire-string form.
         assert!(
             rendered.contains("suggest[test:synthetic.s999-fixture]"),
             "Suggest with no fix still renders header at suggest level; got:\n{rendered}"
@@ -1469,13 +1430,12 @@ mod tests {
     #[test]
     fn diagnostic_to_json_carries_suggest_severity_string() {
         // NDJSON consumers depend on the canonical lowercase string
-        // form of `Severity`. Phase D's NDJSON contract is otherwise
-        // unchanged: a Suggest-severity diagnostic round-trips
+        // form of `Severity`. A Suggest-severity diagnostic round-trips
         // through `severity: "suggest"` with no schema bump.
         let span = Span::new(0, 3);
         let fix = make_intent_fix();
         let diag = Diagnostic::new(
-            // T044: see canonical map row for `S004`.
+            // The rel-to-trigraph-suggest rule; see the row above.
             RuleId::new("capco", "portion.dissem.rel-to-trigraph-suggest"),
             Severity::Suggest,
             span,
@@ -1486,7 +1446,7 @@ mod tests {
 
         let json = diagnostic_to_json(&diag);
         assert_eq!(json.severity, "suggest");
-        // T044 PM OD-2: `json.rule` is the structured-object form
+        // `json.rule` is the structured-object form
         // `RuleIdJson { scheme, predicate_id }` (not a flat string).
         // The NDJSON serializes it as
         // `"rule": {"scheme": "capco", "predicate_id": "..."}`.
@@ -1498,10 +1458,10 @@ mod tests {
         // Fix payload is preserved on the wire so a downstream
         // consumer can render the candidate replacement themselves.
         assert!(json.fix.is_some());
-        // Post Commit 10 the wire shape carries `intent_kind` (the
-        // structural emission discriminant); `replacement` is `None`
-        // for non-text-correction fixes since the engine renders
-        // bytes from the per-page projection.
+        // The wire shape carries `intent_kind` (the structural emission
+        // discriminant); `replacement` is `None` for non-text-correction
+        // fixes since the engine renders bytes from the per-page
+        // projection.
         let fix_json = json.fix.as_ref().unwrap();
         assert!(matches!(
             fix_json.intent_kind,
@@ -1607,10 +1567,8 @@ mod tests {
 
     #[test]
     fn render_audit_line_produces_valid_v1_0_ndjson() {
-        // PR 3c.2.D / D4: migrated to the marque-1.0 wire format.
-        // Constructs a v2 `AppliedFix<CapcoScheme>` through the
-        // engine-promotion seal and asserts the wire-shape matches
-        // `contracts/audit-record.md` body §107-178.
+        // Constructs an `AppliedFix<CapcoScheme>` through the
+        // engine-promotion seal and asserts the audit wire-shape.
         //
         // Test-fixture carve-out per Constitution V Principle V —
         // the `__engine_promote` call is inside `#[cfg(test)]` and
@@ -1644,8 +1602,6 @@ mod tests {
         // synthetic AppliedFix for renderer exercise only.
         let token = EnginePromotionToken::__engine_construct();
         let applied = AuditAppliedFix::<CapcoScheme>::__engine_promote(
-            // T044: `E002` → `("capco", "portion.dissem.rel-to-missing-usa")`
-            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
             RuleId::new("capco", "portion.dissem.rel-to-missing-usa"),
             marque_rules::Severity::Fix,
             Span::new(8, 10),
@@ -1668,10 +1624,10 @@ mod tests {
 
         let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
 
-        // Top-level marque-1.0 shape per contract §107-178.
+        // Top-level audit-record shape.
         assert_eq!(v["type"], "applied_fix");
         assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
-        // T044 PM OD-2: structured-object `rule` shape on the wire.
+        // Structured-object `rule` shape on the wire.
         assert_eq!(v["rule"]["scheme"], "capco");
         assert_eq!(
             v["rule"]["predicate_id"],
@@ -1681,7 +1637,7 @@ mod tests {
         assert_eq!(v["span"]["start"], 8);
         assert_eq!(v["span"]["end"], 10);
 
-        // `fix` sub-object per contract §123-152.
+        // `fix` sub-object.
         let fix_obj = &v["fix"];
         assert_eq!(fix_obj["original_span"]["start"], 8);
         assert_eq!(fix_obj["original_span"]["end"], 10);
@@ -1693,14 +1649,14 @@ mod tests {
             "original_digest must be a 'blake3:<hex>' string; got: {fix_obj:?}"
         );
 
-        // `replacement` sub-object per contract §124-148.
+        // `replacement` sub-object.
         let replacement = &fix_obj["replacement"];
         assert_eq!(
             replacement["discriminant"], "strict",
-            "BuiltinRule source projects to discriminant=strict per PM-D-7"
+            "BuiltinRule source projects to discriminant=strict"
         );
 
-        // `canonical` sub-object per contract §253-291. The fix uses
+        // `canonical` sub-object. The fix uses
         // `Recanonicalize`, which routes through CategoryId::MARKING
         // → open_vocab path with `category: "Marking"`.
         let canonical_json = &replacement["canonical"];
@@ -1720,7 +1676,7 @@ mod tests {
         // CVE-only field elides for open_vocab arms.
         assert!(canonical_json.get("token_id").is_none());
 
-        // `confidence` sub-object per contract §140-147.
+        // `confidence` sub-object.
         let confidence = &replacement["confidence"];
         assert_eq!(confidence["recognition"], 1.0);
         assert_eq!(confidence["rule"], 1.0);
@@ -1732,7 +1688,7 @@ mod tests {
         // Features SmallVec defaulted to empty for the test fixture.
         assert!(confidence["features"].as_array().unwrap().is_empty());
 
-        // `message` sub-object per contract §154-166.
+        // `message` sub-object.
         let message = &v["message"];
         assert_eq!(message["template"], "BannerRollupMismatch");
         // `args` is a partial-emit map; the test fixture uses
@@ -1752,10 +1708,9 @@ mod tests {
 
     #[test]
     fn render_audit_line_text_correction_arm() {
-        // PR 3c.2.D / D4: separate NDJSON line type for the C001 /
-        // text-correction path per PM-D-4. The arm carries a
-        // corpus-derived `SmolStr` replacement (Constitution V
-        // Principle V permitted identifier) rather than a
+        // Separate NDJSON line type for the text-correction path. The
+        // arm carries a corpus-derived `SmolStr` replacement (a
+        // Constitution V Principle V permitted identifier) rather than a
         // `Canonical<S>` payload.
         use marque_ism::Span;
         use marque_rules::audit::AppliedTextCorrection;
@@ -1772,8 +1727,6 @@ mod tests {
         // Test-fixture carve-out per Constitution V Principle V.
         let token = EnginePromotionToken::__engine_construct();
         let tc = AppliedTextCorrection::__engine_promote_text_correction(
-            // T044: `C001` → `("capco", "marking.correction.token-typo")`
-            // per `docs/refactor-006/legacy-rule-id-map.md` §1.
             RuleId::new("capco", "marking.correction.token-typo"),
             Severity::Fix,
             Span::new(0, 6),
@@ -1797,10 +1750,9 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
 
-        // Per contract §388-402.
         assert_eq!(v["type"], "text_correction");
         assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
-        // T044 PM OD-2: structured-object `rule` shape on the wire.
+        // Structured-object `rule` shape on the wire.
         assert_eq!(v["rule"]["scheme"], "capco");
         assert_eq!(v["rule"]["predicate_id"], "marking.correction.token-typo");
         assert_eq!(v["severity"], "fix");
