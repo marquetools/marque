@@ -373,7 +373,6 @@ def parse_file(path: Path) -> dict:
             if mac is not None:
                 # macro invocation block (e.g., lazy_static! { ... })
                 name = mac.group("name") + "!"
-                vis = "private"
                 kind = "macro_invoke"
                 end_line = consume_to_balanced(stripped, i, opener=None)
                 signature = raw_line.strip()
