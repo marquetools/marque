@@ -10,11 +10,10 @@
 //! form-mismatch rules introduced for #677 MUST NOT fire on any of
 //! these inputs.
 //!
-//! These tests pass on the pre-fix staging tree (no form-mismatch
-//! rules exist, so canonical inputs trivially produce zero such
-//! diagnostics). After Commit 3 lands, they MUST continue to pass —
-//! catching any future regression where the rule's `Some(_)`-gated
-//! detection accidentally returns true on canonical input.
+//! Canonical inputs trivially produce zero form-mismatch diagnostics.
+//! These tests catch any future regression where the rule's
+//! `Some(_)`-gated detection accidentally returns true on canonical
+//! input.
 //!
 //! Authority: CAPCO-2016 §D.1 p27 line 560 (Marking Title OR Authorized
 //! Abbreviation permitted in banner); §C.1 p25 line 503 (Portion Mark
@@ -230,9 +229,9 @@ fn canonical_portion_with_ns() {
 }
 
 // ---------------------------------------------------------------------------
-// Title-form fallback canonical-no-fire regression — Copilot R2
-// Finding B. After the `find_banner_form_in_portion` walker grew a
-// `title_to_portion` fallback for Marking Title forms (e.g.,
+// Title-form fallback canonical-no-fire regression. With the
+// `find_banner_form_in_portion` walker's `title_to_portion` fallback
+// for Marking Title forms (e.g.,
 // `TALENT KEYHOLE` in portion → fix to `TK`), the canonical SCI portion
 // form `TK` must NOT regress: `banner_to_portion("TK")` returns `None`
 // (row has `banner == portion`); `title_to_portion("TK")` returns `None`
@@ -264,7 +263,7 @@ fn canonical_portion_with_nf_no_title_fallback_regression() {
 }
 
 // ---------------------------------------------------------------------------
-// EYES title-form non-emit regression — Copilot R2 Finding B. The
+// EYES title-form non-emit regression. The
 // `title_to_portion("EYES ONLY")` lookup returns `None` because the
 // EYES row has `title == banner == "EYES ONLY"` (the title==banner
 // gate inside `title_to_portion` short-circuits). The banner-direction
