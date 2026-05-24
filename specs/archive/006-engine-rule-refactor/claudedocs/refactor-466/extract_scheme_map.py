@@ -368,7 +368,6 @@ def parse_file(path: Path) -> dict:
                 continue
 
             item_start = cluster_start
-            item_keyword_line = i
 
             # Decide block kind/name/end-line.
             if mac is not None:
