@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 3 — CLI smoke tests for `marque check`.
+//! CLI smoke tests for `marque check`.
 //!
 //! Spawns the compiled binary against the canonical corpus fixtures and
-//! asserts stdout, stderr, and exit code match `contracts/cli.md`.
+//! asserts stdout, stderr, and exit code match the documented contract.
 
 use assert_cmd::Command;
 use std::path::PathBuf;
@@ -35,8 +35,7 @@ fn check_clean_banner_exits_zero() {
 
 #[test]
 fn check_invalid_banner_exits_one_with_e002() {
-    // PR 3c.B Commit 6 retired E001 + the banner_abbrev fixture. The
-    // replacement uses `missing_usa_trigraph.txt` — E002 fires
+    // `missing_usa_trigraph.txt` makes the rel-to-missing-usa rule fire
     // (REL TO missing USA, §H.8 p150–151) and the check exits 1.
     let assert = marque()
         .args(["check", "--format", "json"])
@@ -45,12 +44,10 @@ fn check_invalid_banner_exits_one_with_e002() {
         .code(1);
     let output = assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // T044 PM OD-2: `rule` field is a structured 2-tuple object on
-    // the wire. The diagnostic NDJSON path (`diagnostic_to_json` →
-    // direct serde serialization) emits fields in struct-definition
-    // order: `scheme` first, `predicate_id` second. Legacy `E002` →
-    // `("capco", "portion.dissem.rel-to-missing-usa")` per
-    // `docs/refactor-006/legacy-rule-id-map.md` §1.
+    // The `rule` field is a structured 2-tuple object on the wire. The
+    // diagnostic NDJSON path (`diagnostic_to_json` → direct serde
+    // serialization) emits fields in struct-definition order: `scheme`
+    // first, `predicate_id` second.
     let e002_rule_fragment =
         r#""rule":{"scheme":"capco","predicate_id":"portion.dissem.rel-to-missing-usa"}"#;
     assert!(stdout.contains(e002_rule_fragment), "got: {stdout}");
@@ -65,7 +62,7 @@ fn check_unknown_token_fixture_fires_e008() {
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    // T044: legacy `E008` →
+    // The unrecognized-token rule:
     // `("capco", "marking.metadata.unrecognized-token")`.
     let e008_rule_fragment =
         r#""rule":{"scheme":"capco","predicate_id":"marking.metadata.unrecognized-token"}"#;

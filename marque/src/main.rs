@@ -7,11 +7,10 @@
 
 //! marque — a fast, rule-driven text linter, formatter, and transformer. Ships with CAPCO/ISM classification-marking rules.
 //!
-//! Phase 3 brings the `check` subcommand fully into compliance with
-//! `contracts/cli.md`: stdin sentinel, `--config`, `--confidence-threshold`,
-//! `--format human|json`, `--no-color` (with NO_COLOR/TERM=dumb honored),
-//! `-q`/`-v`, `--explain-config` (mutually exclusive with paths and `fix`),
-//! and exit codes per the contract.
+//! The `check` subcommand supports: a stdin sentinel, `--config`,
+//! `--confidence-threshold`, `--format human|json`, `--no-color` (with
+//! NO_COLOR/TERM=dumb honored), `-q`/`-v`, `--explain-config` (mutually
+//! exclusive with paths and `fix`), and the documented exit codes.
 
 mod render;
 
@@ -29,7 +28,7 @@ const EX_DIAG_ERROR: i32 = 1;
 const EX_DIAG_WARN: i32 = 2;
 /// Exit code surfaced when the engine emitted an `R002` synthetic
 /// diagnostic — pass-1 fixes applied but the resulting buffer was
-/// unparseable, so pass-2 was skipped (PR 7b D-7.8, FR-024).
+/// unparseable, so pass-2 was skipped.
 ///
 /// Numerically `3` sits adjacent to the diagnostic exit codes and
 /// distinct from the sysexits-style range starting at `64`.
@@ -40,8 +39,7 @@ const EX_UNAVAILABLE: i32 = 69;
 const EX_IOERR: i32 = 74;
 const EX_TEMPFAIL: i32 = 75;
 
-/// Reduce two exit codes to a single value using the PR 7b D-7.15
-/// precedence chain.
+/// Reduce two exit codes to a single value using the precedence chain.
 ///
 /// Precedence (high → low):
 /// `EX_R002_PARTIAL` (3) > `EX_DIAG_ERROR` (1) > `EX_DIAG_WARN` (2) > `EX_OK` (0).
@@ -73,13 +71,11 @@ fn merge_exit_code(current: i32, new_code: i32) -> i32 {
 /// Extended `--version` string that exposes the active audit-record
 /// schema name alongside the package version.
 ///
-/// Per PR 3c.2.D PM-D-15 and `contracts/audit-record.md`
-/// §"Schema discoverability (D3)", the active audit schema name
-/// MUST be discoverable by external consumers without parsing
-/// audit records. The contract names two surfaces:
+/// The active audit schema name must be discoverable by external
+/// consumers without parsing audit records. Two surfaces provide this:
 ///
 /// 1. **Per-record discoverability** — every audit NDJSON line's
-///    first field is `"schema": "marque-1.0"` (FR-035). Streaming
+///    first field is `"schema": "<AUDIT_SCHEMA_VERSION>"`. Streaming
 ///    consumers detect schema by reading the first record.
 /// 2. **Per-binary discoverability** — `marque --version` exposes
 ///    `audit_schema: <AUDIT_SCHEMA_VERSION>` on its own line so
@@ -87,9 +83,8 @@ fn merge_exit_code(current: i32, new_code: i32) -> i32 {
 ///    the binary against a real document.
 ///
 /// The value is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`
-/// (FR-034 single source of truth — the build.rs accept-list +
-/// the const re-export are the only places the schema name appears
-/// in the binary).
+/// (single source of truth — the build.rs accept-list + the const
+/// re-export are the only places the schema name appears in the binary).
 ///
 /// Format: two lines, key/value with a colon separator. Grep
 /// target is `^audit_schema:`. Initialized via `OnceLock` at first
@@ -243,13 +238,11 @@ struct CommonOptions {
     /// Install a corpus override (JSON) for the decoder. Available only
     /// when this build of marque was compiled with the `corpus-override`
     /// Cargo feature — the WASM target does not declare the feature
-    /// (Constitution III + T067) and `marque-server` rejects override
-    /// input on every channel (T066), so the flag is CLI-only by
-    /// construction. Phase 4 PR-5 minimal scope: every decoder fix
-    /// produced under override is stamped with
-    /// `CorpusOverrideInEffect` in its audit record. Override priors
-    /// do not yet substitute into decoder scoring; that is the next-PR
-    /// step.
+    /// (Constitution III) and `marque-server` rejects override input on
+    /// every channel, so the flag is CLI-only by construction. Every
+    /// decoder fix produced under override is stamped with
+    /// `CorpusOverrideInEffect` in its audit record. Override priors do
+    /// not yet substitute into decoder scoring.
     #[cfg(feature = "corpus-override")]
     #[arg(long, value_name = "PATH")]
     corpus_override: Option<PathBuf>,
@@ -276,9 +269,9 @@ async fn main() {
     // `-v` flag can promote the default filter to `marque=debug` per
     // `contracts/cli.md` ("-v equivalent to MARQUE_LOG=marque=debug").
     //
-    // Precedence chain (matches FR-007): CLI flag > env var > default.
-    // If the user passes `-v`, `marque=debug` wins regardless of
-    // MARQUE_LOG. Otherwise MARQUE_LOG wins if set, else `marque=info`.
+    // Precedence chain: CLI flag > env var > default. If the user
+    // passes `-v`, `marque=debug` wins regardless of MARQUE_LOG.
+    // Otherwise MARQUE_LOG wins if set, else `marque=info`.
     //
     // Production-safety note (whitepaper §11.4): info/warn/debug emit only
     // structured, content-free fields today. Trace level is reserved for
@@ -358,8 +351,8 @@ fn load_config(
 
 /// Load and install a `--corpus-override` payload onto `engine`.
 ///
-/// PR-5 minimal scope (T065/T069): when the feature is compiled in
-/// AND `common.corpus_override` is `Some(_)`, parse the JSON via
+/// When the feature is compiled in AND `common.corpus_override` is
+/// `Some(_)`, parse the JSON via
 /// `marque_config::corpus_override::load_corpus_override` and call
 /// `engine.with_corpus_override(...)`. Returns `EX_DATAERR` /
 /// `EX_IOERR` on parse / IO errors.
@@ -403,8 +396,8 @@ fn validate_threshold(common: &CommonOptions) -> Result<(), i32> {
     Ok(())
 }
 
-/// Parse `--deadline` if supplied. Per spec 005 T022: parse failures and
-/// zero durations both exit `EX_USAGE` (64). humantime requires a unit
+/// Parse `--deadline` if supplied. Parse failures and zero durations
+/// both exit `EX_USAGE` (64). humantime requires a unit
 /// suffix, so a bare `--deadline 0` fails at parse time; `--deadline 0s`
 /// parses to `Duration::ZERO` which we explicitly reject (a zero budget
 /// would always trip the pre-pass deadline check on entry, producing a
@@ -499,7 +492,7 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
             return err.exit_code();
         }
     };
-    // Phase 4 PR-5 — install CLI-supplied corpus override.
+    // Install the CLI-supplied corpus override.
     let engine = match install_corpus_override(engine, &common) {
         Ok(e) => e,
         Err(code) => return code,
@@ -559,7 +552,7 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
 
         // Stamp the deadline ONCE per input so a slow earlier file
         // does not consume the budget allotted to a later one
-        // (per-document semantics, spec §R2). For stdin / single-doc
+        // (per-document semantics). For stdin / single-doc
         // invocations this is identical to a single boundary stamp.
         // `LintOptions` is `#[non_exhaustive]` so we mutate a default
         // rather than struct-construct across the crate boundary.
@@ -608,14 +601,14 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
     }
 }
 
-/// Full `marque fix` implementation (Phase 4, US2 — T047–T051a).
+/// Full `marque fix` implementation.
 ///
 /// Applies fixes at or above the configured confidence threshold, emits an
-/// NDJSON audit record to stderr for every `AppliedFix` (FR-005a), and
-/// computes exit codes from the remaining diagnostics (post-fix re-lint).
+/// NDJSON audit record to stderr for every `AppliedFix`, and computes exit
+/// codes from the remaining diagnostics (post-fix re-lint).
 ///
 /// Output routing:
-/// - File paths → `--in-place` by default (atomic temp-file rename, T048).
+/// - File paths → `--in-place` by default (atomic temp-file rename).
 /// - stdin → `--write-stdout` by default.
 /// - `--dry-run` → audit records emitted, no file/stdout output.
 // Flat CLI argument set mirrors the clap struct exactly; extracting into a
@@ -665,7 +658,7 @@ fn run_fix(
         Err(code) => return code,
     };
 
-    // --fixed-timestamp: gated on MARQUE_ALLOW_FIXED_CLOCK=1 (T051a).
+    // --fixed-timestamp: gated on MARQUE_ALLOW_FIXED_CLOCK=1.
     let engine = if let Some(ref ts_str) = fixed_timestamp {
         if std::env::var("MARQUE_ALLOW_FIXED_CLOCK").as_deref() != Ok("1") {
             eprintln!(
@@ -702,7 +695,7 @@ fn run_fix(
             return err.exit_code();
         }
     };
-    // Phase 4 PR-5 — install CLI-supplied corpus override.
+    // Install the CLI-supplied corpus override.
     let engine = match install_corpus_override(engine, &common) {
         Ok(e) => e,
         Err(code) => return code,
@@ -759,7 +752,7 @@ fn run_fix(
         }
 
         // Stamp the per-document deadline BEFORE the fix call so each
-        // input gets its own budget (spec §R2 per-document semantics).
+        // input gets its own budget (per-document semantics).
         let mut fix_opts = FixOptions::default();
         fix_opts.threshold_override = common.confidence_threshold;
         fix_opts.deadline = match stamp_deadline(deadline_duration) {
@@ -773,9 +766,9 @@ fn run_fix(
                 return EX_DATAERR;
             }
             Err(EngineError::DeadlineExceeded { partial_lint }) => {
-                // Spec §R4 / Constitution V Principle V: no partial
-                // FixResult is ever produced, so there is no fixed
-                // text to write. Render the partial-lint diagnostics
+                // Constitution V Principle V: no partial FixResult is
+                // ever produced, so there is no fixed text to write.
+                // Render the partial-lint diagnostics
                 // to stderr so the operator can see what the engine
                 // had identified before the abort, then exit
                 // EX_TEMPFAIL to signal "transient failure, retry
@@ -847,17 +840,12 @@ fn run_fix(
             }
         };
 
-        // Audit emission (T049, FR-005a) — NEVER suppressed by -q.
-        // Each record is atomic: serialize to buffer, single write_all.
+        // Audit emission — NEVER suppressed by -q. Each record is
+        // atomic: serialize to buffer, single write_all.
         //
-        // PR 3c.2.D / D4: emit reads from `result.audit_lines` (the
-        // marque-1.0 v2 stream) rather than `result.applied` (the v1
-        // stream). The v2 stream preserves cross-record promotion
-        // order across both the marking-fix arm and the text-
-        // correction arm (PM-D-8). The v1 stream stays populated by
-        // the engine through the D2-D7 transition window but is no
-        // longer read; D-A5 / D7 retires `result.applied` atomically
-        // with the schema flip.
+        // Emit reads from `result.audit_lines`, which preserves
+        // cross-record promotion order across both the marking-fix arm
+        // and the text-correction arm.
         let mut audit_exit_code: Option<i32> = None;
         let scheme = engine.scheme();
         let input_label: std::sync::Arc<str> = match path.as_ref() {
@@ -879,11 +867,11 @@ fn run_fix(
                 // future variant falls through to the wildcard
                 // arm and is rendered as-is (without the CLI's
                 // `input_label` patched in) so the NDJSON stream
-                // does not silently drop the record. The T055 G13
-                // canary catches the projection surface change at
-                // the same time — together they make the addition
-                // of a new variant a loud failure, not a silent
-                // omission from `--audit-out`.
+                // does not silently drop the record. The audit
+                // content-ignorance canary catches the projection
+                // surface change at the same time — together they
+                // make the addition of a new variant a loud failure,
+                // not a silent omission from `--audit-out`.
                 let line_with_input: std::borrow::Cow<'_, _> = match line {
                     marque_rules::AuditLine::AppliedFix(fix) => {
                         let mut cloned = fix.clone();
@@ -920,7 +908,7 @@ fn run_fix(
         }
 
         if let Some(code) = audit_exit_code {
-            // FR-005a: audit emission failure → nonzero exit.
+            // Audit emission failure → nonzero exit.
             return code;
         }
 
@@ -930,7 +918,7 @@ fn run_fix(
         let should_write_stdout = !dry_run && (is_stdin_input || write_stdout);
 
         if should_write_file {
-            // T048: atomic temp-file rename for --in-place writes.
+            // Atomic temp-file rename for --in-place writes.
             // IO errors on write are fatal — return immediately rather than
             // continuing to the next file with a partially-processed batch.
             if let Some(file_path) = path {
@@ -978,7 +966,7 @@ fn run_fix(
             }
         }
 
-        // C1: post-fix re-lint for exit code (T050).
+        // Post-fix re-lint for exit code.
         //
         // Re-lint the post-fix text to catch cascading resolutions (a fix
         // resolved a secondary violation) and introduced violations (unlikely
@@ -1016,9 +1004,9 @@ fn run_fix(
         let has_errors = relint.error_count() > 0 || relint.fix_count() > 0;
         let has_warns = relint.warn_count() > 0;
 
-        // R002 takes priority over every other diagnostic signal
-        // (PR 7b D-7.15). Test it BEFORE the error/warn branch so a
-        // document with both R002 and ordinary errors surfaces R002
+        // R002 takes priority over every other diagnostic signal.
+        // Test it BEFORE the error/warn branch so a document with
+        // both R002 and ordinary errors surfaces R002
         // — the partial-application story is what the operator
         // needs to act on.
         let row_code = if result.r002_fired {
@@ -1113,7 +1101,7 @@ fn run_explain_config(config: &marque_config::Config) -> i32 {
 
 #[cfg(test)]
 mod exit_code_tests {
-    //! PR 7b D-7.15 — `merge_exit_code` precedence-chain locks.
+    //! `merge_exit_code` precedence-chain locks.
     //!
     //! These tests pin the rule that R002 wins over generic error and
     //! that the reduction is NOT numeric `max()`. The reduction is
