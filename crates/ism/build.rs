@@ -1830,7 +1830,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                         .normalized_value(XmlVersion::Implicit1_0)
                                         .unwrap_or_else(|err| {
                                             panic!(
-                                                "{}: failed to unescape `decomposable`: {err}",
+                                                "{}: failed to normalize `decomposable`: {err}",
                                                 path.display()
                                             )
                                         });
@@ -1875,7 +1875,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                     .normalized_value(XmlVersion::Implicit1_0)
                                     .unwrap_or_else(|err| {
                                         panic!(
-                                            "{}: failed to unescape `dateLastVerified`: {err}",
+                                            "{}: failed to normalize `dateLastVerified`: {err}",
                                             path.display()
                                         )
                                     });
