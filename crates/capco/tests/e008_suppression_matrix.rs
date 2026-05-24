@@ -8,8 +8,7 @@
 //!
 //! # Source tests ported
 //!
-//! - `e008_no_fix_offered` — FR-012 invariant: E008 never carries a
-//!   fix payload.
+//! - `e008_no_fix_offered` — E008 never carries a fix payload.
 //! - `e008_suppressed_on_migration_backed_unknown` — `25X1-` is a
 //!   table-backed X-shorthand entry: E007 owns + E008 suppresses,
 //!   belt-and-suspenders (the paired E007 firing check prevents a
@@ -65,11 +64,11 @@ fn diags_for(source: &str, predicate: &str) -> Vec<Diagnostic<CapcoScheme>> {
 }
 
 // ---------------------------------------------------------------------------
-// FR-012 — E008 never carries a fix
+// E008 never carries a fix
 // ---------------------------------------------------------------------------
 
-/// FR-012 invariant: E008 is a pure-Error rule with no remediation
-/// channel — neither a `fix` (FixIntent) nor a `text_correction`
+/// E008 is a pure-Error rule with no remediation channel — neither a
+/// `fix` (FixIntent) nor a `text_correction`
 /// payload can be attached. The unrecognized-token surface is
 /// classifier-judgment territory; the engine refuses to guess.
 #[test]
@@ -78,7 +77,7 @@ fn e008_carries_no_fix_or_text_correction() {
     let e008 = diags.first().expect("E008 must fire on unknown token");
     assert!(
         e008.fix.is_none() && e008.text_correction.is_none(),
-        "FR-012: E008 must propose no fix and no text_correction; \
+        "E008 must propose no fix and no text_correction; \
          got fix={:?}, text_correction={:?}",
         e008.fix,
         e008.text_correction,

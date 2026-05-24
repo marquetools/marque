@@ -120,8 +120,8 @@ fn eci_with_compartment_rewrites_to_si_compartment() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    // Post PR 3c.2.C: typed `Citation` carries one §-reference per
-    // diagnostic. The catalog row anchors at §H.4 p61 (SCI grammar);
+    // The typed `Citation` carries one §-reference per diagnostic. The
+    // catalog row anchors at §H.4 p61 (SCI grammar);
     // the row.message documentation still cross-references p76.
     assert!(
         format!("{}", diags[0].citation).contains("§H.4 p61"),
@@ -284,13 +284,13 @@ fn kdk_unknown_compartment_emits_warn_no_fix() {
         diags[0].text_correction.is_none(),
         "unknown KDK compartment must NOT carry a text_correction"
     );
-    // PR 3c.2.C C5: `Diagnostic.message` is a closed `Message`
-    // (template + args); the prose explanation that previously lived
-    // in the message body is gone per Constitution V Principle V
-    // (G13). The deprecation class is captured by the
+    // `Diagnostic.message` is a closed `Message` (template + args);
+    // free-form prose is absent from the message body per Constitution
+    // V Principle V (audit content-ignorance). The deprecation class is
+    // captured by the
     // `SupersededToken` template; the no-fix signal is captured by
     // the `text_correction.is_none()` assertion above and the
-    // unchanged-source assertion below. See PM-C-5 / PM-C-6.
+    // unchanged-source assertion below.
     use marque_rules::MessageTemplate;
     assert_eq!(
         diags[0].message.template(),
@@ -383,7 +383,7 @@ fn fix_round_trip_idempotent() {
 }
 
 // =========================================================================
-// PR 9a Copilot R4 Fix 1 — multi-system SCI long-form canonicalization.
+// Multi-system SCI long-form canonicalization.
 //
 // Before the fix, the deprecated SCI long-form recognizer
 // (`recognize_deprecated_sci_long_form`) only ran at the whole-`//`-block

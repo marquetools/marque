@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Runtime smoke test verifying the concrete `CapcoScheme` recognizer
-//! dispatch is `Send + Sync`-usable as a trait object (FR-038, T003 of
-//! engine-refactor-006). The compile-time property is already pinned by
-//! the `Recognizer<S>: Send + Sync` supertrait bound at
-//! `crates/scheme/src/recognizer.rs:211` plus each
-//! `impl Recognizer<CapcoScheme> for ...` block at
+//! dispatch is `Send + Sync`-usable as a trait object. The compile-time
+//! property is already pinned by the `Recognizer<S>: Send + Sync`
+//! supertrait bound in `crates/scheme/src/recognizer.rs` plus each
+//! `impl Recognizer<CapcoScheme> for ...` block in
 //! `crates/engine/src/recognizer.rs` — those impls cannot exist
 //! without their concrete types being `Send + Sync`. This file
 //! exercises the boxed-trait-object dispatch path at runtime so a
@@ -48,9 +47,9 @@ fn capco_recognizer_dispatch_is_send_sync_as_trait_object() {
 }
 
 /// Compile-time `Send + Sync` proof for the rule-emission types
-/// monomorphized at `<CapcoScheme>`. PR 3c.B Commit 2 introduced
-/// `CapcoOpenVocabRef` as a new field on `FactRef::OpenVocab`, which
-/// transitively flows through `FixIntent<CapcoScheme>`,
+/// monomorphized at `<CapcoScheme>`. `CapcoOpenVocabRef` is a field on
+/// `FactRef::OpenVocab`, which transitively flows through
+/// `FixIntent<CapcoScheme>`,
 /// `Diagnostic<CapcoScheme>`, and `AppliedFix<CapcoScheme>`. The
 /// structural correctness is already enforced by the
 /// `OpenVocabRef: Send + Sync + 'static` bound on `MarkingScheme`,

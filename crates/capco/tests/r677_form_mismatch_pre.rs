@@ -4,21 +4,20 @@
 
 //! TDD RED-state tests for issue #677.
 //!
-//! PR 3c.B Commit 6 retired E001 (`PortionMarkInBannerRule`) and E009
-//! (banner→portion form normalization) on the premise that
+//! E001 (`PortionMarkInBannerRule`) and E009 (banner→portion form
+//! normalization) were retired on the premise that
 //! `MarkingScheme::render_canonical` would absorb their fix paths. The
-//! renderer's fix path IS in place — but no rule emits the
-//! `Recanonicalize` `FixIntent` that would trigger it, so the bug
+//! renderer's fix path IS in place — but if no rule emits the
+//! `Recanonicalize` `FixIntent` that would trigger it, the bug
 //! manifests as silent acceptance: `SECRET//NF`, `(S//NOFORN)`,
 //! `SECRET//OC`, etc. all produce zero diagnostics.
 //!
-//! These tests were authored on the pre-fix tree (commit `ed9c3fe1` of
-//! `staging`) and confirmed RED — every assertion below FAILS on
-//! pre-fix. After Commit 3 of the fix lands, every assertion MUST pass.
+//! These tests pin the form-mismatch detection: every assertion below
+//! MUST pass once the form-mismatch rules emit `Recanonicalize`.
 //!
-//! Authority: CAPCO-2016 §D.1 p27 line 560 (banner-line syntax —
+//! Authority: CAPCO-2016 §D.1 p27 (banner-line syntax —
 //! controls in Marking Title or Authorized Abbreviation form only),
-//! §C.1 p25 line 503 (portion mark — "An authorized portion mark is
+//! §C.1 p25 (portion mark — "An authorized portion mark is
 //! listed for each classification and control marking entry in the
 //! Register"), §G.1 Table 4 p38 (Register-closed-set authority).
 //! Re-verified against `crates/capco/docs/CAPCO-2016.md` at authorship
@@ -163,7 +162,7 @@ fn portion_with_propin_fires_form_mismatch() {
 // Broad-scope verification — confirms the rule reaches beyond dissem.
 // ---------------------------------------------------------------------------
 //
-// Note: §D.1 p27 line 560 explicitly permits BOTH the Marking Title
+// Note: §D.1 p27 explicitly permits BOTH the Marking Title
 // (e.g., TALENT KEYHOLE) AND the Authorized Abbreviation (e.g., TK) in
 // the banner line. So `SECRET//TALENT KEYHOLE` is VALID, not a defect —
 // the synthesis-brief's draft test for that case was incorrect under
@@ -183,8 +182,8 @@ fn portion_with_propin_fires_form_mismatch() {
 // ---------------------------------------------------------------------------
 // Non-IC dissem form pairs (LIMDIS↔DS, EXDIS↔XD, NODIS↔ND) — broad-scope
 // coverage that the rule reaches beyond IC dissem into §H.9. Verified
-// against `crates/ism/src/marking_forms.rs` rows at L488-503 (each row
-// has `banner != portion` so `portion_to_banner` / `banner_to_portion`
+// against the `crates/ism/src/marking_forms.rs` rows (each row has
+// `banner != portion` so `portion_to_banner` / `banner_to_portion`
 // returns `Some`). Authority: CAPCO-2016 §H.9 pp170-174 + §G.1 Table 4
 // p38 (Register closed-set).
 // ---------------------------------------------------------------------------
@@ -215,10 +214,11 @@ fn portion_with_limdis_fires_form_mismatch() {
 
 // ---------------------------------------------------------------------------
 // NATO classification form pairs — broad-scope coverage that the rule
-// reaches into §H.7. Verified against `crates/ism/src/marking_forms.rs`
-// L244-277 (each NATO classification row has `banner != portion`).
+// reaches into §H.7. Verified against the
+// `crates/ism/src/marking_forms.rs` rows (each NATO classification row
+// has `banner != portion`).
 // Authority: CAPCO-2016 §G.1 Table 4 p36 + §H.7 p123. Note: a NATO
-// banner line is `//<NATO class>` per §D.1 p27 line 552-554, so the
+// banner line is `//<NATO class>` per §D.1 p27, so the
 // banner test uses a bare `//NS` shape rather than the US-class-prefixed
 // `SECRET//...` form.
 // ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ fn banner_with_classification_abbrev_fires_form_mismatch() {
 }
 
 // ---------------------------------------------------------------------------
-// Marking Title in portion position — Copilot R2 Finding B coverage. The
+// Marking Title in portion position. The
 // `find_banner_form_in_portion` walker checks both the Authorized
 // Banner Abbreviation column (`MARKING_FORMS.banner`) via
 // `banner_to_portion` AND the Marking Title column (`MARKING_FORMS.title`)
@@ -334,11 +334,11 @@ fn portion_with_noforn_title_fires_form_mismatch() {
 }
 
 // ---------------------------------------------------------------------------
-// Abbreviated US classification in a Conflict banner — Copilot R2
-// Finding D coverage. `MarkingClassification::Conflict { us, foreign }`
+// Abbreviated US classification in a Conflict banner.
+// `MarkingClassification::Conflict { us, foreign }`
 // is what the parser emits for compound banners that carry both a US
 // classification and a NATO classification (e.g.,
-// `SECRET//NATO SECRET//NOFORN`). §D.1 p27 line 555 ("The
+// `SECRET//NATO SECRET//NOFORN`). §D.1 p27 ("The
 // classification level must be in English without abbreviation")
 // applies to the US side regardless of the foreign companion — so an
 // abbreviated US class token (`S` rather than `SECRET`) in a
@@ -355,7 +355,7 @@ fn banner_with_us_abbrev_in_conflict_fires_form_mismatch() {
     // `crates/core/src/parser.rs::conflict_us_and_nato`). The US
     // token `S` is a portion-form classification in banner position
     // — must fire form-mismatch even though the classification
-    // variant is `Conflict`, not `Us`. Authority: §D.1 p27 line 555.
+    // variant is `Conflict`, not `Us`. Authority: §D.1 p27.
     let diags = lint("S//NATO SECRET//NOFORN");
     let hits = form_mismatch_diags(&diags);
     assert!(

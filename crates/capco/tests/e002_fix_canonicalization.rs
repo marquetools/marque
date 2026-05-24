@@ -17,22 +17,19 @@
 //! - `e002_fix_output_does_not_trigger_e020`
 //! - `e002_fix_output_dedups_when_input_has_duplicates`
 //!
-//! # Architecture note (PR 3c.B Commit 10 cutover)
+//! # Architecture note
 //!
-//! Pre-cutover the tests asserted on legacy `FixProposal` fields
-//! (`fix.span.start`, `fix.replacement.as_ref() == "USA, AUS, GBR"`,
-//! `fix.original.as_ref()`). Post-cutover the rule emits a structural
-//! `FixIntent` (`FactAdd { USA, Scope::Portion }` or
+//! The rule emits a structural `FixIntent`
+//! (`FactAdd { USA, Scope::Portion }` or
 //! `Recanonicalize { Portion | Page }`) and the engine synthesizes the
 //! byte-precise replacement at promotion time via `apply_intent` +
 //! `render_canonical`. The load-bearing invariants — "E002 produces
 //! canonical REL TO in one pass", "tetragraph tail is preserved",
 //! "multi-block input gets no fix", "second pass is a no-op" — are
-//! preserved by asserting on the bytes returned by
-//! `Engine::fix(...).source` rather than on now-retired fix-internal
-//! fields. The G13 invariant (Constitution V Principle V) is satisfied
-//! by construction — the post-cutover `FixIntent` carries no raw
-//! document bytes.
+//! asserted on the bytes returned by `Engine::fix(...).source` rather
+//! than on fix-internal fields. Audit content-ignorance (Constitution V
+//! Principle V) is satisfied by construction — the `FixIntent` carries
+//! no raw document bytes.
 //!
 //! # Authority
 //!
@@ -280,7 +277,7 @@ fn e002_fix_output_is_idempotent() {
     let round1 = fix_to_string(src);
     assert!(
         round1.contains("REL TO USA, DEU, FRA"),
-        "round-1 E002 fix must produce canonical REL TO; got: {round1:?}",
+        "first-pass E002 fix must produce canonical REL TO; got: {round1:?}",
     );
     // Round 2: feed the canonicalized banner back through the engine;
     // E002 must NOT fire again on the rewritten banner.

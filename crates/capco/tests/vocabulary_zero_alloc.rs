@@ -5,10 +5,10 @@
 #![cfg(feature = "count-allocs")]
 
 //! Zero-allocation regression gate for `Vocabulary<CapcoScheme>`
-//! accessors (Phase 5 PR-2, task T077).
+//! accessors.
 //!
 //! The Vocabulary trait contract is "every accessor returns
-//! `&'static` data — no runtime allocation" (FR-016 +
+//! `&'static` data — no runtime allocation" (per the
 //! `marque-scheme::vocabulary` invariants). The metadata table is
 //! heap-initialized once via `LazyLock` (a single allocation
 //! outside the measurement window); subsequent lookups dereference
@@ -212,6 +212,6 @@ fn metadata_query_is_zero_alloc() {
         allocs, 0,
         "Vocabulary accessors allocated {allocs} time(s) after warmup; \
          expected 0. Every accessor must return `&'static` data \
-         (FR-016 / `marque-scheme::vocabulary` contract).",
+         (`marque-scheme::vocabulary` contract).",
     );
 }

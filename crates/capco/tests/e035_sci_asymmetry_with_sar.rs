@@ -25,13 +25,11 @@
 //!   — portion has `SI-G ABCD`, banner has `SI-G`; E035 fires for
 //!   the missing sub-compartment.
 //! - `e035_cites_h4_p61` — citation lockdown pin (the SCI per-system
-//!   "Precedence Rules for Banner Line Guidance" anchor; PR 10.A.1
-//!   migrated the legacy line-NNNN citation to typed `Citation`).
+//!   "Precedence Rules for Banner Line Guidance" anchor, a typed
+//!   `Citation`).
 //! - `e035_message_wording_covers_all_hierarchy_levels` — the
-//!   legacy test asserted `message.contains("systems, compartments,
-//!   and/or sub-compartments")` to lock the corrected wording from
-//!   PR #102 review. Post-G13 the message is a closed-template
-//!   carrier (`MessageTemplate::BannerRollupMismatch` + category-only
+//!   message is a closed-template carrier
+//!   (`MessageTemplate::BannerRollupMismatch` + category-only
 //!   args); the per-message wording is no longer reachable from
 //!   `Message`. The structural property the legacy test guarded
 //!   ("message describes hierarchy-level breadth") is preserved at
@@ -43,9 +41,8 @@
 //! # Authority
 //!
 //! CAPCO-2016 §H.4 p61 (SCI per-system "Precedence Rules for Banner
-//! Line Guidance"; the operative banner-roll-up rule per
-//! `specs/006-engine-rule-refactor/tasks.md` T026a + D13 single-
-//! citation discipline). §H.5 p101 (SAR hierarchy-optional carve-out
+//! Line Guidance"; the operative banner-roll-up rule under
+//! single-citation discipline). §H.5 p101 (SAR hierarchy-optional carve-out
 //! — the asymmetry anchor). Each citation re-verified against
 //! `crates/capco/docs/CAPCO-2016.md` at authorship per Constitution
 //! VIII.
@@ -127,10 +124,10 @@ fn e035_fires_on_missing_sub_compartment_sci_asymmetry_with_sar() {
 // Citation lockdown
 // ---------------------------------------------------------------------------
 
-/// PR 10.A.1 typed `Citation` pins §H.4 p61 — the SCI per-system
+/// The typed `Citation` pins §H.4 p61 — the SCI per-system
 /// "Precedence Rules for Banner Line Guidance" anchor (a parallel
-/// instance lives at every §H.4 per-system subsection; T026a / D13
-/// single-citation discipline). §D.2 p28 restates the same
+/// instance lives at every §H.4 per-system subsection; single-citation
+/// discipline). §D.2 p28 restates the same
 /// invariant in general-algorithm prose; that cross-reference
 /// lives in `evaluate_sci_banner_rollup`'s doc comment, NOT in the
 /// typed Citation.
@@ -152,7 +149,7 @@ fn e035_cites_h4_p61() {
 }
 
 // ---------------------------------------------------------------------------
-// Closed-template message (PR 3c.2.C C5 G13 closure)
+// Closed-template message (audit content-ignorance)
 // ---------------------------------------------------------------------------
 
 /// The legacy `e035_message_wording_covers_all_hierarchy_levels`
@@ -193,8 +190,8 @@ fn e035_emits_closed_template_with_sci_category() {
         diags[0].message.template(),
     );
     // The SCI category is the load-bearing axis identifier on the
-    // args; the per-hierarchy-level prose is no longer
-    // representable post-G13 closure.
+    // args; the per-hierarchy-level prose is not representable under
+    // the closed-template shape.
     let args = diags[0].message.args();
     assert!(
         args.category.is_some(),

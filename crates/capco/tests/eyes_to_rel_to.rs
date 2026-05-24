@@ -272,7 +272,7 @@ fn regression_full_form_eyes_only() {
 //
 // The banner forms tested here cover:
 //   1. Compound form `SECRET//USA/GBR EYES ONLY` — trigraph list present;
-//      recognized by `recognize_eyes_only_block` (PR 9a / T135a Commit 5).
+//      recognized by `recognize_eyes_only_block`.
 //   2. Bare form `SECRET//EYES ONLY` — no country list; maps to
 //      `DissemControl::Eyes` via the MARKING_FORMS entry; E064 fires with
 //      the FVEY implied list per §H.8 p157.

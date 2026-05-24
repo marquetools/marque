@@ -32,10 +32,9 @@ use marque_scheme::{Citation, SectionLetter, capco};
 /// retirement (#470) was justified by the engine's inability to
 /// derive ICD-206 status from a portion alone; any future rule
 /// attempting to fire on that §-citation effectively re-introduces
-/// W002 regardless of its post-T044 predicate-id name. Citation-
-/// based assertions replace the legacy `"W002"` string comparisons
-/// (Copilot reviewer pass — those would always pass vacuously
-/// post-T044 because no rule's `predicate_id()` is "W002").
+/// W002 regardless of its predicate-id name. Citation-based assertions
+/// replace `"W002"` string comparisons, which would always pass
+/// vacuously because no rule's `predicate_id()` is "W002".
 const W002_RETIRED_CITATION: Citation = capco(SectionLetter::H, 7, 124);
 
 fn engine() -> Engine {
@@ -50,8 +49,8 @@ fn engine() -> Engine {
 #[test]
 fn canonical_us_plus_fgi_portion_emits_no_w002() {
     let result = engine().lint(b"(S//FGI DEU//REL TO USA, DEU)");
-    // Behavioral assertion (post-T044): no diagnostic on this
-    // §H.7 p123 canonical shape may cite §H.7 p124 — that's the
+    // Behavioral assertion: no diagnostic on this §H.7 p123 canonical
+    // shape may cite §H.7 p124 — that's the
     // segregation §-citation W002 was modeling and the rationale
     // for its retirement (engine cannot derive ICD-206 status from
     // a portion). Any future rule that re-introduces the W002
@@ -99,12 +98,12 @@ fn fgi_country_list_portion_emits_no_w002() {
     );
 }
 
-// The pre-T044 `w002_is_not_a_registered_rule_id` registration check
-// was retired during the Copilot reviewer pass. Two reasons:
+// A `w002_is_not_a_registered_rule_id` registration check is omitted
+// for two reasons:
 //
-// 1. Vacuous on the post-T044 predicate-id model — `RuleId::new(scheme,
-//    predicate_id)` with `predicate_id == "W002"` is no longer valid
-//    by convention (predicate IDs are descriptive English-with-hyphens,
+// 1. Vacuous on the predicate-id model — `RuleId::new(scheme,
+//    predicate_id)` with `predicate_id == "W002"` is not valid by
+//    convention (predicate IDs are descriptive English-with-hyphens,
 //    not legacy E###/W### codes). The check would always pass.
 // 2. The natural tightening — "no registered rule cites §H.7 p124" —
 //    is too broad: §H.7 p124 is a legitimate secondary authority for
