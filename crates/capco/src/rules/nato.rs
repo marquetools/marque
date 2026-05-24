@@ -24,68 +24,51 @@ use super::helpers::build_rel_to_replacement;
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
-// Rule: S007 — bare NATO classification in a US-classified document
-//              should carry `REL TO USA, NATO`.
+// Rule: bare NATO classification in a US-classified document should carry
+//       `REL TO USA, NATO`.
 //
-// PR 9c.2 / FR-048. Authority: CAPCO-2016 §H.7 p127 Notional Example 2
-// worked example `(//CTS//BOHEMIA//REL TO USA, NATO)` — "a NATO COSMIC
-// TOP SECRET (CTS) BOHEMIA portion within a US classified document and
-// is releasable back to NATO". The citation is example-derived (no
-// "MUST" prose), so the rule is `Severity::Suggest` to match the
-// S004 + S005 precedent (post-PR-#488 collapse of the historical
-// S005/S006 pair). Users can opt up via `[rules] S007 = "warn"` in
-// `.marque.toml` if their org demands stronger surfacing.
+// Authority: CAPCO-2016 §H.7 p127 Notional Example 2 worked example
+// `(//CTS//BOHEMIA//REL TO USA, NATO)` — "a NATO COSMIC TOP SECRET (CTS)
+// BOHEMIA portion within a US classified document and is releasable back
+// to NATO". The citation is example-derived (no "MUST" prose), so the
+// rule is `Severity::Suggest`. Users can opt up via `.marque.toml`.
 //
-// The original FR-048 wording mandated a declarative `Constraint`. The
-// followup at
-// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`
-// tracks why that shape cannot land yet: `MarkingScheme::evaluate_custom`
-// (CAPCO impl in `crates/capco/src/scheme/marking_scheme_impl.rs`)
-// receives `&CanonicalAttrs` only — no
-// `&PageContext` access — so a per-portion gate that needs to enumerate
-// sibling portions ("not a solely-NATO document") cannot be a
-// `Constraint::Custom` today. Hand-written rule with page-context access
-// is the right shape until the trait surface extends.
+// This stays a hand-written rule rather than a declarative `Constraint`
+// because `MarkingScheme::evaluate_custom` receives `&CanonicalAttrs`
+// only — no `&PageContext` access — so a per-portion gate that needs to
+// enumerate sibling portions ("not a solely-NATO document") cannot be a
+// `Constraint::Custom` today.
 // ---------------------------------------------------------------------------
 
-/// Confidence scalar emitted by S007 (`bare-nato-requires-rel-to-usa-nato`)
-/// alongside its `text_correction` fix.
+/// Confidence scalar emitted by `BareNatoRequiresRelToRule`
+/// (`bare-nato-requires-rel-to-usa-nato`) alongside its `text_correction`
+/// fix.
 ///
 /// **Calibration.** §H.7 p127 Notional Example 2 is the load-bearing
-/// citation. The worked example is illustrative prose ("a NATO COSMIC
-/// TOP SECRET (CTS) BOHEMIA portion within a US classified document and
-/// is releasable back to NATO"), not "MUST"-mandate prose; S004 + S005
-/// set the precedent (post-PR-#488 collapse of the historical S005/S006
-/// pair) that example-derived FD&R guidance ships as
+/// citation. The worked example is illustrative prose, not
+/// "MUST"-mandate prose, so example-derived FD&R guidance ships as
 /// `Severity::Suggest`. Within the suggest channel, the confidence
 /// scalar reflects how strongly the source dictates the rewrite. The
-/// chosen value `0.85` is below the (broader) `Confidence::strict(0.95)`
-/// used by mandate-prose constraint fixes synthesized in the
-/// scheme-adapter bridge (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
-/// and above the `0.75` used by lower-evidence suggest-channel
-/// rewrites in this file.
+/// chosen value `0.85` is below the `Confidence::strict(0.95)` used by
+/// mandate-prose constraint fixes synthesized in the scheme-adapter
+/// bridge (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
+/// and above the `0.75` used by lower-evidence suggest-channel rewrites.
 ///
 /// **Threshold ladder relationship (load-bearing for auto-apply).**
 /// The default `confidence_threshold` in `Engine::fix_inner` is `0.95`.
-/// A user who sets `[rules] S007 = "fix"` in `.marque.toml` will see the
+/// A user who sets this rule to `"fix"` in `.marque.toml` will see the
 /// engine demote the override back to `Suggest` because the diagnostic's
-/// confidence is `0.85 < 0.95`. To get S007 auto-applied a user must
-/// also drop the threshold to `≤ 0.80` (or any value `< 0.85`) via
-/// `confidence_threshold = 0.80`. The dual-override pattern is
-/// exercised end-to-end by `engine_with_s007_as_fix()` in
+/// confidence is `0.85 < 0.95`. To get it auto-applied a user must also
+/// drop the threshold to `< 0.85` (e.g. `confidence_threshold = 0.80`).
+/// The dual-override pattern is exercised end-to-end in
 /// `crates/capco/tests/fr048_bare_nato_rel_to.rs`.
 ///
-/// **S007 vs. S004.** S004 emits at the file-level constant
-/// [`SUGGEST_CONFIDENCE`] (currently `0.5`), which cannot clear any
-/// reasonable threshold even with a `fix` override. S007 is the first
-/// text_correction-bearing Suggest-severity rule whose confidence is
-/// high enough to clear a relaxed threshold; the next author who adds a
-/// suggest-with-apply rule should pick a confidence consciously rather
-/// than copy-paste from S004's hard-advisory channel.
+/// This is the first text_correction-bearing Suggest-severity rule whose
+/// confidence is high enough to clear a relaxed threshold; the next
+/// author who adds a suggest-with-apply rule should pick a confidence
+/// consciously rather than copy from the hard-advisory suggest channel.
 const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 
-/// Rule **S007** — `bare-nato-requires-rel-to-usa-nato`.
-///
 /// Fires on a portion whose classification axis is a bare
 /// [`MarkingClassification::Nato`] variant when the page also carries at
 /// least one non-NATO portion AND the portion's existing REL TO list
@@ -119,20 +102,18 @@ const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 ///    and `ProjectedMarking::is_solely_nato_classified()` returns `true`,
 ///    every portion on the page is bare NATO and alliance ownership is
 ///    implicit — `REL TO USA, NATO` is not needed. **Today this branch
-///    is forward-looking**: `Engine::lint` gates
-///    `with_page_marking(ctx_page_marking)` on
-///    `candidate.kind != MarkingType::Portion && !page_portions.is_empty()`,
+///    is forward-looking**: `Engine::lint` does not populate
+///    `RuleContext::page_marking` for `MarkingType::Portion` candidates,
 ///    so portion rules always see `page_marking = None` and the
-///    carve-out is unreachable. S007 fires on every bare-NATO portion
+///    carve-out is unreachable. The rule fires on every bare-NATO portion
 ///    regardless of solely-NATO document status until a future engine
-///    pass plumbs page-level state to portion-rule dispatch
-///    (load-bearing for that migration; see fr048 trip-wire test).
-///    Users in solely-NATO contexts can silence with
-///    `[rules] S007 = "off"` in `.marque.toml`. PM decision #2.
+///    pass plumbs page-level state to portion-rule dispatch (see the
+///    fr048 trip-wire test). Users in solely-NATO contexts can silence
+///    the rule via `.marque.toml`.
 /// 4. **NOFORN guard**: when this portion carries `DissemControl::Nf`,
 ///    the conflict is owned by the page rewrite
 ///    `capco/noforn-conflicts-rel-to` (declarative constraint in
-///    `CapcoScheme`). S007 must not propose a `REL TO` that the
+///    `CapcoScheme`). This rule must not propose a `REL TO` that the
 ///    NOFORN/REL-TO conflict rule would immediately remove.
 ///
 /// # Coverage check (intentional byte-compare for NATO)
@@ -148,9 +129,9 @@ const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 /// NATO, which §H.7 p127's literal example does not endorse. We also
 /// deliberately do **NOT** add a `CountryCode::NATO` constant: that
 /// would bump the `marque-ism` public surface for a single use site
-/// without a second consumer — Constitution VII Principle IV "shallow
-/// adapter" discipline. Byte-compare at the one site is the right idiom
-/// until a second consumer materializes.
+/// without a second consumer — Constitution VII "shallow adapter"
+/// discipline. Byte-compare at the one site is the right idiom until a
+/// second consumer materializes.
 ///
 /// # Splice strategy (two helpers, two responsibilities)
 ///
@@ -161,11 +142,12 @@ const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 ///   span** with `<class>//REL TO USA, NATO`, where `<class>` is the
 ///   canonical portion abbreviation from `NatoClassification::portion_str`
 ///   (one of NU/NR/NC/NS/CTS). A non-empty span is required because
-///   the engine's `text_correction` synthesizer rejects empty spans
-///   (`engine.rs::apply_text_corrections_to` line 1529); a zero-length
-///   insert-cursor would be filtered out before promotion. Re-emitting
-///   the corpus-derived classification abbreviation is G13-safe — it
-///   is a closed-vocab canonical token, not raw document content.
+///   the engine's `text_correction` synthesizer
+///   (`engine.rs::apply_text_corrections_to`) rejects empty spans; a
+///   zero-length insert-cursor would be filtered out before promotion.
+///   Re-emitting the corpus-derived classification abbreviation is
+///   audit-safe — it is a closed-vocab canonical token, not raw
+///   document content.
 /// - [`build_bare_nato_rel_to_augmentation`] — used when the portion
 ///   has an existing REL TO block. Emits the canonical
 ///   `REL TO USA, <sorted-existing-plus-NATO>` body via
@@ -183,38 +165,34 @@ const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 ///
 /// The augmentation branch modifies a `RelToBlock` token that is not
 /// the same token as the classification block — the fix crosses a
-/// token boundary. `Phase::Localized`'s "single-token-span contract"
-/// (`marque_rules::lib.rs` line 241) would fail validation for the
-/// augmentation branch. `Phase::WholeMarking` is correct for both
-/// branches.
+/// token boundary. `Phase::Localized`'s single-token-span contract
+/// would fail validation for the augmentation branch.
+/// `Phase::WholeMarking` is correct for both branches.
 ///
-/// # G13 audit-content-ignorance
+/// # Audit content-ignorance
 ///
-/// The diagnostic message is a `&'static`-derived string. No
+/// The diagnostic message is a `&'static`-derived string with no
 /// `format!` interpolation of input bytes. The replacement string is
-/// constructed from `CountryCode` values only (which are
-/// corpus-derived canonical token bytes) plus the literal `NATO`
-/// and `REL TO USA, ` template — no document text contributes to
-/// audit output. Constitution V Principle V (G13).
+/// constructed from `CountryCode` values only (corpus-derived canonical
+/// token bytes) plus the literal `NATO` and `REL TO USA, ` template —
+/// no document text contributes to audit output (Constitution V).
 ///
-/// # First text_correction-bearing Suggest-severity rule with apply path
+/// # Suggest-severity with an apply path
 ///
-/// S007 is the first text_correction-bearing `Severity::Suggest` rule
+/// This is the first text_correction-bearing `Severity::Suggest` rule
 /// in marque-capco whose emitted confidence is high enough to clear a
-/// relaxed `confidence_threshold` when paired with a `[rules] S007 =
-/// "fix"` override. The threshold ladder:
+/// relaxed `confidence_threshold` when paired with a `"fix"` severity
+/// override. The threshold ladder:
 ///
-/// - S004 emits at [`SUGGEST_CONFIDENCE`] = `0.5`. Even with `[rules]
-///   S004 = "fix"` the diagnostic cannot clear the default
-///   `confidence_threshold = 0.95`, so S004 stays hard-advisory under
-///   any reasonable threshold.
-/// - S007 emits at [`BARE_NATO_REQUIRES_REL_TO_CONFIDENCE`] = `0.85`. With both
-///   `[rules] S007 = "fix"` AND `confidence_threshold ≤ 0.80` set, the
-///   engine's `lint` suggest-channel demotion pass keeps the override
-///   intact and `Engine::fix_inner` applies the splice.
+/// - The lower-evidence suggest channel emits at [`SUGGEST_CONFIDENCE`]
+///   = `0.5`, which cannot clear the default `confidence_threshold =
+///   0.95` even with a `"fix"` override — those rules stay hard-advisory.
+/// - This rule emits at [`BARE_NATO_REQUIRES_REL_TO_CONFIDENCE`] =
+///   `0.85`. With both a `"fix"` override AND `confidence_threshold <
+///   0.85`, the engine's suggest-channel demotion pass keeps the
+///   override intact and `Engine::fix_inner` applies the splice.
 ///
-/// The dual-override pattern is exercised end-to-end by the
-/// `engine_with_s007_as_fix()` helper and the augmentation tests in
+/// The dual-override pattern is exercised end-to-end in
 /// `crates/capco/tests/fr048_bare_nato_rel_to.rs`. The next author who
 /// adds a suggest-with-apply rule should pick a confidence scalar with
 /// the same care: too low and the auto-apply path is unreachable; too
@@ -226,16 +204,14 @@ pub(super) struct BareNatoRequiresRelToRule;
 ///
 /// The splice strategy replaces the **classification token's span**
 /// (a non-empty span; the engine's `text_correction` synthesizer
-/// rejects empty spans per `engine.rs::apply_text_corrections_to`
-/// line 1529) with `<class>//REL TO USA, NATO`, where `<class>` is the
-/// canonical portion abbreviation from
-/// [`marque_ism::NatoClassification::portion_str`] (one of NU/NR/NC/
-/// NS/CTS). For input `(//NS)` the splice replaces `NS` with
-/// `NS//REL TO USA, NATO`, yielding `(//NS//REL TO USA, NATO)`.
+/// `engine.rs::apply_text_corrections_to` rejects empty spans) with
+/// `<class>//REL TO USA, NATO`, where `<class>` is the canonical portion
+/// abbreviation from [`marque_ism::NatoClassification::portion_str`]
+/// (one of NU/NR/NC/NS/CTS). For input `(//NS)` the splice replaces `NS`
+/// with `NS//REL TO USA, NATO`, yielding `(//NS//REL TO USA, NATO)`.
 ///
 /// Pure function over `&NatoClassification`: input is a corpus-derived
-/// canonical token; no document content flows through. Constitution V
-/// Principle V (G13).
+/// canonical token; no document content flows through (Constitution V).
 ///
 /// **Branch invariant.** This helper is the no-REL-TO branch only. The
 /// caller in `BareNatoRequiresRelToRule::check` gates the call site
@@ -263,8 +239,8 @@ fn build_bare_nato_rel_to_insertion(class: marque_ism::NatoClassification) -> St
 ///
 /// Pure function over `&[CountryCode]`: byte input is the rel_to slice
 /// (canonical token bytes only), byte output is the canonical
-/// replacement body. Constitution V G13: no document text flows
-/// through this function.
+/// replacement body. No document text flows through this function
+/// (Constitution V).
 fn build_bare_nato_rel_to_augmentation(existing: &[CountryCode]) -> String {
     // Collect the existing codes minus USA and NATO, then add both back
     // via the canonical builder — the builder prepends USA and sorts
@@ -281,7 +257,7 @@ fn build_bare_nato_rel_to_augmentation(existing: &[CountryCode]) -> String {
 }
 
 /// Citations S007 may emit on diagnostics. See
-/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const BARE_NATO_REQUIRES_REL_TO_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 127)];
 
@@ -338,13 +314,6 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         // document status until a future engine pass plumbs page state
         // to portion-rule dispatch (see fr048 trip-wire test).
         //
-        // PR 4b-D.3 (2026-05-18): migrated from `ctx.page_context` to
-        // `ctx.page_marking`. Both predicates return identical answers
-        // (the legacy `PageContext::is_solely_nato_classified` walks
-        // `self.portions` with the same `matches!` pattern); the
-        // migration is architectural alignment ahead of PR 4b-E
-        // retiring the `PageContext.expected_*` machinery and
-        // consolidating page-aggregate reads on `ctx.page_marking`.
         if let Some(page) = ctx.page_marking.as_ref()
             && page.is_solely_nato_classified()
         {
@@ -384,7 +353,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         //      `(//NS//REL TO USA, NATO)`. A non-empty span is
         //      required because the engine's `text_correction`
         //      synthesizer rejects empty spans
-        //      (`engine.rs::apply_text_corrections_to` line 1529).
+        //      (`engine.rs::apply_text_corrections_to`).
         //  (b) existing REL TO block: replace that token's span with
         //      the augmented canonical body. The first RelToBlock
         //      token wins; if multiple RelToBlock tokens exist (a
@@ -466,7 +435,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 }
 
 // ===========================================================================
-// E066 — Legacy NATO compound text re-marking (PR 9c.1 T134)
+// Legacy NATO compound text re-marking
 // ===========================================================================
 //
 // Authority chain:
@@ -511,22 +480,22 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 // Confidence: `strict(1.0)` — the canonical form is unambiguous; the
 // renderer produces deterministic bytes from the canonical attrs.
 //
-// G13 audit-content-ignorance: the diagnostic message does NOT echo
-// input bytes. The message references canonical token names
-// (`TOK_ATOMAL`, `TOK_BALK`, `TOK_BOHEMIA`) via `MessageArgs.token`
-// and the message template's text. The fix payload is structural
-// (`Recanonicalize`); the engine snapshots the canonical replacement
-// at promotion time without any rule-side byte stringification.
+// Audit content-ignorance: the diagnostic message does NOT echo input
+// bytes. The message references canonical token names (`TOK_ATOMAL`,
+// `TOK_BALK`, `TOK_BOHEMIA`) via `MessageArgs.token` and the message
+// template's text. The fix payload is structural (`Recanonicalize`);
+// the engine snapshots the canonical replacement at promotion time
+// without any rule-side byte stringification.
 
-/// Rule E066 — legacy NATO compound text re-marking per §G.2 p40
-/// (Table 5 registration) + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 +
-/// §H.7 p127 (BALK/BOHEMIA → SCI).
+/// Legacy NATO compound text re-marking per §G.2 p40 (Table 5
+/// registration) + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 + §H.7 p127
+/// (BALK/BOHEMIA → SCI).
 pub(super) struct LegacyNatoCompoundRemarkRule;
 
-/// Citations E066 may emit on diagnostics. Two branches:
+/// Citations this rule may emit on diagnostics. Two branches:
 /// §H.7 p122 (ATOMAL → AEA position) and §H.7 p127 (BALK/BOHEMIA →
 /// SCI position); the rule's `check()` selects per companion type.
-/// See [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// See [`Rule::cited_authorities`] for the corpus-fidelity gate
 /// contract.
 const LEGACY_NATO_COMPOUND_REMARK_AUTHORITIES: &[Citation] = &[
     capco(SectionLetter::H, 7, 122),
@@ -608,8 +577,8 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         }
 
         // Determine the canonical companion token for `MessageArgs.token`.
-        // Per G13 audit-content-ignorance: this is a closed-vocab
-        // TokenId, not raw bytes.
+        // Audit content-ignorance: this is a closed-vocab TokenId, not
+        // raw bytes.
         let companion_token = if has_atomal {
             crate::scheme::TOK_ATOMAL
         } else {
@@ -619,10 +588,10 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
                 // `None` is unreachable: the early-return above
                 // guarantees exactly one of (has_atomal,
                 // nato_sap.is_some()) is true at this point. The
-                // `Some(_)` wildcard covers a future `NatoSap`
-                // variant introduced after PR 9c.1 ([`NatoSap`] is
-                // `#[non_exhaustive]`); defensively skip-emit until
-                // the rule explicitly learns the new variant.
+                // `Some(_)` wildcard covers a future `NatoSap` variant
+                // ([`NatoSap`] is `#[non_exhaustive]`); defensively
+                // skip-emit until the rule explicitly learns the new
+                // variant.
                 None | Some(_) => return vec![],
             }
         };
@@ -645,10 +614,10 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
             capco(SectionLetter::H, 7, 127)
         };
 
-        // G13: message template identifies the wrong-form class;
-        // `MessageArgs.token` carries the canonical companion token.
-        // The has_atomal vs has_natosap distinction is preserved
-        // through `companion_token`.
+        // Audit content-ignorance: message template identifies the
+        // wrong-form class; `MessageArgs.token` carries the canonical
+        // companion token. The has_atomal vs has_natosap distinction is
+        // preserved through `companion_token`.
         let message = Message::new(
             MessageTemplate::WrongTokenForm,
             MessageArgs {
@@ -685,8 +654,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
 }
 
 /// Returns `true` when `text` matches one of the thirteen legacy NATO
-/// compound patterns (eight portion forms + five banner forms) retired
-/// by PR 9c.1 T134.
+/// compound patterns (eight portion forms + five banner forms).
 ///
 /// The closed set is exactly the patterns the parser's
 /// `parse_nato_classification` accepts in the legacy branch — anything
