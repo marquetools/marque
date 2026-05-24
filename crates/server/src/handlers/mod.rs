@@ -62,7 +62,7 @@ pub(crate) fn query_carries_corpus_override(query: &str) -> bool {
 ///
 /// Returns `Err(StatusCode::BAD_REQUEST)` on any positive signal.
 /// Logs the channel but never the payload contents (Constitution V
-/// G13: audit-stream content-ignorance).
+/// audit-stream content-ignorance).
 pub(super) fn reject_if_corpus_override(
     endpoint: &str,
     uri: &Uri,
@@ -121,7 +121,7 @@ pub(super) fn reject_if_body_carries_corpus_override(
 /// default; otherwise it's the caller-supplied value (validated and
 /// in range).
 ///
-/// Validation rules per spec 005 §10.2:
+/// Validation rules:
 ///
 /// - Header absent → `Ok(default)` using the per-endpoint default.
 /// - Header present but empty (or whitespace-only) → same as absent.
@@ -192,9 +192,9 @@ pub(super) fn diagnostics_to_json(result: &marque_engine::LintResult) -> Vec<Dia
         .map(|d| DiagnosticJson {
             rule_id: d.rule.to_string(),
             severity: d.severity.to_string(),
-            // PR 3c.2.C C5: `Message` has no Display impl by design.
-            // Render the closed-template label; consumers expand args
-            // from the structured form via the public Message API.
+            // `Message` has no Display impl by design. Render the
+            // closed-template label; consumers expand args from the
+            // structured form via the public Message API.
             message: d.message.template().as_str().to_owned(),
             start: d.span.start,
             end: d.span.end,

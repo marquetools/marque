@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! T088 — WASM-target parity harness (SC-008).
+//! WASM-target parity harness.
 //!
 //! Runs under `wasm-pack test crates/wasm --node`, exercising the
 //! actual `wasm32-unknown-unknown` build of `marque-wasm`. For each
@@ -166,10 +166,8 @@ fn wasm_fix_clean_input_is_unchanged() {
 
 #[wasm_bindgen_test]
 fn wasm_fix_applies_correction() {
-    // E002: REL TO missing USA trigraph. fix should inject `USA` and
+    // REL TO missing USA trigraph: fix should inject `USA` and
     // canonicalize the list (USA-first alpha per §H.8 p150-151).
-    // Pre-PR-3c.B Commit 6 fixture anchored on E001 (NF → NOFORN),
-    // retired into the renderer at that commit.
     let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", 0.0, None)
         .expect("fix_native must succeed");
     let parsed: serde_json::Value =
@@ -209,13 +207,9 @@ fn wasm_lint_batch_empty_array() {
 
 #[wasm_bindgen_test]
 fn wasm_lint_batch_two_entries() {
-    // Pre-PR-3c.B Commit 6 the fixtures here anchored on E001
-    // (SECRET//NF → diagnostic) and E001 absence (SECRET//NOFORN →
-    // clean). E001 retired into `MarkingScheme::render_canonical` at
-    // that commit. The replacement diagnostic-firing fixture is
-    // SECRET//REL TO GBR (E002, REL TO missing USA trigraph,
-    // §H.8 p150-151); the clean fixture switches to the canonical
-    // SECRET//REL TO USA, GBR (USA-first alpha).
+    // The diagnostic-firing fixture is SECRET//REL TO GBR (REL TO
+    // missing USA trigraph, §H.8 p150-151); the clean fixture is the
+    // canonical SECRET//REL TO USA, GBR (USA-first alpha).
     let entries = r#"[
         {"id": "inv", "text": "SECRET//REL TO GBR\n"},
         {"id": "ok",  "text": "SECRET//REL TO USA, GBR\n"}
@@ -352,8 +346,8 @@ fn wasm_lint_corrections_config_passthrough() {
     let config = r#"{"corrections":{"NF":"NOFORN"}}"#;
     let result = marque_wasm::lint_native("SECRET//NF\n", Some(config.to_owned()))
         .expect("lint_native must accept corrections config under wasm32");
-    // T044: rule field is the structured 2-tuple. C001 → ("capco",
-    // "marking.correction.token-typo") per `legacy-rule-id-map.md` §1.
+    // The rule field is the structured 2-tuple
+    // ("capco", "marking.correction.token-typo").
     assert!(
         result.contains(
             "\"rule\":{\"scheme\":\"capco\",\"predicate_id\":\"marking.correction.token-typo\"}"

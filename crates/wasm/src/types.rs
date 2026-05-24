@@ -7,30 +7,26 @@ use marque_rules::{Diagnostic, FixSource, RuleId};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
-// JSON serialization types — duplicated from CLI render.rs for SC-008 parity.
-// The parity test (T061) catches any divergence.
+// JSON serialization types — duplicated from CLI render.rs for byte-identical
+// NDJSON parity. The native parity test catches any divergence.
 // ---------------------------------------------------------------------------
 
 /// JSON projection of a `Diagnostic` conforming to `contracts/diagnostic.json`.
 ///
-/// PR 3c.2.C C5 changed the `message` and `citation` fields' wire
-/// shape per PM-C-7:
-/// - `message` is now a structured object `{ "template": "..." }`
-///   (was a free-form string). Phase-1 carries the template label
-///   only; the closed `MessageArgs` payload is intentionally not
-///   serialized today and will be added when audit renderers need
-///   the structured field set. See [`MessageJson`] below for the
-///   per-shape rationale.
-/// - `citation` is now the [`Display`] form of typed [`Citation`]
+/// Wire shape of the `message` and `citation` fields:
+/// - `message` is a structured object `{ "template": "..." }`. It
+///   carries the template label only; the closed `MessageArgs` payload
+///   is intentionally not serialized today and will be added when audit
+///   renderers need the structured field set. See [`MessageJson`] below
+///   for the per-shape rationale.
+/// - `citation` is the [`Display`] form of typed [`Citation`]
 ///   — `§<L>.<sub> p<page>` for CAPCO sources, `[config]` /
 ///   `[engine-internal]` for sentinel sources.
-///
-/// Documented in PR 3c.2.C PR description.
 #[derive(Debug, Serialize)]
 pub(crate) struct DiagnosticJson<'a> {
-    /// 2-tuple `RuleId` shape per T044 PM OD-2. Mirrors
+    /// 2-tuple `RuleId` shape. Mirrors
     /// [`marque::render::DiagnosticJson`] for CLI/WASM NDJSON byte-
-    /// identity (SC-008). See [`RuleIdJson`].
+    /// identity. See [`RuleIdJson`].
     rule: RuleIdJson<'a>,
     severity: &'a str,
     span: SpanJson,
@@ -39,17 +35,17 @@ pub(crate) struct DiagnosticJson<'a> {
     fix: Option<FixJson<'a>>,
     /// Decoder-recognized canonical form (issue #699). Mirrors
     /// `marque::render::DiagnosticJson::recognized_canonical` for
-    /// CLI/WASM NDJSON byte-identity (SC-008). Audit-side WASM NDJSON
-    /// does NOT mirror this field — Constitution V Principle V / G13.
+    /// CLI/WASM NDJSON byte-identity. Audit-side WASM NDJSON does NOT
+    /// mirror this field — Constitution V Principle V (audit
+    /// content-ignorance).
     #[serde(skip_serializing_if = "Option::is_none")]
     recognized_canonical: Option<&'a str>,
 }
 
 /// JSON projection of a [`RuleId`] as a `{scheme, predicate_id}` 2-tuple
-/// object (T044 PM OD-2). Mirrors `marque::render::RuleIdJson` for
-/// byte-identical NDJSON parity (SC-008). The two crates carry parallel
-/// type definitions per architect D-D-1 (shared `marque-audit-render`
-/// crate deferred to post-PR-10).
+/// object. Mirrors `marque::render::RuleIdJson` for byte-identical
+/// NDJSON parity. The two crates carry parallel type definitions; a
+/// shared `marque-audit-render` crate is a future consolidation.
 #[derive(Debug, Serialize)]
 struct RuleIdJson<'a> {
     scheme: &'a str,
@@ -67,15 +63,15 @@ impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
 
 /// Structured JSON projection of a [`Message`].
 ///
-/// Phase-1 wire shape (PR 3c.2.C): `{ "template": "..." }` only.
-/// `template` is the [`MessageTemplate::as_str`] canonical label.
+/// Wire shape: `{ "template": "..." }` only. `template` is the
+/// [`MessageTemplate::as_str`] canonical label.
 ///
-/// `args` is intentionally NOT serialized in phase 1 — the closed
-/// `MessageArgs` payload (typed `TokenId` / `CategoryId` / `Span` /
-/// `Blake3Hash` / `Confidence` / `FeatureId` / `RuleId`) requires a
-/// per-template arg-flattening serializer that downstream consumers
-/// don't yet need. A future PR will add the `args` field when audit
-/// renderers demand the structured field set.
+/// `args` is intentionally NOT serialized — the closed `MessageArgs`
+/// payload (typed `TokenId` / `CategoryId` / `Span` / `Blake3Hash` /
+/// `Confidence` / `FeatureId` / `RuleId`) requires a per-template
+/// arg-flattening serializer that downstream consumers don't yet need.
+/// Add the `args` field when audit renderers demand the structured
+/// field set.
 #[derive(Debug, Serialize)]
 struct MessageJson<'a> {
     template: &'a str,
@@ -109,8 +105,8 @@ fn fix_source_str(source: FixSource) -> &'static str {
 pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     // Principle II readout — projecting the decoder-recognized
     // canonical bytes into the WASM-side NDJSON surface (issue #699).
-    // Mirrors `marque::render::diagnostic_to_json` for SC-008 byte-
-    // identical NDJSON parity. Defensive `from_utf8` guard (the engine
+    // Mirrors `marque::render::diagnostic_to_json` for byte-identical
+    // NDJSON parity. Defensive `from_utf8` guard (the engine
     // validates UTF-8 before populating `recognized_canonical`).
     let recognized_canonical = d
         .recognized_canonical
@@ -154,22 +150,22 @@ pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<
 }
 
 // ---------------------------------------------------------------------------
-// `marque-1.0` audit-record JSON projection (PR 3c.2.D / D5)
+// `marque-2.0` audit-record JSON projection
 //
 // Mirrors the CLI's `marque/src/render.rs` v1.0 surface — CLI and WASM
-// emit byte-identical NDJSON for SC-008 parity. The struct shapes are
-// duplicated verbatim per architect D-D-1 (shared `marque-audit-render`
-// crate deferred to post-PR-10); `crates/wasm/tests/audit_v1_0_parity.rs`
-// pins the byte-identity at integration-test time (PM-D-16 / R-D-1).
+// emit byte-identical NDJSON. The struct shapes are duplicated verbatim
+// (a shared `marque-audit-render` crate is a future consolidation);
+// `crates/wasm/tests/audit_v2_0_parity.rs` pins the byte-identity at
+// integration-test time.
 // ---------------------------------------------------------------------------
 
-/// Mirrors `marque::render::AuditRecordJsonV1_0`. Contract §107-178.
+/// Mirrors `marque::render::AuditRecordJsonV1_0`.
 #[derive(Debug, Serialize)]
 struct AuditRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     kind: &'static str,
     schema: &'static str,
-    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    /// 2-tuple `RuleId`. See [`RuleIdJson`].
     rule: RuleIdJson<'a>,
     severity: &'static str,
     span: SpanJson,
@@ -231,13 +227,13 @@ struct AuditMessageJsonV1_0<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
-/// Mirrors `marque::render::TextCorrectionRecordJsonV1_0`. Contract §388-402.
+/// Mirrors `marque::render::TextCorrectionRecordJsonV1_0`.
 #[derive(Debug, Serialize)]
 struct TextCorrectionRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
     kind: &'static str,
     schema: &'static str,
-    /// 2-tuple `RuleId` per T044 PM OD-2. See [`RuleIdJson`].
+    /// 2-tuple `RuleId`. See [`RuleIdJson`].
     rule: RuleIdJson<'a>,
     severity: &'static str,
     span: SpanJson,
@@ -412,10 +408,9 @@ fn project_message_to_json_v1_0<'a>(
             serde_json::Value::Array(
                 m.contributing_rule_ids
                     .iter()
-                    // T044: `RuleId.as_str()` is removed; render via the
-                    // `Display` impl as the wire-string form
-                    // `"<scheme>:<predicate_id>"`. Matches the CLI
-                    // emitter for SC-008 NDJSON byte-identity.
+                    // Render via the `Display` impl as the wire-string
+                    // form `"<scheme>:<predicate_id>"`. Matches the CLI
+                    // emitter for NDJSON byte-identity.
                     .map(|r| serde_json::Value::String(r.to_string()))
                     .collect(),
             ),
@@ -497,7 +492,7 @@ fn text_correction_to_audit_json_v1_0<'a>(
 /// Dispatch an [`AuditLine<CapcoScheme>`] to its v1.0 JSON projection.
 /// Mirrors the CLI's `audit_line_to_json_v1_0`.
 ///
-/// Intentionally `pub` (but doc-hidden) so the SC-008 parity integration test
+/// Intentionally `pub` (but doc-hidden) so the parity integration test
 /// at `tests/audit_v2_0_parity.rs` can compare byte-identity against the CLI's
 /// projection without reimplementing the helper in the test harness.
 #[doc(hidden)]
@@ -515,27 +510,25 @@ pub fn audit_line_to_json_v1_0(
             serde_json::to_value(text_correction_to_audit_json_v1_0(scheme, tc))
                 .unwrap_or(serde_json::Value::Null)
         }
-        // **Parallel-update requirement** (PR 3c.2.D fixup F-10).
-        // When a new `AuditLine` variant lands in
-        // `marque-rules::audit`, three call sites MUST add a
+        // Parallel-update requirement: when a new `AuditLine` variant
+        // lands in `marque-rules::audit`, three call sites MUST add a
         // corresponding arm in lockstep: the CLI renderer at
         // `marque/src/render.rs::audit_line_to_json_v1_0`, this
-        // WASM renderer, and the canary's
-        // `render_audit_line_to_json` at
-        // `crates/engine/tests/audit_g13_canary.rs`. A silent
-        // `Value::Null` here would defeat both the SC-008 byte-
-        // identity parity test (the CLI and WASM emit shapes would
-        // diverge silently) AND the G13 content-ignorance canary
-        // (a future leak channel would emit nothing for the canary
-        // to scan and pass the sweep vacuously).
+        // WASM renderer, and the canary's `render_audit_line_to_json`
+        // at `crates/engine/tests/audit_g13_canary.rs`. A silent
+        // `Value::Null` here would defeat both the byte-identity parity
+        // test (the CLI and WASM emit shapes would diverge silently)
+        // AND the audit content-ignorance canary (a future leak channel
+        // would emit nothing for the canary to scan and pass the sweep
+        // vacuously).
         _ => serde_json::Value::Null,
     }
 }
 
 /// Serialize a single `AuditLine` to the v1.0 NDJSON wire form. WASM
-/// counterpart of the CLI's `render_audit_line`. SC-008 binding
-/// constraint: this function MUST produce byte-identical output to
-/// the CLI's `render_audit_line` (modulo the trailing newline, which
+/// counterpart of the CLI's `render_audit_line`. This function MUST
+/// produce byte-identical output to the CLI's `render_audit_line`
+/// (modulo the trailing newline, which
 /// the renderer appends and the in-memory serialization here omits —
 /// the per-line JSON object is the byte-identity unit).
 pub(crate) fn serialize_audit_line_v1_0(
@@ -560,7 +553,7 @@ pub(crate) struct FixResultJson {
     /// Mirrors [`marque_engine::FixResult::r002_fired`]. Serialized
     /// at the top level of the JS-object so callers can branch on a
     /// single field read without parsing the NDJSON `remaining`
-    /// stream (PR 7b D1 binding constraint).
+    /// stream.
     pub(crate) r002_fired: bool,
 }
 
