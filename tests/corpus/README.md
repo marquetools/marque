@@ -15,7 +15,7 @@ tests/corpus/
   documents/   Known-good marked prose
   valid/       Known-good marking fixtures (zero expected diagnostics)
   invalid/     Known-bad marking fixtures (one or more expected diagnostics)
-  prose/       Clean body prose with no markings (SC-003a precision gate)
+  prose/       Clean body prose with no markings (prose precision gate)
 ```
 
 ## Fixture Format

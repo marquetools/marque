@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Knitli Inc.
 SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
-# Corpus Contract (SC-002a)
+# Corpus Contract
 
 This document codifies the test corpus requirements for the marque MVP.
 
@@ -43,7 +43,7 @@ Each known-good fixture MUST have a sibling `.expected.json` containing
 
 ### Clean Prose Corpus (`prose/`)
 
-Per SC-003a, the corpus MUST contain **at least 1000 lines** of body prose
+The corpus MUST contain **at least 1000 lines** of body prose
 containing no markings. The prose MUST include at least 20 incidental
 parenthesized single-letter tokens (e.g., `(S)`, `(a)`) in mid-sentence
 positions to exercise the disambiguation heuristic.
