@@ -82,7 +82,7 @@ fn wasm_dep_tree_has_no_io_crates() {
     for banned in BANNED_CRATES {
         assert!(
             !tree_contains_crate(&tree_output, banned),
-            "FR-013 violation: banned crate `{banned}` found in marque-wasm dependency tree.\n\
+            "WASM-safety violation: banned crate `{banned}` found in marque-wasm dependency tree.\n\
              The WASM build must not contain filesystem or network dependencies.\n\
              Run `cargo tree -p marque-wasm -e=no-dev` to investigate."
         );

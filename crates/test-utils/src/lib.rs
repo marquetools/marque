@@ -313,7 +313,7 @@ mod tests {
         assert!(
             serde_json::from_str::<ExpectedDiagnostic>(json).is_err(),
             "legacy flat-string rule id must not deserialize into the \
-             post-T044 ExpectedDiagnostic shape",
+             structured ExpectedDiagnostic shape",
         );
     }
 }

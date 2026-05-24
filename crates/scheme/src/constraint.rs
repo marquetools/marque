@@ -62,11 +62,10 @@ pub enum TokenRef {
 /// to express family-shaped conflicts without enumerating every right-hand
 /// side member.
 ///
-/// Newtype wrapping `fn(&TokenRef) -> bool` per
-/// `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
-/// finding B2 — the bare `fn`-pointer doesn't implement [`Debug`], so we
-/// wrap and manually implement it. `fn`-pointers are `Copy + Send + Sync +
-/// 'static` by construction, so `FamilyPredicate` inherits those properties.
+/// Newtype wrapping `fn(&TokenRef) -> bool` — the bare `fn`-pointer
+/// doesn't implement [`Debug`], so we wrap and manually implement it.
+/// `fn`-pointers are `Copy + Send + Sync + 'static` by construction, so
+/// `FamilyPredicate` inherits those properties.
 ///
 /// ## Closure captures are NOT supported
 ///

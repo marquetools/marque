@@ -109,9 +109,8 @@ pub struct Citation {
 }
 
 impl Citation {
-    /// Const-fn constructor. No runtime validation per D25.2 in
-    /// `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` —
-    /// citation-lint at CI time catches drift.
+    /// Const-fn constructor. No runtime validation — citation-lint at
+    /// CI time catches drift.
     pub const fn new(document: AuthoritativeSource, section: SectionRef, page: PageNumber) -> Self {
         Self {
             document,

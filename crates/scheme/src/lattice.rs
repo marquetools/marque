@@ -27,18 +27,16 @@
 //!
 //! - `DissemSet` carries `relido_observed_unanimous: bool`, a join-side
 //!   observation of RELIDO unanimity. Meet has no natural semantics for this
-//!   flag (see `docs/plans/2026-05-01-lattice-design.md` section 4.6).
+//!   flag.
 //! - `JointSet` carries `Mixed` / `DisunityCollapse` variants that record
 //!   observed producer-list disagreement. Meet has no natural semantics for
-//!   these variants beyond `Bottom` (see section 4.9 in that plan).
+//!   these variants beyond `Bottom`.
 //! - `SupersessionSet` applies a post-join supersession overlay whose
 //!   post-filter makes the meet direction non-idempotent on inputs that
 //!   contain both a dominated token and its dominator.
 //!
 //! These types implement [`JoinSemilattice`] only. The trait split was
-//! introduced in PR #502 (issue #456); see
-//! `docs/plans/2026-05-01-lattice-design.md` section 4.10 for the
-//! algebraic rationale.
+//! introduced in PR #502 (issue #456).
 //!
 //! # Trait hierarchy
 //!

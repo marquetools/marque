@@ -193,11 +193,10 @@ impl ProjectedMarking {
     /// Foreign Government Information.
     ///
     /// This is the `ProjectedMarking`-side predicate consumed by
-    /// `marque-capco`'s S007 rule (`bare-nato-requires-rel-to-usa-nato`)
+    /// `marque-capco`'s bare-NATO-requires-`REL TO USA, NATO` rule
     /// to silence the bare-NATO → `REL TO USA, NATO` suggestion on
-    /// documents that are wholly NATO-owned. The successor to the
-    /// pre-PR-4b-E `PageContext::is_solely_nato_classified` walker,
-    /// reading the post-lattice page aggregate
+    /// documents that are wholly NATO-owned. It reads the post-lattice
+    /// page aggregate
     /// (`self.classification`, `self.fgi_marker`) instead of looping
     /// over per-portion attrs. The post-lattice semantic is the
     /// forward direction; the divergence does not affect current

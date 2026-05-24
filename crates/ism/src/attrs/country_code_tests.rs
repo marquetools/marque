@@ -261,8 +261,8 @@ fn admits_country_token_accepts_tetragraphs() {
 #[test]
 fn admits_country_token_accepts_two_letter_exception() {
     // ODNI ISMCAT `CVEnumISMCATRelTo` ships `EU` as a registered
-    // 2-letter exception code; pre-PR-2 REL TO admission accepted
-    // it via the union TRIGRAPHS table. The shape gate must not
+    // 2-letter exception code; REL TO admission accepts it via the
+    // union TRIGRAPHS table. The shape gate must not
     // narrow that surface — registry membership of any 2-letter
     // code other than `EU` is a rule-layer concern, not a
     // shape concern.

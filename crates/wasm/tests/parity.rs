@@ -74,7 +74,7 @@ fn parse_corpus() -> ParityCorpus {
     );
     assert!(
         !corpus.entries.is_empty(),
-        "parity corpus is empty; T088 requires at least one fixture"
+        "parity corpus is empty; this test requires at least one fixture"
     );
     corpus
 }
@@ -99,7 +99,7 @@ fn wasm_lint_parity_matches_baked_native_output() {
 
         if actual != entry.expected_lint {
             failures.push(format!(
-                "{}/{}: SC-008 byte-equal NDJSON parity violated\n  \
+                "{}/{}: byte-equal NDJSON parity violated\n  \
                  expected ({} bytes): {:?}\n  \
                  actual   ({} bytes): {:?}",
                 entry.category,

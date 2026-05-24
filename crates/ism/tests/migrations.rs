@@ -29,9 +29,9 @@ fn fouo_is_not_in_migration_table() {
     assert!(
         find_migration("FOUO").is_none(),
         "FOUO appears in the MIGRATIONS table — the FOUO→CUI entry was \
-         intentionally removed per Phase E (FR-020). Re-introducing it \
-         would emit fix proposals against an active dissem control. See \
-         the doc-comment on `MIGRATIONS` in crates/ism/build.rs.",
+         intentionally never added. Re-introducing it would emit fix \
+         proposals against an active dissem control. See the doc-comment \
+         on `MIGRATIONS` in crates/ism/build.rs.",
     );
 
     for entry in MIGRATIONS {
@@ -52,9 +52,8 @@ fn fouo_remains_in_active_token_metadata() {
     let entry = lookup_token_metadata("FOUO").expect(
         "FOUO is missing from TOKEN_METADATA — \
          CVEnumISMDissem.json should still publish it as an active dissem \
-         control (FR-020). If ODNI has retired FOUO in a newer schema \
-         package, bump `[package.metadata.marque] ism-schema-version` and \
-         update this test.",
+         control. If ODNI has retired FOUO in a newer schema package, bump \
+         `[package.metadata.marque] ism-schema-version` and update this test.",
     );
     assert_eq!(entry.value, "FOUO");
     assert_eq!(

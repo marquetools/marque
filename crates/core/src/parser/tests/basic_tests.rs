@@ -188,9 +188,9 @@ fn token_spans_record_rel_to_trigraphs() {
 }
 
 // -----------------------------------------------------------------------
-// Issue #183 PR-A — country-code widening: REL TO must preserve
+// Issue #183 — country-code widening: REL TO must preserve
 // tetragraphs (FVEY, NATO, ACGU, …), `EU`, and `AUSTRALIA_GROUP`.
-// Pre-PR-A, every non-3-byte token was silently dropped at the
+// Previously, every non-3-byte token was silently dropped at the
 // `b.len() != 3` gate in `parse_rel_to_with_spans`, so a marking
 // like `(S//REL TO USA, FVEY, GBR)` arrived at the rule layer as
 // `rel_to: [USA, GBR]` — FVEY gone with no diagnostic.
@@ -215,7 +215,7 @@ fn rel_to_preserves_opaque_tetragraph_nato() {
         codes,
         vec!["USA", "NATO", "GBR"],
         "NATO is in CVE TRIGRAPHS recognition set; rel_to must preserve it \
-         even though membership expansion is deferred to Phase F"
+         even though membership expansion is deferred"
     );
 }
 
@@ -244,11 +244,11 @@ fn rel_to_preserves_long_australia_group() {
 
 #[test]
 fn rel_to_token_span_widens_to_actual_code_length() {
-    // Pre-PR-A the RelToTrigraph TokenSpan was hardcoded to 3
-    // bytes (`Span::new(abs_start, abs_start + 3)`). Widening
-    // matters because consumers — the E002 fix splice and
-    // diagnostic underlines — read `span.as_str()` to anchor
-    // their replacement / message at the exact source bytes.
+    // The RelToTrigraph TokenSpan must cover the actual code length, not
+    // a hardcoded 3 bytes (`Span::new(abs_start, abs_start + 3)`). Width
+    // matters because consumers — the REL TO fix splice and diagnostic
+    // underlines — read `span.as_str()` to anchor their replacement /
+    // message at the exact source bytes.
     let parsed = parse_banner("SECRET//REL TO USA, FVEY, AUSTRALIA_GROUP");
     let trigraph_spans: Vec<&TokenSpan> = parsed
         .attrs

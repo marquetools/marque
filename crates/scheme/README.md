@@ -15,9 +15,6 @@ crate carries the trait and data types that express that abstraction;
 concrete schemes (`marque-capco`, future `marque-cui`, etc.) implement
 `MarkingScheme` against their own `Marking` type.
 
-See `docs/plans/2026-04-17-marking-scheme-lattice-design.md` in the
-workspace root for the design discussion and phased migration sequence.
-
 ## Modules
 
 - `lattice` — `Lattice`, `BoundedLattice` traits.
@@ -32,8 +29,8 @@ workspace root for the design discussion and phased migration sequence.
 
 ## Status
 
-Phase A scaffolding. The trait and primitives are stable; concrete
-adapters land as separate PRs (Phase B onwards).
+The trait and primitives are stable; concrete adapters live in the
+domain crates that implement `MarkingScheme`.
 
 ## License
 

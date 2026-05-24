@@ -34,13 +34,13 @@ use super::Classification;
 ///   `(//CTS//BALK)`, not the legacy `CTS-B` / `CTS-BALK`
 ///   portion-suffix.
 ///
-/// Pre-PR-9c.1 carried five fused variants — `NatoConfidentialAtomal`,
-/// `NatoSecretAtomal`, `CosmicTopSecretAtomal`,
-/// `CosmicTopSecretBohemia`, `CosmicTopSecretBalk` — which conflated
-/// classification with AEA/SCI semantics on a single axis. The
-/// parser ([`crate::parser::parse_nato_classification`] in marque-core)
-/// canonicalizes legacy text at parse time; the E066 autofix rule
-/// rewrites the source text to the canonical multi-block form.
+/// Classification stays on its own axis here — AEA (ATOMAL) and SCI
+/// (BOHEMIA / BALK) semantics live on their own axes rather than being
+/// fused into a single classification variant. The parser
+/// ([`crate::parser::parse_nato_classification`] in marque-core)
+/// canonicalizes legacy compound text at parse time; the
+/// recanonicalization autofix rule rewrites the source text to the
+/// canonical multi-block form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NatoClassification {
     NatoUnclassified, // NU
