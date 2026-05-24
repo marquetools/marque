@@ -29,7 +29,7 @@
 //! 3. **Severity escalation** — no-IC-dissem-block portions escalate to
 //!    `Severity::Error` no-fix.
 //! 4. **Scope guard** — pure foreign classifications (NATO/JOINT/FGI)
-//!    do not fire since §H.4 is US-only-scoped.
+//!    SCI per-system diagnostics do not fire since §H.4 is US-only-scoped.
 //! 5. **Class-floor × companion overlap** — class-floor + companion
 //!    violations fire side-by-side without overlap-guard interference.
 //! 6. **Audit traceability** — each emitted message carries the row's
