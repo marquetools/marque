@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Knitli Inc.
 SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
-# Corpus Provenance (SC-002a)
+# Corpus Provenance
 
 ## Provenance Statement
 
@@ -58,9 +58,9 @@ classified, controlled, or sensitive content.
 
 ## Constraints
 
-- No fixture may contain a real `classifier_id` value (SC-006)
+- No fixture may contain a real `classifier_id` value
 - No fixture may contain token strings outside the generated CVE
-  enumerations in `marque_ism::generated::values` (SC-002a)
+  enumerations in `marque_ism::generated::values`
 - `documents/` fixtures MUST lint as zero-diagnostic valid input, except where
   explicitly designated for open-CVE coverage; they may only use prose from
   documents that have completed formal declassification review and are public

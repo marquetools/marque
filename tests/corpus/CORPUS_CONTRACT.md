@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Knitli Inc.
 SPDX-License-Identifier: MIT OR Apache-2.0
 -->
 
-# Corpus Contract (SC-002a)
+# Corpus Contract
 
 This document codifies the test corpus requirements for the marque MVP.
 
@@ -43,7 +43,7 @@ Each known-good fixture MUST have a sibling `.expected.json` containing
 
 ### Clean Prose Corpus (`prose/`)
 
-Per SC-003a, the corpus MUST contain **at least 1000 lines** of body prose
+The corpus MUST contain **at least 1000 lines** of body prose
 containing no markings. The prose MUST include at least 20 incidental
 parenthesized single-letter tokens (e.g., `(S)`, `(a)`) in mid-sentence
 positions to exercise the disambiguation heuristic.
@@ -74,12 +74,12 @@ expectation. Pipeline lives at `tools/cia-crest-corpus/`; see
 
 ## Tagging
 
-The corpus is tagged `mvp-corpus-v1` before Phase 7 begins. SC-002, SC-003,
-and SC-008 are measured against exactly that tag.
+The corpus is tagged `mvp-corpus-v1`; the accuracy gates are measured
+against exactly that tag.
 
 ## Accuracy Thresholds
 
-- **SC-002**: >= 95% match against `.expected.json` (per-rule AND overall)
-- **SC-003**: >= 95% of known-bad fixtures produce zero remaining violations
+- **Lint accuracy**: >= 95% match against `.expected.json` (per-rule AND overall)
+- **Fix accuracy**: >= 95% of known-bad fixtures produce zero remaining violations
   after `Engine::fix` (per-rule AND overall)
-- **SC-003a**: Zero diagnostics on the prose corpus (precision gate)
+- **Prose precision**: Zero diagnostics on the prose corpus
