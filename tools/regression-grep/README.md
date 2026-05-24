@@ -13,9 +13,9 @@ one script, no Rust toolchain — by design. Local-runnable for a
 fast feedback loop (`./tools/regression-grep/regression-grep.sh`)
 and CI-runnable as a single shell job.
 
-Each guard records: forbidden regex, file scope, the reason it is
-forbidden, and the migration target (where the now-forbidden code now
-lives).
+Each guard records: forbidden regex, file scope, the FR / CHK mandate
+tags it enforces, and the migration target (where the now-forbidden
+code now lives).
 A reviewer reading a guard violation should be able to fix it
 without leaving the script.
 
@@ -54,9 +54,9 @@ any guard violation.
 ## Adding a new guard
 
 Add a `guard` invocation in `regression-grep.sh` with the five
-fields documented at the top of the script. Add an item to the
-list below, with a one-line description and the reason it is
-forbidden. Add a CI test that confirms both states (clean and
+fields documented at the top of the script. Add a row to the
+table below with the same pattern, file scope, FR / CHK mandate
+tags, and migration target. Add a CI test that confirms both states (clean and
 violation) — the existing pattern is to run the script in CI on
 the post-migration tree (clean) and trust review to confirm it
 would catch a regression (since adding back the forbidden pattern
@@ -64,9 +64,10 @@ to test the negative case is risky).
 
 ## Active guards
 
-| # | Pattern | File scope | Reason forbidden | Migration target |
-|---|---------|------------|------------------|------------------|
-| 1 | `is_ascii_alphanumeric` | `crates/core/src/parser.rs` | shape admission must go through the vocabulary surface, not ad-hoc byte checks | `Vocabulary<CapcoScheme>::shape_admits` or the lifted predicates in `marque-ism` (`CountryCode::admits_fgi_trigraph`, `SarProgram::admits_program_id_*`, `SarCompartment::admits_identifier`) |
+| # | Pattern | File scope | FR / CHK mandates | Migration target |
+|---|---------|------------|-------------------|------------------|
+| 1 | `is_ascii_alphanumeric` | `crates/core/src/parser.rs` | `FR-015 / CHK030` | `Vocabulary<CapcoScheme>::shape_admits` or the lifted predicates in `marque-ism` (`CountryCode::admits_fgi_trigraph`, `SarProgram::admits_program_id_*`, `SarCompartment::admits_identifier`) |
+| 2 | `MarkingClassification::Us[[:space:]]*[({]` | `crates/capco/src/scheme/marking_scheme_impl.rs` | `PR-5 / #276 / CHK068` | route construction through the per-portion classification parser path; foreign-page projections must preserve `Fgi` / `Nato` / `Joint` variants per CAPCO-2016 §H.7 pp123-125 |
 
 ## Removing a guard
 
