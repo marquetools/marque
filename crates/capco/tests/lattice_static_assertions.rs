@@ -31,8 +31,8 @@
 //!   cannot be derived from the structural meet of two sets. A meet
 //!   impl would silently produce wrong banner roll-up.
 //! - [`JointSet`] uses the `Mixed` / `DisunityCollapse` variants
-//!   (C-3 split landed in PR 4b-B) to make `join` associative under
-//!   the absorbing JOINT+non-JOINT state per §H.3 p57. Meet would
+//!   to make `join` associative under the absorbing JOINT+non-JOINT
+//!   state per §H.3 p57. Meet would
 //!   need to define "lowest JOINT state," which §H.3 does not
 //!   prescribe.
 //! - [`DisplayOnlyBlock`] is a structural union accumulator;
@@ -62,7 +62,7 @@ use marque_scheme::{
 };
 use static_assertions::{assert_impl_all, assert_not_impl_any};
 
-// --- Types implementing both halves of the Lattice (PR 4b-A / 4b-B / 4b-E) ---
+// --- Types implementing both halves of the Lattice ---
 
 assert_impl_all!(SciSet: JoinSemilattice, MeetSemilattice);
 assert_impl_all!(SarSet: JoinSemilattice, MeetSemilattice);
@@ -72,7 +72,7 @@ assert_impl_all!(NatoDissemSet: JoinSemilattice, MeetSemilattice);
 assert_impl_all!(RelToBlock: JoinSemilattice, MeetSemilattice);
 assert_impl_all!(DeclassifyOnLattice: JoinSemilattice, MeetSemilattice);
 
-// --- Bounded types (PR 4b-B) ---
+// --- Bounded types ---
 //
 // Only `ClassificationLattice` and `NatoClassLattice` are bounded.
 // Both halves of `BoundedJoinSemilattice` / `BoundedMeetSemilattice`
@@ -102,10 +102,9 @@ assert_impl_all!(
 // `top()` value for `SciSet` that doesn't actually bound the open-
 // vocabulary axis) would compile cleanly and silently weaken the
 // "open-vocab has no lawful finite top" invariant that grounds the
-// observational-state-vs-bounded distinction. Per Copilot R2 finding
-// on PR #557: the positive `assert_impl_all!` block above is
-// asymmetric with the Join-only negative locks below; this block
-// closes the symmetry.
+// observational-state-vs-bounded distinction. The positive
+// `assert_impl_all!` block above is asymmetric with the Join-only
+// negative locks below; this block closes the symmetry.
 
 assert_not_impl_any!(SciSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(SarSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
