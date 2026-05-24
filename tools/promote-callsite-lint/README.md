@@ -1,7 +1,7 @@
 # promote-callsite-lint
 
-AST-based CI lint enforcing **FR-040** for marque
-(engine-refactor-006). Out-of-workspace Rust binary crate; not a
+AST-based CI lint enforcing the **engine-only promote-callsite
+discipline** for marque. Out-of-workspace Rust binary crate; not a
 member of `/home/user/marque/Cargo.toml`'s workspace, per
 Constitution III.
 
@@ -46,12 +46,12 @@ scopes test-fixture construction with three constraints:
    convenience helpers in CLI binaries, batch tooling, or
    benchmark drivers.
 
-The AST lint at FR-040 enforces presence of the comment marker;
+The AST lint enforces presence of the comment marker;
 constraints 2 and 3 remain reviewer-enforced.
 
 ### Pass B — signature-shape lint (`PRC100`)
 
-Per **decision D12** (research §R-11) the lint also flags any
+The lint also flags any
 function whose signature shape is
 
 ```text
@@ -87,16 +87,16 @@ whitelisted call sites:
    `canonicalize` signature passes PRC100; a trait merely *named*
    `MarkingScheme` declared anywhere else fails PRC100 unless its
    `impl` blocks satisfy the matchers above.
-Targeting **shape, not name** is the D12 rationale: a future
+Targeting **shape, not name** is deliberate: a future
 contributor renaming `from_parsed_raw` evades a name-suffix lint
 without altering the failure pattern. The shape-based check catches
 **intent**: any `ParsedAttrs → CanonicalAttrs` conversion outside
 the trait method is the failure pattern.
 
-PR 3a → PR 3c carried a third path-based whitelist for the
-transitional `crates/ism/src/canonical.rs::from_parsed_unchecked`
-adapter. PR 3c.2.E retired both the adapter and the carve-out
-together (T054 / FR-043). The inlined structural rename now lives
+An earlier transitional adapter
+(`crates/ism/src/canonical.rs::from_parsed_unchecked`) once carried a
+third path-based whitelist; both the adapter and the carve-out have
+since been retired. The inlined structural rename now lives
 in `CapcoScheme::canonicalize` (whitelist 2); marque-core test
 fixtures that cannot reach the trait route avoid the prohibited
 signature shape by typing their helper against `ParsedMarking`
@@ -113,7 +113,7 @@ cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release \
 cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release \
     -- --workspace-dir . --callsite-only
 
-# Run only the D12 signature-shape lint
+# Run only the signature-shape lint
 cargo run --manifest-path tools/promote-callsite-lint/Cargo.toml --release \
     -- --workspace-dir . --signature-only
 ```
@@ -131,9 +131,6 @@ Exit code is non-zero if any error-severity diagnostic is emitted.
 
 ## Cross-references
 
-- `specs/006-engine-rule-refactor/spec.md` — FR-040
-- `specs/006-engine-rule-refactor/research.md` — R-11
-- `specs/006-engine-rule-refactor/decisions.md` — D12
 - `.specify/memory/constitution.md` — Principle V (Audit-First
   Compliance), specifically the Principle V test-fixture carve-out
   scope and its three-constraint definition

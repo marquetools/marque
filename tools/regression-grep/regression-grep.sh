@@ -5,7 +5,7 @@
 # regression-grep.sh — pattern-anchored regression guards
 #
 # Each guard names: (a) the regex it forbids, (b) the file scope it
-# enforces against, (c) the FR / CHK reference that mandates the gate,
+# enforces against, (c) the authority that mandates the gate,
 # (d) the migration target (where forbidden code now lives).
 #
 # Doc-comment references that *name* a forbidden pattern (in the form
@@ -65,7 +65,7 @@ guard() {
 # Guard 1: parser.rs must not re-introduce inline `is_ascii_alphanumeric()`
 # byte-class checks for open-vocab admission.
 #
-# Background. PR 2 (specs/006-engine-rule-refactor) migrated four parser
+# Background. The parser migrated four
 # admission sites (one FGI trigraph silent-skip, three SAR shape checks)
 # from inline `is_ascii_alphanumeric()` to vocabulary-surface predicates
 # (`CountryCode::admits_fgi_trigraph`, `SarProgram::admits_program_id_*`,
@@ -82,23 +82,22 @@ guard() {
 guard \
     'is_ascii_alphanumeric' \
     'crates/core/src/parser.rs' \
-    'FR-015' \
-    'CHK030' \
+    'shape admission' \
+    'must go through the vocabulary surface' \
     'route through Vocabulary<CapcoScheme>::shape_admits or the lifted predicates in marque-ism (CountryCode::admits_fgi_trigraph, SarProgram::admits_program_id_*, SarCompartment::admits_identifier)'
 
 # ---------------------------------------------------------------------------
 # Guard 2: MarkingClassification::Us(_) construction sites must not
 # re-accumulate inside the projection adapter `project_from_attrs_slice`.
 #
-# Background. PR 4b-E (#539, commit ef7de07f) deleted the historical
-# `expected_classification()` accessor that hardcoded `Us(_)` as the
-# default-foreign banner classification. PR 6c (#547, commit 6fee9818)
-# renamed `page_context_to_attrs` to `project_from_attrs_slice` and
-# removed the `Us(_)` hardcode at scheme.rs:365. PR 5 (006 T064a)
-# installs this guard to prevent silent re-introduction of literal
-# `MarkingClassification::Us(...)` construction inside the projection
-# entry-point file, where a foreign page must project as `Fgi(_)` /
-# `Nato(_)` / `Joint(_)` — never silently `Us`.
+# Background. The historical `expected_classification()` accessor that
+# hardcoded `Us(_)` as the default-foreign banner classification was
+# deleted (#539, commit ef7de07f). `page_context_to_attrs` was renamed
+# to `project_from_attrs_slice` and the `Us(_)` hardcode removed
+# (#547, commit 6fee9818). This guard prevents silent re-introduction
+# of literal `MarkingClassification::Us(...)` construction inside the
+# projection entry-point file, where a foreign page must project as
+# `Fgi(_)` / `Nato(_)` / `Joint(_)` — never silently `Us`.
 #
 # Pattern semantics. `MarkingClassification::Us[[:space:]]*[({]`
 # requires the `Us` token to be followed by `(` (tuple construction)
@@ -107,11 +106,11 @@ guard \
 # The `[[:space:]]` POSIX class is used instead of `\s` because GNU
 # grep treats `\s` as whitespace in ERE mode but POSIX ERE treats it
 # as the literal 's' character; the bracket class is portable across
-# both grep flavors (#553 Copilot R2).
+# both grep flavors (#553).
 #
-# Scope rationale (narrower than the original PR 5 PM Addendum):
+# Scope rationale:
 # `crates/capco/src/scheme/marking.rs::join_via_lattice_body`
-# (lines 311-348 in the post-PR-6c tree) carries five DELIBERATE §H.7
+# carries five DELIBERATE §H.7
 # pp123-125 reciprocal-normalization sites that construct `Us(_)` from
 # JOINT/NATO/FGI variants when a US portion is present on the page.
 # Those are the §H.7 reciprocal-raise rule made structural; they are
@@ -121,19 +120,18 @@ guard \
 # discriminator and #[cfg(test)] construction sites.
 #
 # The narrow scope (just `marking_scheme_impl.rs`) protects exactly
-# the file PR 6c cleaned: the scheme-adapter surface where
-# `project_from_attrs_slice` lives. If a future regression
-# re-introduces a `Us(_)` hardcode there, the guard catches it.
-# Future PRs can widen the scope when an additional construction
-# site needs locking down.
+# the scheme-adapter surface where `project_from_attrs_slice` lives.
+# If a future regression re-introduces a `Us(_)` hardcode there, the
+# guard catches it. Future PRs can widen the scope when an additional
+# construction site needs locking down.
 # ---------------------------------------------------------------------------
 
 guard \
     'MarkingClassification::Us[[:space:]]*[({]' \
     'crates/capco/src/scheme/marking_scheme_impl.rs' \
-    'PR-5 / #276' \
-    'CHK068' \
-    'route construction through the per-portion classification parser path; foreign-page projections must preserve Fgi/Nato/Joint variants per CAPCO-2016 §H.7 pp123-125 (PR 4b-E + PR 6c retirement of expected_classification hardcode)'
+    'foreign pages must not silently project as US (#276)' \
+    'no hardcoded Us(_) in the projection adapter' \
+    'route construction through the per-portion classification parser path; foreign-page projections must preserve Fgi/Nato/Joint variants per CAPCO-2016 §H.7 pp123-125 (the expected_classification hardcode was retired)'
 
 # ---------------------------------------------------------------------------
 # Result

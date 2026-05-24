@@ -81,7 +81,7 @@ JSON with:
 - `(C)` is the one genuinely ambiguous token (copyright vs CONFIDENTIAL)
 - Co-occurrence of 2+ CAPCO tokens near `//` is effectively zero in non-IC text
 
-See `docs/plans/2026-04-16-probabilistic-recognition.md` for the full analysis and architecture design.
+This analysis underpins the probabilistic-recognition decoder design.
 
 ## Phase-D artifacts
 

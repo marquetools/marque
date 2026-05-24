@@ -5,8 +5,7 @@
 //!
 //! Each defect found by the lint produces one `Defect` value. Defects
 //! are sorted deterministically before rendering so the output is
-//! identical across runs (important for the catalog file consumed by
-//! PR 0.6).
+//! identical across runs (important for the catalog file).
 //!
 //! The classification taxonomy is **closed** by design: a new defect
 //! class requires extending the `DefectClass` enum, which is a
@@ -76,8 +75,8 @@ pub enum SourceKind {
 #[serde(rename_all = "snake_case")]
 pub enum DefectClass {
     /// `§NN` form without subsection letter (e.g., `§4 p99`).
-    /// FR-018-rejected: a bare numeric section is ambiguous because
-    /// the document has multiple sections that contain the same
+    /// Rejected because a bare numeric section is ambiguous: the
+    /// document has multiple sections that contain the same
     /// subsection number (e.g., §1 of A, §1 of B, §1 of G all
     /// exist).
     BareSection,
@@ -109,8 +108,8 @@ pub enum DefectClass {
     /// Page anchor falls outside the document's page range entirely.
     PageOutOfDocument { max_page: u32, cited_page: u32 },
     /// Doubled page-anchor form, e.g., `§H.8 p150–151 p151`. The
-    /// scanner detects this textually because it is an FR-020 known
-    /// defect class. The duplicated page reference is the trailing
+    /// scanner detects this textually because it is a textual
+    /// artifact. The duplicated page reference is the trailing
     /// `pNN` after a complete `pp NN–MM` form.
     DoubledPageAnchor { suspect: String },
     /// Retired `line NNNN` citation form (project retired this in
@@ -191,8 +190,8 @@ pub fn render_stderr(d: &Defect) -> String {
 }
 
 /// Sort defects deterministically. Required for reproducibility (the
-/// catalog file is consumed by PR 0.6 and committed; nondeterministic
-/// ordering would produce phantom diffs).
+/// catalog file is committed; nondeterministic ordering would produce
+/// phantom diffs).
 pub fn sort(defects: &mut [Defect]) {
     defects.sort_by(|a, b| {
         a.file

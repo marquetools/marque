@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `masking-pin-lint` — CI lint enforcing FR-039 masking-pin discipline.
+//! `masking-pin-lint` — CI lint enforcing masking-pin discipline.
 //!
 //! See `README.md` for design and `--help` for invocation.
 
@@ -26,7 +26,7 @@ use masking_pin_lint::scanner::scan_workspace;
 #[derive(Debug, Parser)]
 #[command(
     name = "masking-pin-lint",
-    about = "AST-based lint enforcing FR-039 masking-pin discipline",
+    about = "AST-based lint enforcing masking-pin discipline",
     version
 )]
 struct Cli {
@@ -80,7 +80,7 @@ async fn main() -> ExitCode {
 }
 
 // `run` is a long top-level orchestrator: it sets up paths, resolves
-// unique tracked issues (the round-8 dedup pre-pass), iterates the
+// unique tracked issues (the dedup pre-pass), iterates the
 // scanned pin sites for per-pin diagnostic emission, and maps the
 // final diagnostic severity vector to an exit code. Splitting the
 // body further would require threading the same set of refs (octo,
@@ -151,7 +151,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
             (PinKind::Unmarked, _) => diagnostics.push(LintDiagnostic {
                 severity: Severity::Error,
                 message: format!(
-                    "error: masking pin at {}:{}:{} requires either '// MASKING-PIN: tracks #NNN' or '// INTENTIONAL-STRICT: <reason>' within 5 lines (FR-039)",
+                    "error: masking pin at {}:{}:{} requires either '// MASKING-PIN: tracks #NNN' or '// INTENTIONAL-STRICT: <reason>' within 5 lines (masking-pin discipline)",
                     pin.file.display(),
                     pin.line,
                     pin.column
@@ -494,7 +494,7 @@ fn evaluate_issue_state(
         diagnostics.push(LintDiagnostic {
             severity: Severity::Warning,
             message: format!(
-                "warning: MASKING-PIN at {}:{} chain terminates at meta/tracking issue #{} — reviewer should confirm cascade-close is appropriate (FR-039 rule 4)",
+                "warning: MASKING-PIN at {}:{} chain terminates at meta/tracking issue #{} — reviewer should confirm cascade-close is appropriate (cascade-close-via-meta-issue rule)",
                 pin.file.display(),
                 pin.line,
                 state.final_issue
@@ -563,7 +563,7 @@ fn evaluate_cached_state(
         diagnostics.push(LintDiagnostic {
             severity: Severity::Warning,
             message: format!(
-                "warning: MASKING-PIN at {}:{} chain visited a meta/tracking issue (cached) — reviewer should confirm cascade-close is appropriate (FR-039 rule 4)",
+                "warning: MASKING-PIN at {}:{} chain visited a meta/tracking issue (cached) — reviewer should confirm cascade-close is appropriate (cascade-close-via-meta-issue rule)",
                 pin.file.display(),
                 pin.line
             ),

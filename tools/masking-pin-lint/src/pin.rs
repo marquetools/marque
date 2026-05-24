@@ -29,7 +29,7 @@ pub struct Pin {
 
 /// Comment-marker classification for a pin site.
 ///
-/// Per FR-039 + source-plan §6:
+/// Masking-pin discipline:
 /// - A valid pin carries exactly one of `Masking` or `IntentionalStrict`.
 /// - `Unmarked` and `BothMarkers` always fail the lint.
 /// - `BadFormat` indicates a marker prefix was found but did not parse.

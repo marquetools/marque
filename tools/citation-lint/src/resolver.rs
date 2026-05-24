@@ -3,7 +3,7 @@
 
 //! Resolve a parsed citation against the CAPCO-2016 source index.
 //!
-//! Resolution semantics (per FR-018 + correctness.md CHK032–CHK038):
+//! Resolution semantics:
 //!
 //! - Section letter MUST be in the normative range A–H.
 //! - §I, §J, §K exist in the document but are non-normative
@@ -133,7 +133,8 @@ fn resolve_letter_only_pages(
 
 /// Suggest a corrected citation when one is computable. This is a
 /// best-effort hint; the lint does not commit to its accuracy. The
-/// PR 0.6 implementer is expected to re-verify against the source.
+/// implementer fixing a defect is expected to re-verify against the
+/// source.
 ///
 /// Handles four `DefectClass` variants in two suggestion strategies:
 ///

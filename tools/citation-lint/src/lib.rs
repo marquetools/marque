@@ -103,7 +103,7 @@ pub fn lint_workspace(workspace_dir: &Path) -> Result<Vec<Defect>> {
             CitationFind::BareSection { raw, .. } => {
                 // Two flavors: real bare-section defects and the
                 // synthetic `__doubled_page_anchor__:...` marker the
-                // scanner injects for FR-020 detection.
+                // scanner injects for doubled-page-anchor detection.
                 if let Some(suspect) = raw.strip_prefix("__doubled_page_anchor__:") {
                     defects.push(Defect {
                         file: occ.file.clone(),

@@ -215,11 +215,11 @@ fn with_recognizer_without_strict_ignored() {
 
 #[test]
 fn top_level_workspace_member_tests_walked() {
-    // Regression test for Copilot R3 #1 / R8 #2: the previous walker
+    // Regression test: the previous walker
     // recognized only `<workspace>/tests/` and `crates/*/tests/`,
     // missing `<member>/tests/` for top-level workspace members like
     // the `marque/` binary crate. A masking pin under `marque/tests/`
-    // would have bypassed FR-039 entirely while CI stayed green.
+    // would have bypassed the lint entirely while CI stayed green.
     //
     // Construct a synthetic top-level member: a directory with both
     // `Cargo.toml` (the marker `collect_test_roots` looks for) and a
@@ -255,18 +255,18 @@ fn top_level_workspace_member_tests_walked() {
 
 #[test]
 fn test_utils_src_is_walked_for_pin_markers() {
-    // Regression test for the round-8 audit's test-utils carve-out
+    // Regression test for the test-utils carve-out
     // asymmetry: `crates/test-utils/src/` is logically a test-fixture
     // scope (per Constitution V Principle V's first constraint
     // enumerating "test-utility crates gated as dev-dependencies"
     // alongside tests/ files and #[cfg(test)] modules). A shared
     // helper there that constructs `with_recognizer(StrictRecognizer)`
-    // must carry an FR-039 marker just like a pin under
+    // must carry a marker just like a pin under
     // `crates/<crate>/tests/`. The prior masking-pin scanner only
     // walked `tests/`-shaped directories, leaving this scope
     // unscanned — a divergence from `promote-callsite-lint` that
     // would let a future helper at `crates/test-utils/src/...` bypass
-    // FR-039 entirely.
+    // the lint entirely.
     let dir = TempDir::new().expect("tempdir");
     let test_utils_src = dir.path().join("crates").join("test-utils").join("src");
     fs::create_dir_all(&test_utils_src).unwrap();

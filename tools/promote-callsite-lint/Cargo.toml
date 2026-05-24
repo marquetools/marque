@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.85"
 publish = false
 license = "LicenseRef-MarqueLicense-1.0"
-description = "AST-based CI lint enforcing FR-040 promote-callsite + D12 signature-shape discipline for marque (engine-refactor-006)."
+description = "AST-based CI lint enforcing the engine-only promote-callsite discipline plus signature-shape discipline for marque."
 
 [lib]
 path = "src/lib.rs"

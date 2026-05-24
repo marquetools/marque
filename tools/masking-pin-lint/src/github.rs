@@ -3,8 +3,8 @@
 
 //! GitHub-API check + `closed_as_duplicate_of` chain following.
 //!
-//! Per FR-039 rule 4, the lint follows the duplicate-of chain until terminal
-//! close. Cycles are detected via a visited-set and reported as errors.
+//! When an issue is closed, the lint follows the duplicate-of chain until
+//! terminal close. Cycles are detected via a visited-set and reported as errors.
 //!
 //! Network errors (timeout / rate-limit / I/O) are returned as
 //! [`ApiError::Unavailable`]; the caller falls back to the cache layer.
@@ -29,7 +29,7 @@ pub struct IssueState {
     /// Ordered chain of issue numbers visited.
     pub chain: Vec<u32>,
     /// True if the terminal issue title looks like a tracking/meta issue
-    /// (FR-039 rule 4 cascade-close-via-meta-issue flag).
+    /// (cascade-close-via-meta-issue flag).
     pub meta_issue_warning: bool,
     /// ISO-8601 close timestamp for the terminal issue, if closed.
     pub closed_at: Option<DateTime<Utc>>,
@@ -85,7 +85,7 @@ pub async fn check_pin(
     // in the duplicate chain, not just the terminal one. A chain that
     // routes through a `[meta]` / "tracking" issue and ends at a
     // normal issue still merits the cascade-close-via-meta-issue
-    // warning per FR-039 rule 4 — the maintainer should confirm
+    // warning — the maintainer should confirm
     // the cascade was deliberate even if the final issue itself isn't
     // a meta-issue.
     let mut chain_visited_meta = false;
@@ -252,7 +252,7 @@ async fn fetch_duplicate_target(
     Ok(None)
 }
 
-/// Heuristic for FR-039 rule 4 cascade-close-via-meta-issue: a title prefixed
+/// Heuristic for cascade-close-via-meta-issue: a title prefixed
 /// `[meta]` or containing the word "tracking" (case-insensitive).
 fn title_looks_like_meta(title: &str) -> bool {
     let lower = title.to_lowercase();

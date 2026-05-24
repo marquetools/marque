@@ -1,7 +1,6 @@
 # citation-lint
 
-AST-based CI lint that enforces **FR-018 citation fidelity** for the
-marque engine refactor (`specs/006-engine-rule-refactor/`).
+AST-based CI lint that enforces citation fidelity for marque.
 
 Constitution Principle VIII (Authoritative Source Fidelity): every
 `§X.Y pNN` reference in marque source must resolve to a real passage
@@ -15,17 +14,15 @@ marque source code, the lint asserts:
 
 1. The section letter is in the **normative range** (A–H).
    §I (history), §J (examples), and §K (acronyms) exist in the
-   manual but are **not valid citation targets** — see
-   [`correctness.md` CHK036](../../specs/006-engine-rule-refactor/checklists/correctness.md).
+   manual but are **not valid citation targets**.
 2. The subsection number resolves in the source's table of contents.
 3. The cited page (or page range) falls inside the cited
-   subsection's actual page span (CHK038 — both endpoints of a
-   range must resolve).
+   subsection's actual page span (both endpoints of a range must
+   resolve).
 4. The cited page does not exceed the document's max page.
 5. **No retired `line NNNN` form**. The project retired
    line-anchor citations in commit `b340bec` — page numbers only.
-6. **No doubled-page-anchor form** (`pNN-MM pMM`). FR-020 known
-   defect class.
+6. **No doubled-page-anchor form** (`pNN-MM pMM`).
 
 The lint scans **every `*.rs` file under `crates/*/src/`** in the
 workspace, capturing citations from:
@@ -90,7 +87,7 @@ Exit codes:
 | `unknown-subsection` | Subsection number does not resolve |
 | `page-out-of-range` | Page anchor outside the cited subsection's span |
 | `page-out-of-document` | Page anchor exceeds document max |
-| `doubled-page-anchor` | `p150–151 p151` form (FR-020) |
+| `doubled-page-anchor` | `p150–151 p151` form |
 | `legacy-line-form` | Retired `line NNNN` form |
 
 The full taxonomy is closed (a new defect class requires a code
@@ -99,24 +96,19 @@ change, not a config change). See `src/diagnostic.rs::DefectClass`.
 ## Defect catalog file
 
 On every run with at least one defect, the lint writes a
-deterministically-ordered Markdown catalog at
-`docs/refactor-006/citation-defect-catalog.md` (overridable via
+deterministically-ordered Markdown catalog (overridable via
 `--catalog-path`). The catalog format is documented in its own
-header. PR 0.6 fixes every entry; thereafter the file's content is
-expected to be the "no defects" placeholder.
+header. Fixing every entry leaves the file's content as the
+"no defects" placeholder.
 
 The catalog is **deterministic across runs**: defects are sorted by
 `(file, line, column, class)` before rendering. Two runs over the
 same input produce byte-identical files.
 
-## Integration with PR 0.6
+## CI behavior
 
-PR 0.5 (this PR) lands the lint and the catalog. **CI fails** on PR
-0.5 because the existing source has known defects (the four
-pre-identified classes from FR-020 plus whatever the lint surfaces).
-That failure is the **input** to PR 0.6, not a problem to fix in
-PR 0.5. From PR 0.6 forward, CI is green; the lint then **prevents
-new defects** from being introduced.
+CI fails on any defect. Once the source is clean, CI stays green and
+the lint **prevents new citation defects** from being introduced.
 
 ## Source authority
 
@@ -145,9 +137,5 @@ Each defect class is covered by at least one fixture.
 
 ## References
 
-- `specs/006-engine-rule-refactor/spec.md` — FR-018, FR-019, FR-020
-- `specs/006-engine-rule-refactor/checklists/correctness.md` §4 —
-  CHK032–CHK039 review-time questions
-- `docs/plans/2026-05-02-engine-refactor-consolidated.md` — PR 0.5 row
 - `.specify/memory/constitution.md` — Principle VIII (Authoritative
   Source Fidelity)

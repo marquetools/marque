@@ -30,7 +30,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 ## Active entries
 
 <!--
-No active entries at PR 0. Subsequent entries follow the template above.
+No active entries. Subsequent entries follow the template above.
 The CI gate counts entries by matching the line `^## flake-` (the
 template heading uses a blockquote `> ##` so it does not count toward
 the cap).
