@@ -81,13 +81,13 @@ thiserror = "2.0.18"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 toml = "1.1.2"
 
 # HTTP / server
 axum = { version = "0.8.9", features = ["json"] }
 tower = "0.5.3"
-tower-http = { version = "0.6.8", features = ["cors", "set-header", "trace"] }
+tower-http = { version = "0.6.11", features = ["cors", "set-header", "trace"] }
 
 assert_cmd = "2.2.1"
 # CLI
@@ -106,7 +106,7 @@ recoco-utils = { version = "0.2.3", default-features = false, features = [
 ] }
 
 # Build-time XML parsing (marque-ism build.rs)
-quick-xml = "0.39.2"
+quick-xml = "0.40.1"
 
 # Vendored ODNI schema crates from github.com/marquetools/ism-data,
 # consumed as build-dependencies for marque-ism's codegen.

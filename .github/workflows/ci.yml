@@ -32,13 +32,13 @@ jobs:
           toolchain: "nightly"
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: cargo fmt
         run: cargo fmt --check
 
       - name: typos
-        uses: crate-ci/typos@7c572958218557a3272c2d6719629443b5cc26fd
+        uses: crate-ci/typos@7b04f660f4ee4f048d18fd341887cf28dfbedfe2
 
       # T138a — FR-037 absence-check (006 polish phase, PR 10.B).
       # Asserts the clean-break audit-schema cutover (marque-mvp-3 →
@@ -65,9 +65,9 @@ jobs:
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
-      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
+      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff
         with:
           tool: cargo-nextest
 
@@ -101,7 +101,7 @@ jobs:
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       # Corpus regression tests live in `crates/{capco,engine}/tests/`
       # and `marque/tests/`. `cargo test --test` matches an exact
@@ -183,7 +183,7 @@ jobs:
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       # Corpus regression tests live in `crates/{capco,engine}/tests/`
       # and `marque/tests/`. `cargo test --test` matches an exact
@@ -266,7 +266,7 @@ jobs:
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       # Corpus regression tests live in `crates/{capco,engine}/tests/`
       # and `marque/tests/`. `cargo test --test` matches an exact
@@ -360,7 +360,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
         with:
           workspaces: tools/masking-pin-lint
 
@@ -394,7 +394,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
         with:
           workspaces: tools/promote-callsite-lint
 
@@ -446,7 +446,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
         with:
           workspaces: tools/citation-lint
 
@@ -518,7 +518,7 @@ jobs:
           toolchain: "1.89"
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
 
@@ -660,7 +660,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
+      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff
         with:
           tool: cargo-deny
 
@@ -757,9 +757,9 @@ jobs:
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
-      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
+      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff
         with:
           tool: cargo-llvm-cov
 
@@ -782,7 +782,7 @@ jobs:
         run: cargo +nightly llvm-cov --workspace --codecov --output-path codecov.json
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354
         with:
           files: codecov.json
           fail_ci_if_error: false
@@ -816,7 +816,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: cargo test (alloc-budget gate)
         run: |
@@ -861,7 +861,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       # The `MARQUE_BENCH_SKIP_REGRESSION` env-var skip is enabled
       # for two branches:

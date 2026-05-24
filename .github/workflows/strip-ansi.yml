@@ -27,7 +27,7 @@ jobs:
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@43de409b69c2e1c66c1291a1285ca88301e1efd6
+        uses: tj-actions/changed-files@934b2d2c7e653bb8c968afed5a0428617f09aa24
         with:
           since_last_remote_commit: true
       - name: Scan for ANSI/Unicode threats in files
