@@ -21,8 +21,45 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # Path-filter gate. Computes which categories of files changed in this
+  # push / PR and exposes one boolean per category that the downstream
+  # jobs gate on, so a docs-only or config-only change doesn't spin up the
+  # full Rust matrix, the WASM build, or the supply-chain audit. Rust jobs
+  # that `needs: check` cascade-skip automatically when `check` is gated
+  # off; jobs without that dependency carry their own `if:` below.
+  #
+  # Implemented as a dependency-free git diff (scripts/ci-detect-changes.sh)
+  # rather than a third-party path-filter action — the same supply-chain
+  # rationale the `reuse` job documents for using pipx over a Marketplace
+  # action.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      wasm: ${{ steps.filter.outputs.wasm }}
+      deps: ${{ steps.filter.outputs.deps }}
+      refs: ${{ steps.filter.outputs.refs }}
+      flake: ${{ steps.filter.outputs.flake }}
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          # Full history so the diff against the PR base / previous-push
+          # commit resolves. The script falls back to HEAD~1 (then to
+          # all-categories-changed) when no usable base is available.
+          fetch-depth: 0
+
+      - id: filter
+        name: Classify changed paths
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: bash scripts/ci-detect-changes.sh
+
   check:
     name: Format + Lint
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -471,6 +508,8 @@ jobs:
   # by design (no Rust toolchain needed).
   flake-watch-cap:
     name: flake-watch cap (FR-051 / D16)
+    needs: changes
+    if: needs.changes.outputs.flake == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -499,6 +538,8 @@ jobs:
   # locally via `./tools/regression-grep/regression-grep.sh`.
   regression-grep:
     name: regression-grep (FR-015 / CHK030)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -506,9 +547,16 @@ jobs:
       - name: Run regression-grep guards
         run: ./tools/regression-grep/regression-grep.sh
 
+  # Gated on the `wasm` filter — the WASM-safe crate set (Constitution III:
+  # marque-{ism,core,rules,scheme,capco}) plus marque-wasm and the
+  # wasm-size tooling. A change confined to a non-WASM-safe crate (e.g.
+  # marque-server) can never alter the wasm artifact, so it must not
+  # trigger this (slower) build. `needs: check` keeps the fail-fast
+  # ordering and makes the job cascade-skip on a non-Rust PR.
   wasm:
     name: WASM build
-    needs: check
+    needs: [changes, check]
+    if: needs.changes.outputs.wasm == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -618,6 +666,8 @@ jobs:
 
   deny:
     name: Supply chain audit
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -645,6 +695,8 @@ jobs:
   # thread pre-subcommand flags cleanly.
   deny-wasm-safe:
     name: Supply chain audit (WASM-safe subgraph)
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -701,6 +753,8 @@ jobs:
 
   refs-integrity:
     name: Vendored reference integrity
+    needs: changes
+    if: needs.changes.outputs.refs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -825,14 +879,23 @@ jobs:
             --test alloc_budget \
             -- --test-threads=1
 
-  # Constitution Principle I + SC-001 / SC-002 / SC-005 + Spec 005 — performance
-  # regression gates. Runs `scripts/bench-check.sh`, which executes:
+  # Constitution Principle I + SC-001 / SC-002 + Spec 005 — per-PR
+  # performance regression gates. Runs `scripts/bench-check.sh --quick`,
+  # the fast interactive-latency subset:
   #   - `lint_10kb` (SC-001 strict-path: Criterion mean-runtime upper CI ≤ 16ms)
   #   - `decoder_10kb_one_mangled_region` (SC-002 decoder-path: Criterion mean-runtime upper CI ≤ 18ms)
-  #   - `lint_scaling` (SC-005 linear-scaling R² ≥ 0.9 across input-size sweep)
   #   - `deadline_overhead` (Spec 005 T018/T019: with-deadline-vs-no-deadline
   #     overhead ratio under `deadline_overhead.max_ratio_pct` from
   #     `benches/baseline.json`)
+  #   - `fix_10kb_pass2_only` / `fix_10kb_two_pass` (fix-apply latency)
+  # All run on ~10 KB inputs and finish in seconds.
+  #
+  # The heavy scaling sweeps — `lint_scaling` (SC-005 linear-scaling R²,
+  # 1 KB→100 KB) and `fix_throughput` (1 MB→100 MB) — are the only slow
+  # benches; they moved to the daily `bench-nightly.yml` workflow
+  # (`bench-check.sh --full`) so they no longer add minutes to every PR.
+  # A sub-linear regression is caught within ~24h rather than per-PR.
+  #
   # The constitution wording uses "p95"; the bench harness implements that
   # commitment as a confidence-interval upper bound around the mean, which
   # is what Criterion's `time: [lower mean upper]` triple measures (a CI of
@@ -842,12 +905,9 @@ jobs:
   # Decoupled from `count-allocs` for the same reason that job is decoupled
   # from `test`: a routine bench-noise blip should not be conflated with a
   # routine alloc-budget regression. `needs: check` for the same fail-fast
-  # reason every other test-adjacent job has it.
-  #
-  # Benches use the cargo `bench` profile (release + debuginfo). On the
-  # ubuntu-latest runner a full sweep of four benches takes ~7–11 minutes
-  # warm — well under the routine job timeout. The runner is shared and
-  # noisy compared to a dedicated reference machine, which is exactly why
+  # reason every other test-adjacent job has it (and so this job
+  # cascade-skips on a non-Rust PR). The runner is shared and noisy
+  # compared to a dedicated reference machine, which is exactly why
   # `bench-check.sh` enforces both a +10% regression bound AND an absolute
   # target — either alone would be too tight or too loose for a CI runner.
   bench-check:
@@ -884,10 +944,12 @@ jobs:
       #    (`startsWith`) covers every sub-PR under the PR-10
       #    umbrella without per-branch yaml edits each time.
       #
-      # Absolute SC-001 16ms ceiling, SC-002 18ms ceiling, SC-005
-      # R² gate, fix-throughput R² gate, and deadline-overhead gate
-      # are still enforced (per `scripts/bench-check.sh` policy
-      # comment at line 31). The match covers both `push` events
+      # Absolute SC-001 16ms ceiling, SC-002 18ms ceiling, and the
+      # deadline-overhead gate are still enforced here (per
+      # `scripts/bench-check.sh` policy comment). The SC-005 linear-
+      # scaling R² gate and the fix-throughput R² gate are part of the
+      # `--full` set and now run in `bench-nightly.yml`, not on this
+      # per-PR job. The match covers both `push` events
       # (`github.ref`) and `pull_request` events
       # (`github.head_ref`), mirroring the existing branch-gate
       # patterns at lines 84, 166, 249 — on `pull_request` events
@@ -898,7 +960,7 @@ jobs:
       # sub-PR, AND dedicated perf-analysis closes the
       # PR-4-through-9 cumulative drift. See
       # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
-      - name: scripts/bench-check.sh
+      - name: scripts/bench-check.sh --quick
         env:
           MARQUE_BENCH_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || startsWith(github.ref, 'refs/heads/refactor/006-pr10-') || startsWith(github.head_ref, 'refactor/006-pr10-')) && '1' || '' }}
-        run: bash scripts/bench-check.sh
+        run: bash scripts/bench-check.sh --quick
