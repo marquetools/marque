@@ -273,6 +273,7 @@ pub(crate) fn e070_frd_tfni_precedence(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::fact_bitmask::derive_bits;

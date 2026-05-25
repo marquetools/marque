@@ -145,6 +145,7 @@ pub fn attribute_dissems<'src>(attrs: &mut ParsedAttrs<'src>, default: DefaultOr
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::attrs::{

@@ -1100,6 +1100,7 @@ fn run_explain_config(config: &marque_config::Config) -> i32 {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod exit_code_tests {
     //! `merge_exit_code` precedence-chain locks.
     //!

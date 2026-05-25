@@ -5,7 +5,7 @@
 //! Concurrent batch processing over many documents.
 //!
 //! `BatchEngine` wraps `Engine` behind an `Arc` and uses `ConcurrencyController`
-//! from `recoco-utils` to enforce row and byte limits on in-flight work.
+//! from `marque-utils` to enforce row and byte limits on in-flight work.
 //!
 //! CPU-bound lint/fix work is dispatched to tokio's blocking thread pool via
 //! `spawn_blocking`, keeping the async executor free for I/O-bound coordination.
@@ -54,7 +54,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt, stream};
-use recoco_utils::concur_control::{ConcurrencyController, Options as ConcurOptions};
+use marque_utils::concur_control::{ConcurrencyController, Options as ConcurOptions};
 
 use crate::{Engine, EngineError, FixOptions, FixResult, LintOptions, LintResult};
 
