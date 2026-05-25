@@ -812,7 +812,7 @@ mod tests {
         let mut b = Fingerprinter::default();
         (&mut b).serialize_bytes(b"abc").unwrap();
         let mut c = Fingerprinter::default();
-        (&mut c).serialize_bytes(b"abd").unwrap();
+        (&mut c).serialize_bytes(b"abc").unwrap();
 
         assert_eq!(a.into_fingerprint(), b.into_fingerprint());
         assert_ne!(
