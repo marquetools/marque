@@ -275,12 +275,7 @@ impl AeaSet {
         // Sort SIGMA numbers ascending for §H.6 p108 canonical form.
         // `BTreeSet` already iterates in sorted order. Inline-8 covers
         // the observed SIGMA range (1–99; in practice 1–5).
-        let sigmas: Box<[u8]> = self
-            .sigmas
-            .iter()
-            .copied()
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+        let sigmas: Box<[u8]> = Box::from_iter(self.sigmas.iter().copied());
 
         // Emission order matches the §G.1 Table 4 cat-6 register:
         // `RD → FRD → DOD UCNI → DOE UCNI → TFNI → ATOMAL`. The

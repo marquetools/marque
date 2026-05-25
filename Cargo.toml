@@ -60,7 +60,7 @@ memchr = "2.8.0"
 # lists are <= 4 codes, so we keep them inline instead of heap-allocating).
 # MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
 # Constitution Principle III.
-smallvec = "1"
+smallvec = { version = "1.15.1", features = ["const_new", "union"] }
 
 # Small-string optimization (<=23 bytes inline, Arc<str> fallback above the
 # threshold, cheap Clone, zero-cost SmolStr::new_static(&'static str)).
@@ -73,7 +73,7 @@ smallvec = "1"
 # their transitive `borsh` + `cfg_aliases` crates) that we do not use —
 # we only consume the core `SmolStr` type. Re-add `features = ["serde"]`
 # here if a downstream crate needs the `Serialize` impl.
-smol_str = { version = "0.3", default-features = false }
+smol_str = { version = "0.3.6", default-features = false }
 
 anyhow = "1.0.102"
 # Error handling
@@ -167,6 +167,14 @@ jiff = { version = "0.2.24", default-features = false, features = ["std"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
+[workspace.lints.clippy]
+# The `let mut x = T::default(); x.foo = ...;` test-fixture pattern trips
+# clippy::field_reassign_with_default at hundreds of sites. The style
+# preference is real but the migration cost is mechanical churn across
+# ~270 test sites with no correctness gain; suppress workspace-wide and
+# reconsider when a new construction pattern lands.
+field_reassign_with_default = "allow"
+
 # Workspace-wide lint settings — inherited by all member crates.
 # Coverage builds may use `cfg(coverage)`, and some nightly-based coverage setups
 # also use `cfg(coverage_nightly)`. We declare both here to silence the
@@ -186,14 +194,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   "cfg(coverage_nightly)",
   'cfg(feature, values("corpus-override"))',
 ] }
-
-[workspace.lints.clippy]
-# The `let mut x = T::default(); x.foo = ...;` test-fixture pattern trips
-# clippy::field_reassign_with_default at hundreds of sites. The style
-# preference is real but the migration cost is mechanical churn across
-# ~270 test sites with no correctness gain; suppress workspace-wide and
-# reconsider when a new construction pattern lands.
-field_reassign_with_default = "allow"
 
 [profile.bench]
 inherits = "release"
@@ -241,11 +241,11 @@ opt-level = 3
 [profile.release-cloud]
 inherits = "release"
 
+[profile.release-monoaudit]
+inherits = "release"
+
 [profile.release-server]
 inherits = "release"
 
 [profile.release-web]
-inherits = "release"
-
-[profile.release-monoaudit]
 inherits = "release"
