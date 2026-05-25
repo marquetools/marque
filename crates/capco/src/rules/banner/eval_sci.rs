@@ -157,7 +157,6 @@ pub(super) fn evaluate_sci_banner_rollup(
         }
         original.push_str(t.text.as_ref());
     }
-    original.shrink_to_fit();
     let fix_span = Span::new(fix_start, fix_end);
     let replacement = render_sci_block(&expected);
 
