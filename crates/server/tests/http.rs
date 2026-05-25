@@ -351,7 +351,7 @@ async fn value_containing_override_name_is_not_rejected() {
         ))
         .await
         .unwrap();
-    assert_ne!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 // ---------------------------------------------------------------------------

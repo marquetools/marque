@@ -61,7 +61,7 @@ memchr = "2.8.0"
 # lists are <= 4 codes, so we keep them inline instead of heap-allocating).
 # MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
 # Constitution Principle III.
-smallvec = "1.15.1"
+smallvec = { version = "1.15.1", features = ["const_new", "union"] }
 
 # Small-string optimization (<=23 bytes inline, Arc<str> fallback above the
 # threshold, cheap Clone, zero-cost SmolStr::new_static(&'static str)).
