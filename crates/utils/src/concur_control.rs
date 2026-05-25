@@ -198,17 +198,20 @@ impl CombinedConcurrencyController {
         &self,
         bytes_fn: Option<impl FnOnce() -> usize>,
     ) -> Result<CombinedConcurrencyControllerPermit, AcquireError> {
-        let num_bytes_fn = if let Some(bytes_fn) = bytes_fn
-            && self.needs_num_bytes
-        {
-            let num_bytes = bytes_fn();
-            Some(move || num_bytes)
+        let num_bytes: Option<usize> = if self.needs_num_bytes {
+            bytes_fn.map(|bytes_fn| bytes_fn())
         } else {
             None
         };
 
-        let permit = self.controller.acquire(num_bytes_fn).await?;
-        let global_permit = self.global_controller.acquire(num_bytes_fn).await?;
+        let permit = self
+            .controller
+            .acquire(num_bytes.map(|n| move || n))
+            .await?;
+        let global_permit = self
+            .global_controller
+            .acquire(num_bytes.map(|n| move || n))
+            .await?;
         Ok(CombinedConcurrencyControllerPermit {
             _permit: permit,
             _global_permit: global_permit,
@@ -224,11 +227,11 @@ impl CombinedConcurrencyController {
         let num_bytes = bytes_fn();
         let permit = self
             .controller
-            .acquire_bytes_with_reservation(move || num_bytes)
+            .acquire_bytes_with_reservation(|| num_bytes)
             .await?;
         let global_permit = self
             .global_controller
-            .acquire_bytes_with_reservation(move || num_bytes)
+            .acquire_bytes_with_reservation(|| num_bytes)
             .await?;
         Ok((permit, global_permit))
     }
