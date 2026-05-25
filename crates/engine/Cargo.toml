@@ -115,7 +115,7 @@ static_assertions = { workspace = true }
 
 [features]
 default = ["batch"]
-batch = ["dep:futures", "dep:tokio", "marque-utils/concur_control"]
+batch = ["dep:futures", "dep:tokio", "dep:marque-utils", "marque-utils/concur_control"]
 # Enables the byte-identical CAPCO corpus equivalence harness in the
 # engine's integration tests; proxies to `marque-capco/corpus-harness`.
 corpus-harness = ["marque-capco/corpus-harness"]
