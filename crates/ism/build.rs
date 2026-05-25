@@ -907,7 +907,8 @@ pub fn is_valid_dissem_control(s: &str) -> bool {
     DissemControl::parse(s).is_some()
 }
 
-/// Returns true if the trigraph string is in the CVE country code list.
+/// Returns true if the recognition string is in the CVE country/country-group
+/// code list (including trigraphs and other valid code lengths).
 pub fn is_valid_trigraph(s: &str) -> bool {
     crate::generated::values::TRIGRAPHS.binary_search(&s).is_ok()
 }
