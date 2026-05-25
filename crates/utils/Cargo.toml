@@ -1,0 +1,49 @@
+# Loosely based on CocoIndex's utils crate:
+# SPDX-FileCopyrightText: 2025-2026 CocoIndex
+# SPDX-FileContributor: CocoIndex Contributors
+#
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "marque-utils"
+version = "0.1.0"
+edition = { workspace = true }
+rust-version = { workspace = true }
+description = "Common utilities for Marque, the marking compiler."
+readme = "README.md"
+repository = { workspace = true }
+license-file = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+blake3 = { workspace = true, optional = true }
+encoding_rs = { workspace = true, optional = true }
+fastrand = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, features = ["rt"], optional = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[features]
+default = []
+# Async micro-batcher: coalesces concurrent single-item calls into batched
+# `Runner` invocations. Standalone — does not pull fingerprint/http/retryable.
+batching = ["dep:async-trait", "dep:serde", "dep:tokio", "dep:tokio-util"]
+# BOM-sniffing byte buffer -> string decode (UTF-8/16) for extract/CLI paths.
+bytes_decode = ["dep:encoding_rs"]
+# Tokio row + byte semaphore backpressure (BatchEngine).
+concur_control = ["dep:tokio"]
+# Content/value fingerprint: 128-bit truncated BLAKE3 with a serde
+# `Serializer` for structural hashing. For dedup / cache keys / config hashes.
+fingerprint = ["dep:base64", "dep:blake3", "dep:serde"]
+# Retry-with-backoff combinator.
+retryable = ["dep:fastrand", "dep:tokio"]
+
+[lints]
+workspace = true

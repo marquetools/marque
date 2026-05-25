@@ -127,6 +127,7 @@ pub(crate) fn classification_is_fgi_or_joint(attrs: &CanonicalAttrs) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_ism::{

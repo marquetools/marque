@@ -57,6 +57,7 @@
 
 mod helpers;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod test_support;
 
 mod aea;

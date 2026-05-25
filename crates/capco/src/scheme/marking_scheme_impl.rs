@@ -834,6 +834,7 @@ impl CapcoScheme {
     ///
     /// [`ALL_TRIGGER_MASK`]: crate::scheme::closure_table::ALL_TRIGGER_MASK
     #[cfg(test)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub(crate) fn any_closure_trigger_fires(&self, marking: &CapcoMarking) -> bool {
         use crate::fact_bitmask::derive_bits;
         use crate::scheme::closure_table::ALL_TRIGGER_MASK;

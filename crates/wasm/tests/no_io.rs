@@ -17,7 +17,7 @@ use std::process::Command;
 /// carry I/O capabilities it must not have.
 ///
 /// Note: `tokio`, `mio`, and `socket2` are NOT banned — they are transitive
-/// deps of `marque-engine` (via `recoco-utils`) and compile for wasm32 without
+/// deps of `marque-engine` (via `marque-utils`) and compile for wasm32 without
 /// providing real I/O. On `wasm32-unknown-unknown` there are no filesystem or
 /// network syscalls regardless. What we ban are crates that provide *real*
 /// HTTP/TLS networking capabilities and marque crates with filesystem deps.
