@@ -63,10 +63,36 @@ BASELINE="$REPO_ROOT/benches/baseline.json"
 # different performance profile.
 SKIP_REGRESSION="${MARQUE_BENCH_SKIP_REGRESSION:-0}"
 
-if [[ "${1:-}" == "--skip" ]]; then
-    echo "bench-check: skipped (--skip flag)"
-    exit 0
-fi
+# Mode selection (PR CI vs nightly):
+#   --quick : interactive-latency gates only — SC-001 (lint_10kb), SC-002
+#             (decoder_10kb), deadline_overhead, fix_10kb. All run on
+#             ~10 KB inputs and finish in seconds. This is what the per-PR
+#             `bench-check` job in ci.yml runs.
+#   --full  : everything in --quick PLUS the heavy scaling sweeps —
+#             linear_scaling (SC-005, 1 KB→100 KB) and fix_throughput
+#             (1 MB→100 MB). Run nightly via
+#             .github/workflows/bench-nightly.yml.
+#   --skip  : run nothing (local dev without a bench machine).
+#   (none)  : defaults to --full, preserving the historical behavior for
+#             callers that pass no argument (e.g. fix-latency-weekly.yml).
+BENCH_MODE="full"
+case "${1:-}" in
+    --skip)
+        echo "bench-check: skipped (--skip flag)"
+        exit 0
+        ;;
+    --quick)
+        BENCH_MODE="quick"
+        ;;
+    --full | "")
+        BENCH_MODE="full"
+        ;;
+    *)
+        echo "bench-check: ERROR — unknown argument: ${1}"
+        echo "usage: bash scripts/bench-check.sh [--quick | --full | --skip]"
+        exit 2
+        ;;
+esac
 
 if [[ ! -f "$BASELINE" ]]; then
     echo "bench-check: ERROR — baseline file not found: $BASELINE"
@@ -894,15 +920,29 @@ PY
 }
 
 OVERALL_STATUS=0
+
+echo "bench-check: mode = ${BENCH_MODE}"
+
+# Interactive-latency gates — always run (quick + full). These operate on
+# ~10 KB inputs and finish in seconds; they are the constitutional
+# SC-001 / SC-002 per-PR floor.
 check_one_bench "lint_10kb" "lint_latency" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" "lint_latency" || OVERALL_STATUS=1
-check_linear_scaling || OVERALL_STATUS=1
-check_fix_throughput || OVERALL_STATUS=1
 check_deadline_overhead || OVERALL_STATUS=1
 report_fix_latency
 # CO-1 (PR #621): baselines captured for both fix_10kb paths; gates now active.
 check_one_bench "fix_10kb_pass2_only" "fix_10kb" || OVERALL_STATUS=1
 check_one_bench "fix_10kb_two_pass" "fix_10kb" || OVERALL_STATUS=1
+
+# Heavy scaling sweeps — full mode only (nightly). `linear_scaling` sweeps
+# 1 KB→100 KB (SC-005 linear-scaling R²); `fix_throughput` sweeps
+# 1 MB→100 MB. These are the slow benches the per-PR `bench-check` job
+# deliberately omits; the nightly workflow runs `--full` so a sub-linear
+# regression is caught within ~24h rather than at PR time.
+if [[ "$BENCH_MODE" == "full" ]]; then
+    check_linear_scaling || OVERALL_STATUS=1
+    check_fix_throughput || OVERALL_STATUS=1
+fi
 
 if [[ "$OVERALL_STATUS" -ne 0 ]]; then
     echo "bench-check: FAIL — one or more benches failed their regression / absolute gates"
