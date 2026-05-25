@@ -84,7 +84,9 @@ if [[ -z "$CHANGED" ]]; then
 fi
 
 echo "ci-detect-changes: changed files:" >&2
-printf '  %s\n' $CHANGED >&2
+while IFS= read -r path; do
+    printf '  %s\n' "$path" >&2
+done <<<"$CHANGED"
 
 emit_match() {
     # emit_match NAME EXTENDED_REGEX
