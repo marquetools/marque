@@ -377,7 +377,6 @@ def parse_file(path: Path) -> dict:
                 end_line = consume_to_balanced(stripped, i, opener=None)
                 signature = raw_line.strip()
             else:
-                vis_raw = (mo.group("vis") or "").strip()
                 kw = mo.group("kw").strip()
 
                 if kw == "use":

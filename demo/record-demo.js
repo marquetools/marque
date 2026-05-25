@@ -257,7 +257,7 @@ async function scene1(page) {
     { text: ' What you see here isn\'t Marque -- this is just a web page. Marque is the '},
     { text: 'engine under the hood', style: 'emphasis' },
     { text: '.' }
-  ])
+  ]);
   await typeLine(page, [
     { text: '(c//rel to deu, Fvey) '},
     { text: 'It\'s running locally in the browser here, but it can run in any environment' },

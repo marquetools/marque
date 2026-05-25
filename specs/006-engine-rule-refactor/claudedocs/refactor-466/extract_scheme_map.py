@@ -378,9 +378,9 @@ def parse_file(path: Path) -> dict:
                 end_line = consume_to_balanced(stripped, i, opener=None)
                 signature = raw_line.strip()
             else:
-                vis_raw = (mo.group("vis") or "").strip()
-                vis = vis_raw if vis_raw else "private"
-                visibility = vis
+                # `visibility` is recomputed unconditionally below (the
+                # `pub`/private branch) before it is read, so no early
+                # assignment is needed here.
                 kw = mo.group("kw").strip()
 
                 if kw == "use":
