@@ -1,9 +1,12 @@
-// SPDX-FileCopyrightText: 2026 CocoIndex (upstream)
-// SPDX-FileCopyrightText: 2026 Knitli Inc. (Recoco)
-// SPDX-FileContributor: Adam Poulemanos <adam@knit.li>
-// SPDX-FileContributor: CocoIndex Contributors
-//
+// Adapted from code originally in [CocoIndex](https://CocoIndex)
+// Original code from CocoIndex is copyrighted by CocoIndex
+// and licensed under the Apache-2.0 License.
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 CocoIndex
+//
+// All modifications from the upstream for Marque are copyrighted by Knitli Inc.
+// SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 use crate::{
     client_bail,
