@@ -67,7 +67,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
-      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff
+      - uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4
         with:
           tool: cargo-nextest
 
@@ -621,7 +621,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-      - uses: EmbarkStudios/cargo-deny-action@f28dad79a1c0736fb9bef3766fec993bb67416c5
+      - uses: EmbarkStudios/cargo-deny-action@a531616d8ce3b9177443e48a1159bc945a099823
 
   # Whitepaper §8.5 / gap register #14 — the Constitution v1.2.0
   # dependency-hygiene rule must hold independently for the WASM-safe
@@ -660,7 +660,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff
+      - uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4
         with:
           tool: cargo-deny
 
@@ -759,7 +759,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
-      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff
+      - uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4
         with:
           tool: cargo-llvm-cov
 
