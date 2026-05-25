@@ -275,6 +275,7 @@ impl BatchRecvCancellationGuard {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
@@ -301,11 +302,10 @@ mod tests {
             self.recorded_calls.lock().unwrap().push(values);
 
             // Split into values and receivers so we can await by value (send-before-wait safe)
-            let (vals, rxs): (Vec<i64>, Vec<oneshot::Receiver<()>>) =
-                inputs.into_iter().map(|(v, rx)| (v, rx)).unzip();
+            let (vals, rxs): (Vec<i64>, Vec<oneshot::Receiver<()>>) = inputs.into_iter().unzip();
 
             // Block until every input's signal is fired
-            for (_i, rx) in rxs.into_iter().enumerate() {
+            for rx in rxs.into_iter() {
                 let _ = rx.await;
             }
 

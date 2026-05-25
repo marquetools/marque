@@ -544,6 +544,7 @@ macro_rules! api_error {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use std::backtrace::BacktraceStatus;
@@ -706,5 +707,260 @@ mod tests {
 
         let source = outer.source();
         assert!(source.is_some());
+    }
+
+    #[test]
+    fn test_internal_from_anyhow() {
+        let err = Error::internal(anyhow::anyhow!("boom"));
+        assert!(matches!(err, Error::Internal(_)));
+        assert_eq!(err.to_string(), "boom");
+    }
+
+    #[test]
+    fn test_source_per_variant() {
+        assert!(Error::client("x").source().is_none());
+        assert!(Error::host(MockHostError("x".into())).source().is_some());
+    }
+
+    #[test]
+    fn test_backtrace_none_for_host_error() {
+        let err = Error::host(MockHostError("x".into()));
+        assert!(err.backtrace().is_none());
+    }
+
+    #[test]
+    fn test_with_context_is_lazy() {
+        let inner = Error::client("base");
+        let wrapped: Result<()> = Err(inner);
+        let err = ContextExt::with_context(wrapped, || "lazy ctx").unwrap_err();
+        assert!(matches!(&err, Error::Context { msg, .. } if msg == "lazy ctx"));
+    }
+
+    #[test]
+    fn test_option_with_context_is_lazy() {
+        let opt: Option<i32> = None;
+        let err = ContextExt::with_context(opt, || "missing value").unwrap_err();
+        assert!(matches!(&err, Error::Client { msg, .. } if msg == "missing value"));
+    }
+
+    #[test]
+    fn test_std_context_ext_wraps_foreign_error() {
+        let r: std::result::Result<(), io::Error> = Err(io::Error::other("io failure"));
+        let err = StdContextExt::context(r, "while doing io").unwrap_err();
+        assert!(matches!(&err, Error::Context { msg, .. } if msg == "while doing io"));
+        assert!(matches!(err.without_contexts(), Error::Internal(_)));
+    }
+
+    #[test]
+    fn test_std_context_ext_with_context_is_lazy() {
+        let r: std::result::Result<(), io::Error> = Err(io::Error::other("io failure"));
+        let err = StdContextExt::with_context(r, || "lazy io ctx").unwrap_err();
+        assert!(matches!(&err, Error::Context { msg, .. } if msg == "lazy io ctx"));
+    }
+
+    #[test]
+    fn test_std_error_wrapper_roundtrip() {
+        let serr = Error::client("boom").std_error();
+        assert_eq!(serr.to_string(), "Invalid Request: boom");
+        assert!(matches!(serr.inner(), Error::Client { .. }));
+        assert!(format!("{serr:?}").contains("boom"));
+    }
+
+    #[test]
+    fn test_invariance_violation_message() {
+        assert_eq!(invariance_violation().to_string(), "Invariance violation");
+    }
+
+    // --- macros ------------------------------------------------------------
+
+    #[test]
+    fn test_client_macros() {
+        fn bail() -> Result<()> {
+            client_bail!("bad {}", 42);
+        }
+        assert!(matches!(&bail().unwrap_err(), Error::Client { msg, .. } if msg == "bad 42"));
+
+        let e = client_error!("oops {}", 1);
+        assert!(matches!(&e, Error::Client { msg, .. } if msg == "oops 1"));
+    }
+
+    #[test]
+    fn test_internal_macros() {
+        fn bail() -> Result<()> {
+            internal_bail!("internal {}", 7);
+        }
+        let err = bail().unwrap_err();
+        assert!(matches!(err, Error::Internal(_)));
+        assert_eq!(err.to_string(), "internal 7");
+
+        let e = internal_error!("ierr {}", 2);
+        assert_eq!(e.to_string(), "ierr 2");
+    }
+
+    #[test]
+    fn test_api_macros() {
+        fn bail() -> std::result::Result<(), ApiError> {
+            api_bail!("api {}", 9);
+        }
+        assert_eq!(bail().unwrap_err().to_string(), "api 9");
+        assert_eq!(api_error!("aerr {}", 3).to_string(), "aerr 3");
+    }
+
+    // --- ResidualError -----------------------------------------------------
+
+    #[test]
+    fn test_residual_error_formats_and_converts() {
+        let base = Error::client("residual base");
+        let residual = ResidualError::new(&base);
+        assert!(residual.to_string().contains("residual base"));
+        assert!(format!("{residual:?}").contains("residual base"));
+
+        let err: Error = residual.into();
+        assert!(matches!(err, Error::Internal(_)));
+    }
+
+    // --- SharedError -------------------------------------------------------
+
+    #[test]
+    fn test_shared_error_degrades_after_first_extraction() {
+        let shared = SharedError::new(Error::client("shared boom"));
+        assert!(shared.to_string().contains("shared boom"));
+        assert!(format!("{shared:?}").contains("shared boom"));
+
+        // First extraction returns the real, fully-typed error.
+        let first: SharedResult<()> = Err(shared.clone());
+        let extracted = first.into_result().unwrap_err();
+        assert!(matches!(extracted.without_contexts(), Error::Client { .. }));
+
+        // After extraction the shared slot holds only the residual message, but
+        // still renders the original text.
+        assert!(shared.to_string().contains("shared boom"));
+        let second: SharedResult<()> = Err(shared.clone());
+        assert!(matches!(
+            second.into_result().unwrap_err(),
+            Error::Internal(_)
+        ));
+    }
+
+    #[test]
+    fn test_shared_ok_and_ref_extension() {
+        assert_eq!(shared_ok::<i32>(5).into_result().unwrap(), 5);
+
+        let ok: SharedResult<i32> = Ok(10);
+        assert_eq!(*(&ok).into_result().unwrap(), 10);
+
+        let errored: SharedResult<i32> = Err(SharedError::new(Error::client("e")));
+        assert!((&errored).into_result().is_err());
+    }
+
+    #[test]
+    fn test_from_error_for_shared_error() {
+        let shared: SharedError = Error::internal_msg("x").into();
+        assert!(shared.to_string().contains("x"));
+    }
+
+    // --- ApiError ----------------------------------------------------------
+
+    #[test]
+    fn test_api_error_new_display_and_into_error() {
+        let api = ApiError::new("api boom");
+        assert_eq!(api.to_string(), "api boom");
+
+        let err: Error = api.into();
+        assert!(matches!(err, Error::Internal(_)));
+    }
+
+    #[test]
+    fn test_api_error_from_anyhow_passthrough_and_downcast() {
+        let api: ApiError = anyhow::anyhow!("plain").into();
+        assert_eq!(api.to_string(), "plain");
+
+        // An anyhow error already wrapping an ApiError downcasts back to it.
+        let any = anyhow::Error::new(ApiError::new("nested"));
+        let api2: ApiError = any.into();
+        assert_eq!(api2.to_string(), "nested");
+    }
+
+    #[test]
+    fn test_api_error_from_core_error() {
+        let api: ApiError = Error::client("bad request").into();
+        assert!(api.to_string().contains("bad request"));
+    }
+
+    // --- From conversions --------------------------------------------------
+
+    #[test]
+    fn test_from_std_library_errors() {
+        let _: Error = "5x".parse::<i32>().unwrap_err().into();
+        let _: Error = "notbool".parse::<bool>().unwrap_err().into();
+        let _: Error = std::fmt::Error.into();
+        let _: Error = String::from_utf8(vec![0xff, 0xfe]).unwrap_err().into();
+
+        let cow: std::borrow::Cow<str> = std::borrow::Cow::Borrowed("cow error");
+        let e: Error = cow.into();
+        assert!(e.to_string().contains("cow error"));
+    }
+
+    #[test]
+    fn test_from_poison_error() {
+        use std::sync::{Arc, Mutex};
+        let m = Arc::new(Mutex::new(0));
+        let m2 = m.clone();
+        // Poison the mutex by panicking while the lock is held.
+        let _ = std::thread::spawn(move || {
+            let _guard = m2.lock().unwrap();
+            panic!("intentional poison");
+        })
+        .join();
+
+        let poison = m.lock().unwrap_err();
+        let err: Error = poison.into();
+        assert!(matches!(err, Error::Internal(_)));
+        assert!(err.to_string().contains("Mutex poison"));
+    }
+
+    #[cfg(feature = "fingerprint")]
+    #[test]
+    fn test_from_base64_decode_error() {
+        use base64::Engine as _;
+        let decode_err = base64::prelude::BASE64_STANDARD.decode("a").unwrap_err();
+        let err: Error = decode_err.into();
+        assert!(matches!(err, Error::Internal(_)));
+    }
+
+    #[cfg(feature = "fingerprint")]
+    #[test]
+    fn test_from_fingerprinter_error() {
+        use serde::ser::Error as _;
+        let fe = crate::fingerprint::FingerprinterError::custom("fp boom");
+        let err: Error = fe.into();
+        assert!(matches!(err, Error::Internal(_)));
+    }
+
+    #[cfg(any(
+        feature = "concur_control",
+        feature = "retryable",
+        feature = "batching"
+    ))]
+    #[tokio::test]
+    async fn test_from_tokio_errors() {
+        // oneshot RecvError
+        let (tx, rx) = tokio::sync::oneshot::channel::<i32>();
+        drop(tx);
+        let _: Error = rx.await.unwrap_err().into();
+
+        // AcquireError from a closed semaphore
+        let sem = tokio::sync::Semaphore::new(1);
+        sem.close();
+        let _: Error = sem.acquire().await.unwrap_err().into();
+
+        // JoinError from a panicking task
+        let handle = tokio::spawn(async { panic!("boom") });
+        let _: Error = handle.await.unwrap_err().into();
+
+        // watch RecvError when all senders drop
+        let (wtx, mut wrx) = tokio::sync::watch::channel(1);
+        drop(wtx);
+        let _: Error = wrx.changed().await.unwrap_err().into();
     }
 }

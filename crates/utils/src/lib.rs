@@ -8,6 +8,8 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 #[cfg(feature = "batching")]
 pub mod batching;
 #[cfg(feature = "bytes_decode")]

@@ -181,3 +181,198 @@ impl CombinedConcurrencyController {
         Ok((permit, global_permit))
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn unlimited() -> Options {
+        Options {
+            max_inflight_rows: None,
+            max_inflight_bytes: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn acquire_with_no_limits_yields_empty_permit() {
+        let cc = ConcurrencyController::new(&unlimited());
+        let permit = cc.acquire(Some(|| 100usize)).await.unwrap();
+        assert!(permit._inflight_count_permit.is_none());
+        assert!(permit._inflight_bytes_permit.is_none());
+    }
+
+    #[tokio::test]
+    async fn row_limit_blocks_until_permit_released() {
+        let cc = Arc::new(ConcurrencyController::new(&Options {
+            max_inflight_rows: Some(1),
+            max_inflight_bytes: None,
+        }));
+
+        let permit = cc.acquire(None::<fn() -> usize>).await.unwrap();
+
+        let cc2 = cc.clone();
+        let pending =
+            tokio::spawn(async move { cc2.acquire(None::<fn() -> usize>).await.map(|_| ()) });
+
+        // The only row permit is held, so the second acquire cannot complete.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!pending.is_finished());
+
+        drop(permit);
+
+        tokio::time::timeout(Duration::from_secs(1), pending)
+            .await
+            .expect("acquire should resolve once the permit is freed")
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn byte_limit_blocks_until_weight_released() {
+        let cc = Arc::new(ConcurrencyController::new(&Options {
+            max_inflight_rows: None,
+            max_inflight_bytes: Some(10),
+        }));
+
+        // Consume the full byte budget.
+        let permit = cc.acquire(Some(|| 10usize)).await.unwrap();
+        assert!(permit._inflight_bytes_permit.is_some());
+
+        let cc2 = cc.clone();
+        let pending = tokio::spawn(async move { cc2.acquire(Some(|| 5usize)).await.map(|_| ()) });
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!pending.is_finished());
+
+        drop(permit);
+
+        tokio::time::timeout(Duration::from_secs(1), pending)
+            .await
+            .expect("acquire should resolve once bytes are freed")
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn unknown_byte_count_takes_reservation_then_real_weight() {
+        let cc = ConcurrencyController::new(&Options {
+            max_inflight_rows: None,
+            max_inflight_bytes: Some(100),
+        });
+
+        // Byte count unknown yet: a single-permit reservation is taken.
+        let permit = cc.acquire(None::<fn() -> usize>).await.unwrap();
+        assert!(permit._inflight_bytes_permit.is_some());
+
+        // The actual weight is acquired later, minus the reserved permit.
+        let real = cc.acquire_bytes_with_reservation(|| 50usize).await.unwrap();
+        assert!(real.is_some());
+    }
+
+    #[tokio::test]
+    async fn reservation_already_covers_unit_weight() {
+        let cc = ConcurrencyController::new(&Options {
+            max_inflight_rows: None,
+            max_inflight_bytes: Some(100),
+        });
+
+        // A weight of 1 is fully covered by the reserved permit, so no extra
+        // permit is acquired.
+        let extra = cc.acquire_bytes_with_reservation(|| 1usize).await.unwrap();
+        assert!(extra.is_none());
+    }
+
+    #[tokio::test]
+    async fn reservation_without_byte_limit_is_noop() {
+        let cc = ConcurrencyController::new(&Options {
+            max_inflight_rows: Some(5),
+            max_inflight_bytes: None,
+        });
+
+        let extra = cc.acquire_bytes_with_reservation(|| 50usize).await.unwrap();
+        assert!(extra.is_none());
+    }
+
+    #[tokio::test]
+    async fn weighted_semaphore_downscales_quota_above_u32_max() {
+        let ws = WeightedSemaphore::new((u32::MAX as usize) + 1);
+        // One right-shift brings the quota back under u32::MAX.
+        assert_eq!(ws.downscale_factor, 1);
+        assert_eq!(ws.downscaled_quota, ((u32::MAX as usize + 1) >> 1) as u32);
+
+        // A weight is downscaled by the same factor and can be acquired.
+        let permit = ws.acquire((u32::MAX as usize) + 1, false).await.unwrap();
+        assert!(permit.is_some());
+    }
+
+    #[tokio::test]
+    async fn weighted_semaphore_skips_reserved_unit_weight() {
+        let ws = WeightedSemaphore::new(100);
+        // reserved=true with a capped weight of 1 means the reservation already
+        // accounts for the whole weight.
+        let permit = ws.acquire(1, true).await.unwrap();
+        assert!(permit.is_none());
+    }
+
+    #[tokio::test]
+    async fn combined_controller_acquires_local_and_global() {
+        let global = Arc::new(ConcurrencyController::new(&Options {
+            max_inflight_rows: Some(2),
+            max_inflight_bytes: Some(100),
+        }));
+        let combined = CombinedConcurrencyController::new(
+            &Options {
+                max_inflight_rows: Some(2),
+                max_inflight_bytes: Some(100),
+            },
+            global,
+        );
+
+        let permit = combined.acquire(Some(|| 10usize)).await.unwrap();
+        drop(permit);
+    }
+
+    #[tokio::test]
+    async fn combined_controller_acquires_without_byte_fn() {
+        // No byte function supplied even though byte limits exist: both layers
+        // fall back to the reservation path.
+        let global = Arc::new(ConcurrencyController::new(&Options {
+            max_inflight_rows: None,
+            max_inflight_bytes: Some(100),
+        }));
+        let combined = CombinedConcurrencyController::new(
+            &Options {
+                max_inflight_rows: None,
+                max_inflight_bytes: Some(100),
+            },
+            global,
+        );
+
+        let permit = combined.acquire(None::<fn() -> usize>).await.unwrap();
+        drop(permit);
+    }
+
+    #[tokio::test]
+    async fn combined_reservation_returns_both_permits() {
+        let global = Arc::new(ConcurrencyController::new(&Options {
+            max_inflight_rows: None,
+            max_inflight_bytes: Some(100),
+        }));
+        let combined = CombinedConcurrencyController::new(
+            &Options {
+                max_inflight_rows: None,
+                max_inflight_bytes: Some(100),
+            },
+            global,
+        );
+
+        let (local, global) = combined
+            .acquire_bytes_with_reservation(|| 50usize)
+            .await
+            .unwrap();
+        assert!(local.is_some());
+        assert!(global.is_some());
+    }
+}

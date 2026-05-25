@@ -547,6 +547,7 @@ impl SerializeStructVariant for &mut Fingerprinter {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use std::collections::HashSet;
@@ -663,5 +664,189 @@ mod tests {
         let fp = Fingerprint(bytes);
         assert_eq!(fp.as_ref(), &bytes);
         assert_eq!(fp.as_slice(), &bytes);
+    }
+
+    // --- Fingerprinter (serde Serializer) ----------------------------------
+
+    use serde::{Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    fn fp_of<S: Serialize + ?Sized>(value: &S) -> Fingerprint {
+        Fingerprinter::default()
+            .with(value)
+            .unwrap()
+            .into_fingerprint()
+    }
+
+    #[test]
+    fn fingerprinter_is_deterministic() {
+        assert_eq!(fp_of("hello"), fp_of("hello"));
+        assert_eq!(fp_of(&vec![1u32, 2, 3]), fp_of(&vec![1u32, 2, 3]));
+    }
+
+    #[test]
+    fn fingerprinter_distinguishes_values() {
+        assert_ne!(fp_of("hello"), fp_of("world"));
+        assert_ne!(fp_of(&1i32), fp_of(&2i32));
+        assert_ne!(fp_of(&vec![1u8, 2]), fp_of(&vec![2u8, 1]));
+    }
+
+    #[test]
+    fn fingerprinter_distinguishes_types_via_tags() {
+        // Same numeric value, different width tags -> different fingerprints.
+        assert_ne!(fp_of(&1u32), fp_of(&1u64));
+        assert_ne!(fp_of(&1i8), fp_of(&1u8));
+        assert_ne!(fp_of(&1.0f32), fp_of(&1.0f64));
+    }
+
+    #[test]
+    fn fingerprinter_handles_scalar_types() {
+        // Exercises bool / char / signed / unsigned / float serializer arms.
+        let _ = fp_of(&true);
+        let _ = fp_of(&false);
+        let _ = fp_of(&'z');
+        let _ = fp_of(&i16::MIN);
+        let _ = fp_of(&i64::MAX);
+        let _ = fp_of(&u16::MAX);
+        let _ = fp_of(&std::f64::consts::PI);
+    }
+
+    #[test]
+    fn fingerprinter_option_none_differs_from_some() {
+        let none: Option<u32> = None;
+        let some: Option<u32> = Some(0);
+        assert_ne!(fp_of(&none), fp_of(&some));
+    }
+
+    #[test]
+    fn fingerprinter_unit_and_unit_struct() {
+        #[derive(Serialize)]
+        struct UnitStruct;
+
+        // Both serialize via distinct tags; assert they round-trip and differ.
+        assert_eq!(fp_of(&()), fp_of(&()));
+        assert_ne!(fp_of(&()), fp_of(&UnitStruct));
+    }
+
+    #[test]
+    fn fingerprinter_map_and_seq() {
+        let mut map = BTreeMap::new();
+        map.insert("a", 1u32);
+        map.insert("b", 2u32);
+        assert_eq!(fp_of(&map), fp_of(&map));
+
+        let mut other = BTreeMap::new();
+        other.insert("a", 1u32);
+        other.insert("b", 3u32);
+        assert_ne!(fp_of(&map), fp_of(&other));
+    }
+
+    #[test]
+    fn fingerprinter_tuple_and_tuple_struct() {
+        #[derive(Serialize)]
+        struct Pair(u32, &'static str);
+
+        assert_eq!(fp_of(&(1u32, "x")), fp_of(&(1u32, "x")));
+        assert_ne!(fp_of(&(1u32, "x")), fp_of(&(1u32, "y")));
+        assert_eq!(fp_of(&Pair(1, "x")), fp_of(&Pair(1, "x")));
+        assert_ne!(fp_of(&Pair(1, "x")), fp_of(&Pair(2, "x")));
+    }
+
+    #[test]
+    fn fingerprinter_struct_and_field_order() {
+        #[derive(Serialize)]
+        struct Record {
+            id: u32,
+            name: &'static str,
+            tags: Vec<&'static str>,
+        }
+
+        let a = Record {
+            id: 1,
+            name: "alpha",
+            tags: vec!["x", "y"],
+        };
+        let b = Record {
+            id: 1,
+            name: "alpha",
+            tags: vec!["x", "y"],
+        };
+        let c = Record {
+            id: 1,
+            name: "beta",
+            tags: vec!["x", "y"],
+        };
+        assert_eq!(fp_of(&a), fp_of(&b));
+        assert_ne!(fp_of(&a), fp_of(&c));
+    }
+
+    #[test]
+    fn fingerprinter_enum_variants() {
+        #[derive(Serialize)]
+        enum Shape {
+            Unit,
+            Newtype(u32),
+            Tuple(u32, u32),
+            Struct { w: u32, h: u32 },
+        }
+
+        // Each variant kind drives a different serializer arm; all must differ.
+        let unit = fp_of(&Shape::Unit);
+        let newtype = fp_of(&Shape::Newtype(1));
+        let tuple = fp_of(&Shape::Tuple(1, 2));
+        let strukt = fp_of(&Shape::Struct { w: 1, h: 2 });
+
+        assert_ne!(unit, newtype);
+        assert_ne!(newtype, tuple);
+        assert_ne!(tuple, strukt);
+        assert_eq!(strukt, fp_of(&Shape::Struct { w: 1, h: 2 }));
+        assert_ne!(strukt, fp_of(&Shape::Struct { w: 2, h: 1 }));
+    }
+
+    #[test]
+    fn fingerprinter_serialize_bytes_arm() {
+        // `serialize_bytes` is not reachable via `&[u8]` (serde treats it as a
+        // seq), so drive the Serializer method directly.
+        let mut a = Fingerprinter::default();
+        (&mut a).serialize_bytes(b"abc").unwrap();
+        let mut b = Fingerprinter::default();
+        (&mut b).serialize_bytes(b"abc").unwrap();
+        let mut c = Fingerprinter::default();
+        (&mut c).serialize_bytes(b"abd").unwrap();
+
+        assert_eq!(a.into_fingerprint(), b.into_fingerprint());
+        assert_ne!(
+            Fingerprinter::default()
+                .with(b"abc".as_slice())
+                .unwrap()
+                .into_fingerprint(),
+            c.into_fingerprint()
+        );
+    }
+
+    #[test]
+    fn fingerprinter_write_and_raw_bytes() {
+        // `write` mutates in place; `write_raw_bytes` injects opaque bytes.
+        let mut fp = Fingerprinter::default();
+        fp.write(&"key").unwrap();
+        fp.write_raw_bytes(b"\x00\x01\x02");
+        let one = fp.into_fingerprint();
+
+        let mut fp2 = Fingerprinter::default();
+        fp2.write(&"key").unwrap();
+        fp2.write_raw_bytes(b"\x00\x01\x02");
+        assert_eq!(one, fp2.into_fingerprint());
+
+        let mut fp3 = Fingerprinter::default();
+        fp3.write(&"key").unwrap();
+        fp3.write_raw_bytes(b"\x00\x01\x03");
+        assert_ne!(one, fp3.into_fingerprint());
+    }
+
+    #[test]
+    fn fingerprinter_error_display_and_custom() {
+        use serde::ser::Error as _;
+        let err = FingerprinterError::custom("bad value");
+        assert_eq!(err.to_string(), "FingerprinterError: bad value");
     }
 }
