@@ -150,6 +150,7 @@ impl std::fmt::Display for Severity {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

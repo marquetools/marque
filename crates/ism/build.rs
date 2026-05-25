@@ -48,6 +48,7 @@
 //! schema tree anymore.
 
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
 use std::{env, fs, path::Path};
@@ -70,12 +71,17 @@ fn main() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir);
 
+    let cargo_toml = fs::read_to_string("Cargo.toml").expect("failed to read Cargo.toml");
+    let cargo_table: toml::Table = cargo_toml
+        .parse()
+        .expect("failed to parse Cargo.toml as TOML");
+
     // Assert schema version matches Cargo.toml metadata.
-    verify_schema_version();
+    verify_schema_version(&cargo_table);
     // Issue #208: ISMCAT Tetragraph Taxonomy version pin.
-    verify_ismcat_tetra_version();
+    verify_ismcat_tetra_version(&cargo_table);
     // Cross-check the pinned ism-data snapshot against Cargo.toml metadata.
-    verify_ism_data_version();
+    verify_ism_data_version(&cargo_table);
 
     // Cargo automatically reruns this build script when build dependencies
     // change, so no `rerun-if-changed=schemas/` is needed (the old vendored
@@ -94,13 +100,7 @@ fn main() {
 // Schema version pinning assertion
 // ---------------------------------------------------------------------------
 
-fn verify_schema_version() {
-    // Read the Cargo.toml metadata to verify it matches our compiled schema dir.
-    let cargo_toml = fs::read_to_string("Cargo.toml").expect("failed to read Cargo.toml");
-    let table: toml::Table = cargo_toml
-        .parse()
-        .expect("failed to parse Cargo.toml as TOML");
-
+fn verify_schema_version(table: &toml::Table) {
     let pinned = table
         .get("package")
         .and_then(|p| p.get("metadata"))
@@ -124,12 +124,7 @@ fn verify_schema_version() {
 /// Verify that the `ism-data` snapshot pinned in Cargo.toml matches the
 /// version this build.rs was written against. Constitution Principle IV —
 /// schema versions are pinned in cargo metadata and bumped intentionally.
-fn verify_ism_data_version() {
-    let cargo_toml = fs::read_to_string("Cargo.toml").expect("failed to read Cargo.toml");
-    let table: toml::Table = cargo_toml
-        .parse()
-        .expect("failed to parse Cargo.toml as TOML");
-
+fn verify_ism_data_version(table: &toml::Table) {
     let pinned = table
         .get("package")
         .and_then(|p| p.get("metadata"))
@@ -845,9 +840,14 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
                     // produce wrong canonicalization at runtime.
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"value" {
-                            let val = attr.unescape_value().unwrap_or_else(|err| {
-                                panic!("XSD attribute unescape error in {}: {err}", path.display())
-                            });
+                            let val = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .unwrap_or_else(|err| {
+                                    panic!(
+                                        "XSD attribute normalization/decoding error in {}: {err}",
+                                        path.display()
+                                    )
+                                });
                             entries.push((val.into_owned(), String::new()));
                             break;
                         }
@@ -907,9 +907,10 @@ pub fn is_valid_dissem_control(s: &str) -> bool {
     DissemControl::parse(s).is_some()
 }
 
-/// Returns true if the trigraph string is in the CVE country code list.
+/// Returns true if the recognition string is in the CVE country/country-group
+/// code list (including trigraphs and other valid code lengths).
 pub fn is_valid_trigraph(s: &str) -> bool {
-    crate::generated::values::TRIGRAPHS.contains(&s)
+    crate::generated::values::TRIGRAPHS.binary_search(&s).is_ok()
 }
 
 /// Schematron assertion: NOFORN and REL TO are mutually exclusive.
@@ -1733,12 +1734,7 @@ struct TaxEntry {
 /// `Cargo.toml` and panic on mismatch with [`ISMCAT_TETRA_VERSION`].
 /// Constitution Principle IV — schema versions are pinned in cargo
 /// metadata and bumped intentionally.
-fn verify_ismcat_tetra_version() {
-    let cargo_toml = fs::read_to_string("Cargo.toml").expect("failed to read Cargo.toml");
-    let table: toml::Table = cargo_toml
-        .parse()
-        .expect("failed to parse Cargo.toml as TOML");
-
+fn verify_ismcat_tetra_version(table: &toml::Table) {
     let pinned = table
         .get("package")
         .and_then(|p| p.get("metadata"))
@@ -1820,12 +1816,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                             let key_local = local_name(attr.key.as_ref()).to_owned();
                             match key_local.as_slice() {
                                 b"decomposable" => {
-                                    let value = attr.unescape_value().unwrap_or_else(|err| {
-                                        panic!(
-                                            "{}: failed to unescape `decomposable`: {err}",
-                                            path.display()
-                                        )
-                                    });
+                                    let value = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_else(|err| {
+                                            panic!(
+                                                "{}: failed to normalize `decomposable`: {err}",
+                                                path.display()
+                                            )
+                                        });
                                     current_decomposable = Some(match value.as_ref() {
                                         "Yes" => TaxDecomposable::Yes,
                                         "No" => TaxDecomposable::No,
@@ -1838,12 +1836,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                     });
                                 }
                                 b"deprecated" => {
-                                    let value = attr.unescape_value().unwrap_or_else(|err| {
-                                        panic!(
-                                            "{}: failed to unescape `deprecated`: {err}",
-                                            path.display()
-                                        )
-                                    });
+                                    let value = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_else(|err| {
+                                            panic!(
+                                                "{}: failed to normalize `deprecated`: {err}",
+                                                path.display()
+                                            )
+                                        });
                                     current_deprecated = Some(value.into_owned());
                                 }
                                 _ => {}
@@ -1861,12 +1861,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                 )
                             });
                             if local_name(attr.key.as_ref()) == b"dateLastVerified" {
-                                let value = attr.unescape_value().unwrap_or_else(|err| {
-                                    panic!(
-                                        "{}: failed to unescape `dateLastVerified`: {err}",
-                                        path.display()
-                                    )
-                                });
+                                let value = attr
+                                    .normalized_value(XmlVersion::Implicit1_0)
+                                    .unwrap_or_else(|err| {
+                                        panic!(
+                                            "{}: failed to normalize `dateLastVerified`: {err}",
+                                            path.display()
+                                        )
+                                    });
                                 current_last_verified = Some(value.into_owned());
                             }
                         }
@@ -2016,8 +2018,6 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
             _ => {}
         }
     }
-
-    println!("cargo:rerun-if-changed={}", path.display());
 
     if entries.is_empty() {
         panic!(

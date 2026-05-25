@@ -104,6 +104,11 @@ crate = "marque-scheme"
 expression = "LicenseRef-MarqueLicense-1.0"
 license-files = [{ path = "LICENSE.md", hash = 0xaf0bdca2 }]
 
+[[licenses.clarify]]
+crate = "marque-utils"
+expression = "LicenseRef-MarqueLicense-1.0"
+license-files = [{ path = "LICENSE.md", hash = 0xaf0bdca2 }]
+
 [bans]
 multiple-versions = "warn"
 highlight = "all"

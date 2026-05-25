@@ -58,7 +58,7 @@ jobs:
 
       - name: Set up environment
         continue-on-error: true
-        uses: jdx/mise-action@1c5f70fd400ce6c745085c93ea80026272f8d346
+        uses: jdx/mise-action@5b45072a5ed4128fb3b45f33168ef2b8dc66dd63
         if: matrix.language != 'actions'
         with:
           install: true
@@ -68,11 +68,14 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
+        uses: github/codeql-action/init@0e150e40762c1253b364a04b0fc9f2cc14effff2
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          queries: security-extended,security-and-quality
+          # `+` prefix merges these query packs WITH the config file rather
+          # than overriding it, so the config's query-filters stay in effect.
+          queries: +security-extended,security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
           # If you wish to specify custom queries, you can do so here or in a config file.
           # By default, queries listed here will override any specified in a config file.
@@ -99,6 +102,6 @@ jobs:
           exit 1
   
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@a723e99345b89ee0bbcbd68ee4e63f9a56b42a25
+        uses: github/codeql-action/analyze@0e150e40762c1253b364a04b0fc9f2cc14effff2
         with:
           category: "/language:${{matrix.language}}"

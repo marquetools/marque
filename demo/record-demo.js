@@ -257,10 +257,10 @@ async function scene1(page) {
     { text: ' What you see here isn\'t Marque -- this is just a web page. Marque is the '},
     { text: 'engine under the hood', style: 'emphasis' },
     { text: '.' }
-  ])
+  ]);
   await typeLine(page, [
     { text: '(c//rel to deu, Fvey) '},
-    { text: '. It\'s running locally in the browser here, but it can run in any environment' },
+    { text: 'It\'s running locally in the browser here, but it can run in any environment' },
     { text: '. Marque\'s first ruleset is U.S. classification markings.' },
     { text: ' As we type, you\'ll see Marque identify errors and fix them, with the audit record of what changed and why in the sidebar.' },
     { text: ' The banners will also update instantly to reflect the markings we apply.' }
@@ -300,7 +300,7 @@ async function scene1(page) {
     { text: '(s//REL TO naTO) '},
     { text: 'Marque is ' },
     { text: 'insanely fast', style: 'emphasis' },
-      { text: '. On an average laptop, it can scan and fix about ' },
+    { text: '. On an average laptop, it can scan and fix about ' },
     { text: '4 million pages', style: 'emphasis' },
     { text: '. Per '},
     { text: 'minute', style: 'emphasis' },

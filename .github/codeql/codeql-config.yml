@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+name: "marque CodeQL config"
+
+# CodeQL's Rust support is experimental. The rust/unused-variable query
+# (from the security-and-quality suite) misfires on two idiomatic patterns
+# the extractor cannot model yet:
+#   1. `None` (and other unit-variant) patterns in a tuple match arm, e.g.
+#      `(None, x) | (x, None) => ...`, are reported as unused bindings even
+#      though they are matched variants, not bindings.
+#   2. Variables used only inside a `matches!` guard are not traced through
+#      the macro expansion, so they read as unused.
+# Both produce note-severity noise with no actionable fix. Filter the query
+# out for now; every other security and quality query stays active.
+query-filters:
+  - exclude:
+      id: rust/unused-variable

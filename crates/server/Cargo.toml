@@ -59,4 +59,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-landlock = "0.4.4"
+landlock = "0.4.5"

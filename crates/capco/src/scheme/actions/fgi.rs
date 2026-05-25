@@ -54,7 +54,7 @@ use marque_ism::MarkingClassification;
 /// The caller collects into a `BTreeSet` for deduplication.
 ///
 /// Return type is `Option<Vec<CountryCode>>` rather than
-/// `Option<Vec<CountryCode>>` to propagate the concealed signal.
+/// `Vec<CountryCode>` to propagate the concealed signal.
 /// Pre-fix, source-concealed FGI portions returned an empty `Vec`,
 /// indistinguishable from "no FGI at all" — the FGI-composition equality check
 /// then silently dropped the concealed signal and could build a

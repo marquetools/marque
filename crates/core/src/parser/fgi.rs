@@ -303,6 +303,7 @@ pub(super) fn parse_fgi_marker_with_spans(
 /// production function's doc-comment for the full grammar, edge
 /// cases, closure invariant, and CAPCO §H.7 / §A.6 authority.
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(super) fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     let mut discarded: SmallVec<[TokenSpan; 16]> = SmallVec::new();
     parse_fgi_marker_with_spans(s, 0, &mut discarded)

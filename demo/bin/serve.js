@@ -131,9 +131,9 @@ function handleRequest(req, res) {
 function serveFile(res, absPath) {
   // Basic path traversal guard
   const relDemo = path.relative(DEMO_ROOT, absPath);
-  const isSafeDemo = relDemo === '' || (!relDemo.startsWith('..' + path.sep) && relDemo !== '..' && !path.isAbsolute(relDemo));
+  const isSafeDemo = relDemo === '' || (relDemo.split(path.sep)[0] !== '..' && !path.isAbsolute(relDemo));
   const relWasm = wasmRoot ? path.relative(wasmRoot, absPath) : null;
-  const isSafeWasm = relWasm === '' || (relWasm && !relWasm.startsWith('..' + path.sep) && relWasm !== '..' && !path.isAbsolute(relWasm));
+  const isSafeWasm = relWasm === '' || (relWasm && relWasm.split(path.sep)[0] !== '..' && !path.isAbsolute(relWasm));
 
   if (!isSafeDemo && !isSafeWasm) {
     res.writeHead(403, {

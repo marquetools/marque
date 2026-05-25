@@ -72,22 +72,13 @@ marque-core = { workspace = true }
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
-recoco-utils = { workspace = true, optional = true }
+marque-utils = { workspace = true, optional = true }
 # Constitution Principle II — Marque-owned content-bearing buffers wipe on
 # drop. `FixResult.source` wraps `SecretBox<Vec<u8>>` (grep-target readout
 # discipline at the public API boundary); `Engine::fix_inner`'s splice
 # scratch buffers use `Zeroizing<Vec<u8>>` directly (internal-only, no
 # readout discipline needed).
 secrecy = { workspace = true }
-zeroize = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true, optional = true }
-tracing = { workspace = true }
-# `web_time::Instant` re-exports `std::time::Instant` on native and
-# polyfills via Performance.now() on wasm32-unknown-unknown. The
-# engine's deadline check (spec 005) calls `Instant::now()` per
-# candidate; without this dep, that call panics in the WASM target.
-web-time = { workspace = true }
 # `FixIntent.feature_ids: SmallVec<[FeatureId; 4]>` is constructed in
 # production code (R001 decoder-path diagnostic synthesis), so smallvec
 # is a regular dependency, not dev-only.
@@ -97,6 +88,15 @@ smallvec = { workspace = true }
 # `marque_rules::TextCorrection.replacement`, then on into
 # `AppliedFix::__engine_promote_text_correction`). Issue #340.
 smol_str = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true }
+# `web_time::Instant` re-exports `std::time::Instant` on native and
+# polyfills via Performance.now() on wasm32-unknown-unknown. The
+# engine's deadline check (spec 005) calls `Instant::now()` per
+# candidate; without this dep, that call panics in the WASM target.
+web-time = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -115,7 +115,7 @@ static_assertions = { workspace = true }
 
 [features]
 default = ["batch"]
-batch = ["dep:futures", "dep:recoco-utils", "dep:tokio"]
+batch = ["dep:futures", "dep:tokio", "dep:marque-utils", "marque-utils/concur_control"]
 # Enables the byte-identical CAPCO corpus equivalence harness in the
 # engine's integration tests; proxies to `marque-capco/corpus-harness`.
 corpus-harness = ["marque-capco/corpus-harness"]

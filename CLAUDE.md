@@ -171,7 +171,7 @@ These contracts are enforced by convention and code review, not by the type syst
 
 ### Batch Processing
 
-`BatchEngine` wraps `Engine` behind `Arc` and uses `recoco-utils::ConcurrencyController` for row + byte semaphore backpressure. CPU-bound work goes to `tokio::task::spawn_blocking`. Results stream out in **completion order**, not submission order — correlate via the echoed `id`.
+`BatchEngine` wraps `Engine` behind `Arc` and uses `marque-utils::ConcurrencyController` for row + byte semaphore backpressure. CPU-bound work goes to `tokio::task::spawn_blocking`. Results stream out in **completion order**, not submission order — correlate via the echoed `id`.
 
 ### Incremental Cache (planned for v0.2)
 
