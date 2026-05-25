@@ -8,9 +8,26 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! Caps how much work runs at once, by row count and by byte volume.
+//!
+//! A [`ConcurrencyController`] hands out a permit per unit of work and blocks
+//! once either configured ceiling is reached: a plain semaphore tracks the
+//! in-flight row count, and a weighted semaphore tracks the in-flight byte
+//! total. A caller that does not yet know an item's size reserves a single
+//! permit up front and settles the real weight later via
+//! [`acquire_bytes_with_reservation`](ConcurrencyController::acquire_bytes_with_reservation).
+//! [`CombinedConcurrencyController`] layers a per-task controller under a shared
+//! global one so a task respects both its own limit and the process-wide limit.
+
 use std::sync::Arc;
 use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
 
+/// A semaphore whose permits count bytes rather than slots.
+///
+/// Tokio semaphores cap out at `u32::MAX` permits, so a quota that exceeds that
+/// is right-shifted by `downscale_factor` until it fits; every acquired weight
+/// is shifted by the same factor, keeping the ratio intact at coarser
+/// granularity.
 struct WeightedSemaphore {
     downscale_factor: u8,
     downscaled_quota: u32,
@@ -57,24 +74,37 @@ impl WeightedSemaphore {
     }
 }
 
+/// The ceilings a [`ConcurrencyController`] enforces. `None` leaves that
+/// dimension uncapped.
 pub struct Options {
+    /// Maximum number of items processed concurrently.
     pub max_inflight_rows: Option<usize>,
+    /// Maximum total bytes of in-flight items.
     pub max_inflight_bytes: Option<usize>,
 }
 
+/// Holds the row and byte permits for one in-flight item. Dropping it returns
+/// the capacity to the controller.
 pub struct ConcurrencyControllerPermit {
     _inflight_count_permit: Option<OwnedSemaphorePermit>,
     _inflight_bytes_permit: Option<OwnedSemaphorePermit>,
 }
 
+/// Gates in-flight work against the row and byte ceilings from [`Options`].
 pub struct ConcurrencyController {
     inflight_count_sem: Option<Arc<Semaphore>>,
     inflight_bytes_sem: Option<WeightedSemaphore>,
 }
 
+/// Pass as the `bytes_fn` argument when an item's size is not known at acquire
+/// time. The controller then reserves a single byte permit; settle the real
+/// weight later with
+/// [`acquire_bytes_with_reservation`](ConcurrencyController::acquire_bytes_with_reservation).
 pub static BYTES_UNKNOWN_YET: Option<fn() -> usize> = None;
 
 impl ConcurrencyController {
+    /// Builds a controller from `exec_options`. Each `None` ceiling becomes an
+    /// uncapped dimension.
     pub fn new(exec_options: &Options) -> Self {
         Self {
             inflight_count_sem: exec_options
@@ -84,9 +114,13 @@ impl ConcurrencyController {
         }
     }
 
-    /// If `bytes_fn` is `None`, it means the number of bytes is not known yet.
-    /// The controller will reserve a minimum number of bytes.
-    /// The caller should call `acquire_bytes_with_reservation` with the actual number of bytes later.
+    /// Acquires a permit for one item, blocking until both ceilings allow it.
+    ///
+    /// `bytes_fn` is called only when a byte ceiling is set, so callers avoid
+    /// computing a size that won't be used. Pass `None` (see [`BYTES_UNKNOWN_YET`])
+    /// when the size is not known yet: the controller reserves a single byte
+    /// permit, and the caller settles the real weight later via
+    /// [`acquire_bytes_with_reservation`](Self::acquire_bytes_with_reservation).
     pub async fn acquire(
         &self,
         bytes_fn: Option<impl FnOnce() -> usize>,
@@ -111,6 +145,11 @@ impl ConcurrencyController {
         })
     }
 
+    /// Settles the real byte weight for an item that earlier reserved a permit.
+    ///
+    /// Acquires the remaining weight beyond the one permit already reserved, or
+    /// returns `None` when no byte ceiling is set or the reservation already
+    /// covers the weight.
     pub async fn acquire_bytes_with_reservation(
         &self,
         bytes_fn: impl FnOnce() -> usize,
@@ -123,11 +162,18 @@ impl ConcurrencyController {
     }
 }
 
+/// Holds the local and global permits for one item under a
+/// [`CombinedConcurrencyController`]. Dropping it releases both.
 pub struct CombinedConcurrencyControllerPermit {
     _permit: ConcurrencyControllerPermit,
     _global_permit: ConcurrencyControllerPermit,
 }
 
+/// Enforces a per-task ceiling beneath a shared process-wide one.
+///
+/// Each [`acquire`](Self::acquire) takes a permit from the local controller and
+/// then from the shared global controller, so an item proceeds only when both
+/// allow it.
 pub struct CombinedConcurrencyController {
     controller: ConcurrencyController,
     global_controller: Arc<ConcurrencyController>,
@@ -135,6 +181,8 @@ pub struct CombinedConcurrencyController {
 }
 
 impl CombinedConcurrencyController {
+    /// Builds a combined controller: a fresh local controller from
+    /// `exec_options`, layered under the shared `global_controller`.
     pub fn new(exec_options: &Options, global_controller: Arc<ConcurrencyController>) -> Self {
         Self {
             controller: ConcurrencyController::new(exec_options),
@@ -144,6 +192,8 @@ impl CombinedConcurrencyController {
         }
     }
 
+    /// Acquires permits from both the local and global controllers for one
+    /// item. `bytes_fn` is evaluated once and its result reused for both layers.
     pub async fn acquire(
         &self,
         bytes_fn: Option<impl FnOnce() -> usize>,
@@ -165,6 +215,8 @@ impl CombinedConcurrencyController {
         })
     }
 
+    /// Settles the real byte weight for both layers after an earlier
+    /// reservation, returning the local and global permits in that order.
     pub async fn acquire_bytes_with_reservation(
         &self,
         bytes_fn: impl FnOnce() -> usize,

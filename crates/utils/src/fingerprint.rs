@@ -8,6 +8,16 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! Structural fingerprints of `Serialize` values, built on BLAKE3.
+//!
+//! A [`Fingerprinter`] implements serde's [`Serializer`] by feeding each value
+//! into a BLAKE3 hasher, tagging every scalar with its type and length so that
+//! two values fingerprint alike only when their structure and contents match.
+//! `1u32` and `1u64` differ; field order and enum variant kind matter. The hash
+//! is truncated to 128 bits and returned as a [`Fingerprint`], which is `Hash`,
+//! `Eq`, `Display` (hex), and base64-serializable for use as a cache or dedup
+//! key.
+
 use crate::{
     client_bail,
     error::{Error, Result},
@@ -19,6 +29,7 @@ use serde::ser::{
     SerializeTupleStruct, SerializeTupleVariant, Serializer,
 };
 
+/// The error a [`Fingerprinter`] returns when a value's `Serialize` impl fails.
 #[derive(Debug)]
 pub struct FingerprinterError {
     msg: String,
@@ -41,15 +52,21 @@ impl serde::ser::Error for FingerprinterError {
     }
 }
 
+/// A 128-bit structural hash. Equal fingerprints mean equal structure and
+/// contents (modulo the negligible BLAKE3 collision probability).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Fingerprint(pub [u8; 16]);
 
 impl Fingerprint {
+    /// Encodes the fingerprint as standard base64 (24 characters).
     #[inline(always)]
     pub fn to_base64(self) -> String {
         BASE64_STANDARD.encode(self.0)
     }
 
+    /// Parses a fingerprint from its 24-character base64 form, the inverse of
+    /// [`to_base64`](Self::to_base64). Returns a client error if the string is
+    /// the wrong length or does not decode to 16 bytes.
     #[inline(always)]
     pub fn from_base64(s: &str) -> Result<Self> {
         let bytes = match s.len() {
@@ -65,6 +82,7 @@ impl Fingerprint {
         Ok(Fingerprint(bytes))
     }
 
+    /// Borrows the raw 16 bytes.
     #[inline(always)]
     pub fn as_slice(&self) -> &[u8] {
         &self.0
@@ -119,12 +137,20 @@ impl<'de> Deserialize<'de> for Fingerprint {
         Self::from_base64(&s).map_err(serde::de::Error::custom)
     }
 }
+/// Hashes one or more `Serialize` values into a [`Fingerprint`].
+///
+/// Start from [`default`](Default::default), feed values with
+/// [`with`](Self::with) (chainable) or [`write`](Self::write) (in place), then
+/// call [`into_fingerprint`](Self::into_fingerprint). Each value's type tags and
+/// lengths fold into the hash, so the result depends on structure as well as
+/// contents.
 #[derive(Clone, Default)]
 pub struct Fingerprinter {
     hasher: blake3::Hasher,
 }
 
 impl Fingerprinter {
+    /// Finalizes the accumulated state into a 128-bit [`Fingerprint`].
     #[inline(always)]
     pub fn into_fingerprint(self) -> Fingerprint {
         let mut output = [0u8; 16];
@@ -132,6 +158,7 @@ impl Fingerprinter {
         Fingerprint(output)
     }
 
+    /// Folds `value` in and returns the fingerprinter, for chaining.
     #[inline(always)]
     pub fn with<S: Serialize + ?Sized>(
         self,
@@ -142,6 +169,7 @@ impl Fingerprinter {
         Ok(fingerprinter)
     }
 
+    /// Folds `value` into the running state in place.
     #[inline(always)]
     pub fn write<S: Serialize + ?Sized>(
         &mut self,
@@ -150,6 +178,8 @@ impl Fingerprinter {
         value.serialize(self)
     }
 
+    /// Folds opaque bytes in directly, without a type tag or length prefix. Use
+    /// this only for bytes whose framing the caller already controls.
     #[inline(always)]
     pub fn write_raw_bytes(&mut self, bytes: &[u8]) {
         self.hasher.update(bytes);
@@ -178,6 +208,9 @@ impl Fingerprinter {
     }
 }
 
+// Each method writes a short type tag (e.g. "i4", "s", "L") before the value's
+// bytes, and the composite serializers close with an end tag. The tags are what
+// keep distinct types and shapes from colliding on equal byte content.
 impl Serializer for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;

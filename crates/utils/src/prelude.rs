@@ -8,6 +8,12 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! The names most marque code wants from this crate.
+//!
+//! Glob-import this module (`use marque_utils::prelude::*`) to bring the
+//! workspace [`Error`] / [`Result`] types, the [`ContextExt`] combinators, and
+//! the `client_*` / `internal_*` bail macros into scope.
+
 pub use crate::error::ApiError;
 pub use crate::error::invariance_violation;
 pub use crate::error::{ContextExt, Error, Result};

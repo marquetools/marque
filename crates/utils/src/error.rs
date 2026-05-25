@@ -8,6 +8,21 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! The workspace error type and the helpers that build on it.
+//!
+//! [`Error`] sorts every failure into one of four kinds — caller mistakes
+//! ([`client`](Error::client)), internal faults ([`internal`](Error::internal)),
+//! errors from an embedding host language ([`host`](Error::host)), and a
+//! [`Context`](Error::Context) wrapper that records a human-readable trail. The
+//! [`ContextExt`] / [`StdContextExt`] traits add `.context(..)` to `Result` and
+//! `Option`, and the `client_*` / `internal_*` / `api_*` macros build-and-bail
+//! in one line.
+//!
+//! A few supporting types round it out: [`SError`] adapts [`Error`] to
+//! [`std::error::Error`] where a `'static` source is required, [`SharedError`]
+//! shares one error across many waiters (degrading to a message after the first
+//! takes ownership), and [`ApiError`] is the boundary type for API responses.
+
 use std::{
     any::Any,
     backtrace::Backtrace,
@@ -16,13 +31,21 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Any foreign error that can be carried as an [`Error::HostLang`]. Blanket-
+/// implemented for every `Send + Sync + 'static` standard error.
 pub trait HostError: Any + StdError + Send + Sync + 'static {}
 impl<T: Any + StdError + Send + Sync + 'static> HostError for T {}
 
+/// The workspace error. Each variant marks where a failure originated.
 pub enum Error {
+    /// A message wrapping an inner error, forming a context trail.
     Context { msg: String, source: Box<SError> },
+    /// An error surfaced from an embedding host language (e.g. Python).
     HostLang(Box<dyn HostError>),
+    /// A caller mistake — bad input or a failed precondition. Carries a
+    /// backtrace and renders as `Invalid Request: ..`.
     Client { msg: String, bt: Backtrace },
+    /// An internal fault, holding an [`anyhow::Error`] for flexible context.
     Internal(anyhow::Error),
 }
 
@@ -49,17 +72,21 @@ impl Debug for Error {
     }
 }
 
+/// A [`Result`](std::result::Result) defaulting to the workspace [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-// Backwards compatibility aliases
+/// Backwards-compatibility alias for [`Error`].
 pub type CError = Error;
+/// Backwards-compatibility alias for [`Result`].
 pub type CResult<T> = Result<T>;
 
 impl Error {
+    /// Wraps a host-language error as [`Error::HostLang`].
     pub fn host(e: impl HostError) -> Self {
         Self::HostLang(Box::new(e))
     }
 
+    /// Builds a [`Error::Client`] from a message, capturing a backtrace.
     pub fn client(msg: impl Into<String>) -> Self {
         Self::Client {
             msg: msg.into(),
@@ -67,14 +94,18 @@ impl Error {
         }
     }
 
+    /// Wraps any `Into<anyhow::Error>` as [`Error::Internal`].
     pub fn internal(e: impl Into<anyhow::Error>) -> Self {
         Self::Internal(e.into())
     }
 
+    /// Builds an [`Error::Internal`] straight from a message.
     pub fn internal_msg(msg: impl Into<String>) -> Self {
         Self::Internal(anyhow::anyhow!("{}", msg.into()))
     }
 
+    /// Returns the backtrace, if this error (or the error it wraps) captured
+    /// one. Host-language errors have none.
     pub fn backtrace(&self) -> Option<&Backtrace> {
         match self {
             Error::Client { bt, .. } => Some(bt),
@@ -84,6 +115,8 @@ impl Error {
         }
     }
 
+    /// Peels off any [`Context`](Error::Context) layers to reach the underlying
+    /// error.
     pub fn without_contexts(&self) -> &Error {
         match self {
             Error::Context { source, .. } => source.0.without_contexts(),
@@ -91,6 +124,7 @@ impl Error {
         }
     }
 
+    /// Returns this error's source, if any, for chain traversal.
     pub fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::Context { source, .. } => Some(source.as_ref()),
@@ -100,6 +134,7 @@ impl Error {
         }
     }
 
+    /// Wraps this error in a [`Context`](Error::Context) layer carrying `context`.
     pub fn context<C: Into<String>>(self, context: C) -> Self {
         Self::Context {
             msg: context.into(),
@@ -107,6 +142,8 @@ impl Error {
         }
     }
 
+    /// Like [`context`](Self::context), but builds the message lazily — `f` runs
+    /// only on the error path.
     pub fn with_context<C: Into<String>, F: FnOnce() -> C>(self, f: F) -> Self {
         Self::Context {
             msg: f().into(),
@@ -114,6 +151,8 @@ impl Error {
         }
     }
 
+    /// Wraps this error in an [`SError`] so it satisfies a `'static`
+    /// [`std::error::Error`] bound.
     pub fn std_error(self) -> SError {
         SError(self)
     }
@@ -139,19 +178,9 @@ impl StdError for Error {
     }
 }
 
-// impl<E: Into<anyhow::Error>> From<E> for Error {
-//     fn from(e: E) -> Self {
-//         Error::Internal(e.into())
-//     }
-// }
-
-// impl<E: Into<anyhow::Error>> From<E> for Error {
-//     fn from(e: E) -> Self {
-//         Error::Internal(e.into())
-//     }
-// }
-
-// Explicitly implement From for common error types used in recoco_utils to avoid conflict with From<T> for T
+// A blanket `From<E: Into<anyhow::Error>>` would collide with the reflexive
+// `From<T> for T`, so the common conversions are spelled out one at a time
+// below instead.
 impl From<anyhow::Error> for Error {
     fn from(e: anyhow::Error) -> Self {
         Error::Internal(e)
@@ -263,8 +292,14 @@ impl From<tokio::sync::watch::error::RecvError> for Error {
     }
 }
 
+/// Adds `.context(..)` / `.with_context(..)` to [`Result<T>`] and [`Option<T>`].
+///
+/// On a `Result` it wraps the existing error; on an `Option` a `None` becomes a
+/// [`client`](Error::client) error carrying the context message.
 pub trait ContextExt<T> {
+    /// Attaches `context` to the error path.
     fn context<C: Into<String>>(self, context: C) -> Result<T>;
+    /// Attaches a lazily-built context message to the error path.
     fn with_context<C: Into<String>, F: FnOnce() -> C>(self, f: F) -> Result<T>;
 }
 
@@ -278,8 +313,13 @@ impl<T> ContextExt<T> for Result<T> {
     }
 }
 
+/// Adds `.context(..)` / `.with_context(..)` to a `Result` carrying any foreign
+/// [`std::error::Error`], converting it to an [`Error::Internal`] along the way.
 pub trait StdContextExt<T, E> {
+    /// Converts the foreign error to [`Error`] and attaches `context`.
     fn context<C: Into<String>>(self, context: C) -> Result<T>;
+    /// Converts the foreign error to [`Error`] and attaches a lazily-built
+    /// context message.
     fn with_context<C: Into<String>, F: FnOnce() -> C>(self, f: F) -> Result<T>;
 }
 
@@ -303,6 +343,7 @@ impl<T> ContextExt<T> for Option<T> {
     }
 }
 
+/// Returns early with a formatted [`Error::client`].
 #[macro_export]
 macro_rules! client_bail {
     ( $fmt:literal $(, $($arg:tt)*)?) => {
@@ -310,6 +351,7 @@ macro_rules! client_bail {
     };
 }
 
+/// Builds a formatted [`Error::client`] without returning.
 #[macro_export]
 macro_rules! client_error {
     ( $fmt:literal $(, $($arg:tt)*)?) => {
@@ -317,6 +359,7 @@ macro_rules! client_error {
     };
 }
 
+/// Returns early with a formatted [`Error::internal_msg`].
 #[macro_export]
 macro_rules! internal_bail {
     ( $fmt:literal $(, $($arg:tt)*)?) => {
@@ -324,6 +367,7 @@ macro_rules! internal_bail {
     };
 }
 
+/// Builds a formatted [`Error::internal_msg`] without returning.
 #[macro_export]
 macro_rules! internal_error {
     ( $fmt:literal $(, $($arg:tt)*)?) => {
@@ -331,10 +375,12 @@ macro_rules! internal_error {
     };
 }
 
-// A wrapper around Error that fits into std::error::Error trait.
+/// Wraps [`Error`] so it satisfies the [`std::error::Error`] trait where a
+/// `'static` source is required (e.g. inside [`anyhow`]).
 pub struct SError(Error);
 
 impl SError {
+    /// Borrows the wrapped [`Error`].
     pub fn inner(&self) -> &Error {
         &self.0
     }
@@ -358,17 +404,21 @@ impl std::error::Error for SError {
     }
 }
 
-// Legacy types below - kept for backwards compatibility during migration
-
 struct ResidualErrorData {
     message: String,
     debug: String,
 }
 
+/// A cheap, cloneable snapshot of an error's rendered text.
+///
+/// When the original error cannot be cloned but its message must reach several
+/// recipients (e.g. every waiter on a failed batch), capture it once here and
+/// hand out clones.
 #[derive(Clone)]
 pub struct ResidualError(Arc<ResidualErrorData>);
 
 impl ResidualError {
+    /// Captures the `Display` and `Debug` renderings of `err`.
     pub fn new<Err: Display + Debug>(err: &Err) -> Self {
         Self(Arc::new(ResidualErrorData {
             message: err.to_string(),
@@ -396,10 +446,16 @@ enum SharedErrorState {
     ResidualErrorMessage(ResidualError),
 }
 
+/// One error shared across many holders.
+///
+/// The first caller to [`into_result`](SharedResultExt::into_result) takes the
+/// fully-typed [`Error`]; the slot then degrades to a [`ResidualError`], so
+/// later callers still get the message but as a generic internal error.
 #[derive(Clone)]
 pub struct SharedError(Arc<Mutex<SharedErrorState>>);
 
 impl SharedError {
+    /// Wraps `err` so it can be shared across clones.
     pub fn new(err: Error) -> Self {
         Self(Arc::new(Mutex::new(SharedErrorState::Error(err))))
     }
@@ -453,13 +509,19 @@ impl From<Error> for SharedError {
     }
 }
 
+/// Constructs an `Ok` in a [`SharedResult`], so call sites need not name
+/// [`SharedError`].
 pub fn shared_ok<T>(value: T) -> std::result::Result<T, SharedError> {
     Ok(value)
 }
 
+/// A [`Result`](std::result::Result) whose error is a [`SharedError`].
 pub type SharedResult<T> = std::result::Result<T, SharedError>;
 
+/// Converts a [`SharedResult`] into a plain [`Result`] by extracting the shared
+/// error. See [`SharedError`] for the degrade-after-first-take behavior.
 pub trait SharedResultExt<T> {
+    /// Takes ownership and returns the typed error (or value).
     fn into_result(self) -> Result<T>;
 }
 
@@ -472,7 +534,10 @@ impl<T> SharedResultExt<T> for std::result::Result<T, SharedError> {
     }
 }
 
+/// Borrowing counterpart to [`SharedResultExt`] for `&SharedResult<T>`, yielding
+/// a borrowed value on success.
 pub trait SharedResultExtRef<'a, T> {
+    /// Extracts the shared error, or borrows the value.
     fn into_result(self) -> Result<&'a T>;
 }
 
@@ -485,16 +550,20 @@ impl<'a, T> SharedResultExtRef<'a, T> for &'a std::result::Result<T, SharedError
     }
 }
 
+/// Builds a generic "Invariance violation" error for an unreachable state that
+/// nonetheless needs a value rather than a panic.
 pub fn invariance_violation() -> anyhow::Error {
     anyhow::anyhow!("Invariance violation")
 }
 
+/// The error type returned at the API boundary, wrapping an [`anyhow::Error`].
 #[derive(Debug)]
 pub struct ApiError {
     pub err: anyhow::Error,
 }
 
 impl ApiError {
+    /// Builds an API error from a message.
     pub fn new(message: &str) -> Self {
         Self {
             err: anyhow::anyhow!("{}", message),
@@ -529,6 +598,8 @@ impl From<Error> for ApiError {
         }
     }
 }
+/// Returns early with a formatted [`ApiError`], converted into the caller's
+/// error type via `.into()`.
 #[macro_export]
 macro_rules! api_bail {
     ( $fmt:literal $(, $($arg:tt)*)?) => {
@@ -536,6 +607,7 @@ macro_rules! api_bail {
     };
 }
 
+/// Builds a formatted [`ApiError`] without returning.
 #[macro_export]
 macro_rules! api_error {
     ( $fmt:literal $(, $($arg:tt)*)?) => {

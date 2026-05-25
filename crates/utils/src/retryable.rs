@@ -8,21 +8,35 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! Retries a fallible async operation with exponential backoff.
+//!
+//! [`run`] calls a closure that returns a future, and on a retryable error
+//! sleeps and tries again — backing off from [`RetryOptions::initial_backoff`]
+//! toward [`max_backoff`](RetryOptions::max_backoff) with jitter, and giving up
+//! at [`retry_timeout`](RetryOptions::retry_timeout). An error decides its own
+//! fate through [`IsRetryable`]; a non-retryable error returns immediately. The
+//! crate [`Error`] type pairs the underlying error with that flag.
+
 use std::{
     future::Future,
     time::{Duration, Instant},
 };
 use tracing::trace;
 
+/// Lets an error declare whether retrying it could succeed.
 pub trait IsRetryable {
+    /// Returns `true` if the operation is worth retrying after this error.
     fn is_retryable(&self) -> bool;
 }
 
+/// A crate [`Error`](crate::error::Error) paired with its retryable flag, so
+/// [`run`] knows whether to back off and try again or give up.
 pub struct Error {
     pub error: crate::error::Error,
     pub is_retryable: bool,
 }
 
+/// Default ceiling on total retry time: ten minutes.
 pub const DEFAULT_RETRY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 impl std::fmt::Display for Error {
@@ -44,6 +58,7 @@ impl IsRetryable for Error {
 }
 
 impl Error {
+    /// Wraps an error and marks it retryable.
     pub fn retryable<E: Into<crate::error::Error>>(error: E) -> Self {
         Self {
             error: error.into(),
@@ -51,6 +66,7 @@ impl Error {
         }
     }
 
+    /// Wraps an error and marks it non-retryable.
     pub fn not_retryable<E: Into<crate::error::Error>>(error: E) -> Self {
         Self {
             error: error.into(),
@@ -59,6 +75,8 @@ impl Error {
     }
 }
 
+// A bare crate error carries no retryable signal, so it defaults to
+// non-retryable; reach for `Error::retryable` to opt in.
 impl From<crate::error::Error> for Error {
     fn from(error: crate::error::Error) -> Self {
         Self {
@@ -83,16 +101,25 @@ impl<E: IsRetryable + std::error::Error + Send + Sync + 'static> From<E> for Err
     }
 }
 
+/// A [`Result`](std::result::Result) whose error defaults to this module's
+/// [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// Constructs the `Ok` variant of this module's [`Result`], shadowing the
+/// prelude `Ok` so a `run` closure body can write `Ok(value)` without naming the
+/// error type.
 #[allow(non_snake_case)]
 pub fn Ok<T>(value: T) -> Result<T> {
     Result::Ok(value)
 }
 
+/// Backoff and timeout knobs for [`run`].
 pub struct RetryOptions {
+    /// Total budget for all attempts. `None` retries until success.
     pub retry_timeout: Option<Duration>,
+    /// Delay before the first retry.
     pub initial_backoff: Duration,
+    /// Cap each backoff grows toward.
     pub max_backoff: Duration,
 }
 
@@ -106,12 +133,23 @@ impl Default for RetryOptions {
     }
 }
 
+/// Slower-backoff preset (1s initial, 60s cap) for operations against a
+/// resource already under load, where eager retries would only add pressure.
 pub static HEAVY_LOADED_OPTIONS: RetryOptions = RetryOptions {
     retry_timeout: Some(DEFAULT_RETRY_TIMEOUT),
     initial_backoff: Duration::from_secs(1),
     max_backoff: Duration::from_secs(60),
 };
 
+/// Runs `f` until it succeeds, hits a non-retryable error, or the retry budget
+/// runs out.
+///
+/// On a retryable error, sleeps for the current backoff and tries again,
+/// growing the backoff by a jittered factor toward
+/// [`max_backoff`](RetryOptions::max_backoff). A non-retryable error returns at
+/// once. The final sleep is clamped so it never overshoots
+/// [`retry_timeout`](RetryOptions::retry_timeout); once the deadline passes, the
+/// last error is returned.
 pub async fn run<
     Ok,
     Err: std::fmt::Display + IsRetryable,

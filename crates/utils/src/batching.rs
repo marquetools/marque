@@ -8,6 +8,16 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! Coalesces concurrent single-item calls into batched runner invocations.
+//!
+//! A caller implements [`Runner`] to process a whole `Vec` of inputs at once,
+//! then wraps it in a [`Batcher`] and calls [`run`](Batcher::run) per item. The
+//! first item runs on its own immediately; items that arrive while a run is in
+//! flight accumulate into a pending batch that fires when the current run
+//! finishes or [`BatchingOptions::max_batch_size`] is reached. Each caller
+//! awaits only its own result, delivered over a oneshot channel; if every
+//! waiter for a batch drops, the in-flight run is cancelled.
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -19,11 +29,18 @@ use crate::{
     error::{Error, ResidualError, Result},
     internal_bail,
 };
+/// Processes a batch of inputs in one call.
+///
+/// The returned iterator must yield exactly one output per input, in the same
+/// order; a length mismatch fails every waiter in the batch.
 #[async_trait]
 pub trait Runner: Send + Sync {
+    /// One unit of work handed to the runner.
     type Input: Send;
+    /// The result produced for each input.
     type Output: Send;
 
+    /// Processes `inputs` and returns one output per input, in order.
     async fn run(
         &self,
         inputs: Vec<Self::Input>,
@@ -113,6 +130,8 @@ impl<R: Runner + 'static> BatcherData<R> {
     }
 }
 
+/// Wraps a [`Runner`] and coalesces concurrent [`run`](Self::run) calls into
+/// batches.
 pub struct Batcher<R: Runner + 'static> {
     data: Arc<BatcherData<R>>,
     options: BatchingOptions,
@@ -128,11 +147,15 @@ enum BatchExecutionAction<R: Runner + 'static> {
     },
 }
 
+/// Tuning for a [`Batcher`].
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct BatchingOptions {
+    /// Flush the pending batch as soon as it reaches this many items. `None`
+    /// lets a batch grow until the current run finishes.
     pub max_batch_size: Option<usize>,
 }
 impl<R: Runner + 'static> Batcher<R> {
+    /// Builds a batcher over `runner` with the given options.
     pub fn new(runner: R, options: BatchingOptions) -> Self {
         Self {
             data: Arc::new(BatcherData {
@@ -142,6 +165,11 @@ impl<R: Runner + 'static> Batcher<R> {
             options,
         }
     }
+    /// Submits one input and awaits its output.
+    ///
+    /// Runs inline if the batcher is idle; otherwise joins the pending batch and
+    /// waits for that batch's run. Returns this input's own output, or the
+    /// error the batch's run produced.
     pub async fn run(&self, input: R::Input) -> Result<R::Output> {
         let batch_exec_action: BatchExecutionAction<R> = {
             let mut state = self.data.state.lock().unwrap();

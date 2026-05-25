@@ -8,8 +8,19 @@
 // SPDX-FileCopyrightText: 2026 Knitli Inc. (Marque)
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+//! Decodes a byte buffer to text by sniffing the byte-order mark, then
+//! falling back to UTF-8.
+
 use encoding_rs::Encoding;
 
+/// Decodes `bytes` to a string, returning the text and whether decoding hit any
+/// malformed sequences.
+///
+/// A leading byte-order mark wins: a UTF-8, UTF-16LE, or UTF-16BE BOM picks the
+/// encoding outright (UTF-32 is not handled). With no BOM, the bytes are read as
+/// UTF-8. Malformed input still decodes — invalid sequences become U+FFFD and
+/// the second return value is `true`. The result borrows `bytes` when no
+/// re-encoding is needed and allocates otherwise.
 pub fn bytes_to_string<'a>(bytes: &'a [u8]) -> (std::borrow::Cow<'a, str>, bool) {
     // 1) BOM sniff first (definitive for UTF-8/16; UTF-32 is not supported here).
     if let Some((enc, bom_len)) = Encoding::for_bom(bytes) {
