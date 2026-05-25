@@ -8,120 +8,101 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 **Common utilities for the [Marque](https://github.com/marquetools/marque) ecosystem.**
 
-This crate provides shared building blocks used across Recoco's core and operation modules. While Recoco primarily uses this crate internally, these utilities can be useful for developing custom operations or for standalone use in Rust projects.
+Shared building blocks used across Marque's engine and integration crates.
+Originally adapted from Recoco's utility crate; trimmed to the surface Marque
+actually needs.
 
 ## Installation
 
 ```toml
 [dependencies]
-marque-utils = { version = "0.1", features = ["batching", "fingerprint"] }
+marque-utils = { version = "0.1", features = ["concur_control"] }
 ```
 
-## 📦 Available Features
+## Available Features
 
-`marque-utils` is highly modular with **no default features** to keep dependencies minimal. Enable only what you need.
+No default features — enable only what you need. Every feature is independent;
+none implies another.
 
-### Core Utilities
+| Feature | Description | Key dependencies |
+|---------|-------------|------------------|
+| `batching` | Async micro-batcher that coalesces concurrent single-item calls into batched `Runner` invocations | `async-trait`, `serde`, `tokio`, `tokio-util` |
+| `bytes_decode` | BOM-sniffing byte-buffer → string decode (UTF-8/16) | `encoding_rs` |
+| `concur_control` | Row + byte semaphore backpressure (`ConcurrencyController`) | `tokio` |
+| `fingerprint` | 128-bit truncated-BLAKE3 content/value fingerprint with a serde `Serializer` for structural hashing | `base64`, `blake3`, `serde` |
+| `retryable` | Retry-with-exponential-backoff combinator | `fastrand`, `tokio` |
 
-| Feature | Description | Key Dependencies | Use When |
-|---------|-------------|------------------|----------|
-| `batching` | Async batch processing with concurrency control | `tokio-util`, `serde` | Building efficient data pipelines with batch operations |
-| `concur_control` | Concurrency limiting and rate control primitives | `tokio` | Managing concurrent operations and backpressure |
-| `deserialize` | JSON deserialization helpers with better error messages | `serde`, `serde_json`, `serde_path_to_error` | Parsing JSON with detailed error reporting |
-| `fingerprint` | Content hashing (BLAKE3) and fingerprinting | `blake3`, `base64`, `hex` | Change detection, deduplication, caching |
-| `retryable` | Exponential backoff retry logic | `tokio`, `rand`, `time` | Network calls, external APIs, unreliable operations |
+The `error` module and `prelude` are always available (`anyhow` + `tracing`),
+regardless of features.
 
+## Key modules & usage
 
-## 🛠️ Key Modules & Usage
+### Concurrency control
+
+Bound in-flight work by row count and/or byte volume — backs `BatchEngine`:
+
+```rust
+use marque_utils::concur_control::{ConcurrencyController, Options};
+
+let controller = ConcurrencyController::new(&Options {
+    max_inflight_rows: Some(16),
+    max_inflight_bytes: Some(256 * 1024 * 1024),
+});
+
+let _permit = controller.acquire(Some(|| doc.len())).await?;
+// work proceeds while the permit is held; released on drop
+```
 
 ### Batching
 
-Efficient batch processing with concurrency control:
+Coalesce concurrent calls into batched `Runner` invocations:
 
 ```rust
-use marque_utils::batching::{Batcher, BatchConfig};
+use marque_utils::batching::{Batcher, BatchingOptions, Runner};
 
-let config = BatchConfig {
-    max_batch_size: 100,
-    max_wait_ms: 1000,
-    max_inflight: 10,
-};
-
-let batcher = Batcher::new(config, |batch| async move {
-    // Process batch
-    Ok(())
-}).await?;
-
-batcher.send(item).await?;
+let batcher = Batcher::new(runner, BatchingOptions { max_batch_size: Some(64) });
+let output = batcher.run(input).await?;
 ```
 
 ### Fingerprinting
 
-Content-addressable hashing with BLAKE3:
+Deterministic content/value identity for dedup and cache keys. The
+`Fingerprinter` is a serde `Serializer`, so it fingerprints any `Serialize`
+value structurally — not just raw bytes:
 
 ```rust
-use marque_utils::fingerprint::{fingerprint, Fingerprint};
+use marque_utils::fingerprint::Fingerprinter;
 
-let hash = fingerprint(b"hello world");
-let hex_string = hash.to_hex();
-let base64_string = hash.to_base64();
+let fp = Fingerprinter::default().with(&value)?.into_fingerprint();
+let key = fp.to_base64();
 ```
 
-### Retry Logic
+This is distinct from the engine's audit digest, which stays a full-width
+`blake3::Hash` (`blake3:<hex>`) for compliance.
 
-Exponential backoff for unreliable operations:
+### Retry
+
+Exponential backoff for retryable operations:
 
 ```rust
-use marque_utils::retryable::{retry_with_backoff, RetryConfig};
+use marque_utils::retryable::{run, RetryOptions};
 
-let result = retry_with_backoff(
-    || async { 
-        // Your operation that might fail
-        api_call().await
-    },
-    RetryConfig {
-        max_attempts: 5,
-        initial_delay_ms: 100,
-        max_delay_ms: 10000,
-        backoff_multiplier: 2.0,
-    }
-).await?;
+let result = run(|| async { fallible().await }, &RetryOptions::default()).await?;
 ```
 
-### Concurrency Control
-
-Limit concurrent operations:
+### Byte decoding
 
 ```rust
-use marque_utils::concur_control::Semaphore;
+use marque_utils::bytes_decode::bytes_to_string;
 
-let sem = Semaphore::new(10); // Max 10 concurrent operations
-
-let _permit = sem.acquire().await?;
-// Do work while holding permit
-// Permit is released when dropped
+let (text, had_errors) = bytes_to_string(raw_bytes);
 ```
 
-## 📊 Feature Dependencies
+## Development
 
-Some features depend on others. Most are fully independent, except:
+Part of the Marque workspace. See the [main repository](https://github.com/marquetools/marque)
+for development guidelines.
 
-- `batching` requires `concur_control`, `fingerprint`, and `retryable`
-- `fingerprint` requires `deserialize`
+## License
 
-Enabling a feature automatically enables its dependencies.
-
-## 🎯 Common Feature Combinations
-
-### For Data Processing Pipelines
-```toml
-marque-utils = { version = "0.2", features = ["batching", "fingerprint", "retryable"] }
-```
-
-## 🔧 Development
-
-This crate is part of the Marque workspace. See the [main repository](https://github.com/marquetools/marque) for development guidelines.
-
-## 📄 License
-
-Marque License 1.0. See [main repository](https://github.com/marquetools/marque) for details.
+Marque License 1.0. See the [main repository](https://github.com/marquetools/marque) for details.

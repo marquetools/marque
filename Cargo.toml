@@ -30,6 +30,8 @@ license-file = "./LICENSE.md"
 
 [workspace.dependencies]
 async-trait = "0.1.89"
+base64 = "0.22.0"
+fastrand = { version = "2.4.1", features = ["std"] }
 futures = "0.3.32"
 futures-core = "0.3.32"
 marque-capco = { path = "crates/capco", version = "0.2.0" }
@@ -52,8 +54,13 @@ marque-test-utils = { path = "crates/test-utils" }
 marque-utils = { path = "crates/utils", version = "0.1.0" }
 # Async
 tokio = { version = "1.52.1", features = ["full"] }
+tokio-util = "0.7.18"
 
 aho-corasick = "1.1.4"
+# Byte-buffer -> string decoding with BOM sniffing (UTF-8/16) for the
+# marque-utils `bytes_decode` helper (extract / CLI file ingestion).
+# (Apache-2.0 OR MIT) AND BSD-3-Clause — allowed per Constitution dep hygiene.
+encoding_rs = "0.8.35"
 # Text processing / scanning
 memchr = "2.8.0"
 
@@ -100,19 +107,12 @@ tempfile = "3.27.0"
 # Compile-time tables
 phf = { version = "0.13.1", features = ["macros"] }
 
-# Batch processing utilities (concurrency control, fingerprinting)
-recoco-utils = { version = "0.2.3", default-features = false, features = [
-  "concur_control",
-  "fingerprint"
-] }
-
 # Build-time XML parsing (marque-ism build.rs)
 quick-xml = "0.40.1"
 
 # Vendored ODNI schema crates from github.com/marquetools/ism-data,
 # consumed as build-dependencies for marque-ism's codegen.
 ism = "20230609.0.0"
-ism-data = "20230609.0.0"
 ism-ismcat = "20230609.0.0"
 
 # XML processing (Schematron validation, XPath, DOM)
@@ -145,10 +145,8 @@ blake3 = { version = "1.8.5", default-features = false, features = ["pure"] }
 # Property-based testing
 proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 
-js-sys = "0.3.99"
-serde-wasm-bindgen = "0.6.5"
 # WASM
-wasm-bindgen = "0.2.122"
+wasm-bindgen = "0.2.120"
 
 # Cross-target Instant polyfill — std::time::Instant on native targets,
 # Performance.now() / Date.now() polyfill on wasm32-unknown-unknown.
@@ -162,7 +160,7 @@ web-time = "1.1.0"
 # `default-features = false` drops `tzdb-zoneinfo` and `tzdb-bundle-platform`
 # so the WASM target compiles without tzdb I/O; civil::Date / civil::DateTime /
 # tz::Offset are available under just `features = ["std"]`.
-jiff = { version = "0.2.24", default-features = false, features = ["std"] }
+jiff = { version = "0.2.25", default-features = false, features = ["std"] }
 
 # Observability
 tracing = "0.1.44"

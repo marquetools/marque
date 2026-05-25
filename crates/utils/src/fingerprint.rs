@@ -1,18 +1,16 @@
-// Adapted from CocoIndex
-// SPDX-FileCopyrightText: 2025-2026 CocoIndex
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 CocoIndex (upstream)
+// SPDX-FileCopyrightText: 2026 Knitli Inc. (Recoco)
+// SPDX-FileContributor: Adam Poulemanos <adam@knit.li>
+// SPDX-FileContributor: CocoIndex Contributors
 //
-// SPDX-FileCopyrightText: 2026 Knitli Inc.
-// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     client_bail,
     error::{Error, Result},
 };
 use base64::prelude::*;
-
-#[cfg(all(feature = "serde", feature = "deserialize"))]
 use serde::Deserialize;
-#[cfg(feature = "serde")]
 use serde::ser::{
     Serialize, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant, Serializer,
@@ -53,6 +51,7 @@ impl Fingerprint {
     pub fn from_base64(s: &str) -> Result<Self> {
         let bytes = match s.len() {
             24 => BASE64_STANDARD.decode(s)?,
+            _ => client_bail!("Encoded fingerprint length is unexpected: {}", s.len()),
         };
         let bytes: [u8; 16] = bytes.try_into().map_err(|e: Vec<u8>| {
             Error::client(format!(
@@ -99,7 +98,6 @@ impl std::hash::Hash for Fingerprint {
     }
 }
 
-#[cfg(feature = "serde")]
 impl Serialize for Fingerprint {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -109,7 +107,6 @@ impl Serialize for Fingerprint {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "deserialize"))]
 impl<'de> Deserialize<'de> for Fingerprint {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
@@ -119,7 +116,6 @@ impl<'de> Deserialize<'de> for Fingerprint {
         Self::from_base64(&s).map_err(serde::de::Error::custom)
     }
 }
-
 #[derive(Clone, Default)]
 pub struct Fingerprinter {
     hasher: blake3::Hasher,
@@ -133,7 +129,6 @@ impl Fingerprinter {
         Fingerprint(output)
     }
 
-    #[cfg(feature = "serde")]
     #[inline(always)]
     pub fn with<S: Serialize + ?Sized>(
         self,
@@ -145,7 +140,6 @@ impl Fingerprinter {
     }
 
     #[inline(always)]
-    #[cfg(feature = "serde")]
     pub fn write<S: Serialize + ?Sized>(
         &mut self,
         value: &S,
@@ -181,7 +175,6 @@ impl Fingerprinter {
     }
 }
 
-#[cfg(feature = "serde")]
 impl Serializer for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -412,7 +405,6 @@ impl Serializer for &mut Fingerprinter {
     }
 }
 
-#[cfg(feature = "serde")]
 impl SerializeSeq for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -429,7 +421,7 @@ impl SerializeSeq for &mut Fingerprinter {
         Ok(())
     }
 }
-#[cfg(feature = "serde")]
+
 impl SerializeTuple for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -446,7 +438,7 @@ impl SerializeTuple for &mut Fingerprinter {
         Ok(())
     }
 }
-#[cfg(feature = "serde")]
+
 impl SerializeTupleStruct for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -463,7 +455,7 @@ impl SerializeTupleStruct for &mut Fingerprinter {
         Ok(())
     }
 }
-#[cfg(feature = "serde")]
+
 impl SerializeTupleVariant for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -504,7 +496,7 @@ impl SerializeMap for &mut Fingerprinter {
         Ok(())
     }
 }
-#[cfg(feature = "serde")]
+
 impl SerializeStruct for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -527,7 +519,7 @@ impl SerializeStruct for &mut Fingerprinter {
         Ok(())
     }
 }
-#[cfg(feature = "serde")]
+
 impl SerializeStructVariant for &mut Fingerprinter {
     type Ok = ();
     type Error = FingerprinterError;
@@ -552,7 +544,6 @@ impl SerializeStructVariant for &mut Fingerprinter {
 }
 
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use std::collections::HashSet;
@@ -600,9 +591,6 @@ mod tests {
         let invalid_base64 = "!!!!####$$$$%%%%^^^^&&&&";
         assert_eq!(invalid_base64.len(), 24);
         assert!(Fingerprint::from_base64(invalid_base64).is_err());
-
-        let invalid_hex = "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG";
-        assert!(Fingerprint::from_base64(invalid_hex).is_err());
     }
 
     #[test]

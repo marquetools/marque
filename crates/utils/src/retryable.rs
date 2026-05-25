@@ -1,9 +1,14 @@
-// Adapted from CocoIndex
-// SPDX-FileCopyrightText: 2025-2026 CocoIndex
-// SPDX-License-Identifier: Apache-2.0
+// Recoco is a Rust-only fork of CocoIndex, by [CocoIndex](https://CocoIndex)
+// Original code from CocoIndex is copyrighted by CocoIndex
+// SPDX-FileCopyrightText: 2025-2026 CocoIndex (upstream)
+// SPDX-FileContributor: CocoIndex Contributors
 //
-// SPDX-FileCopyrightText: 2026 Knitli Inc.
-// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+// All modifications from the upstream for Recoco are copyrighted by Knitli Inc.
+// SPDX-FileCopyrightText: 2026 Knitli Inc. (Recoco)
+// SPDX-FileContributor: Adam Poulemanos <adam@knit.li>
+//
+// Both the upstream CocoIndex code and the Recoco modifications are licensed under the Apache-2.0 License.
+// SPDX-License-Identifier: Apache-2.0
 
 use std::{
     future::Future,
@@ -37,13 +42,6 @@ impl std::fmt::Debug for Error {
 impl IsRetryable for Error {
     fn is_retryable(&self) -> bool {
         self.is_retryable
-    }
-}
-
-#[cfg(feature = "reqwest")]
-impl IsRetryable for reqwest::Error {
-    fn is_retryable(&self) -> bool {
-        self.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS)
     }
 }
 
@@ -155,7 +153,8 @@ pub async fn run<
                 if backoff < options.max_backoff {
                     backoff = std::cmp::min(
                         Duration::from_micros(
-                            (backoff.as_micros() * rand::random_range(1618..=2000) / 1000) as u64,
+                            (backoff.as_micros() * u128::from(fastrand::u32(1618..=2000)) / 1000)
+                                as u64,
                         ),
                         options.max_backoff,
                     );

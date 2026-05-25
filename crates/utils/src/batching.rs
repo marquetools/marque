@@ -1,14 +1,17 @@
-// Adapted from CocoIndex
-// SPDX-FileCopyrightText: 2025-2026 CocoIndex
-// SPDX-License-Identifier: Apache-2.0
+// Recoco is a Rust-only fork of CocoIndex, by [CocoIndex](https://CocoIndex)
+// Original code from CocoIndex is copyrighted by CocoIndex
+// SPDX-FileCopyrightText: 2025-2026 CocoIndex (upstream)
+// SPDX-FileContributor: CocoIndex Contributors
 //
-// SPDX-FileCopyrightText: 2026 Knitli Inc.
-// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
-
+// All modifications from the upstream for Recoco are copyrighted by Knitli Inc.
+// SPDX-FileCopyrightText: 2026 Knitli Inc. (Recoco)
+// SPDX-FileContributor: Adam Poulemanos <adam@knit.li>
+//
+// Both the upstream CocoIndex code and the Recoco modifications are licensed under the Apache-2.0 License.
+// SPDX-License-Identifier: Apache-2.0
 
 use async_trait::async_trait;
-#[cfg(any(feature = "serde", feature = "deserialize", feature = "json"))]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
@@ -127,7 +130,7 @@ enum BatchExecutionAction<R: Runner + 'static> {
     },
 }
 
-#[derive(Default, Clone), cfg_attr(any(feature = "serde", feature = "deserialize", feature = "json"), derive(Serialize, Deserialize))]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct BatchingOptions {
     pub max_batch_size: Option<usize>,
 }
@@ -274,7 +277,6 @@ impl BatchRecvCancellationGuard {
 }
 
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};

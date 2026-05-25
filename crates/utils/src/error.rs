@@ -1,14 +1,15 @@
-// Adapted from CocoIndex
-// SPDX-FileCopyrightText: 2025-2026 CocoIndex
-// SPDX-License-Identifier: Apache-2.0
+// Recoco is a Rust-only fork of CocoIndex, by [CocoIndex](https://CocoIndex)
+// Original code from CocoIndex is copyrighted by CocoIndex
+// SPDX-FileCopyrightText: 2025-2026 CocoIndex (upstream)
+// SPDX-FileContributor: CocoIndex Contributors
 //
-// SPDX-FileCopyrightText: 2026 Knitli Inc.
-// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+// All modifications from the upstream for Recoco are copyrighted by Knitli Inc.
+// SPDX-FileCopyrightText: 2026 Knitli Inc. (Recoco)
+// SPDX-FileContributor: Adam Poulemanos <adam@knit.li>
+//
+// Both the upstream CocoIndex code and the Recoco modifications are licensed under the Apache-2.0 License.
+// SPDX-License-Identifier: Apache-2.0
 
-#[cfg(feature = "http")]
-pub use http::StatusCode;
-#[cfg(any(feature = "server", feature = "serde", feature = "deserialize", feature = "json"))]
-use serde::Serialize;
 use std::{
     any::Any,
     backtrace::Backtrace,
@@ -140,6 +141,18 @@ impl StdError for Error {
     }
 }
 
+// impl<E: Into<anyhow::Error>> From<E> for Error {
+//     fn from(e: E) -> Self {
+//         Error::Internal(e.into())
+//     }
+// }
+
+// impl<E: Into<anyhow::Error>> From<E> for Error {
+//     fn from(e: E) -> Self {
+//         Error::Internal(e.into())
+//     }
+// }
+
 // Explicitly implement From for common error types used in recoco_utils to avoid conflict with From<T> for T
 impl From<anyhow::Error> for Error {
     fn from(e: anyhow::Error) -> Self {
@@ -155,8 +168,7 @@ impl From<std::io::Error> for Error {
 #[cfg(any(
     feature = "concur_control",
     feature = "retryable",
-    feature = "batching",
-    feature = "http"
+    feature = "batching"
 ))]
 impl From<tokio::task::JoinError> for Error {
     fn from(e: tokio::task::JoinError) -> Self {
@@ -166,8 +178,7 @@ impl From<tokio::task::JoinError> for Error {
 #[cfg(any(
     feature = "concur_control",
     feature = "retryable",
-    feature = "batching",
-    feature = "http"
+    feature = "batching"
 ))]
 impl From<tokio::sync::oneshot::error::RecvError> for Error {
     fn from(e: tokio::sync::oneshot::error::RecvError) -> Self {
@@ -198,24 +209,12 @@ impl From<ApiError> for Error {
         Error::Internal(e.err)
     }
 }
-#[cfg(any(feature = "deserialize", feature = "json"))]
-impl From<serde_json::Error> for Error {
-    fn from(e: serde_json::Error) -> Self {
-        Error::Internal(e.into())
-    }
-}
+
 impl<T> From<std::sync::PoisonError<T>> for Error {
     fn from(e: std::sync::PoisonError<T>) -> Self {
         Error::Internal(anyhow::anyhow!("Mutex poison error: {}", e))
     }
 }
-#[cfg(any(feature = "http", feature = "reqwest"))]
-impl From<http::header::InvalidHeaderValue> for Error {
-    fn from(e: http::header::InvalidHeaderValue) -> Self {
-        Error::Internal(e.into())
-    }
-}
-
 impl From<std::num::ParseIntError> for Error {
     fn from(e: std::num::ParseIntError) -> Self {
         Error::Internal(e.into())
@@ -262,13 +261,6 @@ impl From<tokio::sync::AcquireError> for Error {
 ))]
 impl From<tokio::sync::watch::error::RecvError> for Error {
     fn from(e: tokio::sync::watch::error::RecvError) -> Self {
-        Error::Internal(e.into())
-    }
-}
-
-#[cfg(feature = "reqwest")]
-impl From<reqwest::Error> for Error {
-    fn from(e: reqwest::Error) -> Self {
         Error::Internal(e.into())
     }
 }
@@ -368,6 +360,44 @@ impl std::error::Error for SError {
     }
 }
 
+// Legacy types below - kept for backwards compatibility during migration
+
+struct ResidualErrorData {
+    message: String,
+    debug: String,
+}
+
+#[derive(Clone)]
+pub struct ResidualError(Arc<ResidualErrorData>);
+
+impl ResidualError {
+    pub fn new<Err: Display + Debug>(err: &Err) -> Self {
+        Self(Arc::new(ResidualErrorData {
+            message: err.to_string(),
+            debug: err.to_string(),
+        }))
+    }
+}
+
+impl Display for ResidualError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.message)
+    }
+}
+
+impl Debug for ResidualError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.debug)
+    }
+}
+
+impl StdError for ResidualError {}
+
+enum SharedErrorState {
+    Error(Error),
+    ResidualErrorMessage(ResidualError),
+}
+
 #[derive(Clone)]
 pub struct SharedError(Arc<Mutex<SharedErrorState>>);
 
@@ -464,24 +494,12 @@ pub fn invariance_violation() -> anyhow::Error {
 #[derive(Debug)]
 pub struct ApiError {
     pub err: anyhow::Error,
-    #[cfg(feature = "http")]
-    pub status_code: StatusCode,
 }
 
 impl ApiError {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "http")] {
-        pub fn new(message: &str, status_code: StatusCode) -> Self {
-            Self {
-                err: anyhow::anyhow!("{}", message),
-                status_code,
-            }
-        }} else {
-            pub fn new(message: &str) -> Self {
-                Self {
-                    err: anyhow::anyhow!("{}", message),
-                }
-            }
+    pub fn new(message: &str) -> Self {
+        Self {
+            err: anyhow::anyhow!("{}", message),
         }
     }
 }
@@ -498,90 +516,36 @@ impl StdError for ApiError {
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "http")] {
-        impl From<anyhow::Error> for ApiError {
-            fn from(err: anyhow::Error) -> ApiError {
-                if err.is::<ApiError>() {
-                    return err.downcast::<ApiError>().unwrap();
-                }
-                Self {
-                    err,
-                    status_code: StatusCode::INTERNAL_SERVER_ERROR,
-                }
-            }
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> ApiError {
+        if err.is::<ApiError>() {
+            return err.downcast::<ApiError>().unwrap();
         }
-    } else {
-        impl From<anyhow::Error> for ApiError {
-            fn from(err: anyhow::Error) -> ApiError {
-                if err.is::<ApiError>() {
-                    return err.downcast::<ApiError>().unwrap();
-                }
-                Self {
-                    err,
-                }
-            }
-        }
+        Self { err }
     }
 }
 impl From<Error> for ApiError {
     fn from(err: Error) -> ApiError {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "http")] {
-                let status_code = match err.without_contexts() {
-                    Error::Client { .. } => StatusCode::BAD_REQUEST,
-                    _ => StatusCode::INTERNAL_SERVER_ERROR,
-                };
-                ApiError {
-                    err: anyhow::Error::from(err.std_error()),
-                    status_code,
-                }
-            } else {
-                ApiError {
-                    err: anyhow::Error::from(err.std_error()),
-                }
-            }
+        ApiError {
+            err: anyhow::Error::from(err.std_error()),
         }
     }
 }
-cfg_if::cfg_if! {
-    if #[cfg(feature = "http")] {
-        #[macro_export]
-        macro_rules! api_bail {
-            ( $fmt:literal $(, $($arg:tt)*)?) => {
-                return Err($crate::error::ApiError::new(&format!($fmt $(, $($arg)*)?), $crate::error::StatusCode::BAD_REQUEST).into())
-            };
-        }
-    } else {
-        #[macro_export]
-        macro_rules! api_bail {
-            ( $fmt:literal $(, $($arg:tt)*)?) => {
-                return Err($crate::error::ApiError::new(&format!($fmt $(, $($arg)*)?)).into())
-            };
-        }
-    }
+#[macro_export]
+macro_rules! api_bail {
+    ( $fmt:literal $(, $($arg:tt)*)?) => {
+        return Err($crate::error::ApiError::new(&format!($fmt $(, $($arg)*)?)).into())
+    };
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "http")] {
-        #[macro_export]
-        macro_rules! api_error {
-            ( $fmt:literal $(, $($arg:tt)*)?) => {
-                $crate::error::ApiError::new(&format!($fmt $(, $($arg)*)?), $crate::error::StatusCode::BAD_REQUEST)
-            };
-        }
-    } else {
-        #[macro_export]
-        macro_rules! api_error {
-            ( $fmt:literal $(, $($arg:tt)*)?) => {
-                $crate::error::ApiError::new(&format!($fmt $(, $($arg)*)?))
-            };
-        }
-    }
+#[macro_export]
+macro_rules! api_error {
+    ( $fmt:literal $(, $($arg:tt)*)?) => {
+        $crate::error::ApiError::new(&format!($fmt $(, $($arg)*)?))
+    };
 }
 
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use std::backtrace::BacktraceStatus;
