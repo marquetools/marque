@@ -114,7 +114,7 @@ impl AsRef<[u8]> for Fingerprint {
 impl std::hash::Hash for Fingerprint {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Fingerprint is already evenly distributed, so we can just use the first few bytes.
-        const N: usize = size_of::<usize>();
+        const N: usize = std::mem::size_of::<usize>();
         state.write(&self.0[..N]);
     }
 }
