@@ -42,6 +42,15 @@ fn fix_once(source: &str) -> String {
     String::from_utf8(result.source.expose_secret().to_vec()).expect("engine output is valid UTF-8")
 }
 
+fn lint_predicate_ids(source: &str) -> Vec<String> {
+    engine()
+        .lint(source.as_bytes())
+        .diagnostics
+        .iter()
+        .map(|d| d.rule.predicate_id().to_string())
+        .collect()
+}
+
 // -------------------------------------------------------------------------
 // SPEC, not yet realized at portion scope — RFC #799.
 // ORCON-clears-RELIDO (§H.8 p136) and caveated⇒NOFORN exist only as
@@ -92,4 +101,34 @@ fn contrast_wired_edge_relido_conflicts_noforn_fixes_at_portion() {
     // constraint mirror, unlike ORCON ⊥ RELIDO. Same §H.8 supersession
     // family; only this one was given a portion-scope realization.
     assert_eq!(fix_once("(S//SI//NF/RELIDO)"), "(S//SI//NF)");
+    assert!(
+        lint_predicate_ids("(S//SI//NF/RELIDO)")
+            .iter()
+            .any(|id| id == "portion.dissem.relido-conflicts-noforn"),
+        "E054 (RELIDO ⊥ NOFORN) should fire at portion scope"
+    );
+}
+
+// -------------------------------------------------------------------------
+// Characterization: the gap is SILENT at portion scope (RFC #799).
+// The two OC cases above (ignored fix-spec) currently emit no portion-
+// scope diagnostic at all. These live tests lock that "silent" behavior
+// so it cannot change unnoticed; when #799 lands they update alongside
+// un-ignoring the fix-spec tests.
+// -------------------------------------------------------------------------
+
+#[test]
+fn orcon_clears_relido_is_silent_at_portion_scope() {
+    assert!(
+        lint_predicate_ids("(TS//SI-G//OC/RELIDO)").is_empty(),
+        "ORCON-clears-RELIDO has no portion-scope realization yet (RFC #799)"
+    );
+}
+
+#[test]
+fn caveated_orcon_is_silent_at_portion_scope() {
+    assert!(
+        lint_predicate_ids("(TS//SI-G//OC)").is_empty(),
+        "caveated NOFORN has no portion-scope realization yet (RFC #799)"
+    );
 }

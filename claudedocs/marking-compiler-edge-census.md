@@ -1,9 +1,14 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # Marking-Compiler Edge Census
 
 **Date:** 2026-05-25
 **Purpose:** Test the "marking compiler" framing by classifying every CAPCO rule, constraint, rewrite, and closure edge into a token-relation taxonomy — `implies` / typed-`expels` / floor-as-imply / irreducibly-procedural — and running four correctness checks over the resulting graph: implies-acyclicity, expel-typing, no-retraction, and commit-boundary.
 
-> Status: synthesis over three grounded extractions (hand-written rules, declarative constraints, rewrites+closure+FactBitmask). Taxonomy assignment and the four checks are this author's analysis. **Two items require source/code verification before any migration — see §6.** Row counts are as the extractions reported (32 rules, ~47 constraint rows, ~30 rewrites, 6 wired + 4 deferred closure rows); they have not been independently re-counted line-by-line.
+> Status: synthesis over three grounded extractions (hand-written rules, declarative constraints, rewrites+closure+FactBitmask). Taxonomy assignment and the four checks are this author's analysis. **Both items originally flagged for verification are now resolved — see §6** (NODIS⊥EXDIS direction confirmed; the SCI/RELIDO confluence question verified clean against `default_fill.rs`). Row counts are as the extractions reported (32 rules, ~47 constraint rows, ~30 rewrites, 6 wired + 4 deferred closure rows); they have not been independently re-counted line-by-line.
 
 ---
 
