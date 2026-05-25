@@ -143,6 +143,7 @@ fn dedup_sci_markings<'src>(axis: &mut Box<[ParsedSciMarking<'src>]>) {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::attrs::{AeaMarking, AtomalBlock, NatoSap, SciControlSystem, SciMarking};

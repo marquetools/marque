@@ -32,6 +32,7 @@ pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

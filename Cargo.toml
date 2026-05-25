@@ -15,6 +15,7 @@ members = [
   "crates/scheme",
   "crates/server",
   "crates/test-utils",
+  "crates/utils",
   "crates/wasm",
   "marque",
 ]
@@ -28,6 +29,9 @@ repository = "https://github.com/marquetools/marque"
 license-file = "./LICENSE.md"
 
 [workspace.dependencies]
+async-trait = "0.1.89"
+futures = "0.3.32"
+futures-core = "0.3.32"
 marque-capco = { path = "crates/capco", version = "0.2.0" }
 marque-config = { path = "crates/config", version = "0.2.0", default-features = false }
 marque-core = { path = "crates/core", version = "0.2.0" }
@@ -45,10 +49,7 @@ marque-ism = { path = "crates/ism", version = "0.2.0", default-features = false 
 marque-rules = { path = "crates/rules", version = "0.2.0" }
 marque-scheme = { path = "crates/scheme", version = "0.2.0" }
 marque-test-utils = { path = "crates/test-utils" }
-
-async-trait = "0.1.89"
-futures = "0.3.32"
-futures-core = "0.3.32"
+marque-utils = { path = "crates/utils", version = "0.1.0" }
 # Async
 tokio = { version = "1.52.1", features = ["full"] }
 
@@ -60,7 +61,7 @@ memchr = "2.8.0"
 # lists are <= 4 codes, so we keep them inline instead of heap-allocating).
 # MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
 # Constitution Principle III.
-smallvec = "1"
+smallvec = "1.15.1"
 
 # Small-string optimization (<=23 bytes inline, Arc<str> fallback above the
 # threshold, cheap Clone, zero-cost SmolStr::new_static(&'static str)).
@@ -73,7 +74,7 @@ smallvec = "1"
 # their transitive `borsh` + `cfg_aliases` crates) that we do not use —
 # we only consume the core `SmolStr` type. Re-add `features = ["serde"]`
 # here if a downstream crate needs the `Serialize` impl.
-smol_str = { version = "0.3", default-features = false }
+smol_str = { version = "0.3.6", default-features = false }
 
 anyhow = "1.0.102"
 # Error handling
@@ -89,7 +90,7 @@ axum = { version = "0.8.9", features = ["json"] }
 tower = "0.5.3"
 tower-http = { version = "0.6.11", features = ["cors", "set-header", "trace"] }
 
-assert_cmd = "2.2.1"
+assert_cmd = "2.2.2"
 # CLI
 clap = { version = "4.6.1", features = ["derive"] }
 humantime = "2.3.0"
@@ -139,15 +140,15 @@ zeroize = "1.8.2"
 # `default-features = false, features = ["pure"]` selects the pure-Rust
 # SIMD-free path on `wasm32-unknown-unknown` per Constitution III
 # WASM-size discipline.
-blake3 = { version = "1", default-features = false, features = ["pure"] }
+blake3 = { version = "1.8.5", default-features = false, features = ["pure"] }
 
 # Property-based testing
-proptest = { version = "1", default-features = false, features = ["std"] }
+proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 
-js-sys = "0.3.95"
+js-sys = "0.3.99"
 serde-wasm-bindgen = "0.6.5"
 # WASM
-wasm-bindgen = "0.2.118"
+wasm-bindgen = "0.2.122"
 
 # Cross-target Instant polyfill — std::time::Instant on native targets,
 # Performance.now() / Date.now() polyfill on wasm32-unknown-unknown.
@@ -166,6 +167,14 @@ jiff = { version = "0.2.24", default-features = false, features = ["std"] }
 # Observability
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[workspace.lints.clippy]
+# The `let mut x = T::default(); x.foo = ...;` test-fixture pattern trips
+# clippy::field_reassign_with_default at hundreds of sites. The style
+# preference is real but the migration cost is mechanical churn across
+# ~270 test sites with no correctness gain; suppress workspace-wide and
+# reconsider when a new construction pattern lands.
+field_reassign_with_default = "allow"
 
 # Workspace-wide lint settings — inherited by all member crates.
 # Coverage builds may use `cfg(coverage)`, and some nightly-based coverage setups
@@ -187,18 +196,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(feature, values("corpus-override"))',
 ] }
 
-[workspace.lints.clippy]
-# The `let mut x = T::default(); x.foo = ...;` test-fixture pattern trips
-# clippy::field_reassign_with_default at hundreds of sites. The style
-# preference is real but the migration cost is mechanical churn across
-# ~270 test sites with no correctness gain; suppress workspace-wide and
-# reconsider when a new construction pattern lands.
-field_reassign_with_default = "allow"
-
 [profile.bench]
 inherits = "release"
-debug = true
-debug-assertions = true
+strip = "none"
 overflow-checks = true
 
 [profile.dev]
@@ -241,11 +241,11 @@ opt-level = 3
 [profile.release-cloud]
 inherits = "release"
 
+[profile.release-monoaudit]
+inherits = "release"
+
 [profile.release-server]
 inherits = "release"
 
 [profile.release-web]
-inherits = "release"
-
-[profile.release-monoaudit]
 inherits = "release"

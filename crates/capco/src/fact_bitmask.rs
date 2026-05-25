@@ -755,6 +755,7 @@ const fn encode_nato_class(n: NatoClassification) -> u128 {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use marque_ism::{Classification, DissemControl, MarkingClassification};

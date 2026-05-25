@@ -1,0 +1,59 @@
+# Loosly based on CocoIndex's utils crate:
+# SPDX-FileCopyrightText: 2025-2026 CocoIndex
+# SPDX-FileContributor: CocoIndex Contributors
+#
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "marque-utils"
+version = "0.1.0"
+edition = { workspace = true }
+rust-version = { workspace = true }
+description = "Common utilities for Marque, the marking compiler."
+readme = "README.md"
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true, optional = true }
+blake3 = { workspace = true, optional = true }
+cfg-if = { workspace = true }
+http = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+serde_path_to_error = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
+
+[dev-dependencies]
+http = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_path_to_error = { workspace = true }
+
+[features]
+default = []
+batching = [
+  "concur_control",
+  "dep:serde",
+  "dep:tokio",
+  "dep:tokio-util",
+  "fingerprint",
+  "http",
+  "retryable"
+]
+concur_control = ["dep:tokio"]
+deserialize = ["dep:serde", "dep:serde_path_to_error"]
+fingerprint = [
+  "dep:base64",
+  "dep:blake3",
+]
+http = ["dep:http", "reqwest", "retryable"]
+json = ["dep:serde_json", "deserialize"]
+retryable = ["dep:rand", "dep:time", "dep:tokio"]
+serde = ["dep:serde"]

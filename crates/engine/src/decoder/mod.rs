@@ -55,6 +55,7 @@ mod shape;
 mod types;
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod test_helpers;
 
 // Public surface — byte-identical paths preserved (frozen API).
