@@ -84,6 +84,59 @@ fn lint_latency_benchmark(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Single-page document bench (`lint_single_page`)
+// ---------------------------------------------------------------------------
+//
+// Marketing/reference fixture sitting between the portion-level micro-bench
+// and the 10KB `lint_10kb` gate. `SINGLE_PAGE` is a hand-written ~3KB
+// classified memorandum shaped like a real, generously-spaced government
+// page: a top/bottom classification banner, an unclassified header +
+// references block, ten portion-marked paragraphs (a mix of `(U)`, `(C)`,
+// `(S//NF)`, an `(S//REL TO ...)` coalition-releasable paragraph, an
+// `(S//SI//NF)` SCI paragraph, and a `(U//FOUO)` administrative note), and a
+// closing classification authority block. Paragraph breaks use `\n\n` only —
+// no `\n\n\n+` runs and no form-feed — so the whole fixture stays on ONE
+// page (PageContext never resets) and the SCI roll-up resolves against a
+// single banner.
+//
+// The document is deliberately *correctly marked*: the banner rolls the
+// `(S//SI//NF)` portion up to `SECRET//SI//NOFORN`, so it produces zero
+// error/warning diagnostics. Exactly one advisory `suggest` fires (a RELIDO
+// closure inference on the bare `(C)` portion, `§H.8 p154`), which is
+// realistic for IC content and does not affect the measured latency. Pinning
+// the strict recognizer (matching `lint_10kb`) keeps the single-page and
+// 10KB numbers directly comparable on the same code path; the fixture is
+// all-valid, so the default strict-or-decoder dispatcher would land within
+// noise of this number.
+//
+// Baseline-tracked (`lint_single_page` in `benches/baseline.json`) as an
+// advisory reference point with the SC-001 16ms absolute ceiling. It is NOT
+// wired into `scripts/bench-check.sh`, so it carries no +10% regression gate
+// and cannot flake CI — it exists to record a representative captured number.
+//
+// The `SINGLE_PAGE` fixture is shared with `fix_10kb` and `throughput_pages`
+// via `marque_test_utils::fixtures` so all three benches measure the same
+// document.
+fn lint_single_page_benchmark(c: &mut Criterion) {
+    let input = marque_test_utils::fixtures::SINGLE_PAGE.as_bytes();
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pin the strict recognizer so the single-page
+    // number is directly comparable to `lint_10kb` on the same code path.
+    // The fixture is all-valid, so the default dispatcher's decoder leg
+    // never fires and would land within noise of this measurement.
+    .with_strict_recognizer();
+
+    c.bench_function("lint_single_page", |b| {
+        b.iter(|| engine.lint(black_box(input)));
+    });
+}
+
 /// Build a ~10KB representative input where exactly ONE region contains
 /// a mangled marking that forces the decoder to fire. The rest is the
 /// same valid-marking + prose mix as `build_representative_input` so the
@@ -833,6 +886,7 @@ fn lint_sci_composite_dense_benchmark(c: &mut Criterion) {
 criterion_group!(
     benches,
     lint_latency_benchmark,
+    lint_single_page_benchmark,
     decoder_latency_benchmark,
     lint_default_config_benchmark,
     lint_off_heavy_config_benchmark,

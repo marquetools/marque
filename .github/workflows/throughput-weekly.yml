@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Weekly pages-per-minute throughput time series. Runs the custom
+# `throughput_pages` bench (a `harness = false` BatchEngine driver in
+# `crates/engine/benches/throughput_pages.rs`), parses the
+# `bench-check[pages_per_minute]:` lines it prints, and posts a comment to
+# the tracking issue (marquetools/marque#806).
+#
+# Cadence: Mondays at 14:31 UTC. The off-the-hour minute (`31` not `0`) and
+# the offset from the fix_latency weekly (`17 13 * * 1`) follow the
+# fleet-pile-up convention bench-check.sh and the constitution's bench
+# guidance call out.
+#
+# Hardware: `ubuntu-latest` — the total pages/min figure is core-count
+# dependent, so it is comparable week-to-week only while the runner class is
+# stable; the per-core figure is the host-independent companion.
+#
+# Advisory — never fails the build for noise. If the bench crashes hard the
+# workflow fails and no comment is posted; that is a visible signal in the
+# Actions tab without polluting the tracking issue with bogus numbers.
+
+name: Weekly pages-per-minute throughput
+
+on:
+  schedule:
+    - cron: "31 14 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  throughput:
+    name: Run throughput_pages bench and post to #806
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
+
+      - name: Run throughput_pages bench (capture output)
+        run: |
+          set -o pipefail
+          cargo bench -p marque-engine --bench throughput_pages | tee bench-output.log
+
+      - name: Parse pages-per-minute lines and post comment to #806
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          with open("bench-output.log") as f:
+              text = f.read()
+
+          # Capture every `bench-check[pages_per_minute]:` line the bench
+          # prints (cores, page_bytes, batch_pages, lint, fix).
+          pat = re.compile(r"^bench-check\[pages_per_minute\]:.*$", re.MULTILINE)
+          lines = [m.group(0).strip() for m in pat.finditer(text)]
+
+          # The two load-bearing metric lines must both be present; their
+          # absence means the bench changed shape or crashed before printing.
+          have_lint = any(l.startswith("bench-check[pages_per_minute]: lint:") for l in lines)
+          have_fix = any(l.startswith("bench-check[pages_per_minute]: fix:") for l in lines)
+          if not (have_lint and have_fix):
+              sys.stderr.write(
+                  "expected both lint and fix pages_per_minute lines; got:\n"
+              )
+              sys.stderr.write("\n".join(lines) + "\n")
+              sys.stderr.write("--- full bench output ---\n")
+              sys.stderr.write(text)
+              sys.exit(1)
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          sha = os.environ.get("GITHUB_SHA", "unknown")
+          run_id = os.environ.get("GITHUB_RUN_ID", "unknown")
+          run_url = f"https://github.com/{repo}/actions/runs/{run_id}"
+
+          body = (
+              "### Weekly pages-per-minute throughput\n\n"
+              f"- **Commit**: `{sha}`\n"
+              f"- **Run**: {run_url}\n"
+              "- **Hardware**: `ubuntu-latest` GitHub Actions runner "
+              "(total is core-count dependent; per-core is host-independent)\n\n"
+              "```\n"
+              + "\n".join(lines)
+              + "\n```\n"
+          )
+
+          with open("comment-body.md", "w") as f:
+              f.write(body)
+
+          # Also surface in the job summary so the number is visible without
+          # opening the tracking issue.
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a") as f:
+                  f.write(body)
+
+          subprocess.run(
+              [
+                  "gh", "issue", "comment", "806",
+                  "--repo", repo,
+                  "--body-file", "comment-body.md",
+              ],
+              check=True,
+          )
+          PY
