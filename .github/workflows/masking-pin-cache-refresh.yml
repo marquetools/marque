@@ -70,14 +70,11 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # peter-evans/create-pull-request v7.0.5 commit SHA. Pinned per the
-      # repo-wide policy that every third-party action carry a 40-char
-      # commit pin so a tag-rewrite cannot silently change the action
-      # body. Bumps are intentional: update the SHA, run the workflow
+      # Bumps are intentional: update the SHA, run the workflow
       # via workflow_dispatch, verify the resulting PR.
       - name: Open cache-refresh PR
         if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        uses: peter-evans/create-pull-request@aa523f9db61947bd5e06efd77870ef065eae32cc
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/masking-pin-cache-refresh
