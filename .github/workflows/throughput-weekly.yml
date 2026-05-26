@@ -68,7 +68,8 @@ jobs:
               text = f.read()
 
           # Capture every `bench-check[pages_per_minute]:` line the bench
-          # prints (cores, page_bytes, batch_pages, lint, fix).
+          # prints (for example: pages_measured, pages_per_doc, doc_bytes,
+          # lint, fix).
           pat = re.compile(r"^bench-check\[pages_per_minute\]:.*$", re.MULTILINE)
           lines = [m.group(0).strip() for m in pat.finditer(text)]
 
