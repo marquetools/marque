@@ -34,3 +34,8 @@ The year **is 2026**.
 **Vulnerability:** The static dev server in `demo/bin/serve.js` was missing the `X-Frame-Options` HTTP response header.
 **Learning:** Without this header, the application could be embedded in an iframe on a malicious site, potentially leading to clickjacking attacks.
 **Prevention:** Always enforce `X-Frame-Options: DENY` (or `SAMEORIGIN`) on custom Node.js HTTP servers to mitigate clickjacking.
+
+## 2026-05-06 - [MEDIUM] Missing Content-Security-Policy Header in Demo Server
+**Vulnerability:** The custom Node.js static dev server `demo/bin/serve.js` did not set a `Content-Security-Policy` (CSP) header.
+**Learning:** Without a CSP, the application lacks defense-in-depth against Cross-Site Scripting (XSS) attacks. Even if the codebase itself avoids insecure practices (like using `innerHTML`), a CSP restricts where scripts and styles can be loaded from or executed, mitigating the impact of any potential future injection flaws.
+**Prevention:** Always implement a restrictive `Content-Security-Policy` header in custom HTTP servers. For applications utilizing WebAssembly, ensure `script-src` includes `'wasm-unsafe-eval'` to allow WASM compilation without resorting to the broader `'unsafe-eval'` where possible.
