@@ -28,6 +28,15 @@
 //! sensitive to runner core count and contention, so a single capture is a
 //! point estimate, not a gate.
 //!
+//! # Known limitation (#807)
+//!
+//! Per-core throughput on tiny (single-page, ~3 KB) documents is well below
+//! `60s / single-page-latency`: `BatchEngine`'s per-document `spawn_blocking`
+//! + semaphore coordination is large relative to a ~60 µs lint. By ~10 KB the
+//! overhead amortizes (<5%). Investigating coalescing / size-threshold
+//! dispatch for the small-doc path is tracked in #807; this bench is the
+//! vehicle for the doc-size crossover sweep called for there.
+//!
 //! # Tuning
 //!
 //! `MARQUE_THROUGHPUT_PAGES` overrides the batch size (default 20,000
