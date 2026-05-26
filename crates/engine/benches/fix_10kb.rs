@@ -171,5 +171,51 @@ fn fix_10kb_two_pass(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, fix_10kb_pass2_only, fix_10kb_two_pass);
+/// Single-page two-pass fix bench — the per-document analogue of
+/// `fix_10kb_two_pass` on a realistic ~3KB classified page. The misspelled
+/// `SERCET` banners drive at least one `Phase::Localized` corrections-map
+/// text fix in pass-1, so the engine takes the full two-pass path:
+/// pre-pass-1 cache population, post-pass-1 re-lint of the corrected
+/// buffer, disambiguation, and overlap demotion.
+///
+/// Advisory marketing/reference bench (paired with `lint_single_page` in
+/// `lint_latency.rs`). Baseline-tracked as `fix_single_page` in
+/// `benches/baseline.json` with the SC-001 16ms absolute ceiling, but NOT
+/// wired into `scripts/bench-check.sh` — no +10% regression gate, cannot
+/// flake CI.
+fn fix_single_page(c: &mut Criterion) {
+    // `SINGLE_PAGE_TO_FIX` is the `SINGLE_PAGE` memo with both banners
+    // misspelled `SERCET`; shared with `lint_latency` / `throughput_pages`
+    // via `marque_test_utils::fixtures`. Paired with
+    // `build_engine_with_corrections` (`SERCET → SECRET`), each banner fires
+    // a `Phase::Localized` text fix in pass-1, driving the full two-pass
+    // pipeline; pass-2 re-lints the corrected (valid) buffer. The
+    // single-page analogue of `fix_10kb_two_pass`.
+    let input = marque_test_utils::fixtures::SINGLE_PAGE_TO_FIX.as_bytes();
+    let engine = build_engine_with_corrections();
+    // Sanity-check: the SERCET banners fire ≥1 applied text correction
+    // (SERCET → SECRET), driving the engine through the post-pass-1
+    // re-parse arm. Text corrections land on the dedicated
+    // `applied_text_corrections()` channel; marking fixes on
+    // `applied_fixes()`. Check both so the assertion reflects "the fixture
+    // exercises at least one fix path."
+    let result = engine.fix(input, FixMode::Apply);
+    debug_assert!(
+        result.applied_fixes().next().is_some()
+            || result.applied_text_corrections().next().is_some(),
+        "fix_single_page fixture should fire at least one applied fix \
+         (marking-fix or text-correction channel)"
+    );
+
+    c.bench_function("fix_single_page", |b| {
+        b.iter(|| engine.fix(black_box(input), FixMode::Apply));
+    });
+}
+
+criterion_group!(
+    benches,
+    fix_10kb_pass2_only,
+    fix_10kb_two_pass,
+    fix_single_page
+);
 criterion_main!(benches);
