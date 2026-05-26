@@ -29,12 +29,41 @@
 //! Packing pages amortizes the per-doc fan-out overhead across them, lifting
 //! per-core pages/min back toward the single-page latency; any residual gap
 //! on heavily-oversubscribed hosts is memory-bandwidth / scheduler
-//! contention, not the #807 small-doc fan-out artifact. (Throughput keeps
-//! improving with larger documents, so the default is a representative
-//! ~12 KB operating point, not the ceiling — raise `PAGES_PER_DOC` to push
-//! further.) Page counts are exact (`docs × PAGES_PER_DOC`), not a
-//! bytes/page-size approximation, and the page unit stays the marking-sparse
-//! real page, not a marking-dense blob.
+//! contention, not the #807 small-doc fan-out artifact. Page counts are
+//! exact (`docs × PAGES_PER_DOC`), not a bytes/page-size approximation, and
+//! the page unit stays the marking-sparse real page, not a marking-dense
+//! blob.
+//!
+//! # Why the default is 16 pages (~47 KB)
+//!
+//! A `PAGES_PER_DOC` sweep on a 14-core (oversubscribed WSL2) host, holding
+//! total pages at 48k so document count stays well above the in-flight
+//! limit, gave this per-core curve (Δ vs the 1-page tiny-doc case, #807):
+//!
+//! ```text
+//! pages/doc  doc size   lint/core   Δ        fix/core   Δ
+//!   1          3 KB       242k       —         129k      —
+//!   4         11 KB       273k      +13%       154k     +19%
+//!   8         23 KB       303k      +25%       165k     +28%
+//!  16         47 KB       327k      +35%       165k     +28%
+//!  32         94 KB       348k      +44%       169k     +31%
+//!  64        188 KB       363k      +50% peak  167k     +30%
+//! 128        376 KB       340k      +40%       169k     +30%
+//! 256        753 KB       343k      +42%       164k     +27%
+//! ```
+//!
+//! Lint amortization climbs to a ~64-page (~188 KB) peak, then *declines*
+//! as the document buffer overflows per-core L2/L3 and fewer documents
+//! reduce scheduling overlap — a cache/locality ceiling, not parallelism
+//! starvation. Fix plateaus by ~8 pages (its two-pass work dwarfs the
+//! per-doc spawn cost). 16 pages is the balance point: the full fix
+//! plateau, ~35% of the lint headroom, and a document size that is still a
+//! believable real document (a ~16-page report) without the big-buffer
+//! cache penalty. The knee is somewhat hardware-specific (set by cache
+//! size); raise `PAGES_PER_DOC` toward 32–64 to chase the lint ceiling on
+//! a given host. (Absolute per-core figures above are contention-limited
+//! by the 14-way-oversubscribed WSL2 capture; GHA's real cores show
+//! different absolutes but a similar-shaped curve.)
 //!
 //! Output: machine-parseable `bench-check[pages_per_minute]:` lines (the
 //! same convention `report_fix_latency` uses in `scripts/bench-check.sh`),
@@ -55,9 +84,9 @@
 //!   20,000). Larger amortizes thread-pool spin-up at the cost of run time
 //!   and memory.
 //! - `MARQUE_THROUGHPUT_PAGES_PER_DOC` — pages packed per batch document
-//!   (default 4, ≈ 12 KB). Sweeping this is the #807 crossover experiment:
+//!   (default 16, ≈ 47 KB). Sweeping this is the #807 crossover experiment:
 //!   1 reproduces the tiny-doc artifact; larger values amortize the per-doc
-//!   spawn overhead.
+//!   spawn overhead (see the curve above).
 
 use std::time::Instant;
 
@@ -72,12 +101,14 @@ use marque_test_utils::fixtures::{SINGLE_PAGE, SINGLE_PAGE_TO_FIX};
 /// `MARQUE_THROUGHPUT_PAGES`.
 const DEFAULT_BATCH_PAGES: usize = 20_000;
 
-/// Pages packed into each batch document (form-feed–separated). Default 4
-/// gives a ~12 KB document — comfortably past the #807 small-doc crossover
-/// so per-doc `spawn_blocking` overhead is amortized. Overridable via
-/// `MARQUE_THROUGHPUT_PAGES_PER_DOC` (set to 1 to reproduce the tiny-doc
-/// fan-out artifact).
-const DEFAULT_PAGES_PER_DOC: usize = 4;
+/// Pages packed into each batch document (form-feed–separated). Default 16
+/// gives a ~47 KB document — past the #807 small-doc crossover (so per-doc
+/// `spawn_blocking` overhead is amortized) and at the balance point of the
+/// per-core sweep documented in the module comment: the full fix plateau and
+/// ~35% of the lint headroom, without the cache penalty larger buffers incur.
+/// Overridable via `MARQUE_THROUGHPUT_PAGES_PER_DOC` (set to 1 to reproduce
+/// the tiny-doc fan-out artifact; 32–64 to chase the lint ceiling).
+const DEFAULT_PAGES_PER_DOC: usize = 16;
 
 /// Warmup pages discarded before the timed run, so the measured window
 /// reflects steady-state throughput rather than first-touch costs (blocking
