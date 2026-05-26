@@ -108,7 +108,8 @@ function handleRequest(req, res) {
       res.writeHead(503, {
         'Content-Type': 'text/plain',
         'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY'
+        'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
       });
       res.end(
         'WASM module not found.\n\n' +
@@ -139,7 +140,8 @@ function serveFile(res, absPath) {
     res.writeHead(403, {
       'Content-Type': 'text/plain',
       'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY'
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
     });
     res.end('403 Forbidden');
     return;
@@ -151,14 +153,16 @@ function serveFile(res, absPath) {
         res.writeHead(404, {
           'Content-Type': 'text/plain',
           'X-Content-Type-Options': 'nosniff',
-          'X-Frame-Options': 'DENY'
+          'X-Frame-Options': 'DENY',
+          'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
         });
         res.end('404 Not Found');
       } else {
         res.writeHead(500, {
           'Content-Type': 'text/plain',
           'X-Content-Type-Options': 'nosniff',
-          'X-Frame-Options': 'DENY'
+          'X-Frame-Options': 'DENY',
+          'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
         });
         res.end('500 Internal Server Error');
       }
@@ -176,6 +180,7 @@ function serveFile(res, absPath) {
       'Cross-Origin-Resource-Policy': 'same-origin',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
     });
     res.end(data);
   });
