@@ -9,11 +9,32 @@
 //! `harness = false` bench: it drives [`BatchEngine`] across every core on
 //! the host, drains the completion-order result stream, and reports
 //! sustained throughput as **pages per minute** for both the lint path and
-//! the full two-pass fix path. The base document is the shared
-//! `SINGLE_PAGE` / `SINGLE_PAGE_TO_FIX` ~3 KB classified memo from
-//! `marque_test_utils::fixtures` — the same fixture the single-page latency
-//! benches use, so the throughput number is the batch-amortized companion
-//! to those latency numbers.
+//! the full two-pass fix path.
+//!
+//! # Why multi-page documents
+//!
+//! The unit of throughput is the realistic ~3 KB single-page memo
+//! (`SINGLE_PAGE` / `SINGLE_PAGE_TO_FIX` in `marque_test_utils::fixtures`,
+//! the same fixture the single-page latency benches use). But a *standalone*
+//! 3 KB document sits below `BatchEngine`'s per-document `spawn_blocking`
+//! crossover (#807): the per-doc fan-out cost (semaphore + blocking-pool
+//! handoff + result channel) is large relative to ~60 µs of lint, so a
+//! tiny-doc batch measures coordination overhead, not engine throughput.
+//!
+//! To measure engine throughput honestly, each batch document packs
+//! `PAGES_PER_DOC` real pages, **form-feed–separated** so the scanner emits
+//! a `MarkingType::PageBreak` between them and each page resets
+//! `PageContext` — i.e. each embedded page is processed exactly as the
+//! standalone single-page fixture, just `PAGES_PER_DOC` times per document.
+//! Packing pages amortizes the per-doc fan-out overhead across them, lifting
+//! per-core pages/min back toward the single-page latency; any residual gap
+//! on heavily-oversubscribed hosts is memory-bandwidth / scheduler
+//! contention, not the #807 small-doc fan-out artifact. (Throughput keeps
+//! improving with larger documents, so the default is a representative
+//! ~12 KB operating point, not the ceiling — raise `PAGES_PER_DOC` to push
+//! further.) Page counts are exact (`docs × PAGES_PER_DOC`), not a
+//! bytes/page-size approximation, and the page unit stays the marking-sparse
+//! real page, not a marking-dense blob.
 //!
 //! Output: machine-parseable `bench-check[pages_per_minute]:` lines (the
 //! same convention `report_fix_latency` uses in `scripts/bench-check.sh`),
@@ -28,21 +49,15 @@
 //! sensitive to runner core count and contention, so a single capture is a
 //! point estimate, not a gate.
 //!
-//! # Known limitation (#807)
-//!
-//! Per-core throughput on tiny (single-page, ~3 KB) documents is well below
-//! `60s / single-page-latency`: `BatchEngine`'s per-document `spawn_blocking`
-//! + semaphore coordination is large relative to a ~60 µs lint. By ~10 KB the
-//! overhead amortizes (<5%). Investigating coalescing / size-threshold
-//! dispatch for the small-doc path is tracked in #807; this bench is the
-//! vehicle for the doc-size crossover sweep called for there.
-//!
 //! # Tuning
 //!
-//! `MARQUE_THROUGHPUT_PAGES` overrides the batch size (default 20,000
-//! pages per phase). Larger batches amortize thread-pool spin-up and
-//! allocator warmup at the cost of a longer run and more memory
-//! (~`pages × 3 KB` per phase).
+//! - `MARQUE_THROUGHPUT_PAGES` — total pages processed per phase (default
+//!   20,000). Larger amortizes thread-pool spin-up at the cost of run time
+//!   and memory.
+//! - `MARQUE_THROUGHPUT_PAGES_PER_DOC` — pages packed per batch document
+//!   (default 4, ≈ 12 KB). Sweeping this is the #807 crossover experiment:
+//!   1 reproduces the tiny-doc artifact; larger values amortize the per-doc
+//!   spawn overhead.
 
 use std::time::Instant;
 
@@ -51,11 +66,18 @@ use marque_config::Config;
 use marque_engine::{BatchEngine, BatchOptions, Engine};
 use marque_test_utils::fixtures::{SINGLE_PAGE, SINGLE_PAGE_TO_FIX};
 
-/// Default pages processed per phase. Large enough to amortize tokio
+/// Total pages processed per phase. Large enough to amortize tokio
 /// blocking-pool spin-up and allocator warmup into a steady-state number,
-/// small enough to keep the weekly run to a few seconds and memory bounded
-/// (~`PAGES × 3 KB`). Overridable via `MARQUE_THROUGHPUT_PAGES`.
+/// small enough to keep the weekly run to a few seconds. Overridable via
+/// `MARQUE_THROUGHPUT_PAGES`.
 const DEFAULT_BATCH_PAGES: usize = 20_000;
+
+/// Pages packed into each batch document (form-feed–separated). Default 4
+/// gives a ~12 KB document — comfortably past the #807 small-doc crossover
+/// so per-doc `spawn_blocking` overhead is amortized. Overridable via
+/// `MARQUE_THROUGHPUT_PAGES_PER_DOC` (set to 1 to reproduce the tiny-doc
+/// fan-out artifact).
+const DEFAULT_PAGES_PER_DOC: usize = 4;
 
 /// Warmup pages discarded before the timed run, so the measured window
 /// reflects steady-state throughput rather than first-touch costs (blocking
@@ -77,11 +99,26 @@ fn build_engine() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-/// Build a fresh batch of `count` `(id, bytes)` pairs from `fixture`.
-fn build_docs(fixture: &str, count: usize) -> Vec<(String, Vec<u8>)> {
-    let bytes = fixture.as_bytes();
-    (0..count)
-        .map(|i| (format!("p{i}"), bytes.to_vec()))
+/// Build one multi-page document: `pages_per_doc` copies of `page` joined by
+/// a form-feed (`\f`). The form-feed makes the scanner emit a
+/// `MarkingType::PageBreak`, so each embedded page resets `PageContext` and
+/// is processed independently — exactly as the standalone single-page
+/// fixture, `pages_per_doc` times.
+fn build_multipage_doc(page: &str, pages_per_doc: usize) -> Vec<u8> {
+    let mut doc = String::with_capacity((page.len() + 1) * pages_per_doc);
+    for i in 0..pages_per_doc {
+        if i > 0 {
+            doc.push('\u{000c}'); // form feed → PageBreak candidate
+        }
+        doc.push_str(page);
+    }
+    doc.into_bytes()
+}
+
+/// Build `num_docs` identical `(id, bytes)` pairs from a prebuilt document.
+fn build_docs(doc: &[u8], num_docs: usize) -> Vec<(String, Vec<u8>)> {
+    (0..num_docs)
+        .map(|i| (format!("d{i}"), doc.to_vec()))
         .collect()
 }
 
@@ -117,15 +154,26 @@ fn pages_per_minute(pages: usize, elapsed_secs: f64) -> u64 {
     ((pages as f64 / elapsed_secs) * 60.0).round() as u64
 }
 
+fn env_usize(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(default)
+}
+
 fn main() {
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
-    let batch_pages = std::env::var("MARQUE_THROUGHPUT_PAGES")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(DEFAULT_BATCH_PAGES);
+    let target_pages = env_usize("MARQUE_THROUGHPUT_PAGES", DEFAULT_BATCH_PAGES);
+    let pages_per_doc = env_usize("MARQUE_THROUGHPUT_PAGES_PER_DOC", DEFAULT_PAGES_PER_DOC);
+
+    // Round up to a whole number of documents; report the exact page count
+    // actually processed (`num_docs * pages_per_doc`).
+    let num_docs = target_pages.div_ceil(pages_per_doc);
+    let pages = num_docs * pages_per_doc;
+    let warmup_docs = WARMUP_PAGES.div_ceil(pages_per_doc);
 
     // Multi-thread runtime so the async coordination layer is not itself a
     // bottleneck; the CPU-bound lint/fix work runs on tokio's blocking pool.
@@ -142,30 +190,34 @@ fn main() {
     options.max_concurrent_docs = Some(cores.saturating_mul(4).max(4));
     let batch = BatchEngine::new(build_engine(), options);
 
+    let lint_doc = build_multipage_doc(SINGLE_PAGE, pages_per_doc);
+    let fix_doc = build_multipage_doc(SINGLE_PAGE_TO_FIX, pages_per_doc);
+    let doc_bytes = lint_doc.len();
+
     // --- Warmup (discarded) ---
     rt.block_on(async {
-        drain_lint(&batch, build_docs(SINGLE_PAGE, WARMUP_PAGES)).await;
-        drain_fix(&batch, build_docs(SINGLE_PAGE_TO_FIX, WARMUP_PAGES)).await;
+        drain_lint(&batch, build_docs(&lint_doc, warmup_docs)).await;
+        drain_fix(&batch, build_docs(&fix_doc, warmup_docs)).await;
     });
 
     // --- Lint throughput (timed) ---
-    let lint_docs = build_docs(SINGLE_PAGE, batch_pages);
+    let lint_docs = build_docs(&lint_doc, num_docs);
     let lint_ppm = rt.block_on(async {
         let t = Instant::now();
         let n = drain_lint(&batch, lint_docs).await;
         let elapsed = t.elapsed().as_secs_f64();
-        assert_eq!(n, batch_pages, "lint batch dropped documents");
-        pages_per_minute(n, elapsed)
+        assert_eq!(n, num_docs, "lint batch dropped documents");
+        pages_per_minute(pages, elapsed)
     });
 
     // --- Fix throughput (timed, full two-pass) ---
-    let fix_docs = build_docs(SINGLE_PAGE_TO_FIX, batch_pages);
+    let fix_docs = build_docs(&fix_doc, num_docs);
     let fix_ppm = rt.block_on(async {
         let t = Instant::now();
         let n = drain_fix(&batch, fix_docs).await;
         let elapsed = t.elapsed().as_secs_f64();
-        assert_eq!(n, batch_pages, "fix batch dropped documents");
-        pages_per_minute(n, elapsed)
+        assert_eq!(n, num_docs, "fix batch dropped documents");
+        pages_per_minute(pages, elapsed)
     });
 
     let page_bytes = SINGLE_PAGE.len();
@@ -176,7 +228,9 @@ fn main() {
     // `bench-check[pages_per_minute]:` prefix stable.
     println!("bench-check[pages_per_minute]: cores: {cores}");
     println!("bench-check[pages_per_minute]: page_bytes: {page_bytes}");
-    println!("bench-check[pages_per_minute]: batch_pages: {batch_pages}");
+    println!("bench-check[pages_per_minute]: pages_per_doc: {pages_per_doc}");
+    println!("bench-check[pages_per_minute]: doc_bytes: {doc_bytes}");
+    println!("bench-check[pages_per_minute]: pages_measured: {pages}");
     println!(
         "bench-check[pages_per_minute]: lint: {lint_ppm} pages/min total; \
          {lint_per_core} pages/min/core"
