@@ -10,6 +10,8 @@
 //! Provides uniform access to `tests/corpus/` fixtures from any crate's test suite.
 //! Add this crate as a `[dev-dependencies]` path dependency.
 
+pub mod fixtures;
+
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 

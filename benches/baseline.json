@@ -25,6 +25,14 @@
     "target_p99_us": 16000,
     "_p99_note": "T098 / FR-030 / SC-008 tail-percentile gate, **partial activation**. Pins p99 cost of the `Arc<dyn Vocabulary<S>>::shape_admits` indirect call introduced in PR 2; vtable misses surface at the tail, not in the mean. **Status as of 2026-05-05:** only the absolute gate (`target_p99_us = 16000µs`, the SC-001 16ms constitutional ceiling applied to p99 specifically) is wired here. The drift gate (`p99_baseline * 1.05` per FR-030 / SC-008 `p99 ≤ baseline + 5%`) requires a `p99_us` baseline captured on the same hardware as the existing `upper_ci_us` baseline (`ubuntu-latest` per `reference_machine.profile`); a WSL2 dev-worktree capture would turn the drift gate into runner-noise flake on shared GHA runners. **Re-activation procedure (follow-up):** capture `p99_us` on `ubuntu-latest` via `scripts/capture-baselines.sh` (using `compute_percentiles_python` for capture-time / gate-time agreement), add the field to this block, and the drift check in `scripts/bench-check.sh::check_one_bench` will activate automatically (the gate is field-presence-gated). The absolute gate stays load-bearing across both states."
   },
+  "lint_single_page": {
+    "lower_ci_us": 58,
+    "mean_us": 62,
+    "upper_ci_us": 66,
+    "unit": "microseconds",
+    "target_upper_ci_us": 16000,
+    "_note": "Advisory single-page reference fixture. `Engine::lint` with the strict recognizer pinned (matching `lint_10kb`) on the shared `SINGLE_PAGE` fixture (`marque_test_utils::fixtures`, used by `lint_latency` / `fix_10kb` / `throughput_pages`) — a hand-written ~3KB `SECRET//SI//NOFORN` classified memorandum shaped like a real, generously-spaced government page (banner top/bottom, an unclassified header + references block, ten double-spaced portion-marked paragraphs, and a closing classification authority block). The fixture is correctly marked: the banner rolls the `(S//SI//NF)` portion up to `SECRET//SI//NOFORN`, so it emits zero error/warning diagnostics; exactly one advisory `suggest` fires (RELIDO closure on the bare `(C)` portion, §H.8 p154), which does not affect the measured latency. **Advisory only — NOT wired into `scripts/bench-check.sh`**, so it carries no +10% regression gate and cannot flake CI; the entry exists to record a representative captured number for marketing/reference. `target_upper_ci_us` mirrors the SC-001 16ms absolute ceiling for context only. **Hardware caveat:** the {58, 62, 66} values are a 2026-05-26 WSL2 dev-worktree capture (mean 61.7µs, CI [58.3, 66.2]µs), NOT a GHA `ubuntu-latest` capture — WSL2 typically reads 5-10% slower than the GHA hardware the gated baselines (`lint_10kb`, etc.) use, and the sub-100µs measurement carries a wide (~13%) CI on a contended host. A GHA re-capture via the bench-runner owner is a follow-up if this bench is ever promoted to a gated reference. Sits between the portion-level micro-bench and `lint_10kb` (~913µs GHA mean): a full single page lints in well under a tenth of a millisecond."
+  },
   "decoder_10kb_one_mangled_region": {
     "lower_ci_us": 1155,
     "mean_us": 1157,
@@ -60,5 +68,13 @@
     "unit": "microseconds",
     "target_upper_ci_us": 16000,
     "_note": "PR 7c (T085) + CO-1 (4b-perf). Baseline captured after the CO-1 `Box<FixIntent<S>>` unboxing (PR 4b-perf) on GHA ubuntu-latest. SC-001 absolute target for the two-pass fix pipeline's full path. Exercises pass-0 corrections, pass-1 Localized fixes (C001 typo correction), the pre-pass-1 attrs cache population, post-pass-1 re-lint via `lint_with_options_internal_with_cache`, FR-023 disambiguation, and I-18 overlap demotion. The +10% regression gate (`upper_ci_us * 1.10` ≈ 2779µs) activates with this baseline. See `crates/engine/benches/fix_10kb.rs`."
+  },
+  "fix_single_page": {
+    "lower_ci_us": 121,
+    "mean_us": 123,
+    "upper_ci_us": 125,
+    "unit": "microseconds",
+    "target_upper_ci_us": 16000,
+    "_note": "Advisory single-page fix reference fixture — the per-document `Engine::fix` (FixMode::Apply) analogue of the `lint_single_page` lint bench. Runs the full two-pass pipeline over the shared `SINGLE_PAGE_TO_FIX` fixture (`marque_test_utils::fixtures`): the ~3KB `SECRET//SI//NOFORN` classified memorandum from `lint_single_page` with BOTH classification banners misspelled `SERCET`, paired with a `SERCET → SECRET` corrections-map entry. Each banner fires a `Phase::Localized` text correction in pass-1 (verified: 2 applied text corrections at confidence 1.0), driving the engine through pre-pass-1 cache population, post-pass-1 re-lint of the corrected buffer, disambiguation, and overlap demotion — after correction the page is valid (banner rolls the `(S//SI//NF)` portion up to `SECRET//SI//NOFORN`). **Advisory only — NOT wired into `scripts/bench-check.sh`**, so no +10% regression gate and cannot flake CI; `target_upper_ci_us` mirrors the SC-001 16ms ceiling for context only. **Hardware caveat:** the {121, 123, 125} values are a 2026-05-26 WSL2 dev-worktree capture (mean 122.9µs, CI [121.0, 124.7]µs), NOT a GHA `ubuntu-latest` capture — WSL2 reads ~5-10% slower than the GHA hardware the gated baselines use; a GHA re-capture is a follow-up if this is ever promoted to a gated reference. For scale: the full two-pass `fix_10kb_two_pass` is ~2522µs GHA mean; a full single page is corrected, re-marked, and audited in roughly an eighth of a millisecond."
   }
 }
