@@ -14,7 +14,7 @@
 //! And the three hard-fail scenarios from `contracts/cli.md`:
 //!   1. `[user]` section in committed config → exit 65
 //!   2. Schema version mismatch → exit 65
-//!   3. Recognition threshold out of range → exit 65
+//!   3. Confidence threshold out of range → exit 65
 
 use marque_config::ConfigError;
 use std::fs;

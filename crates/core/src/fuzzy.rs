@@ -36,7 +36,7 @@
 //!    See [`MIN_FUZZY_LEN`] for the 2-char rationale (avoids SAR
 //!    sub-compartment false-positives).
 //!
-//! 5. **Recognition scores.** Each `FuzzyCorrection` carries a base confidence
+//! 5. **Confidence scores.** Each `FuzzyCorrection` carries a base confidence
 //!    derived from edit distance and token length. The calling engine multiplies
 //!    this by a **context factor** (+0.10–0.15 when the token is inside a
 //!    detected marking region) before comparing against the configured threshold.

@@ -438,8 +438,10 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 // the §H.7 p122 + §G.2 p40 + §H.7 p127 worked examples.
 //
 // Severity: `Fix` (auto-applies when confidence ≥ engine threshold).
-// Recognition: `strict(1.0)` — the canonical form is unambiguous; the
-// renderer produces deterministic bytes from the canonical attrs.
+// Recognition: `Recognition::strict()` (argumentless post-PR-B;
+// `recognition = 1.0` by construction) — the canonical form is
+// unambiguous; the renderer produces deterministic bytes from the
+// canonical attrs.
 //
 // Audit content-ignorance: the diagnostic message does NOT echo input
 // bytes. The message references canonical token names (`TOK_ATOMAL`,

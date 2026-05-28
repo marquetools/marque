@@ -563,7 +563,7 @@ fn sentinel_check_panics_on_synthetic_leak() {
 //    — the four-way `FixSource` enum minus `DecoderPosterior`.
 //
 // The invariants are pinned at the data layer by `Recognition::strict`
-// (`crates/rules/src/confidence.rs`), so the test below is a
+// (`crates/rules/src/recognition.rs`), so the test below is a
 // regression guard: it sweeps the engine's strict-path output over
 // the invalid fixture corpus and asserts the four invariants hold for
 // every produced `AppliedFix`. A future refactor that, e.g., starts
@@ -900,7 +900,7 @@ fn decoder_path_record_shape() {
         // classification floor + the non-trivial filter (decoder.rs's
         // K=1 branch where `runner_up_score.is_finite()` is `false`).
         // Both shapes are legal for a decoder-path fix per the
-        // `Recognition` contract in `crates/rules/src/confidence.rs`. The
+        // `Recognition` contract in `crates/rules/src/recognition.rs`. The
         // audit-shape invariant is "if Some, the value is finite" —
         // `runner_up_ratio` never carries `NaN` / `±∞` at the audit
         // boundary, since `Recognition::validate` rejects non-finite

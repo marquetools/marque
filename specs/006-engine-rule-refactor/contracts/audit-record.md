@@ -6,7 +6,9 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 # Contract: Audit Record (NDJSON, schema `marque-3.0`)
 
 **Active schema**: `marque-3.0` (was `marque-2.0` pre-PR-B).
-**Active as of**: PR B merge (recognition-axis cutover, 2026-05-28).
+**Introduced by**: PR B (recognition-axis cutover; opened 2026-05-28).
+The "active" designation takes effect when PR B merges; until then
+the live `main` branch still emits `marque-2.0`.
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-035a, FR-037, FR-041, FR-044, FR-049
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 

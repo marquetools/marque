@@ -208,10 +208,16 @@ fn cli_confidence_threshold_overrides_config() {
 
     // CLI flag overrides config: at 0.99, the decoder candidate
     // (recognition ≈ 0.926) is sub-threshold and must NOT auto-apply,
-    // even though the config layer at 0.5 would have admitted it.
-    // The remaining sub-threshold Suggest diagnostic causes a non-zero
-    // exit code ("issues require manual review"); the test asserts on
-    // the stdout payload, not the exit code.
+    // even though the config layer at 0.5 would have admitted it. The
+    // test asserts on the stdout payload — the load-bearing property
+    // is "no splice happened" (source unchanged). The CLI's exit-code
+    // bookkeeping is a separate concern: per
+    // `marque/src/main.rs::run_fix`, `Severity::Suggest` is
+    // advisory (filtered out of the `has_warns` / "require manual
+    // review" computation), but the threshold-blocked decoder
+    // candidate surfaces as `Severity::Fix` in `remaining_diagnostics`
+    // and does bump the exit code — that's incidental to what this
+    // test gates and not what we assert on here.
     let output = marque()
         .args(["fix", "--confidence-threshold", "0.99", "--config"])
         .arg(&config_path)
