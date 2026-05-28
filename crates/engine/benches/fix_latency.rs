@@ -6,10 +6,11 @@
 //!
 //! - **`fix_single_e054_apply`** — `engine.fix((S//NF/RELIDO), FixMode::Apply)`
 //!   on a single-portion input that produces exactly one E054 fix at
-//!   confidence 0.95. End-to-end per-fix latency: scanner + parser + rule
-//!   evaluation + intent synthesis + promotion + apply + audit. Criterion
-//!   amortizes over thousands of iterations, so the reported time IS the
-//!   per-fix cost for an interactive caller fixing one marking at a time.
+//!   strict combined confidence 1.0. End-to-end per-fix latency: scanner +
+//!   parser + rule evaluation + intent synthesis + promotion + apply +
+//!   audit. Criterion amortizes over thousands of iterations, so the
+//!   reported time IS the per-fix cost for an interactive caller fixing
+//!   one marking at a time.
 //! - **`fix_single_e054_dry_run`** — same input, `FixMode::DryRun`. Drops
 //!   the source-rewrite cost; isolates the cost of generating the audit
 //!   record without applying the rewrite to a fresh `Vec<u8>`.
@@ -26,10 +27,10 @@
 //! RELIDO from the portion, leaving `(S//NF)`.
 //!
 //! The bench uses the RELIDO-conflicts-NOFORN rule (`E054` in the
-//! function names) because it fires a deterministic confidence-0.95 fix
-//! on the strict path. A portion-mark-in-banner expansion would not
-//! work here: the renderer absorbs that by construction and produces no
-//! `AppliedFix`.
+//! function names) because it fires a deterministic strict-path fix
+//! (`Confidence::strict(1.0)` per the PR A invariant). A
+//! portion-mark-in-banner expansion would not work here: the renderer
+//! absorbs that by construction and produces no `AppliedFix`.
 //!
 //! Headline number is `fix_single_e054_apply`: total wall-clock
 //! time to detect, promote, apply, and audit one fix on a one-portion
@@ -47,9 +48,9 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use secrecy::ExposeSecret as _;
 
-/// Single-portion input that produces exactly one E054 fix at confidence
-/// 0.95. RELIDO conflicts with NOFORN (NF) per CAPCO-2016 §H.8 p154;
-/// the fix removes RELIDO and re-renders the portion as `(S//NF)`.
+/// Single-portion input that produces exactly one E054 strict-path fix.
+/// RELIDO conflicts with NOFORN (NF) per CAPCO-2016 §H.8 p154; the fix
+/// removes RELIDO and re-renders the portion as `(S//NF)`.
 const SINGLE_FIX_INPUT: &[u8] = b"(S//NF/RELIDO)\n";
 
 /// Expected source bytes after applying the single E054 fix. The portion
@@ -57,11 +58,11 @@ const SINGLE_FIX_INPUT: &[u8] = b"(S//NF/RELIDO)\n";
 /// abbreviation for NOFORN (§A.6 p16 / CAPCO-2016 Table 4 row 8 p36).
 const EXPECTED_FIXED_SOURCE: &[u8] = b"(S//NF)\n";
 
-/// Expected combined confidence for the E054 fix. E054 uses
-/// `Confidence::strict(0.95)` (recognition=1.0, rule=0.95); combined
-/// equals 0.95, which is exactly the default threshold — the gate is
-/// `>= threshold`, so the fix auto-applies.
-const EXPECTED_CONFIDENCE: f32 = 0.95;
+/// Expected combined confidence for the E054 fix. Per the PR A
+/// invariant, every strict-path rule emits `Confidence::strict(1.0)`
+/// (recognition=1.0, rule=1.0); combined equals 1.0, comfortably above
+/// the default 0.95 threshold so the fix auto-applies.
+const EXPECTED_CONFIDENCE: f32 = 1.0;
 
 fn build_engine() -> Engine {
     Engine::new(
@@ -74,10 +75,10 @@ fn build_engine() -> Engine {
 }
 
 /// Asserts the bench invariant: `SINGLE_FIX_INPUT` must produce exactly one
-/// E054 fix at combined confidence 0.95, and the rewritten source must equal
-/// `EXPECTED_FIXED_SOURCE`. If rule behavior changes (E054 is retired,
-/// confidence drops below threshold, a new rule fires on this input, etc.)
-/// this panics with a descriptive message so the breakage is visible
+/// E054 fix at strict combined confidence 1.0, and the rewritten source must
+/// equal `EXPECTED_FIXED_SOURCE`. If rule behavior changes (E054 is retired,
+/// strict-path confidence stops being 1.0, a new rule fires on this input,
+/// etc.) this panics with a descriptive message so the breakage is visible
 /// immediately rather than silently measuring a different code path.
 ///
 /// Call once per benchmark function, **outside** the Criterion `b.iter`
@@ -118,10 +119,11 @@ fn assert_bench_invariants(engine: &Engine) {
         e054_fix.rule.predicate_id(),
     );
 
-    // Combined confidence must be exactly 0.95 (Confidence::strict(0.95):
-    // recognition=1.0 × rule=0.95). A deviation here means the bench is
+    // Combined confidence must be exactly 1.0 (Confidence::strict(1.0):
+    // recognition=1.0 × rule=1.0). A deviation here means the bench is
     // measuring a different code path than the deterministic strict-path
-    // FactRemove this benchmark documents.
+    // FactRemove this benchmark documents — or that PR A's invariant
+    // (every strict-path rule emits 1.0) has regressed.
     let combined = e054_fix.fix.replacement.confidence.combined();
     assert!(
         (combined - EXPECTED_CONFIDENCE).abs() < 1e-6_f32,

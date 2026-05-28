@@ -40,34 +40,7 @@ use crate::scheme::CapcoScheme;
 // `Constraint::Custom` today.
 // ---------------------------------------------------------------------------
 
-/// Confidence scalar emitted by `BareNatoRequiresRelToRule`
-/// (`bare-nato-requires-rel-to-usa-nato`) alongside its `text_correction`
-/// fix.
-///
-/// **Calibration.** §H.7 p127 Notional Example 2 is the load-bearing
-/// citation. The worked example is illustrative prose, not
-/// "MUST"-mandate prose, so example-derived FD&R guidance ships as
-/// `Severity::Suggest`. Within the suggest channel, the confidence
-/// scalar reflects how strongly the source dictates the rewrite. The
-/// chosen value `0.85` is below the `Confidence::strict(0.95)` used by
-/// mandate-prose constraint fixes synthesized in the scheme-adapter
-/// bridge (`crate::scheme::adapter::CapcoScheme::fix_intent_by_name`)
-/// and above the `0.75` used by lower-evidence suggest-channel rewrites.
-///
-/// **Threshold ladder relationship (load-bearing for auto-apply).**
-/// The default `confidence_threshold` in `Engine::fix_inner` is `0.95`.
-/// A user who sets this rule to `"fix"` in `.marque.toml` will see the
-/// engine demote the override back to `Suggest` because the diagnostic's
-/// confidence is `0.85 < 0.95`. To get it auto-applied a user must also
-/// drop the threshold to `< 0.85` (e.g. `confidence_threshold = 0.80`).
-/// The dual-override pattern is exercised end-to-end in
-/// `crates/capco/tests/fr048_bare_nato_rel_to.rs`.
-///
-/// This is the first text_correction-bearing Suggest-severity rule whose
-/// confidence is high enough to clear a relaxed threshold; the next
-/// author who adds a suggest-with-apply rule should pick a confidence
-/// consciously rather than copy from the hard-advisory suggest channel.
-const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
+// All strict-path fix proposals emit Confidence::strict(1.0). Severity controls auto-apply, not confidence.
 
 /// Fires on a portion whose classification axis is a bare
 /// [`MarkingClassification::Nato`] variant when the page also carries at
@@ -177,27 +150,15 @@ const BARE_NATO_REQUIRES_REL_TO_CONFIDENCE: f32 = 0.85;
 /// token bytes) plus the literal `NATO` and `REL TO USA, ` template —
 /// no document text contributes to audit output (Constitution V).
 ///
-/// # Suggest-severity with an apply path
+/// # Severity is the auto-apply gate
 ///
-/// This is the first text_correction-bearing `Severity::Suggest` rule
-/// in marque-capco whose emitted confidence is high enough to clear a
-/// relaxed `confidence_threshold` when paired with a `"fix"` severity
-/// override. The threshold ladder:
-///
-/// - The lower-evidence suggest channel emits at [`SUGGEST_CONFIDENCE`]
-///   = `0.5`, which cannot clear the default `confidence_threshold =
-///   0.95` even with a `"fix"` override — those rules stay hard-advisory.
-/// - This rule emits at [`BARE_NATO_REQUIRES_REL_TO_CONFIDENCE`] =
-///   `0.85`. With both a `"fix"` override AND `confidence_threshold <
-///   0.85`, the engine's suggest-channel demotion pass keeps the
-///   override intact and `Engine::fix_inner` applies the splice.
-///
-/// The dual-override pattern is exercised end-to-end in
-/// `crates/capco/tests/fr048_bare_nato_rel_to.rs`. The next author who
-/// adds a suggest-with-apply rule should pick a confidence scalar with
-/// the same care: too low and the auto-apply path is unreachable; too
-/// high and a Suggest-default rule auto-applies under the default
-/// threshold the moment a user adds the severity override.
+/// Default `Severity::Suggest` is a hard exclusion from auto-apply in
+/// `Engine::fix_inner`. Users who want auto-apply set
+/// `[rules] capco:portion.nato.bare-nato-requires-rel-to-usa-nato =
+/// "fix"` in `.marque.toml`. Confidence is not part of the gate; every
+/// strict-path fix proposal emits at `Confidence::strict(1.0)`. End-to-
+/// end coverage of the severity-override path lives in
+/// `crates/capco/tests/fr048_bare_nato_rel_to.rs`.
 pub(super) struct BareNatoRequiresRelToRule;
 
 /// Build the insertion body for the no-existing-REL-TO branch.
@@ -428,7 +389,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
             capco(SectionLetter::H, 7, 127),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(BARE_NATO_REQUIRES_REL_TO_CONFIDENCE),
+            Confidence::strict(1.0),
             None,
         )]
     }

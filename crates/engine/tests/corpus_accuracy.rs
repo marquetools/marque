@@ -181,8 +181,16 @@ fn fix_accuracy_invalid_fixtures() {
         }
 
         // Lint first to discover which rules are fixable — i.e., the
-        // rule's fix clears the engine's combined-confidence
-        // threshold gate.
+        // rule's fix clears the engine's auto-apply gate
+        // (`Severity::is_promote_eligible` AND combined-confidence
+        // ≥ threshold).
+        //
+        // `Severity::Suggest` is a hard exclusion from auto-apply
+        // regardless of confidence (engine's
+        // `is_promote_eligible` returns false for Suggest). PR A
+        // collapsed every strict-path `rule` confidence to 1.0; the
+        // severity gate is now the load-bearing channel discriminator
+        // for "is this an auto-applied fix?".
         //
         // "Confidence" here is the scalar `Confidence::combined()`
         // (= recognition × rule) that the engine applies at the
@@ -194,6 +202,7 @@ fn fix_accuracy_invalid_fixtures() {
         let fixable_rules: std::collections::HashSet<String> = lint_result
             .diagnostics
             .iter()
+            .filter(|d| d.severity.is_promote_eligible())
             .filter(|d| {
                 d.fix
                     .as_ref()

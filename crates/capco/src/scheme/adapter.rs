@@ -165,24 +165,27 @@ impl CapcoScheme {
     /// The method returns `Some(FixIntent { ... })` for the
     /// following catalog row names and `None` otherwise:
     ///
+    /// Every row below emits at `Confidence::strict(1.0)` per the PR A
+    /// invariant — strict-path rules do not carry sub-unit `rule`
+    /// confidence. Severity remains the auto-apply gate.
+    ///
     /// - `"portion.aea.rd-frd-requires-noforn"` — `FactAdd(NOFORN, Portion)`
-    ///   at confidence 0.95 per CAPCO-2016 §H.6 p104 + p111. Severity
-    ///   is `Warn` per #559 close-out (the §123/§144 sharing-agreement
-    ///   carve-out is documentary and Marque cannot verify it).
+    ///   per CAPCO-2016 §H.6 p104 + p111. Severity is `Warn` per #559
+    ///   close-out (the §123/§144 sharing-agreement carve-out is
+    ///   documentary and Marque cannot verify it).
     /// - `"portion.dissem.nodis-or-exdis-requires-noforn"` —
-    ///   `FactAdd(NOFORN, Portion | Page)` at confidence 1.0 per
-    ///   §H.9 p172 + p174. The scope tracks `marking_type` (portion
-    ///   → `Portion`, banner → `Page`); other marking types return
-    ///   `None`.
+    ///   `FactAdd(NOFORN, Portion | Page)` per §H.9 p172 + p174. The
+    ///   scope tracks `marking_type` (portion → `Portion`, banner →
+    ///   `Page`); other marking types return `None`.
     /// - `"portion.dissem.noforn-conflicts-rel-to"` (when
     ///   `marking_type == Portion`) — `FactRemove(REL_TO, Portion)`
-    ///   at confidence 1.0 per §H.8.
+    ///   per §H.8.
     /// - `"portion.dissem.relido-conflicts-noforn"` —
-    ///   `FactRemove(RELIDO, Portion)` at confidence 0.95 per
-    ///   §H.8 p154. E055 / E056 / E057 retired here in #559
-    ///   close-out (2026-05-19) / #618 (DISPLAY ONLY sibling); see
-    ///   `crates/capco/src/scheme/rewrites/relido_clears.rs` for
-    ///   the PageRewrite forms that replaced them.
+    ///   `FactRemove(RELIDO, Portion)` per §H.8 p154. E055 / E056 /
+    ///   E057 retired here in #559 close-out (2026-05-19) / #618
+    ///   (DISPLAY ONLY sibling); see
+    ///   `crates/capco/src/scheme/rewrites/relido_clears.rs` for the
+    ///   PageRewrite forms that replaced them.
     ///
     /// Other catalog families that ride the bridge take different
     /// paths and remain `None` here:
@@ -228,7 +231,7 @@ impl CapcoScheme {
                     token: FactRef::Cve(TOK_NOFORN),
                     scope: Scope::Portion,
                 },
-                confidence: Confidence::strict(0.95),
+                confidence: Confidence::strict(1.0),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
                 source: FixSource::BuiltinRule,
@@ -305,7 +308,7 @@ impl CapcoScheme {
                     FactRef::Cve(TOK_RELIDO),
                     Scope::Portion,
                 ),
-                confidence: Confidence::strict(0.95),
+                confidence: Confidence::strict(1.0),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
                 source: FixSource::BuiltinRule,

@@ -54,7 +54,7 @@ pub(crate) fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
     }
 }
 
-/// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
+/// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a
 /// positional helper signature so call sites read top-down by name.
 ///
 /// The `message` field is a closed-template, closed-args `Message` and
@@ -70,7 +70,6 @@ pub(crate) struct FixDiagnosticParams {
     pub citation: Citation,
     pub original: String,
     pub replacement: String,
-    pub confidence: f32,
     pub migration_ref: Option<&'static str>,
 }
 
@@ -78,11 +77,10 @@ pub(crate) struct FixDiagnosticParams {
 ///
 /// The engine's `apply_text_corrections` reads
 /// `Diagnostic.text_correction` for the replacement bytes + provenance.
-/// The helper threads `source`, `confidence`, and `migration_ref`
-/// through to the `TextCorrection` payload — every rule that emits a
-/// byte-substitution fix (corrections-map, deprecation migration, and
-/// other [`make_fix_diagnostic`] callers) gets the correct provenance
-/// on its audit record. The `original` field is discarded
+/// The helper threads `source` and `migration_ref` through to the
+/// `TextCorrection` payload. Strict-path fixes always emit
+/// `Confidence::strict(1.0)` — severity controls auto-apply, not
+/// confidence. The `original` field is discarded
 /// (audit content-ignorance).
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
     let _ = p.original; // never copy document bytes into audit
@@ -94,7 +92,7 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
         p.citation,
         p.replacement,
         p.source,
-        Confidence::strict(p.confidence),
+        Confidence::strict(1.0),
         p.migration_ref,
     )
 }

@@ -99,12 +99,23 @@ impl Confidence {
     /// Confidence record for a strict-path fix where recognition was
     /// unambiguous.
     ///
-    /// `rule_confidence` is the rule's own confidence in its proposed
-    /// fix (typically 1.0 for migrations, lower for heuristics). The
-    /// recognition axis is pinned at 1.0 because the strict grammar
+    /// `rule_confidence` is pinned at 1.0 for every strict-path fix per
+    /// the PR A invariant: a strict-path rule fired means the grammar
+    /// matched unambiguously and the remediation is determined by the
+    /// authoritative source, so no sub-unit `rule` value is meaningful.
+    /// Sub-1.0 `rule` confidence is exclusively the decoder path's
+    /// domain (see `HEURISTIC_RULE_AXIS_CAP` in
+    /// `marque_engine::engine::synthesis`).
+    ///
+    /// The recognition axis is pinned at 1.0 because the strict grammar
     /// has one unambiguous match by definition, and no feature
     /// contributions are recorded — strict-path fixes do not traverse
     /// the decoder's feature graph.
+    ///
+    /// The argument range is preserved (`[0.0, 1.0]`) so PR B can remove
+    /// the `rule` field entirely after the audit envelope bumps to
+    /// `marque-3.0`; the assert still guards against NaN and
+    /// out-of-range values for any caller in transition.
     #[inline]
     pub fn strict(rule_confidence: f32) -> Self {
         assert!(

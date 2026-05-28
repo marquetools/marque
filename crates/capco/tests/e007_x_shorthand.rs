@@ -11,11 +11,12 @@
 //! - `e007_fires_on_pattern_matched_x_shorthand_not_in_migration_table`
 //!   — pattern-fallback path coverage: `25X2-` is not in the seed
 //!   `MIGRATIONS` table but matches the X-shorthand fallback regex
-//!   E007 owns; confidence 0.95 (lower than the 0.97 table-backed
-//!   path).
+//!   E007 owns.
 //! - `e007_still_fires_on_migration_table_entries` — table-backed
-//!   path coverage: `25X1-` IS in the seed `MIGRATIONS` table;
-//!   confidence 0.97.
+//!   path coverage: `25X1-` IS in the seed `MIGRATIONS` table.
+//!
+//! Both paths emit at `Confidence::strict(1.0)` — strict-path fixes
+//! collapse to 1.0; severity controls auto-apply, not confidence.
 //!
 //! Both paths produce a `text_correction` (E007 is a text-correction
 //! rule per `Phase::Localized` plus the `Diagnostic::text_correction`
@@ -58,15 +59,15 @@ fn diags_for(source: &str, predicate: &str) -> Vec<Diagnostic<CapcoScheme>> {
 }
 
 // ---------------------------------------------------------------------------
-// Pattern fallback (confidence 0.95)
+// Pattern fallback (strict 1.0 — collapsed in PR A)
 // ---------------------------------------------------------------------------
 
 /// `25X2-` is NOT in the seed `MIGRATIONS` table. Before the pattern
 /// fallback landed, this would have fallen through to E008. Now E007
 /// owns it via the X-shorthand regex; the canonical replacement is
-/// `25X2` (trailing `-` stripped); confidence is 0.95 (lower than
-/// the 0.97 table-backed path because there is no curated migration
-/// entry to anchor the canonical bytes).
+/// `25X2` (trailing `-` stripped). Strict-path fix proposals emit at
+/// `Confidence::strict(1.0)`; severity controls auto-apply, not
+/// confidence.
 ///
 /// Authority: CAPCO-2016 §E.6 pp 33-34 (X-shorthand date-pattern
 /// migration). Re-verified against `crates/capco/docs/CAPCO-2016.md`
@@ -92,8 +93,9 @@ fn e007_fires_on_pattern_matched_x_shorthand_not_in_migration_table() {
     );
     let conf = tc.confidence.combined();
     assert!(
-        (conf - 0.95).abs() < f32::EPSILON,
-        "E007 pattern-fallback confidence must be 0.95; got: {conf}",
+        (conf - 1.0).abs() < f32::EPSILON,
+        "E007 pattern-fallback confidence must be 1.0 (strict-path \
+         collapse); got: {conf}",
     );
     // E008 must NOT also fire on the same span — the suppression
     // path in `text_handling.rs::is_x_shorthand_for_suppression` is
@@ -110,13 +112,13 @@ fn e007_fires_on_pattern_matched_x_shorthand_not_in_migration_table() {
 }
 
 // ---------------------------------------------------------------------------
-// Migration-table-backed path (confidence 0.97)
+// Migration-table-backed path (strict 1.0 — collapsed in PR A)
 // ---------------------------------------------------------------------------
 
 /// `25X1-` IS in the seed `MIGRATIONS` table (per
-/// `crates/ism/build.rs`). E007 owns the table-backed path with
-/// confidence 0.97; the replacement is `25X1` (table-anchored
-/// canonical form).
+/// `crates/ism/build.rs`). E007 owns the table-backed path; the
+/// replacement is `25X1` (table-anchored canonical form). Strict-path
+/// fix proposals emit at `Confidence::strict(1.0)`.
 ///
 /// Authority: CAPCO-2016 §E.6 pp 33-34. Re-verified against
 /// `crates/capco/docs/CAPCO-2016.md` per Constitution VIII.
@@ -140,7 +142,8 @@ fn e007_fires_on_migration_table_entry() {
     );
     let conf = tc.confidence.combined();
     assert!(
-        (conf - 0.97).abs() < f32::EPSILON,
-        "E007 table-backed confidence must be 0.97; got: {conf}",
+        (conf - 1.0).abs() < f32::EPSILON,
+        "E007 table-backed confidence must be 1.0 (strict-path \
+         collapse); got: {conf}",
     );
 }

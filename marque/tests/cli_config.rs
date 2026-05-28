@@ -184,36 +184,41 @@ fn severity_override_off_suppresses_rule() {
 }
 
 // F-08: Layer 4 (CLI flag) overrides all other layers.
+//
+// PR A collapsed every strict-path `rule` confidence to 1.0, so the
+// pre-PR-A version of this test (config threshold 0.5, CLI override
+// 0.99, asserts the 0.97-confidence rel-to-missing-usa fix is blocked
+// by the CLI override) no longer has a sub-1.0 strict-path fix to
+// exercise. The layered-override mechanism itself is unchanged — the
+// CLI flag still overrides the config layer — so this test now
+// verifies the flag is plumbed and accepted end-to-end, with both the
+// config layer and the CLI override admitting the strict-1.0 fix.
+// A meaningful "CLI threshold blocks a sub-threshold fix" assertion
+// returns when PR B introduces decoder-path sub-1.0 confidences.
 #[test]
 fn cli_confidence_threshold_overrides_config() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
-    // Config sets threshold=0.5. CLI flag --confidence-threshold=0.99
-    // should override and select only the >=0.99 fixes. The
-    // rel-to-missing-usa fix has confidence 0.97 (below 0.99), so the
-    // fix should NOT be applied; the diagnostic still surfaces.
     std::fs::write(
         &config_path,
         format!("confidence_threshold = 0.5\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
     )
     .unwrap();
 
-    // The CLI-level sub-threshold gate: the rel-to-missing-usa rule
-    // fires at confidence 0.97 — below the 0.99 flag override — so no
-    // fix is applied at the higher threshold and the audit stream
-    // stays empty.
     let assert = marque()
         .args(["fix", "--confidence-threshold", "0.99", "--config"])
         .arg(&config_path)
         .write_stdin("SECRET//REL TO GBR\n")
         .assert()
-        .code(1); // diagnostic remains; fix not applied at 0.99 threshold
+        .success();
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert_eq!(
         stdout.as_ref(),
-        "SECRET//REL TO GBR\n",
-        "with --confidence-threshold=0.99, the 0.97-confidence fix does not apply"
+        "SECRET//REL TO USA, GBR\n",
+        "CLI --confidence-threshold=0.99 accepts the strict-1.0 \
+         rel-to-missing-usa fix; the override is plumbed end-to-end \
+         and the fix applies"
     );
 }
 

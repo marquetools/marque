@@ -52,10 +52,9 @@ use crate::scheme::CapcoScheme;
 /// E002 does not, by itself, detect alphabetical-ordering errors when `USA`
 /// is already present and first; those cases are handled by the renderer's
 /// REL TO axis (`render_rel_to.rs`) per CAPCO-2016 §H.8 p150–151 (pre-PR-3c.B
-/// the ordering check belonged to E020 / E060, both retired). The 0.97
-/// confidence is predicated on single-pass canonicalization so an E002 fix
-/// does not leave behind a latent alphabetical-ordering violation for a
-/// second pass.
+/// the ordering check belonged to E020 / E060, both retired). The fix is
+/// single-pass canonicalizing so an E002 fix does not leave behind a latent
+/// alphabetical-ordering violation for a second pass.
 ///
 /// Scope boundaries:
 /// - Tetragraph alphabetization is deferred. `CountryCode` (issue
@@ -285,7 +284,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                     token: FactRef::Cve(crate::scheme::TOK_USA),
                     scope: intent_scope_factadd,
                 },
-                confidence: Confidence::strict(0.97),
+                confidence: Confidence::strict(1.0),
                 feature_ids: Default::default(),
                 // The USA-missing branch uses `RequiredByPresence`
                 // (not the parent's `NonCanonicalOrder`): injecting
@@ -316,7 +315,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: intent_scope_recanon,
                 },
-                confidence: Confidence::strict(0.97),
+                confidence: Confidence::strict(1.0),
                 feature_ids: Default::default(),
                 // Mirror the parent diagnostic's category-bearing
                 // `Message` so the REL TO axis context survives in the
@@ -364,15 +363,6 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
 // classification-authority / org style choice; neither form violates
 // CAPCO-2016 §H.8. Users opt in via `[rules] S009 = "suggest"`.
 // ---------------------------------------------------------------------------
-
-/// Confidence scalar for S009 (`prefer-tetragraph-collapse`).
-///
-/// Mirrors `BARE_NATO_REQUIRES_REL_TO_CONFIDENCE = 0.85` — sufficient for the
-/// suggestion channel. The collapse is purely additive (no
-/// information loss: tetragraphs are decomposable), so 0.85 is
-/// conservative; users who set `[rules] S009 = "fix"` will need
-/// `confidence_threshold ≤ 0.84` to auto-apply.
-const PREFER_TETRAGRAPH_COLLAPSE_CONFIDENCE: f32 = 0.85;
 
 /// Rule **S009** — `prefer-tetragraph-collapse`.
 ///
@@ -558,7 +548,7 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
             capco(SectionLetter::H, 8, 150),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(PREFER_TETRAGRAPH_COLLAPSE_CONFIDENCE),
+            Confidence::strict(1.0),
             None,
         )]
     }
@@ -577,8 +567,6 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
 // when EVERY explicit-REL-TO portion matches, so the suggested
 // transformation replaces all of them uniformly.
 
-/// Confidence scalar for S010.
-const COLLAPSE_UNIFORM_REL_PORTIONS_CONFIDENCE: f32 = 0.85;
 const COLLAPSE_UNIFORM_REL_PORTIONS_CITATION: Citation = capco(SectionLetter::H, 8, 150);
 
 /// Rule **S010** — `collapse-uniform-rel-portions`.
@@ -694,7 +682,7 @@ fn check_collapse_uniform_rel_portions(
             COLLAPSE_UNIFORM_REL_PORTIONS_CITATION,
             "REL",
             FixSource::BuiltinRule,
-            Confidence::strict(COLLAPSE_UNIFORM_REL_PORTIONS_CONFIDENCE),
+            Confidence::strict(1.0),
             None,
         ));
     }
