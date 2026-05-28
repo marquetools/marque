@@ -195,6 +195,12 @@ impl Engine {
             // install a non-Noop sink.
             #[cfg(feature = "decision-tracing")]
             sink: std::sync::Mutex::new(Box::new(marque_scheme::NoopSink)),
+            // No observer until `with_decision_sink` installs one. Gates
+            // `Engine::emit` and the scheme-side projection routing onto
+            // the lock-free path so the default `NoopSink` costs nothing
+            // on the hot path.
+            #[cfg(feature = "decision-tracing")]
+            tracing_active: false,
             #[cfg(feature = "decision-tracing")]
             next_step: std::sync::atomic::AtomicU32::new(0),
         })
@@ -278,6 +284,7 @@ impl Engine {
         S: SyncDecisionSink + 'static,
     {
         self.sink = std::sync::Mutex::new(Box::new(sink));
+        self.tracing_active = true;
         self.next_step = std::sync::atomic::AtomicU32::new(0);
         self
     }
