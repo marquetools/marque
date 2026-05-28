@@ -8,7 +8,7 @@
 //! all three.
 
 use marque_ism::span::MarkingType;
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 use marque_scheme::recognizer::ParseContext;
 use smallvec::SmallVec;
 

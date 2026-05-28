@@ -14,7 +14,7 @@
 
 use marque_ism::{CanonicalAttrs, MarkingClassification, TokenKind};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition,
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
@@ -88,7 +88,7 @@ use crate::scheme::CapcoScheme;
 ///
 /// The diagnostic and fix-intent messages carry no document bytes: the
 /// `Diagnostic.fix` field is a `FixIntent` whose `replacement` is
-/// `Recanonicalize { RecanonScope::Page }`, the `Confidence` is a
+/// `Recanonicalize { RecanonScope::Page }`, the `Recognition` is a
 /// scalar, and the `Message` is a closed template + closed args. The
 /// structural payload keeps document text out of the audit record by
 /// construction (Constitution V).
@@ -225,7 +225,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
             },
-            confidence: Confidence::strict(),
+            confidence: Recognition::strict(),
             feature_ids: Default::default(),
             // #739: mirror the parent diagnostic's category-bearing
             // message so the JOINT axis context survives in the

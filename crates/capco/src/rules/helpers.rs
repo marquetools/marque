@@ -20,7 +20,7 @@
 use std::collections::HashSet;
 
 use marque_ism::{CanonicalAttrs, CountryCode, Span, TokenKind};
-use marque_rules::{Confidence, Diagnostic, FixSource, Message, RuleId, Severity};
+use marque_rules::{Diagnostic, FixSource, Message, Recognition, RuleId, Severity};
 use marque_scheme::Citation;
 
 use crate::scheme::CapcoScheme;
@@ -79,7 +79,7 @@ pub(crate) struct FixDiagnosticParams {
 /// `Diagnostic.text_correction` for the replacement bytes + provenance.
 /// The helper threads `source` and `migration_ref` through to the
 /// `TextCorrection` payload. Strict-path fixes always emit
-/// `Confidence::strict()` — severity controls auto-apply, not
+/// `Recognition::strict()` — severity controls auto-apply, not
 /// confidence. The `original` field is discarded
 /// (audit content-ignorance).
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
@@ -92,7 +92,7 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
         p.citation,
         p.replacement,
         p.source,
-        Confidence::strict(),
+        Recognition::strict(),
         p.migration_ref,
     )
 }

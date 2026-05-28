@@ -20,7 +20,7 @@
 
 use marque_ism::{CanonicalAttrs, SciControlSystem, SciMarking, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition, Rule,
     RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, SectionLetter, capco};
@@ -367,7 +367,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
                 // Strict-path fix proposal: confidence 1.0. Severity::Suggest
                 // is the hard exclusion from auto-apply; the three candidates
                 // surface for human selection regardless of confidence value.
-                Confidence::strict(),
+                Recognition::strict(),
                 None,
             ));
         }

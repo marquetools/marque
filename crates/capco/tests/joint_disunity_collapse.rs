@@ -238,7 +238,7 @@ fn w004_message_contains_only_canonical_trigraphs() {
     // structurally enforced by the closed `Message` shape —
     // `MessageArgs` field types are restricted to
     // `Option<TokenId>` / `Option<CategoryId>` / `Option<Span>` /
-    // `Blake3Hash` / `Confidence` / `FeatureId`; raw bytes are
+    // `Blake3Hash` / `Recognition` / `FeatureId`; raw bytes are
     // unrepresentable. The test purpose strengthens: instead of
     // grepping prose for a sentinel that *could have* leaked, we
     // verify the template + category identification (the closed-set

@@ -20,9 +20,9 @@
 //!   graph. The `Display` impl emits the citation-lint regex form
 //!   (`§<L>.<sub>[.<sub_sub>] [Table <N>] p<page>`). Const-fn
 //!   construction; no runtime validation.
-//! - [`confidence`] — `Confidence` (single `recognition` axis post-PR-B),
-//!   `FeatureId`, `FeatureContribution`. Audit-provenance payload
-//!   attached to every `FixIntent<S>`.
+//! - [`recognition`] — `Recognition` (single `recognition` axis
+//!   post-PR-B), `FeatureId`, `FeatureContribution`. Audit-provenance
+//!   payload attached to every `FixIntent<S>`.
 //! - [`message`] — `Message`, `MessageTemplate` (closed enum), `MessageArgs`
 //!   (closed-set struct). The type-system closure of the diagnostic-message
 //!   leak channel: only `Message::new(template, args)` constructs a `Message`,
@@ -64,12 +64,12 @@
 
 pub mod audit;
 pub mod audit_note;
-pub mod confidence;
 pub mod context;
 pub mod diagnostic;
 pub mod fix;
 pub mod fix_intent;
 pub mod message;
+pub mod recognition;
 pub mod rule;
 pub mod severity;
 
@@ -78,13 +78,13 @@ pub use audit::{
     Discriminant,
 };
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
-pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use context::RuleContext;
 pub use diagnostic::{Diagnostic, TextCorrection};
 pub use fix::{CORRECTIONS_MAP_CITATION, EnginePromotionToken, FixSource};
 pub use fix_intent::FixIntent;
+pub use recognition::{FeatureContribution, FeatureId, Recognition};
 // Re-export `SmallVec` + the `smallvec!` macro so external consumers
-// can construct `Confidence.features` (a `SmallVec<[FeatureContribution; 4]>`)
+// can construct `Recognition.features` (a `SmallVec<[FeatureContribution; 4]>`)
 // and any other rules-crate SmallVec field without depending on the
 // `smallvec` crate directly. The inline storage is an implementation
 // detail of the audit-record payload; the re-export keeps it that
@@ -229,7 +229,7 @@ mod tests {
         assert!(Severity::Off < Severity::Suggest);
     }
 
-    // Confidence's per-axis validate() is tested directly in
-    // `confidence.rs`; FixIntent<S> construction is exercised in
+    // Recognition's per-axis validate() is tested directly in
+    // `recognition.rs`; FixIntent<S> construction is exercised in
     // `fix_intent.rs::tests`.
 }

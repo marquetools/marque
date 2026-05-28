@@ -38,8 +38,8 @@ use marque_capco::CapcoScheme;
 use marque_ism::Span;
 use marque_rules::audit::{AppliedFix as AuditAppliedFix, AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    Confidence, EnginePromotionToken, FeatureId, FixIntent, FixSource, Message, MessageArgs,
-    MessageTemplate, RuleId, Severity,
+    EnginePromotionToken, FeatureId, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    Recognition, RuleId, Severity,
 };
 use marque_scheme::canonical::{Canonical, CanonicalConstructor, EngineConstructor};
 use marque_scheme::fix_intent::RecanonScope;
@@ -117,7 +117,7 @@ fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: Confidence::strict(),
+        confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(template_for_rule(rule), MessageArgs::default()),
         source: FixSource::BuiltinRule,
@@ -188,7 +188,7 @@ fn synth_text_correction(
         original_digest,
         "SECRET".into(),
         FixSource::CorrectionsMap,
-        Confidence::strict(),
+        Recognition::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(1_700_000_000),
@@ -380,14 +380,14 @@ fn applied_fix_confidence_round_trip() {
         confidence.get("region").is_none(),
         "PR B retired the region field; must not appear on the wire"
     );
-    // Confidence::strict produces runner_up_ratio = None;
+    // Recognition::strict produces runner_up_ratio = None;
     // serde emits as explicit null.
     assert!(confidence["runner_up_ratio"].is_null());
-    // Default Confidence::strict's features SmallVec is empty.
+    // Default Recognition::strict's features SmallVec is empty.
     assert_eq!(
         confidence["features"].as_array().unwrap().len(),
         0,
-        "Confidence::strict has empty features"
+        "Recognition::strict has empty features"
     );
 }
 

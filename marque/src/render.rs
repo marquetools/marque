@@ -582,7 +582,7 @@ pub struct AuditCanonicalJson<'a> {
     pub bytes_digest: String,
 }
 
-/// `Confidence` projection.
+/// `Recognition` projection.
 ///
 /// `marque-3.0` shape (PR B): one scalar axis (`recognition`),
 /// optional decoder provenance (`runner_up_ratio`), and a closed
@@ -733,9 +733,9 @@ fn project_canonical_to_json<'a>(
     }
 }
 
-/// Project a [`marque_rules::Confidence`] into the audit-record JSON
+/// Project a [`marque_rules::Recognition`] into the audit-record JSON
 /// shape.
-fn project_confidence_to_json(confidence: &marque_rules::Confidence) -> AuditConfidenceJson<'_> {
+fn project_confidence_to_json(confidence: &marque_rules::Recognition) -> AuditConfidenceJson<'_> {
     AuditConfidenceJson {
         recognition: confidence.recognition,
         combined: confidence.combined(),
@@ -1098,7 +1098,7 @@ mod tests {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
             },
-            confidence: marque_rules::Confidence::strict(),
+            confidence: marque_rules::Recognition::strict(),
             feature_ids: Default::default(),
             message: Message::new(
                 MessageTemplate::BannerRollupMismatch,
@@ -1725,7 +1725,7 @@ mod tests {
         use marque_ism::Span;
         use marque_rules::audit::AppliedTextCorrection;
         use marque_rules::{
-            Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate,
+            EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, Recognition,
             RuleId, Severity,
         };
         use std::sync::Arc;
@@ -1743,7 +1743,7 @@ mod tests {
             original_digest,
             "SECRET".into(),
             FixSource::CorrectionsMap,
-            Confidence::strict(),
+            Recognition::strict(),
             None,
             Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),

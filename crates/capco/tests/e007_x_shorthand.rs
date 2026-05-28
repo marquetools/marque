@@ -15,7 +15,7 @@
 //! - `e007_still_fires_on_migration_table_entries` — table-backed
 //!   path coverage: `25X1-` IS in the seed `MIGRATIONS` table.
 //!
-//! Both paths emit at `Confidence::strict()` — strict-path fixes
+//! Both paths emit at `Recognition::strict()` — strict-path fixes
 //! collapse to 1.0; severity controls auto-apply, not confidence.
 //!
 //! Both paths produce a `text_correction` (E007 is a text-correction
@@ -66,7 +66,7 @@ fn diags_for(source: &str, predicate: &str) -> Vec<Diagnostic<CapcoScheme>> {
 /// fallback landed, this would have fallen through to E008. Now E007
 /// owns it via the X-shorthand regex; the canonical replacement is
 /// `25X2` (trailing `-` stripped). Strict-path fix proposals emit at
-/// `Confidence::strict()`; severity controls auto-apply, not
+/// `Recognition::strict()`; severity controls auto-apply, not
 /// confidence.
 ///
 /// Authority: CAPCO-2016 §E.6 pp 33-34 (X-shorthand date-pattern
@@ -118,7 +118,7 @@ fn e007_fires_on_pattern_matched_x_shorthand_not_in_migration_table() {
 /// `25X1-` IS in the seed `MIGRATIONS` table (per
 /// `crates/ism/build.rs`). E007 owns the table-backed path; the
 /// replacement is `25X1` (table-anchored canonical form). Strict-path
-/// fix proposals emit at `Confidence::strict()`.
+/// fix proposals emit at `Recognition::strict()`.
 ///
 /// Authority: CAPCO-2016 §E.6 pp 33-34. Re-verified against
 /// `crates/capco/docs/CAPCO-2016.md` per Constitution VIII.

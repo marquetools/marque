@@ -173,7 +173,7 @@ pub(super) fn lookup_marking(
     None
 }
 
-/// Confidence-then-span sort + C-1 dedup walk extracted into a helper
+/// Recognition-then-span sort + C-1 dedup walk extracted into a helper
 /// so pass-1 and pass-2 share an identical ordering/dedup pipeline. The
 /// walks are run independently per pass; the helper exists to factor
 /// the algorithm, not the state.
@@ -288,7 +288,7 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// # Filters
 ///
 /// - `Severity::Suggest` → excluded (hard exclusion from auto-apply).
-/// - `Confidence::combined() < threshold` → excluded.
+/// - `Recognition::combined() < threshold` → excluded.
 /// - Empty `candidate_span` → excluded.
 /// - Candidate not present in `parsed_markings` → diagnostic dropped
 ///   with a `tracing::warn`.
@@ -529,7 +529,7 @@ pub(super) fn synthesize_fixes(
 /// correctness issue tracked separately; the structural-intent path
 /// closes the audit-shape channel by construction.
 ///
-/// The fix's `Confidence` is populated entirely from the decoder's
+/// The fix's `Recognition` is populated entirely from the decoder's
 /// provenance trace:
 ///
 /// - `recognition` derives from `runner_up_ratio` via softmax (see
@@ -558,7 +558,7 @@ pub(super) fn build_decoder_diagnostic(
     _kind: marque_ism::MarkingType,
     corpus_override_active: bool,
 ) -> Option<Diagnostic<CapcoScheme>> {
-    use marque_rules::confidence::{FeatureContribution, FeatureId};
+    use marque_rules::recognition::{FeatureContribution, FeatureId};
 
     let original = std::str::from_utf8(original_bytes).ok()?;
     let replacement = std::str::from_utf8(&provenance.canonical_bytes).ok()?;
@@ -570,7 +570,7 @@ pub(super) fn build_decoder_diagnostic(
     }
 
     // `provenance.features` is a `Box<[FeatureContribution]>`; copy into
-    // a `SmallVec<[…; 4]>` matching `Confidence::features` so the inline-4
+    // a `SmallVec<[…; 4]>` matching `Recognition::features` so the inline-4
     // case stays heap-free even after the optional override-marker push.
     let mut features: marque_rules::SmallVec<[FeatureContribution; 4]> =
         marque_rules::SmallVec::from_slice(&provenance.features);
@@ -613,7 +613,7 @@ pub(super) fn build_decoder_diagnostic(
         _ => (Severity::Fix, raw_recognition, FixSource::DecoderPosterior),
     };
 
-    let confidence = Confidence {
+    let confidence = Recognition {
         recognition,
         runner_up_ratio: provenance.runner_up_ratio,
         features,
@@ -768,7 +768,7 @@ pub(super) fn build_r002_diagnostic(
 /// heuristic (issue #133) — pinned at the default
 /// `confidence_threshold` (0.95) so a solo heuristic candidate lands
 /// at-threshold rather than saturating above it. Pre-PR-B this cap
-/// lived on the (now-retired) `Confidence::rule` axis as
+/// lived on the (now-retired) `Recognition::rule` axis as
 /// `HEURISTIC_RULE_AXIS_CAP`; PR B collapsed the two axes into one and
 /// the cap moved onto `recognition` directly. The empirical corpus
 /// measurement justifying the `0.95` value (≥99.4% confidence per

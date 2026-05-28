@@ -20,8 +20,8 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use marque_rules::{
-    AppliedTextCorrection, Blake3Hash, Confidence, EnginePromotionToken, FixSource, Message,
-    MessageArgs, MessageTemplate, RuleId,
+    AppliedTextCorrection, Blake3Hash, EnginePromotionToken, FixSource, Message, MessageArgs,
+    MessageTemplate, Recognition, RuleId,
 };
 use marque_scheme::{Severity, Span};
 use smol_str::SmolStr;
@@ -42,7 +42,7 @@ fn applied_text_correction_promote_seal_constructs_through_token() {
         original_digest,
         SmolStr::new("SECRET"),
         FixSource::CorrectionsMap,
-        Confidence::strict(),
+        Recognition::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         SystemTime::UNIX_EPOCH,
@@ -78,7 +78,7 @@ fn applied_text_correction_clone_preserves_fields() {
         original_digest,
         SmolStr::new("CUI"),
         FixSource::MigrationTable,
-        Confidence::strict(),
+        Recognition::strict(),
         Some("§F.1 p41"),
         Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
         SystemTime::UNIX_EPOCH,

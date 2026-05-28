@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use marque_ism::{CanonicalAttrs, Span, TETRAGRAPH_MEMBERS, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition,
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{
@@ -284,7 +284,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                     token: FactRef::Cve(crate::scheme::TOK_USA),
                     scope: intent_scope_factadd,
                 },
-                confidence: Confidence::strict(),
+                confidence: Recognition::strict(),
                 feature_ids: Default::default(),
                 // The USA-missing branch uses `RequiredByPresence`
                 // (not the parent's `NonCanonicalOrder`): injecting
@@ -315,7 +315,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: intent_scope_recanon,
                 },
-                confidence: Confidence::strict(),
+                confidence: Recognition::strict(),
                 feature_ids: Default::default(),
                 // Mirror the parent diagnostic's category-bearing
                 // `Message` so the REL TO axis context survives in the
@@ -548,7 +548,7 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
             capco(SectionLetter::H, 8, 150),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(),
+            Recognition::strict(),
             None,
         )]
     }
@@ -682,7 +682,7 @@ fn check_collapse_uniform_rel_portions(
             COLLAPSE_UNIFORM_REL_PORTIONS_CITATION,
             "REL",
             FixSource::BuiltinRule,
-            Confidence::strict(),
+            Recognition::strict(),
             None,
         ));
     }

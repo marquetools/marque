@@ -122,7 +122,7 @@ fn fix_with_threshold_rejects_infinity() {
 // M-4: the confidence filter at `f.confidence.combined() >= threshold`
 // is on the hot path of Engine::fix. These two tests pin the `>=`
 // semantics so a future refactor that flips it to `>` (or vice versa)
-// is caught. "Confidence" here is the scalar `Confidence::combined()`
+// is caught. "Recognition" here is the scalar `Recognition::combined()`
 // (= recognition, post-PR-B); `runner_up_ratio` and feature
 // contributions are audit-provenance metadata and do not participate
 // in the threshold gate.
@@ -261,7 +261,7 @@ fn fix_excludes_explicit_suggest_severity_from_auto_apply() {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
                 },
-                confidence: marque_rules::Confidence::strict(),
+                confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
                     // Test-fixture FixIntent.message must agree with the

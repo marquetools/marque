@@ -15,7 +15,7 @@ use marque_ism::{
     CapcoTokenSet, Classification, DissemControl, MarkingClassification,
     span::{MarkingCandidate, MarkingType, Span},
 };
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 use marque_scheme::MarkingScheme;
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};
@@ -276,7 +276,7 @@ fn runner_up_ratio_saturates_on_extreme_log_margin() {
     // Regression guard for PR #127 review comment on decoder.rs:305:
     // when `log_margin` is large enough that `f32::exp()` overflows
     // (≈ ≥ 88.7 nats on f32), the previous code emitted `+∞` into
-    // `Confidence::runner_up_ratio` and `Confidence::validate`
+    // `Recognition::runner_up_ratio` and `Recognition::validate`
     // rejected the resulting record at the audit boundary,
     // panicking inside `FixProposal::new`. The fix saturates at
     // `f32::MAX`. We exercise both branches here with bare

@@ -291,7 +291,7 @@ impl Engine {
                             CORRECTIONS_MAP_CITATION,
                             value.as_ref(),
                             FixSource::CorrectionsMap,
-                            marque_rules::Confidence::strict(),
+                            marque_rules::Recognition::strict(),
                             None,
                         ));
                     }

@@ -93,7 +93,7 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     "capco:portion.nato.bare-nato-requires-rel-to-usa-nato", // S007
     // RELIDO byte-surfacing twin of the `CLOSURE_RELIDO_SCI` /
     // `CLOSURE_RELIDO_US_CLASS` lattice-layer closures. Severity::Suggest;
-    // per the PR A invariant, emission is `Confidence::strict()` like
+    // per the PR A invariant, emission is `Recognition::strict()` like
     // every other strict-path rule. Authority: CAPCO-2016 §H.8 p154 +
     // §D.2 Table 3 rule 17.
     "capco:portion.dissem.relido-implied-by-closure", // S008

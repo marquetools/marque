@@ -29,14 +29,14 @@ use super::shape::is_cab_head;
 /// already canonical, longer than 2 chars, or doesn't match any
 /// rule.
 ///
-/// # Confidence
+/// # Recognition
 ///
 /// The decoder tags this attempt's `CanonicalAttempt::fix_source`
 /// with [`marque_rules::FixSource::DecoderClassificationHeuristic`].
 /// The engine then (a) downgrades the diagnostic severity to
 /// [`Severity::Warn`](marque_rules::Severity::Warn) — always-visible
 /// in `--check`, exits non-zero — and (b) caps
-/// [`Confidence::rule`](marque_rules::Confidence) at `0.80` so
+/// [`Recognition::rule`](marque_rules::Recognition) at `0.80` so
 /// `combined ≤ 0.80` stays below the default `confidence_threshold`
 /// of `0.95`. The heuristic only auto-applies in `--fix` mode when
 /// the user has explicitly lowered the threshold, opting into the
@@ -327,7 +327,7 @@ mod tests {
         CapcoTokenSet, Classification, DissemControl, MarkingClassification,
         span::{MarkingCandidate, MarkingType, Span},
     };
-    use marque_rules::confidence::FeatureId;
+    use marque_rules::recognition::FeatureId;
     use marque_scheme::MarkingScheme;
     use marque_scheme::ambiguity::Parsed;
     use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};

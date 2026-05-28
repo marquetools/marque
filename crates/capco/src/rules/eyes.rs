@@ -7,7 +7,7 @@
 
 use marque_ism::{CanonicalAttrs, CountryCode, MarkingType, TokenKind};
 use marque_rules::{
-    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition, Rule,
     RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, SectionLetter, capco};
@@ -154,7 +154,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                             CountryCode::NZL.to_string(),
                         ]),
                         FixSource::BuiltinRule,
-                        Confidence::strict(),
+                        Recognition::strict(),
                         None,
                     ));
                 }
@@ -180,7 +180,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                 capco(SectionLetter::H, 8, 157),
                 canonical,
                 FixSource::BuiltinRule,
-                Confidence::strict(),
+                Recognition::strict(),
                 None,
             ));
         }

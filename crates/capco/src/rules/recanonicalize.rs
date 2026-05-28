@@ -18,7 +18,7 @@
 
 use marque_ism::{CanonicalAttrs, TokenKind};
 use marque_rules::{
-    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition, Rule,
     RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, SectionLetter, capco};
@@ -60,7 +60,7 @@ use crate::scheme::CapcoScheme;
 // The walker emits per-row severity `Severity::Fix` (`text_correction`
 // channel; replacement is a hardcoded static string literal per
 // Constitution V — no document content flows into the audit record).
-// Per-row confidence `Confidence::strict()`: authoritative §-citation
+// Per-row confidence `Recognition::strict()`: authoritative §-citation
 // for each row and the canonical compound form is unambiguous.
 
 /// One row of the bare-canonical-compound catalog.
@@ -200,7 +200,7 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
                         // canonical compound form is unambiguous and
                         // the fix performs the manual's documented
                         // re-marking verbatim.
-                        Confidence::strict(),
+                        Recognition::strict(),
                         None,
                     ));
                     break;

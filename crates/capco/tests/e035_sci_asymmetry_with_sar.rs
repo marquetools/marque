@@ -160,7 +160,7 @@ fn e035_cites_h4_p61() {
 /// carrier (`MessageTemplate` enum + `MessageArgs` struct) — the
 /// per-level prose is no longer reachable from `Message` because
 /// it was never representable in the closed-args shape (which
-/// carries only `TokenId` / `CategoryId` / `Span` / `Confidence` /
+/// carries only `TokenId` / `CategoryId` / `Span` / `Recognition` /
 /// `FeatureId` — no `String` field).
 ///
 /// The structural property the legacy test guarded — "the message

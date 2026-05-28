@@ -15,7 +15,7 @@
 
 use marque_ism::{CanonicalAttrs, CountryCode, MarkingClassification, TokenKind};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition,
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
@@ -40,7 +40,7 @@ use crate::scheme::CapcoScheme;
 // `Constraint::Custom` today.
 // ---------------------------------------------------------------------------
 
-// All strict-path fix proposals emit Confidence::strict(). Severity controls auto-apply, not confidence.
+// All strict-path fix proposals emit Recognition::strict(). Severity controls auto-apply, not confidence.
 
 /// Fires on a portion whose classification axis is a bare
 /// [`MarkingClassification::Nato`] variant when the page also carries at
@@ -155,8 +155,8 @@ use crate::scheme::CapcoScheme;
 /// Default `Severity::Suggest` is a hard exclusion from auto-apply in
 /// `Engine::fix_inner`. Users who want auto-apply set
 /// `[rules] capco:portion.nato.bare-nato-requires-rel-to-usa-nato =
-/// "fix"` in `.marque.toml`. Confidence is not part of the gate; every
-/// strict-path fix proposal emits at `Confidence::strict()`. End-to-
+/// "fix"` in `.marque.toml`. Recognition is not part of the gate; every
+/// strict-path fix proposal emits at `Recognition::strict()`. End-to-
 /// end coverage of the severity-override path lives in
 /// `crates/capco/tests/fr048_bare_nato_rel_to.rs`.
 pub(super) struct BareNatoRequiresRelToRule;
@@ -389,7 +389,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
             capco(SectionLetter::H, 7, 127),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(),
+            Recognition::strict(),
             None,
         )]
     }
@@ -438,7 +438,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 // the §H.7 p122 + §G.2 p40 + §H.7 p127 worked examples.
 //
 // Severity: `Fix` (auto-applies when confidence ≥ engine threshold).
-// Confidence: `strict(1.0)` — the canonical form is unambiguous; the
+// Recognition: `strict(1.0)` — the canonical form is unambiguous; the
 // renderer produces deterministic bytes from the canonical attrs.
 //
 // Audit content-ignorance: the diagnostic message does NOT echo input
@@ -589,7 +589,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
 
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize { scope },
-            confidence: Confidence::strict(),
+            confidence: Recognition::strict(),
             feature_ids: Default::default(),
             message: Message::new(
                 MessageTemplate::WrongTokenForm,

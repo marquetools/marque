@@ -68,7 +68,7 @@ impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
 ///
 /// `args` is intentionally NOT serialized — the closed `MessageArgs`
 /// payload (typed `TokenId` / `CategoryId` / `Span` / `Blake3Hash` /
-/// `Confidence` / `FeatureId` / `RuleId`) requires a per-template
+/// `Recognition` / `FeatureId` / `RuleId`) requires a per-template
 /// arg-flattening serializer that downstream consumers don't yet need.
 /// Add the `args` field when audit renderers demand the structured
 /// field set.
@@ -312,7 +312,7 @@ fn project_canonical_to_json_v1_0<'a>(
 }
 
 fn project_confidence_to_json_v1_0(
-    confidence: &marque_rules::Confidence,
+    confidence: &marque_rules::Recognition,
 ) -> AuditConfidenceJsonV1_0<'_> {
     AuditConfidenceJsonV1_0 {
         recognition: confidence.recognition,

@@ -17,7 +17,7 @@
 //! bytes are never copied into a `TextCorrectionProposal`.
 
 use marque_capco::CapcoScheme;
-use marque_rules::{Confidence, FixIntent, FixSource, Message, RuleId, Severity};
+use marque_rules::{FixIntent, FixSource, Message, Recognition, RuleId, Severity};
 use marque_scheme::Span;
 use smol_str::SmolStr;
 
@@ -42,7 +42,7 @@ pub(crate) struct TextCorrectionProposal {
     /// Canonical replacement bytes.
     pub replacement: SmolStr,
     /// Multi-axis confidence; gated against the engine threshold.
-    pub confidence: Confidence,
+    pub confidence: Recognition,
     /// Provenance (typically `FixSource::CorrectionsMap`).
     pub source: FixSource,
     /// Diagnostic message — closed template + closed args. Snapshot

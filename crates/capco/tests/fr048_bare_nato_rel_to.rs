@@ -53,7 +53,7 @@ fn engine() -> Engine {
 /// override mirrors the production code path users take via
 /// `[rules] S007 = "fix"` in `.marque.toml`.
 ///
-/// Strict-path fix proposals emit at `Confidence::strict()`, which
+/// Strict-path fix proposals emit at `Recognition::strict()`, which
 /// clears the default `confidence_threshold = 0.95` unconditionally.
 /// PR A collapsed sub-1.0 strict-path confidence values; the dual-
 /// override pattern (severity + threshold) the pre-PR-A version of

@@ -19,7 +19,7 @@
 
 use marque_ism::{CanonicalAttrs, TokenKind};
 use marque_rules::{
-    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition, Rule,
     RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, SectionLetter, capco};
@@ -526,7 +526,7 @@ fn emit_diagnostic(
             // The fix performs the manual's "re-mark to HCS / SI / TK"
             // instruction verbatim; no ambiguity in either the trigger
             // or the canonical form.
-            Confidence::strict(),
+            Recognition::strict(),
             None,
         ),
         ReplacementKind::WithCompartment { prefix } => {
@@ -543,12 +543,12 @@ fn emit_diagnostic(
                 // Compound forms: the canonical form is constructed
                 // mechanically from the deprecated prefix's documented
                 // replacement (`SI-` / `TK-`) and the original
-                // compartment. Confidence stays at 1.0 for the
+                // compartment. Recognition stays at 1.0 for the
                 // recognized prefixes (`HUMINT`/`COMINT`/`ECI`/`EL`/
                 // `KDK`/`KLONDIKE`); rule-level severity-override is
                 // the user's escape hatch when org policy disagrees
                 // with the manual.
-                Confidence::strict(),
+                Recognition::strict(),
                 None,
             )
         }
@@ -579,7 +579,7 @@ fn emit_diagnostic(
                         // Authoritative mapping: §H.4 p85 + p87/p91/p95
                         // document the BLUEFISH→BLFH / IDITAROD→IDIT /
                         // KANDIK→KAND abbreviation. Full confidence.
-                        Confidence::strict(),
+                        Recognition::strict(),
                         None,
                     )
                 }

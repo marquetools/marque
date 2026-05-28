@@ -15,7 +15,7 @@
 //! Pre-PR-A, the first bullet was "Mixed confidence: only
 //! high-confidence fixes applied" — a sub-threshold strict-path fix was
 //! the no-apply side of the test. Post-PR-A every strict-path fix
-//! emits at `Confidence::strict()`, so the no-apply side is now a
+//! emits at `Recognition::strict()`, so the no-apply side is now a
 //! genuinely fix-less diagnostic (bare HCS, conscious-defer per §H.4
 //! p62). The sub-threshold-blocks-apply assertion returns when PR B
 //! introduces decoder-path sub-1.0 confidence.
@@ -41,7 +41,7 @@ fn test_engine() -> Engine {
 
 fn mixed_confidence_source() -> Vec<u8> {
     // First line: REL TO missing USA — `Severity::Error` with a
-    // strict-path fix at `Confidence::strict()` (PR A invariant) →
+    // strict-path fix at `Recognition::strict()` (PR A invariant) →
     // auto-applied.
     // Second line `(TS//HCS)`: bare HCS legacy form (§H.4 p62) emitting
     // a no-fix `Severity::Error` diagnostic that stays in
@@ -63,7 +63,7 @@ fn applies_fix_when_sibling_diagnostic_has_no_fix() {
     let result = engine.fix(&source, FixMode::Apply);
 
     // Only the REL-TO-missing-USA fix should be applied. Post-PR-A
-    // strict-path fix proposals emit at `Confidence::strict()`;
+    // strict-path fix proposals emit at `Recognition::strict()`;
     // the per-fix confidence assertion pins that collapse here.
     // The remaining diagnostic on this fixture is the bare HCS legacy
     // form (no-fix on the `(TS//HCS)\n` second line — conscious-defer

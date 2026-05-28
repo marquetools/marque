@@ -41,7 +41,7 @@ const TEST_SRC: &[u8] = b"SECRET//NOFORN\n\n(S//NF) Sample portion that triggers
 /// Compare two `FixResult`s field-by-field for shim-parity tests.
 ///
 /// `FixResult` (and the types it contains) does not derive `PartialEq`
-/// — `AppliedFix::timestamp` and `Confidence`'s f32 axes can drift in
+/// — `AppliedFix::timestamp` and `Recognition`'s f32 axes can drift in
 /// ways that aren't load-bearing. This helper asserts equality on the
 /// fields that *should* match between two equivalent code paths
 /// (source bytes, audit-record content, remaining diagnostics) so a
@@ -170,7 +170,7 @@ fn lint_shim_matches_lint_with_options_default() {
         // Catch divergence in fix proposals — the shim could produce
         // identical metadata but mismatched replacements / spans /
         // sources without this. `FixProposal` does not derive `PartialEq`
-        // (the Confidence axes are f32), so compare the load-bearing
+        // (the Recognition axes are f32), so compare the load-bearing
         // fields explicitly.
         assert_eq!(
             a.fix.is_some(),
@@ -180,7 +180,7 @@ fn lint_shim_matches_lint_with_options_default() {
         );
         if let (Some(a_fix), Some(b_fix)) = (&a.fix, &b.fix) {
             assert_eq!(a_fix.source, b_fix.source);
-            // FixIntent does not impl PartialEq (Confidence carries
+            // FixIntent does not impl PartialEq (Recognition carries
             // f32). Compare the replacement variant discriminant
             // and confidence-combined() value — the fix's structural
             // identity for the shim parity check.

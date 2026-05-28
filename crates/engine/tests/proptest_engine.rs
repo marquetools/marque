@@ -190,7 +190,7 @@ proptest! {
         }
     }
 
-    // Every Confidence value in an AppliedFix has recognition and
+    // Every Recognition value in an AppliedFix has recognition and
     // combined() in [0.0, 1.0]. Post-PR-B there is no `rule` axis.
     #[test]
     fn confidence_bounds(src in arb_source()) {

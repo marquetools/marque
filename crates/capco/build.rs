@@ -339,7 +339,7 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     for (name, count, log_prior) in &token_rows {
         // f64 → f32 downcast matches foundational-plan line 739-757.
         // Decoder internals may compute in f64 and downcast at the
-        // `Confidence` boundary; this table is the `&'static` boundary.
+        // `Recognition` boundary; this table is the `&'static` boundary.
         let log_prior_f32 = downcast_log_prior(*log_prior, name, priors_path);
         out.push_str(&format!(
             "    TokenPrior {{ token: {:?}, count: {}, log_prior: {:?}_f32 }},\n",
@@ -559,7 +559,7 @@ fn validate_corpus_fingerprint(fingerprint: &str, path: &Path) {
 /// it does NOT detect small-magnitude precision loss (subnormal
 /// flush-to-zero, ulp-level rounding), which is accepted as the cost
 /// of keeping the baked tables `f32` per foundational-plan
-/// line 739-757 (the `Confidence` boundary is `f32`).
+/// line 739-757 (the `Recognition` boundary is `f32`).
 ///
 /// If a generator regression produces log-priors large enough in
 /// magnitude to overflow `f32`, the priors JSON needs to be

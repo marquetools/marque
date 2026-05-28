@@ -36,9 +36,9 @@ use std::time::SystemTime;
 use marque_scheme::{Canonical, MarkingScheme, Span};
 use smol_str::SmolStr;
 
-use crate::confidence::Confidence;
 use crate::fix_intent::FixIntent;
 use crate::message::{Blake3Hash, Message};
+use crate::recognition::Recognition;
 use crate::{EnginePromotionToken, FixSource, RuleId};
 use marque_scheme::Severity;
 
@@ -170,7 +170,7 @@ pub const fn discriminant_from_source(source: FixSource) -> Discriminant {
 ///
 /// Carries the engine-rendered [`Canonical<S>`] value (sealed
 /// construction per `marque_scheme::canonical`), the originating
-/// [`Confidence`] snapshot, and the BLAKE3 digest of the canonical
+/// [`Recognition`] snapshot, and the BLAKE3 digest of the canonical
 /// bytes — the marking-side audit-record path.
 ///
 /// # Field set
@@ -205,15 +205,15 @@ pub const fn discriminant_from_source(source: FixSource) -> Discriminant {
 /// The derive macro over-constrains to `S: Clone`, breaking
 /// `S = CapcoScheme` (intentionally non-`Clone`). The manual impl
 /// only requires `S: MarkingScheme` because the actual cloned
-/// payload ([`Canonical<S>`], [`Confidence`], [`Blake3Hash`]) all
+/// payload ([`Canonical<S>`], [`Recognition`], [`Blake3Hash`]) all
 /// support `Clone` without an `S: Clone` bound.
 #[derive(Debug)]
 pub struct AppliedReplacement<S: MarkingScheme> {
     /// The engine-rendered canonical replacement.
     pub canonical: Canonical<S>,
-    /// Confidence snapshot at promotion time (cloned from the
+    /// Recognition snapshot at promotion time (cloned from the
     /// originating [`crate::FixIntent`]`.confidence`).
-    pub confidence: Confidence,
+    pub confidence: Recognition,
     /// BLAKE3 digest of the rendered canonical bytes. Precomputed at
     /// promotion time to keep the audit-emit path allocation-free.
     pub bytes_digest: Blake3Hash,
@@ -624,8 +624,8 @@ pub struct AppliedTextCorrection {
     pub replacement: SmolStr,
     /// Provenance.
     pub source: FixSource,
-    /// Confidence snapshot.
-    pub confidence: Confidence,
+    /// Recognition snapshot.
+    pub confidence: Recognition,
     /// Migration reference (§-citation, for the deprecation path);
     /// `None` for corrections-map matches.
     pub migration_ref: Option<&'static str>,
@@ -679,7 +679,7 @@ impl AppliedTextCorrection {
         original_digest: Blake3Hash,
         replacement: SmolStr,
         source: FixSource,
-        confidence: Confidence,
+        confidence: Recognition,
         migration_ref: Option<&'static str>,
         message: Message,
         timestamp: SystemTime,

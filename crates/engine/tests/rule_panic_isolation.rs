@@ -8,7 +8,7 @@
 //! `Engine::lint` wraps every `Rule::check` call in
 //! `std::panic::catch_unwind`. A buggy rule that panics — most
 //! commonly via `FixProposal::new` rejecting an out-of-range
-//! `Confidence`, but any panic source qualifies — must NOT abort the
+//! `Recognition`, but any panic source qualifies — must NOT abort the
 //! whole document. The catch logs a `marque_engine::rule_panic`
 //! warning naming the rule and skips it; sibling rules and remaining
 //! candidates keep running.
@@ -33,7 +33,7 @@ use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 /// A rule that always panics in `check()`.
 ///
 /// Mimics the failure mode in whitepaper §6.3: a rule that constructs
-/// an invalid `Confidence` would panic inside `FixProposal::new`. Here
+/// an invalid `Recognition` would panic inside `FixProposal::new`. Here
 /// we panic directly with a recognizable string so the test can
 /// assert (where it would matter) that the panic was contained.
 struct AlwaysPanicsRule;
@@ -246,8 +246,8 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
 
 // ---------------------------------------------------------------------------
 // Note: the previous `InvalidConfidenceRule` test exercised the panic
-// raised by `Confidence::strict(arg)` when `arg` was out of `[0.0, 1.0]`.
-// PR B retired the strict-path `rule` axis entirely; `Confidence::strict()`
+// raised by `Recognition::strict(arg)` when `arg` was out of `[0.0, 1.0]`.
+// PR B retired the strict-path `rule` axis entirely; `Recognition::strict()`
 // is now argumentless and infallible, so that panic site no longer
 // exists. The general rule-panic-isolation contract is still pinned by
 // `AlwaysPanicsRule` above (lint pipeline) and

@@ -73,7 +73,7 @@ pub enum ConfigError {
         compiled_version: &'static str,
     },
 
-    /// Confidence threshold out of range.
+    /// Recognition threshold out of range.
     #[error("confidence_threshold {value} is outside [0.0, 1.0]")]
     ThresholdOutOfRange { value: f32 },
 

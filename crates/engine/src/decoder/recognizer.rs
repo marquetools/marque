@@ -13,7 +13,7 @@ use marque_ism::{
     CapcoTokenSet,
     span::{MarkingCandidate, MarkingType, Span},
 };
-use marque_rules::confidence::FeatureContribution;
+use marque_rules::recognition::FeatureContribution;
 use marque_scheme::MarkingScheme;
 use marque_scheme::ambiguity::{Candidate, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
@@ -401,7 +401,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         // would sort *ahead* of every finite posterior and become the
         // "top" candidate — its NaN posterior would then propagate
         // into `log_margin` and `DecoderProvenance::posterior`, where
-        // `Confidence::validate` would later panic at audit-record
+        // `Recognition::validate` would later panic at audit-record
         // promotion. Filter non-finite candidates out before the sort
         // so the dispatch can never see one.
         //
@@ -563,7 +563,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             // a runner-up CAPCO candidate or the prose null
             // hypothesis. A sufficiently separated top overflows
             // `f32::exp()` to `+∞` past `log_margin ≈ 88.7`, and
-            // `Confidence::validate` would then reject the resulting
+            // `Recognition::validate` would then reject the resulting
             // record as non-finite — making `FixProposal::new` panic
             // at the audit boundary on extreme score separations.
             // Saturate at `f32::MAX` so the audit record carries

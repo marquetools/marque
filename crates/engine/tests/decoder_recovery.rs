@@ -1011,7 +1011,7 @@ fn typo_otp_resolves_via_3char_heuristic() {
     // path's confidence floor blocks it; the 3-char classification
     // heuristic is the recovery path. `FixSource` for this path is
     // `DecoderClassificationHeuristic` (Severity::Warn,
-    // Confidence::rule capped at 0.80).
+    // Recognition::rule capped at 0.80).
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) =
         rx.recognize(b"OTP SECRET//SI//NOFORN", 0, &*TEST_SCHEME, &deep_cx())
@@ -1366,7 +1366,7 @@ fn recovers_ad2bcfe3ac0b0765_short_first_entry_resolves_to_usa() {
 // = 3`). The recognizer flags these with
 // `FixSource::DecoderClassificationHeuristic` so the engine emits
 // `Severity::Warn` (always-visible in `--check`) and caps
-// `Confidence::rule` at 0.80 (below the default 0.95 threshold —
+// `Recognition::rule` at 0.80 (below the default 0.95 threshold —
 // auto-applies only with explicit user opt-in via lower threshold).
 //
 // The Enron-corpus-derived mangled-fixture tree at
@@ -1629,7 +1629,7 @@ fn decoder_recognizer_implements_recognizer_for_capco_scheme() {
 
 use marque_ism::NatoClassification;
 use marque_ism::attrs::MarkingClassification;
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 
 /// Return the `NatoClassification` from a marking, or panic.
 fn nato_class(m: &marque_capco::CapcoMarking) -> NatoClassification {

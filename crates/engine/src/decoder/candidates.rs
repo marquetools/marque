@@ -21,7 +21,7 @@ use super::types::{CanonicalAttempt, FeatureEntry};
 
 use marque_core::fuzzy::FuzzyVocabMatcher;
 use marque_ism::{CapcoTokenSet, span::MarkingType, token_set::TokenSet as _};
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 use std::borrow::Cow;
 
 /// Generate bounded canonical-byte candidates from a mangled input.

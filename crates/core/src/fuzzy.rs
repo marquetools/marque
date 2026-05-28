@@ -36,7 +36,7 @@
 //!    See [`MIN_FUZZY_LEN`] for the 2-char rationale (avoids SAR
 //!    sub-compartment false-positives).
 //!
-//! 5. **Confidence scores.** Each `FuzzyCorrection` carries a base confidence
+//! 5. **Recognition scores.** Each `FuzzyCorrection` carries a base confidence
 //!    derived from edit distance and token length. The calling engine multiplies
 //!    this by a **context factor** (+0.10–0.15 when the token is inside a
 //!    detected marking region) before comparing against the configured threshold.
@@ -194,7 +194,7 @@ impl<'v> FuzzyVocabMatcher<'v> {
         let token = best_token?;
         let confidence = correction_confidence(best_dist, token_len);
 
-        // Confidence too low to be meaningful — treat as no match.
+        // Recognition too low to be meaningful — treat as no match.
         if confidence < MIN_USEFUL_CONFIDENCE {
             return None;
         }
@@ -354,7 +354,7 @@ pub const MAX_EDIT_DISTANCE: u8 = 2;
 const MIN_USEFUL_CONFIDENCE: f32 = 0.45;
 
 // ---------------------------------------------------------------------------
-// Confidence scoring
+// Recognition scoring
 // ---------------------------------------------------------------------------
 
 /// Derive a base confidence score from edit distance and token length.

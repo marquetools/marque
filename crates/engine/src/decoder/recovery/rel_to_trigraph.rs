@@ -24,7 +24,7 @@
 
 use marque_core::fuzzy::FuzzyVocabMatcher;
 use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 
 use super::super::types::FeatureEntry;
 

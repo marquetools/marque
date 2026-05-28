@@ -7,7 +7,7 @@
 //! `pub(super)` is narrower than `pub(crate)` — engine code outside `decoder/`
 //! cannot reach these types.
 
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 use marque_scheme::ambiguity::EvidenceFeature;
 use smallvec::SmallVec;
 
@@ -52,7 +52,7 @@ pub(super) struct ScoredCandidate {
     /// bytes to this canonical form.
     pub(super) canonical_bytes: Box<[u8]>,
     /// Per-candidate feature contributions. `SmallVec<[…; 4]>` matches
-    /// `Confidence::features` so the inline-4 case stays heap-free
+    /// `Recognition::features` so the inline-4 case stays heap-free
     /// from canonicalization through audit emission.
     pub(super) features: SmallVec<[FeatureEntry; 4]>,
     /// Provenance discriminator carried from the originating
@@ -66,7 +66,7 @@ pub(super) struct ScoredCandidate {
 
 /// One feature recorded during candidate generation, paired with its
 /// log-odds contribution. The decoder accumulates these to reconstruct
-/// `Confidence::features` at audit-emit time.
+/// `Recognition::features` at audit-emit time.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FeatureEntry {
     pub(super) id: FeatureId,
@@ -111,6 +111,6 @@ pub(super) struct CanonicalAttempt {
     /// with [`marque_rules::FixSource::DecoderClassificationHeuristic`]
     /// so the engine can downgrade to
     /// [`marque_rules::Severity::Warn`] and cap
-    /// [`marque_rules::Confidence::rule`].
+    /// [`marque_rules::Recognition::rule`].
     pub(super) fix_source: marque_rules::FixSource,
 }

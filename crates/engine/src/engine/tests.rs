@@ -153,14 +153,14 @@ pub(super) struct StubProposal {
     pub rule: RuleId,
     pub span: Span,
     pub replacement: Box<str>,
-    pub confidence: Confidence,
+    pub confidence: Recognition,
     pub source: FixSource,
 }
 
 #[test]
 fn heuristic_recognition_cap_matches_default_threshold() {
     // Issue #133 PR 4 invariant: the position-aware classification
-    // heuristic's `Confidence::recognition` cap (renamed from
+    // heuristic's `Recognition::recognition` cap (renamed from
     // `HEURISTIC_RULE_AXIS_CAP` in PR B, when the `rule` axis was
     // retired) is pinned at the default `confidence_threshold` (0.95).
     // Solo-candidate heuristic fixes auto-apply at the default
@@ -304,9 +304,9 @@ fn proposal_with_confidence(
         span: Span::new(start, end),
         replacement: replacement.into(),
         // Construct directly so the helper can synthesize sub-1.0
-        // recognition values for threshold-gate tests; `Confidence::strict`
+        // recognition values for threshold-gate tests; `Recognition::strict`
         // pins at 1.0 by definition (PR B).
-        confidence: marque_rules::Confidence {
+        confidence: marque_rules::Recognition {
             recognition: confidence,
             runner_up_ratio: None,
             features: SmallVec::new(),
@@ -411,7 +411,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: marque_rules::Confidence::strict(),
+        confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
         message: Message::new(
             // Test-fixture FixIntent.message must agree with the

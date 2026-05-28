@@ -28,7 +28,7 @@
 //!
 //! The bench uses the RELIDO-conflicts-NOFORN rule (`E054` in the
 //! function names) because it fires a deterministic strict-path fix
-//! (`Confidence::strict()` — `recognition = 1.0`, no other axes
+//! (`Recognition::strict()` — `recognition = 1.0`, no other axes
 //! post-PR-B). A portion-mark-in-banner expansion would not work here:
 //! the renderer absorbs that by construction and produces no
 //! `AppliedFix`.
@@ -60,7 +60,7 @@ const SINGLE_FIX_INPUT: &[u8] = b"(S//NF/RELIDO)\n";
 const EXPECTED_FIXED_SOURCE: &[u8] = b"(S//NF)\n";
 
 /// Expected combined confidence for the E054 fix. Every strict-path
-/// rule emits `Confidence::strict()` (`recognition = 1.0`, the sole
+/// rule emits `Recognition::strict()` (`recognition = 1.0`, the sole
 /// axis post-PR-B); combined equals 1.0, comfortably above the default
 /// 0.95 threshold so the fix auto-applies.
 const EXPECTED_CONFIDENCE: f32 = 1.0;
@@ -120,7 +120,7 @@ fn assert_bench_invariants(engine: &Engine) {
         e054_fix.rule.predicate_id(),
     );
 
-    // Combined confidence must be exactly 1.0 (Confidence::strict():
+    // Combined confidence must be exactly 1.0 (Recognition::strict():
     // recognition = 1.0, the sole axis post-PR-B). A deviation here
     // means the bench is measuring a different code path than the
     // deterministic strict-path FactRemove this benchmark documents,

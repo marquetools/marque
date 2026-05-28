@@ -193,9 +193,9 @@ fn fix_accuracy_invalid_fixtures() {
         // `recognition = 1.0` so the confidence gate only blocks
         // sub-1.0 decoder-path candidates.
         //
-        // "Confidence" here is the scalar `Confidence::combined()`
+        // "Recognition" here is the scalar `Recognition::combined()`
         // (= `recognition`, post-PR-B) that the engine applies at the
-        // promotion boundary. `Confidence` carries additional decoder
+        // promotion boundary. `Recognition` carries additional decoder
         // provenance (`runner_up_ratio`, feature contributions) for
         // audit but this harness and every threshold-gated consumer
         // compare on `.combined()` only.

@@ -69,7 +69,7 @@ area of responsibility.
 
 5. (S//NF) Taken together, the reporting supports a judgment that the
 activity reflects a coordinated effort directed at the regional level rather
-than a series of independent local decisions. Confidence in this judgment is
+than a series of independent local decisions. Recognition in this judgment is
 high but is tempered by the aforementioned collection gaps and by the
 inherent difficulty of inferring intent from disposition alone.
 
@@ -138,7 +138,7 @@ area of responsibility.
 
 5. (S//NF) Taken together, the reporting supports a judgment that the
 activity reflects a coordinated effort directed at the regional level rather
-than a series of independent local decisions. Confidence in this judgment is
+than a series of independent local decisions. Recognition in this judgment is
 high but is tempered by the aforementioned collection gaps and by the
 inherent difficulty of inferring intent from disposition alone.
 

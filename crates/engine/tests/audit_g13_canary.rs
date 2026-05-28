@@ -54,7 +54,7 @@ use marque_engine::{Engine, FixMode};
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::message::Blake3Hash;
 use marque_rules::{
-    Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, RuleId,
+    EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, Recognition, RuleId,
 };
 use marque_scheme::{Severity, Span};
 use marque_test_utils::{
@@ -551,7 +551,7 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
         Blake3Hash::from_bytes([0u8; 32]),
         SmolStr::new(std::str::from_utf8(leak).unwrap_or("non-utf8")),
         FixSource::CorrectionsMap,
-        Confidence::strict(),
+        Recognition::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         SystemTime::now(),

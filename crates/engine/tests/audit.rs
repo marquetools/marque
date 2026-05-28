@@ -77,7 +77,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, RuleId,
+    EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, Recognition, RuleId,
 };
 use marque_scheme::{Severity, Span};
 use marque_test_utils::{invalid_fixtures, load_fixture, prose_fixtures, valid_fixtures};
@@ -382,7 +382,7 @@ fn no_document_text_leaks_into_diagnostic_messages() {
             // `Box<str>`. Document text is no longer
             // constructible inside `Diagnostic.message` by type — every
             // field on `MessageArgs` is a closed-set identifier
-            // (`TokenId`/`CategoryId`/`Span`/`Blake3Hash`/`Confidence`/
+            // (`TokenId`/`CategoryId`/`Span`/`Blake3Hash`/`Recognition`/
             // `FeatureId`/`RuleId`), and the only string content is the
             // `MessageTemplate` label (a `&'static str` from the closed
             // enum). Scan that label as the load-bearing structural
@@ -518,7 +518,7 @@ fn fabricate_leaky_text_correction() -> AppliedTextCorrection {
         original_digest,
         leaky_replacement.into(),
         FixSource::CorrectionsMap,
-        Confidence::strict(),
+        Recognition::strict(),
         /* migration_ref */ None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
@@ -562,13 +562,13 @@ fn sentinel_check_panics_on_synthetic_leak() {
 // 4. `proposal.source ∈ { BuiltinRule, CorrectionsMap, MigrationTable }`
 //    — the four-way `FixSource` enum minus `DecoderPosterior`.
 //
-// The invariants are pinned at the data layer by `Confidence::strict`
+// The invariants are pinned at the data layer by `Recognition::strict`
 // (`crates/rules/src/confidence.rs`), so the test below is a
 // regression guard: it sweeps the engine's strict-path output over
 // the invalid fixture corpus and asserts the four invariants hold for
 // every produced `AppliedFix`. A future refactor that, e.g., starts
 // emitting `DecoderPosterior` fixes through the strict path, or
-// stuffs feature contributions into a strict-path `Confidence`,
+// stuffs feature contributions into a strict-path `Recognition`,
 // trips this test immediately.
 //
 // **Companion checks:** the v2 NDJSON envelope is driven by
@@ -619,18 +619,18 @@ fn audit_v2_strict_path_invariants() {
 
             assert_eq!(
                 confidence.recognition, 1.0_f32,
-                "strict-path Confidence.recognition must be 1.0; got {} for {context}",
+                "strict-path Recognition.recognition must be 1.0; got {} for {context}",
                 confidence.recognition,
             );
             assert!(
                 confidence.runner_up_ratio.is_none(),
-                "strict-path Confidence.runner_up_ratio must be None; \
+                "strict-path Recognition.runner_up_ratio must be None; \
                  got {:?} for {context}",
                 confidence.runner_up_ratio,
             );
             assert!(
                 confidence.features.is_empty(),
-                "strict-path Confidence.features must be empty; \
+                "strict-path Recognition.features must be empty; \
                  got {} feature(s) for {context}: {:?}",
                 confidence.features.len(),
                 confidence.features,
@@ -854,7 +854,7 @@ fn decoder_path_record_shape() {
         let c = &fix.fix.replacement.confidence;
         assert!(
             c.recognition < 1.0_f32,
-            "decoder-path Confidence.recognition must be strictly < 1.0; \
+            "decoder-path Recognition.recognition must be strictly < 1.0; \
              got {} (rule {}, span {}..{})",
             c.recognition,
             fix.rule,
@@ -863,7 +863,7 @@ fn decoder_path_record_shape() {
         );
         assert!(
             !c.features.is_empty(),
-            "decoder-path Confidence.features must be non-empty; \
+            "decoder-path Recognition.features must be non-empty; \
              got 0 features for rule {} at {}..{}",
             fix.rule,
             fix.span.start,
@@ -900,10 +900,10 @@ fn decoder_path_record_shape() {
         // classification floor + the non-trivial filter (decoder.rs's
         // K=1 branch where `runner_up_score.is_finite()` is `false`).
         // Both shapes are legal for a decoder-path fix per the
-        // `Confidence` contract in `crates/rules/src/confidence.rs`. The
+        // `Recognition` contract in `crates/rules/src/confidence.rs`. The
         // audit-shape invariant is "if Some, the value is finite" —
         // `runner_up_ratio` never carries `NaN` / `±∞` at the audit
-        // boundary, since `Confidence::validate` rejects non-finite
+        // boundary, since `Recognition::validate` rejects non-finite
         // ratios. Whether a particular input produces K=1 or K≥2 is
         // decoder-implementation territory and not what this audit-shape
         // test gates.

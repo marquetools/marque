@@ -27,7 +27,7 @@
 //! 1. Rule's `check(...)` returns `Vec<Diagnostic<S>>`. Each
 //!    `Diagnostic` carries `fix: Option<FixIntent<S>>` — the sole
 //!    fix-emission channel.
-//! 2. Engine filters by `Confidence::combined() >= threshold`.
+//! 2. Engine filters by `Recognition::combined() >= threshold`.
 //! 3. Engine sorts non-overlapping fixes and resolves overlaps. Span
 //!    ordering comes from the *diagnostic's* span — `FixIntent<S>`
 //!    carries no `target_span` (spans are diagnostic-only per
@@ -43,15 +43,15 @@ use marque_scheme::{MarkingScheme, ReplacementIntent};
 use smallvec::SmallVec;
 
 use crate::FixSource;
-use crate::confidence::{Confidence, FeatureId};
 use crate::message::Message;
+use crate::recognition::{FeatureId, Recognition};
 
 /// Rule-emission API.
 ///
 /// **Rules construct this type; the engine promotes.** External
 /// rule crates depend on `marque-rules` for [`FixIntent`],
 /// [`Message`], [`crate::MessageTemplate`], [`crate::MessageArgs`],
-/// [`Confidence`], and [`FeatureId`]; they import
+/// [`Recognition`], and [`FeatureId`]; they import
 /// [`ReplacementIntent`], [`FactRef`], and [`RecanonScope`] directly
 /// from `marque_scheme` (which `marque-rules` already depends on,
 /// so the trait surface is transitively available). They do NOT
@@ -82,8 +82,8 @@ use crate::message::Message;
 /// `TextCorrectionProposal`), but no rule crate constructs it.
 ///
 /// `FixIntent<S>` deliberately does NOT derive `PartialEq` /
-/// `Eq` / `Hash` — `Confidence` and `Message` are not equatable
-/// (`Confidence` carries `f32`s, `Message` carries `Box<str>`
+/// `Eq` / `Hash` — `Recognition` and `Message` are not equatable
+/// (`Recognition` carries `f32`s, `Message` carries `Box<str>`
 /// payloads whose equality is content-dependent). The engine keys
 /// its audit-fix lookup tables on `(RuleId, Span)` from the parent
 /// diagnostic, not on the intent payload itself, so the trait
@@ -97,9 +97,9 @@ pub struct FixIntent<S: MarkingScheme> {
     /// What to do — fact-set add / remove / recanonicalize.
     pub replacement: ReplacementIntent<S>,
 
-    /// Recognition-axis confidence. `Confidence::combined()` is the
+    /// Recognition-axis confidence. `Recognition::combined()` is the
     /// scalar gated against the engine's threshold.
-    pub confidence: Confidence,
+    pub confidence: Recognition,
 
     /// Closed-set list of contributing features. Inline-4 capacity
     /// covers the 99th-percentile case (most fixes carry 0–2
@@ -155,7 +155,7 @@ impl<S: MarkingScheme> Clone for FixIntent<S> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::{Confidence, MessageArgs, MessageTemplate};
+    use crate::{MessageArgs, MessageTemplate, Recognition};
     use marque_scheme::TokenId;
     use marque_scheme::ambiguity::Parsed;
     use marque_scheme::category::Category;
@@ -252,7 +252,7 @@ mod tests {
                 token: FactRef::Cve(TokenId(7)),
                 scope: Scope::Portion,
             },
-            confidence: Confidence::strict(),
+            confidence: Recognition::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
             source: FixSource::BuiltinRule,
@@ -272,7 +272,7 @@ mod tests {
     fn fix_intent_fact_remove() {
         let intent: FixIntent<TestScheme> = FixIntent {
             replacement: ReplacementIntent::fact_remove(FactRef::Cve(TokenId(11)), Scope::Page),
-            confidence: Confidence::strict(),
+            confidence: Recognition::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
             source: FixSource::BuiltinRule,
@@ -294,7 +294,7 @@ mod tests {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
             },
-            confidence: Confidence::strict(),
+            confidence: Recognition::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(
                 // Generic Recanonicalize FixIntent unit test —

@@ -290,7 +290,7 @@ impl Engine {
     /// Today the engine retains the override for audit-annotation
     /// purposes only. Every subsequent decoder-path fix produced by
     /// [`Engine::lint`] gets a [`FeatureId::CorpusOverrideInEffect`]
-    /// feature contribution appended to its `Confidence.features` so an
+    /// feature contribution appended to its `Recognition.features` so an
     /// auditor can identify fixes produced under organizational
     /// overrides vs. stock priors. Substituting the override priors into
     /// the decoder's prior-table lookup is not yet implemented.
