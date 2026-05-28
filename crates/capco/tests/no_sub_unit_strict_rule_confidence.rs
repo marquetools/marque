@@ -58,7 +58,11 @@ fn pr_a_triggering_inputs() -> &'static [(&'static [u8], usize, &'static str)] {
         // E007 — table-backed X-shorthand migration (text_correction).
         (b"SECRET//25X1-//NOFORN", 1, "E007 table-backed X-shorthand"),
         // E007 — pattern-fallback X-shorthand (text_correction).
-        (b"SECRET//25X2-//NOFORN", 1, "E007 pattern-fallback X-shorthand"),
+        (
+            b"SECRET//25X2-//NOFORN",
+            1,
+            "E007 pattern-fallback X-shorthand",
+        ),
         // E021 — RD requires NOFORN (constraint-driven FactAdd).
         (b"SECRET//RD", 1, "E021 RD-requires-NOFORN"),
         // E066 — legacy NATO compound recanonicalization.
@@ -87,7 +91,11 @@ fn pr_a_triggering_inputs() -> &'static [(&'static [u8], usize, &'static str)] {
         // stays gated by severity, so this input is benign for the
         // invariant scan. Coverage of the S009 emission path is owned
         // by `rel_to.rs::tests`.
-        (b"SECRET//REL TO USA, AUS, CAN, GBR, NZL", 0, "S009 (default Off)"),
+        (
+            b"SECRET//REL TO USA, AUS, CAN, GBR, NZL",
+            0,
+            "S009 (default Off)",
+        ),
         // E062 — HCS supersession (bare HCS — Suggest with three
         // text-correction candidates per §H.4 p62).
         (b"(TS//HCS)", 1, "E062 HCS supersession"),
@@ -101,12 +109,20 @@ fn pr_a_triggering_inputs() -> &'static [(&'static [u8], usize, &'static str)] {
         // rewrite needs both an unclassified LIMDIS portion and a
         // classified portion to fire. Coverage of the Pattern-C
         // emission path is owned by `lattice_vs_scheme_parity.rs`.
-        (b"(U//LIMDIS)\n(S)\n", 0, "non-IC dissem (LIMDIS, dedicated suite)"),
+        (
+            b"(U//LIMDIS)\n(S)\n",
+            0,
+            "non-IC dissem (LIMDIS, dedicated suite)",
+        ),
         // SCI per-system / SAR roll-up evaluator (banner-form). Banner
         // SAR-BP + portion SAR-CD = mismatch → rollup fires per the
         // §H.5 evaluator. (A matching banner/portion pair would not
         // exercise the rollup path.)
-        (b"(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n", 1, "SAR rollup mismatch"),
+        (
+            b"(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",
+            1,
+            "SAR rollup mismatch",
+        ),
         // C001 / corrections-map — no triggering input here. The
         // corrections map is config-driven; the rule's default-empty
         // map yields no diagnostics in this default-config test.
