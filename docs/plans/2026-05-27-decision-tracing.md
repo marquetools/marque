@@ -1,6 +1,6 @@
 # Decision Tracing Instrumentation (`DecisionSink`)
 
-> **Status (2026-05-28)**: Landed in [PR #810](https://github.com/marquetools/marque/pull/810) (merged as commit `900d1a3a` on `main`). Bench-check.sh ratio gate wired in a follow-up.
+> **Status (2026-05-28)**: Landed in [PR #810](https://github.com/marquetools/marque/pull/810) (merged as commit `900d1a3a` on `main`). Bench-check.sh ratio gate and this doc both land in [PR #811](https://github.com/marquetools/marque/pull/811).
 >
 > **Amended 2026-05-27** (post pre-implementation checks): closure-dispatch insertion point corrected to reflect post-#704 architecture (bitmask Kleene fixpoint + `apply_default_fill` + `apply_supersession_overlays`, not a per-rule loop). PR-conflict check clean.
 
@@ -89,8 +89,8 @@ IDs are `&'static str` everywhere because `Constraint.name()`, `PageRewrite.id`,
 
 ### Sink implementations (`crates/scheme/src/decision/sinks.rs`)
 
-- **`NoopSink`** — ZST with `#[inline(always)]` no-op. Monomorphizes away under `-O`. Default.
-- **`CountingSink`** — fixed-size `[u64; N_CATEGORIES * N_KINDS]` increment table plus per-portion `Vec<u64>` (grown once per portion seen). Reports via `into_report()`.
+- **`NoopSink`** — ZST with `#[inline(always)]` empty `record`. The engine's default sink when no observer is installed. Because the engine carries `Mutex<Box<dyn SyncDecisionSink>>`, each `emit()` call on the NoopSink path still incurs three residual ops: `AtomicU32::fetch_add` on the per-document step counter, `Mutex::lock` on the sink, and one vtable call to the empty `record` body. These are nanosecond-scale, which is what the 2% ratio gate budgets against the no-feature path (where the engine field is compiled out entirely).
+- **`CountingSink`** — three running tallies, no per-event allocation: `by_kind` as a dense `[u64; DECISION_KIND_COUNT]` array indexed by `DecisionKind` discriminant, `by_category` as a `BTreeMap<CategoryId, u64>` (sparse — categories are scheme-extensible, no dense bound), `by_portion` as a `Vec<u64>` that grows lazily as new portion indices appear. Reports via `into_report()` which converts the dense `by_kind` array into a `BTreeMap` keyed by variant.
 - **`RecordingSink`** — `Vec<DecisionEvent>` push per event. Allocates; only used in instrumentation runs. Reports via `into_report()` which walks `triggered_by` edges to reconstruct `CascadeChain`s.
 
 ### Report types
