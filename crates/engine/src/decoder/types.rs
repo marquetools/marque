@@ -112,6 +112,6 @@ pub(super) struct CanonicalAttempt {
     /// so the engine can downgrade to
     /// [`marque_rules::Severity::Warn`] and cap the sole surviving
     /// `recognition` axis at
-    /// `marque-engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`.
+    /// `marque_engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`.
     pub(super) fix_source: marque_rules::FixSource,
 }

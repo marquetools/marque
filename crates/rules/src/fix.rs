@@ -38,7 +38,7 @@ pub enum FixSource {
     /// `HEURISTIC_RECOGNITION_CAP = 0.95` — exactly the default
     /// `confidence_threshold` — so a single-candidate heuristic fix
     /// lands at-threshold rather than saturating above it. See
-    /// `marque-engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`
+    /// `marque_engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`
     /// for the cap's authoritative doc.
     DecoderClassificationHeuristic,
 }

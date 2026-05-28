@@ -107,7 +107,7 @@ const PROSE_SENTINELS: &[&str] = &[
 ];
 
 fn test_engine() -> Engine {
-    // `audit_v2_strict_path_invariants` asserts strict-shape
+    // `audit_v3_strict_path_invariants` asserts strict-shape
     // invariants on every produced `AppliedFix`. Pin the recognizer to
     // `StrictRecognizer` explicitly — the engine default
     // (`StrictOrDecoderRecognizer`) would still hold the invariant on
@@ -580,7 +580,7 @@ fn sentinel_check_panics_on_synthetic_leak() {
 // record-shape test lives further below.
 
 #[test]
-fn audit_v2_strict_path_invariants() {
+fn audit_v3_strict_path_invariants() {
     let engine = test_engine();
     let fixtures = invalid_fixtures();
     assert!(
@@ -773,7 +773,7 @@ fn v1_records_parse_in_v2_consumer() {
 // Decoder-path audit-record shape.
 // ---------------------------------------------------------------------------
 //
-// Strict-path invariants are pinned by `audit_v2_strict_path_invariants`:
+// Strict-path invariants are pinned by `audit_v3_strict_path_invariants`:
 // every applied fix must have `recognition == 1.0`,
 // `runner_up_ratio == None`, `features == []`, and a
 // non-`DecoderPosterior` source. The decoder-path counterpart asserts

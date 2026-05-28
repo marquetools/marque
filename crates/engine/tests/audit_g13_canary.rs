@@ -194,7 +194,6 @@ fn render_audit_line_to_json(
                     },
                     "confidence": {
                         "recognition": f.fix.replacement.confidence.recognition,
-                        "combined": f.fix.replacement.confidence.combined(),
                     },
                 },
                 "original_span": {"start": f.fix.original_span.start, "end": f.fix.original_span.end},

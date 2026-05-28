@@ -39,7 +39,7 @@ use super::shape::is_cab_head;
 /// `recognition` axis at `HEURISTIC_RECOGNITION_CAP = 0.95`, exactly
 /// the default `confidence_threshold`, so a single-candidate
 /// heuristic fix lands at-threshold rather than saturating above
-/// it. See `marque-engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`
+/// it. See `marque_engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`
 /// for the cap's authoritative doc.
 ///
 /// # Rules (CAPCO-2016 §A.2 classification levels: U, R, C, S, TS)

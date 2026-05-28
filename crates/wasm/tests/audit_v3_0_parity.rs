@@ -367,11 +367,13 @@ fn applied_fix_confidence_round_trip() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let confidence = &v["fix"]["replacement"]["confidence"];
-    // PR B retired `rule` and `region` from the wire shape — strict-
-    // path emissions are pinned at `recognition = 1.0` and the decoder
-    // uses span info elsewhere.
+    // PR B retired `rule`, `region`, and `combined` from the wire
+    // shape — strict-path emissions are pinned at `recognition = 1.0`,
+    // the decoder uses span info elsewhere, and `combined` was a
+    // tautology after the axis collapse (`combined == recognition`).
+    // `Recognition::combined()` stays as an engine-internal method
+    // for threshold gates but is no longer projected onto the wire.
     assert_eq!(confidence["recognition"], 1.0);
-    assert_eq!(confidence["combined"], 1.0);
     assert!(
         confidence.get("rule").is_none(),
         "PR B retired the rule axis; field must not appear on the wire"
@@ -379,6 +381,11 @@ fn applied_fix_confidence_round_trip() {
     assert!(
         confidence.get("region").is_none(),
         "PR B retired the region field; must not appear on the wire"
+    );
+    assert!(
+        confidence.get("combined").is_none(),
+        "PR B retired the combined wire field (tautology with \
+         recognition post-axis-collapse); field must not appear"
     );
     // Recognition::strict produces runner_up_ratio = None;
     // serde emits as explicit null.

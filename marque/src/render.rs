@@ -592,7 +592,6 @@ pub struct AuditCanonicalJson<'a> {
 #[derive(Debug, Serialize)]
 pub struct AuditConfidenceJson<'a> {
     pub recognition: f32,
-    pub combined: f32,
     pub runner_up_ratio: Option<f32>,
     pub features: Vec<AuditFeatureJson<'a>>,
 }
@@ -738,7 +737,6 @@ fn project_canonical_to_json<'a>(
 fn project_confidence_to_json(confidence: &marque_rules::Recognition) -> AuditConfidenceJson<'_> {
     AuditConfidenceJson {
         recognition: confidence.recognition,
-        combined: confidence.combined(),
         runner_up_ratio: confidence.runner_up_ratio,
         features: confidence
             .features
@@ -1679,11 +1677,13 @@ mod tests {
         assert!(canonical_json.get("token_id").is_none());
 
         // `confidence` sub-object. Post-PR-B shape: only `recognition`
-        // / `combined` / `runner_up_ratio` / `features` — `rule` and
-        // `region` were retired with the strict-path axis collapse.
+        // / `runner_up_ratio` / `features` — `rule`, `region`, and
+        // `combined` were retired. `combined` was a tautology after
+        // the axis collapse (`combined == recognition`); the method
+        // `Recognition::combined()` stays for engine-internal
+        // threshold gates but is no longer projected onto the wire.
         let confidence = &replacement["confidence"];
         assert_eq!(confidence["recognition"], 1.0);
-        assert_eq!(confidence["combined"], 1.0);
         assert!(
             confidence.get("rule").is_none(),
             "PR B retired the rule axis; field must not appear on the wire"
@@ -1691,6 +1691,11 @@ mod tests {
         assert!(
             confidence.get("region").is_none(),
             "PR B retired the region field; must not appear on the wire"
+        );
+        assert!(
+            confidence.get("combined").is_none(),
+            "PR B retired the combined wire field (tautology with \
+             recognition post-axis-collapse); field must not appear"
         );
         // Strict-path fix: runner_up_ratio present but None; serde
         // emits as `null`.
