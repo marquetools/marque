@@ -5,11 +5,20 @@
 //! Fix pipeline integration tests.
 //!
 //! Drives `Engine::fix` against corpus fixtures and stub rules, verifying:
-//! - Mixed confidence: only high-confidence fixes applied
+//! - Auto-apply gating: a fixable diagnostic is applied while a
+//!   sibling no-fix diagnostic persists in `remaining_diagnostics`
 //! - Dry-run parity: identical applied list, dry_run=true, source unchanged
 //! - Missing classifier identity: field is None
 //! - Overlap guard: deterministic confidence-then-span ordering
 //! - Post-fix re-lint: fewer diagnostics after fixing
+//!
+//! Pre-PR-A, the first bullet was "Mixed confidence: only
+//! high-confidence fixes applied" — a sub-threshold strict-path fix was
+//! the no-apply side of the test. Post-PR-A every strict-path fix
+//! emits at `Confidence::strict(1.0)`, so the no-apply side is now a
+//! genuinely fix-less diagnostic (bare HCS, conscious-defer per §H.4
+//! p62). The sub-threshold-blocks-apply assertion returns when PR B
+//! introduces decoder-path sub-1.0 confidence.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -31,17 +40,24 @@ fn test_engine() -> Engine {
 }
 
 fn mixed_confidence_source() -> Vec<u8> {
-    // First line: REL TO missing USA at confidence 0.97 → fix applied.
+    // First line: REL TO missing USA — `Severity::Error` with a
+    // strict-path fix at `Confidence::strict(1.0)` (PR A invariant) →
+    // auto-applied.
     // Second line `(TS//HCS)`: bare HCS legacy form (§H.4 p62) emitting
-    // a no-fix Severity::Error diagnostic that stays in
+    // a no-fix `Severity::Error` diagnostic that stays in
     // `remaining_diagnostics`. HCS-O vs HCS-P is a classifier decision
     // per §H.4, so the rule has no auto-fix path and its diagnostic
     // persists through the fix pass.
+    //
+    // Pre-PR-A the first line emitted at sub-1.0 strict confidence and
+    // the helper name reflected that "mixed" axis. PR B will restore a
+    // genuine mixed-confidence fixture when decoder-path sub-1.0
+    // emissions land; until then, the helper name is forward-looking.
     b"SECRET//REL TO GBR, AUS\n(TS//HCS)\n".to_vec()
 }
 
 #[test]
-fn mixed_confidence_applies_only_high_confidence_fix() {
+fn applies_fix_when_sibling_diagnostic_has_no_fix() {
     let engine = test_engine();
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
