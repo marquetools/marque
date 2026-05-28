@@ -77,7 +77,7 @@ pub(super) struct FeatureEntry {
 ///
 /// Routes the label through [`FeatureId::as_str`] — the single source
 /// of truth for the FeatureId → audit-record-string registry declared
-/// in `crates/rules/src/confidence.rs`. Lifted out of the inline
+/// in `crates/rules/src/recognition.rs`. Lifted out of the inline
 /// closure in `DecoderRecognizer::recognize` so the projection is
 /// directly testable: a divergent local label registry would now fail
 /// `tests::feature_entry_to_evidence_uses_canonical_label_registry`
@@ -110,7 +110,8 @@ pub(super) struct CanonicalAttempt {
     /// The position-aware classification heuristic emits attempts
     /// with [`marque_rules::FixSource::DecoderClassificationHeuristic`]
     /// so the engine can downgrade to
-    /// [`marque_rules::Severity::Warn`] and cap
-    /// [`marque_rules::Recognition::rule`].
+    /// [`marque_rules::Severity::Warn`] and cap the sole surviving
+    /// `recognition` axis at
+    /// `marque-engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`.
     pub(super) fix_source: marque_rules::FixSource,
 }

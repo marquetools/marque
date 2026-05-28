@@ -65,12 +65,12 @@ use marque_rules::{FeatureContribution, FixSource};
 ///   (the default decoder pipeline);
 ///   [`FixSource::DecoderClassificationHeuristic`] for fixes produced
 ///   by the position-aware short-token classification heuristic
-///   (issue #133). The engine reads this to choose
-///   `Severity::Fix` vs `Severity::Warn` and to cap
-///   `Recognition::rule` for the heuristic path so the combined
-///   confidence stays below the default `confidence_threshold` of
-///   `0.95` — the heuristic is always-visible but only auto-applies
-///   when the user explicitly opts into a lower threshold.
+///   (issue #133). The engine reads this to choose `Severity::Fix`
+///   vs `Severity::Warn` and to cap the sole surviving `recognition`
+///   axis at `HEURISTIC_RECOGNITION_CAP = 0.95` (exactly the default
+///   `confidence_threshold`) for the heuristic path — a single-
+///   candidate heuristic fix lands at-threshold rather than
+///   saturating above it.
 ///
 /// Held as `Box<[T]>` (not `Vec<T>`) so the in-memory size after
 /// recognition is the smallest legal representation — markings flow

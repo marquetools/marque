@@ -35,12 +35,12 @@ use super::shape::is_cab_head;
 /// with [`marque_rules::FixSource::DecoderClassificationHeuristic`].
 /// The engine then (a) downgrades the diagnostic severity to
 /// [`Severity::Warn`](marque_rules::Severity::Warn) — always-visible
-/// in `--check`, exits non-zero — and (b) caps
-/// [`Recognition::rule`](marque_rules::Recognition) at `0.80` so
-/// `combined ≤ 0.80` stays below the default `confidence_threshold`
-/// of `0.95`. The heuristic only auto-applies in `--fix` mode when
-/// the user has explicitly lowered the threshold, opting into the
-/// heuristic's bar of evidence.
+/// in `--check`, exits non-zero — and (b) caps the sole surviving
+/// `recognition` axis at `HEURISTIC_RECOGNITION_CAP = 0.95`, exactly
+/// the default `confidence_threshold`, so a single-candidate
+/// heuristic fix lands at-threshold rather than saturating above
+/// it. See `marque-engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`
+/// for the cap's authoritative doc.
 ///
 /// # Rules (CAPCO-2016 §A.2 classification levels: U, R, C, S, TS)
 ///

@@ -1011,7 +1011,9 @@ fn typo_otp_resolves_via_3char_heuristic() {
     // path's confidence floor blocks it; the 3-char classification
     // heuristic is the recovery path. `FixSource` for this path is
     // `DecoderClassificationHeuristic` (Severity::Warn,
-    // Recognition::rule capped at 0.80).
+    // `recognition` capped at `HEURISTIC_RECOGNITION_CAP = 0.95`
+    // — exactly the default `confidence_threshold`, so the
+    // heuristic fix lands at-threshold by design).
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) =
         rx.recognize(b"OTP SECRET//SI//NOFORN", 0, &*TEST_SCHEME, &deep_cx())
@@ -1365,9 +1367,10 @@ fn recovers_ad2bcfe3ac0b0765_short_first_entry_resolves_to_usa() {
 // shapes the vocab-based fuzzy matcher cannot touch (`MIN_FUZZY_LEN
 // = 3`). The recognizer flags these with
 // `FixSource::DecoderClassificationHeuristic` so the engine emits
-// `Severity::Warn` (always-visible in `--check`) and caps
-// `Recognition::rule` at 0.80 (below the default 0.95 threshold —
-// auto-applies only with explicit user opt-in via lower threshold).
+// `Severity::Warn` (always-visible in `--check`) and caps the sole
+// surviving `recognition` axis at `HEURISTIC_RECOGNITION_CAP = 0.95`
+// — exactly the default `confidence_threshold`, so a single-
+// candidate heuristic fix lands at-threshold by design.
 //
 // The Enron-corpus-derived mangled-fixture tree at
 // `tests/fixtures/mangled/typo/` contains very few short-leading-
