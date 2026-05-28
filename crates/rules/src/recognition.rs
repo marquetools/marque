@@ -2,28 +2,32 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Confidence — audit-provenance payload.
+//! Recognition — audit-provenance payload.
 //!
-//! Every fix proposal carries a `Confidence` record describing how the
-//! engine arrived at the proposal. The record stores two primary scalar
-//! confidence axes — `recognition` and `rule` — plus optional auxiliary
-//! fields (`region` and `runner_up_ratio`) and a list of named feature
-//! contributions. Together they reconstruct the decoder's scoring path
-//! so an auditor can verify *why* a given fix was promoted.
+//! Every fix proposal carries a `Recognition` record describing how the
+//! engine arrived at the proposal. The record stores one scalar
+//! `recognition` axis plus optional auxiliary decoder provenance
+//! (`runner_up_ratio`) and a list of named feature contributions.
+//! Together they reconstruct the decoder's scoring path so an auditor
+//! can verify *why* a given fix was promoted.
 //!
-//! The engine's current threshold-facing combined score is
-//! `recognition * rule` as exposed by [`Confidence::combined`].
-//! `region` is recorded as additional audit/context metadata when
-//! available, but it does not currently participate in that
-//! combined score. `runner_up_ratio` likewise provides decoder
-//! provenance rather than a direct multiplicative/additive input to
-//! `combined()`.
+//! ## One axis, post-PR-B
+//!
+//! The historical `Confidence` type carried `recognition × rule` axes.
+//! PR A collapsed every strict-path emission to `rule = 1.0`; PR B
+//! retired the `rule` axis entirely and renamed the surviving type to
+//! `Recognition`. The threshold-facing score is now just
+//! [`Recognition::combined`], which returns `recognition`. The `region`
+//! field was retired alongside `rule` (no rule ever consumed it; the
+//! decoder uses span info elsewhere). `runner_up_ratio` and `features`
+//! remain decoder-only provenance and stay `None` / empty on the
+//! strict path.
 //!
 //! ## Precision: `f32` throughout
 //!
 //! All scores are `f32`. The decoder scores in `f64` internally
 //! (log-priors and posteriors accumulate across many features), but
-//! the emitted `Confidence` downcasts once at the boundary so the
+//! the emitted `Recognition` downcasts once at the boundary so the
 //! audit record stays compact and byte-stable.
 //!
 //! ## `features` is closed
@@ -40,7 +44,7 @@
 //!
 //! ## `features` storage
 //!
-//! `Confidence::features` is a `SmallVec<[FeatureContribution; 4]>`.
+//! `Recognition::features` is a `SmallVec<[FeatureContribution; 4]>`.
 //! Strict-path fixes record zero features and never allocate; decoder-
 //! path fixes record 1–4 features per the empirical distribution of
 //! the corpus, which fits inline. The inline-4 bound matches the
@@ -55,17 +59,13 @@
 
 use smallvec::SmallVec;
 
-/// Multi-axis confidence attached to every [`FixProposal`](crate::FixProposal).
+/// Recognition-axis confidence attached to every [`FixProposal`](crate::FixProposal).
 ///
 /// Fields:
 ///
 /// - `recognition` — posterior from the [`Recognizer`](marque_scheme::Recognizer)
-///   that surfaced this candidate (0.0–1.0).
-/// - `rule` — confidence the emitting rule has in its own fix
-///   (0.0–1.0). Strict-path rules report 1.0 when the invariant is
-///   unambiguous.
-/// - `region` — optional region-level confidence (a page-context
-///   prior, for example).
+///   that surfaced this candidate (0.0–1.0). Strict-path rules emit
+///   `1.0`; decoder-path emissions carry the decoder's posterior.
 /// - `runner_up_ratio` — optional ratio of top candidate to runner-up
 ///   posterior. Decoder-sourced fixes carry this; strict-path fixes
 ///   leave it `None` because the strict grammar has no runner-up by
@@ -74,16 +74,12 @@ use smallvec::SmallVec;
 ///   `recognition`. Used by the corpus-accuracy harness to break down
 ///   where posterior mass came from.
 ///
-/// Construction happens via [`Confidence::strict`] (for rules that
+/// Construction happens via [`Recognition::strict`] (for rules that
 /// bypass the decoder) or the decoder's scoring path.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Confidence {
+pub struct Recognition {
     /// Recognizer posterior in `[0.0, 1.0]`.
     pub recognition: f32,
-    /// Rule-level confidence in `[0.0, 1.0]`.
-    pub rule: f32,
-    /// Region / page-context confidence, when a rule computes one.
-    pub region: Option<f32>,
     /// Posterior ratio between top candidate and runner-up
     /// (`None` for strict-path fixes; set by decoder-sourced fixes).
     pub runner_up_ratio: Option<f32>,
@@ -95,56 +91,44 @@ pub struct Confidence {
     pub features: SmallVec<[FeatureContribution; 4]>,
 }
 
-impl Confidence {
-    /// Confidence record for a strict-path fix where recognition was
-    /// unambiguous.
+impl Recognition {
+    /// Recognition record for a strict-path fix.
     ///
-    /// `rule_confidence` is pinned at 1.0 for every strict-path fix per
-    /// the PR A invariant: a strict-path rule fired means the grammar
-    /// matched unambiguously and the remediation is determined by the
-    /// authoritative source, so no sub-unit `rule` value is meaningful.
-    /// Sub-1.0 `rule` confidence is exclusively the decoder path's
-    /// domain (see `HEURISTIC_RULE_AXIS_CAP` in
-    /// `marque_engine::engine::synthesis`).
+    /// Strict-path emissions carry `recognition = 1.0` by definition:
+    /// the strict grammar has one unambiguous match, no runner-up, no
+    /// feature graph. The sole axis is `recognition`; [`combined`] just
+    /// returns it. Decoder-path emissions construct `Recognition`
+    /// directly with sub-1.0 `recognition` and any feature
+    /// contributions the scoring path recorded.
     ///
-    /// The recognition axis is pinned at 1.0 because the strict grammar
-    /// has one unambiguous match by definition, and no feature
-    /// contributions are recorded — strict-path fixes do not traverse
-    /// the decoder's feature graph.
-    ///
-    /// The argument range is preserved (`[0.0, 1.0]`) so PR B can remove
-    /// the `rule` field entirely after the audit envelope bumps to
-    /// `marque-3.0`; the assert still guards against NaN and
-    /// out-of-range values for any caller in transition.
+    /// [`combined`]: Recognition::combined
     #[inline]
-    pub fn strict(rule_confidence: f32) -> Self {
-        assert!(
-            (0.0..=1.0).contains(&rule_confidence) && !rule_confidence.is_nan(),
-            "Confidence::strict rule confidence must be in [0.0, 1.0] and not NaN, got {rule_confidence}"
-        );
+    pub fn strict() -> Self {
         Self {
             recognition: 1.0,
-            rule: rule_confidence,
-            region: None,
             runner_up_ratio: None,
             features: SmallVec::new(),
         }
     }
 
-    /// Product of `recognition` and `rule`. The engine's
-    /// confidence-threshold gate compares this combined score against
-    /// the configured threshold.
+    /// The recognition score. The engine's confidence-threshold gate
+    /// compares this against the configured threshold.
+    ///
+    /// Pre-PR-B this multiplied `recognition × rule`; the `rule` axis
+    /// was retired and the method is now a thin accessor over
+    /// `recognition`. Kept as a named method so threshold-gate call
+    /// sites stay self-documenting (`confidence.combined() >=
+    /// threshold` reads as a threshold comparison, not a field access).
     #[inline]
     pub fn combined(&self) -> f32 {
-        self.recognition * self.rule
+        self.recognition
     }
 
-    /// Validate every axis of this `Confidence` record.
+    /// Validate every axis of this `Recognition` record.
     ///
     /// Returns `Err(message)` naming the first invalid axis. Checks:
     ///
-    /// - `recognition` and `rule` in `[0.0, 1.0]` and not NaN.
-    /// - `region`, when `Some`, in `[0.0, 1.0]` and not NaN.
+    /// - `recognition` in `[0.0, 1.0]` and not NaN.
     /// - `runner_up_ratio`, when `Some`, finite and not NaN. No range
     ///   constraint — a well-behaved decoder returns `≥ 1.0` (top /
     ///   runner-up) but infinity (runner-up posterior = 0) and values
@@ -154,14 +138,14 @@ impl Confidence {
     ///   legal; `NaN` / infinity would poison downstream audit-sum
     ///   invariants silently.
     ///
-    /// The zero-axis edge case (recognition = 0 or rule = 0) is valid
-    /// — `combined() = 0.0` is a legitimate below-threshold result,
+    /// The zero-axis edge case (recognition = 0) is valid —
+    /// `combined() = 0.0` is a legitimate below-threshold result,
     /// not an invariant violation.
     pub fn validate(&self) -> Result<(), String> {
         let check_unit = |label: &str, v: f32| -> Result<(), String> {
             if v.is_nan() || !(0.0..=1.0).contains(&v) {
                 Err(format!(
-                    "Confidence.{label} must be in [0.0, 1.0] and not NaN, got {v}"
+                    "Recognition.{label} must be in [0.0, 1.0] and not NaN, got {v}"
                 ))
             } else {
                 Ok(())
@@ -170,7 +154,7 @@ impl Confidence {
         let check_finite = |label: &str, v: f32| -> Result<(), String> {
             if v.is_nan() || !v.is_finite() {
                 Err(format!(
-                    "Confidence.{label} must be finite and not NaN, got {v}"
+                    "Recognition.{label} must be finite and not NaN, got {v}"
                 ))
             } else {
                 Ok(())
@@ -178,17 +162,13 @@ impl Confidence {
         };
 
         check_unit("recognition", self.recognition)?;
-        check_unit("rule", self.rule)?;
-        if let Some(r) = self.region {
-            check_unit("region", r)?;
-        }
         if let Some(r) = self.runner_up_ratio {
             check_finite("runner_up_ratio", r)?;
         }
         for (i, feature) in self.features.iter().enumerate() {
             if feature.delta.is_nan() || !feature.delta.is_finite() {
                 return Err(format!(
-                    "Confidence.features[{i}].delta must be finite and not NaN, got {}",
+                    "Recognition.features[{i}].delta must be finite and not NaN, got {}",
                     feature.delta
                 ));
             }
@@ -197,7 +177,7 @@ impl Confidence {
     }
 }
 
-/// One named contribution to [`Confidence::recognition`].
+/// One named contribution to [`Recognition::recognition`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FeatureContribution {
     /// Which feature.
@@ -300,46 +280,34 @@ mod tests {
 
     #[test]
     fn strict_pins_recognition_at_one() {
-        let c = Confidence::strict(0.85);
+        let c = Recognition::strict();
         assert_eq!(c.recognition, 1.0);
-        assert_eq!(c.rule, 0.85);
-        assert!(c.region.is_none());
         assert!(c.runner_up_ratio.is_none());
         assert!(c.features.is_empty());
     }
 
     #[test]
-    fn combined_is_product_of_axes() {
-        let c = Confidence::strict(0.9);
-        assert!((c.combined() - 0.9).abs() < 1e-6);
+    fn combined_returns_recognition() {
+        // Post-PR-B `combined()` is a thin accessor over `recognition`
+        // — the `rule` axis was retired, so the product collapsed to
+        // the single surviving axis.
+        let c = Recognition::strict();
+        assert!((c.combined() - 1.0).abs() < 1e-6);
 
-        let c2 = Confidence {
+        let c2 = Recognition {
             recognition: 0.8,
-            rule: 0.5,
-            region: None,
             runner_up_ratio: None,
             features: SmallVec::new(),
         };
-        assert!((c2.combined() - 0.4).abs() < 1e-6);
-    }
-
-    #[test]
-    #[should_panic(expected = "Confidence::strict rule confidence")]
-    fn strict_panics_on_nan() {
-        let _ = Confidence::strict(f32::NAN);
-    }
-
-    #[test]
-    #[should_panic(expected = "Confidence::strict rule confidence")]
-    fn strict_panics_above_one() {
-        let _ = Confidence::strict(1.01);
+        assert!((c2.combined() - 0.8).abs() < 1e-6);
     }
 
     #[test]
     fn feature_id_as_str_matches_audit_contract() {
         // Pin the on-the-wire labels for `FeatureId`. These strings are
         // part of the audit-record contract (see
-        // `contracts/audit-record-v2.md`); a future rename here MUST be
+        // `specs/006-engine-rule-refactor/contracts/audit-record.md`);
+        // a future rename here MUST be
         // a deliberate audit-schema bump (`MARQUE_AUDIT_SCHEMA`), not an
         // accidental refactor. Kept as an explicit per-variant table
         // (rather than a round-trip) so a label drift is loud.
@@ -378,12 +346,10 @@ mod tests {
 
     #[test]
     fn validate_accepts_well_formed_record() {
-        assert!(Confidence::strict(0.85).validate().is_ok());
+        assert!(Recognition::strict().validate().is_ok());
         assert!(
-            Confidence {
+            Recognition {
                 recognition: 0.9,
-                rule: 0.8,
-                region: Some(0.5),
                 runner_up_ratio: Some(2.7),
                 features: smallvec::smallvec![FeatureContribution {
                     id: FeatureId::EditDistance1,
@@ -397,10 +363,8 @@ mod tests {
 
     #[test]
     fn validate_rejects_out_of_range_recognition() {
-        let c = Confidence {
+        let c = Recognition {
             recognition: 1.5,
-            rule: 0.5,
-            region: None,
             runner_up_ratio: None,
             features: SmallVec::new(),
         };
@@ -412,38 +376,10 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_out_of_range_rule() {
-        let c = Confidence {
-            recognition: 0.5,
-            rule: -0.1,
-            region: None,
-            runner_up_ratio: None,
-            features: SmallVec::new(),
-        };
-        let err = c.validate().unwrap_err();
-        assert!(err.contains("rule"), "got: {err}");
-    }
-
-    #[test]
-    fn validate_rejects_out_of_range_region() {
-        let c = Confidence {
-            recognition: 0.5,
-            rule: 0.5,
-            region: Some(1.5),
-            runner_up_ratio: None,
-            features: SmallVec::new(),
-        };
-        let err = c.validate().unwrap_err();
-        assert!(err.contains("region"), "got: {err}");
-    }
-
-    #[test]
     fn validate_rejects_non_finite_runner_up_ratio() {
         for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let c = Confidence {
+            let c = Recognition {
                 recognition: 0.5,
-                rule: 0.5,
-                region: None,
                 runner_up_ratio: Some(bad),
                 features: SmallVec::new(),
             };
@@ -457,10 +393,8 @@ mod tests {
     #[test]
     fn validate_accepts_finite_runner_up_ratio_of_any_magnitude() {
         // No range constraint on the ratio — verify low values pass.
-        let c = Confidence {
+        let c = Recognition {
             recognition: 0.5,
-            rule: 0.5,
-            region: None,
             runner_up_ratio: Some(0.01),
             features: SmallVec::new(),
         };
@@ -470,10 +404,8 @@ mod tests {
     #[test]
     fn validate_rejects_non_finite_feature_delta() {
         for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let c = Confidence {
+            let c = Recognition {
                 recognition: 0.5,
-                rule: 0.5,
-                region: None,
                 runner_up_ratio: None,
                 features: smallvec::smallvec![FeatureContribution {
                     id: FeatureId::EditDistance1,
@@ -491,10 +423,8 @@ mod tests {
     fn validate_accepts_zero_axes() {
         // Zero is a legal below-threshold value, not an invariant
         // violation — check that validate doesn't treat it specially.
-        let c = Confidence {
+        let c = Recognition {
             recognition: 0.0,
-            rule: 0.0,
-            region: Some(0.0),
             runner_up_ratio: None,
             features: SmallVec::new(),
         };

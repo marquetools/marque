@@ -68,7 +68,7 @@ impl<'a> From<&'a RuleId> for RuleIdJson<'a> {
 ///
 /// `args` is intentionally NOT serialized — the closed `MessageArgs`
 /// payload (typed `TokenId` / `CategoryId` / `Span` / `Blake3Hash` /
-/// `Confidence` / `FeatureId` / `RuleId`) requires a per-template
+/// `Recognition` / `FeatureId` / `RuleId`) requires a per-template
 /// arg-flattening serializer that downstream consumers don't yet need.
 /// Add the `args` field when audit renderers demand the structured
 /// field set.
@@ -150,12 +150,12 @@ pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<
 }
 
 // ---------------------------------------------------------------------------
-// `marque-2.0` audit-record JSON projection
+// `marque-3.0` audit-record JSON projection
 //
-// Mirrors the CLI's `marque/src/render.rs` v1.0 surface — CLI and WASM
+// Mirrors the CLI's `marque/src/render.rs` v3.0 surface — CLI and WASM
 // emit byte-identical NDJSON. The struct shapes are duplicated verbatim
 // (a shared `marque-audit-render` crate is a future consolidation);
-// `crates/wasm/tests/audit_v2_0_parity.rs` pins the byte-identity at
+// `crates/wasm/tests/audit_v3_0_parity.rs` pins the byte-identity at
 // integration-test time.
 // ---------------------------------------------------------------------------
 
@@ -206,9 +206,6 @@ struct AuditCanonicalJsonV1_0<'a> {
 #[derive(Debug, Serialize)]
 struct AuditConfidenceJsonV1_0<'a> {
     recognition: f32,
-    rule: f32,
-    combined: f32,
-    region: Option<f32>,
     runner_up_ratio: Option<f32>,
     features: Vec<AuditFeatureJsonV1_0<'a>>,
 }
@@ -314,13 +311,10 @@ fn project_canonical_to_json_v1_0<'a>(
 }
 
 fn project_confidence_to_json_v1_0(
-    confidence: &marque_rules::Confidence,
+    confidence: &marque_rules::Recognition,
 ) -> AuditConfidenceJsonV1_0<'_> {
     AuditConfidenceJsonV1_0 {
         recognition: confidence.recognition,
-        rule: confidence.rule,
-        combined: confidence.combined(),
-        region: confidence.region,
         runner_up_ratio: confidence.runner_up_ratio,
         features: confidence
             .features
@@ -493,7 +487,7 @@ fn text_correction_to_audit_json_v1_0<'a>(
 /// Mirrors the CLI's `audit_line_to_json_v1_0`.
 ///
 /// Intentionally `pub` (but doc-hidden) so the parity integration test
-/// at `tests/audit_v2_0_parity.rs` can compare byte-identity against the CLI's
+/// at `tests/audit_v3_0_parity.rs` can compare byte-identity against the CLI's
 /// projection without reimplementing the helper in the test harness.
 #[doc(hidden)]
 pub fn audit_line_to_json_v1_0(
@@ -535,10 +529,10 @@ pub(crate) fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    // Single accepted schema (`marque-2.0`) so dispatch is a no-op
+    // Single accepted schema (`marque-3.0`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V2_0;
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V3_0;
     let json =
         serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())

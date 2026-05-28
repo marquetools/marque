@@ -15,10 +15,13 @@
 //! Pre-PR-A, the first bullet was "Mixed confidence: only
 //! high-confidence fixes applied" — a sub-threshold strict-path fix was
 //! the no-apply side of the test. Post-PR-A every strict-path fix
-//! emits at `Confidence::strict(1.0)`, so the no-apply side is now a
+//! emits at `Recognition::strict()`, so the no-apply side is now a
 //! genuinely fix-less diagnostic (bare HCS, conscious-defer per §H.4
-//! p62). The sub-threshold-blocks-apply assertion returns when PR B
-//! introduces decoder-path sub-1.0 confidence.
+//! p62). PR B restores the sub-threshold-blocks-apply assertion via
+//! the decoder path — `decoder_sub_threshold_fix_blocked_from_apply`
+//! exercises `(SERCET)` (recognition ≈ 0.926) against the default
+//! 0.95 threshold and asserts the candidate stays out of the applied
+//! stream.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -41,7 +44,7 @@ fn test_engine() -> Engine {
 
 fn mixed_confidence_source() -> Vec<u8> {
     // First line: REL TO missing USA — `Severity::Error` with a
-    // strict-path fix at `Confidence::strict(1.0)` (PR A invariant) →
+    // strict-path fix at `Recognition::strict()` (PR A invariant) →
     // auto-applied.
     // Second line `(TS//HCS)`: bare HCS legacy form (§H.4 p62) emitting
     // a no-fix `Severity::Error` diagnostic that stays in
@@ -63,7 +66,7 @@ fn applies_fix_when_sibling_diagnostic_has_no_fix() {
     let result = engine.fix(&source, FixMode::Apply);
 
     // Only the REL-TO-missing-USA fix should be applied. Post-PR-A
-    // strict-path fix proposals emit at `Confidence::strict(1.0)`;
+    // strict-path fix proposals emit at `Recognition::strict()`;
     // the per-fix confidence assertion pins that collapse here.
     // The remaining diagnostic on this fixture is the bare HCS legacy
     // form (no-fix on the `(TS//HCS)\n` second line — conscious-defer
@@ -235,7 +238,7 @@ fn classifier_id_propagated_when_configured() {
 //
 //   1. `marque/src/render.rs::render_audit_line_produces_valid_v1_0_ndjson`
 //      exercises the CLI emit path on a synthetic AuditLine.
-//   2. `crates/wasm/tests/audit_v1_0_parity.rs` pins CLI/WASM
+//   2. `crates/wasm/tests/audit_v3_0_parity.rs` pins CLI/WASM
 //      byte-identity on the same shape.
 //
 // `contracts/audit-record.md` is the single wire-format source of truth.
@@ -474,4 +477,87 @@ fn r002_fired_field_independent_of_applied_count() {
     // Fixture is mixed_confidence_source -> E002 fires.
     assert!(result.applied_fixes().next().is_some());
     assert!(!result.r002_fired);
+}
+
+#[test]
+fn decoder_sub_threshold_fix_blocked_from_apply() {
+    // Sub-threshold-blocks-apply gate restored via the decoder path
+    // (PR B). At the default `confidence_threshold = 0.95`,
+    // `(SERCET)` is a bare-classification mangled portion the decoder
+    // recognizes as `(SECRET)` with `recognition ≈ 0.926` (the prose
+    // null-hypothesis runner-up shrinks the posterior for short fuzzy
+    // fixes — bare-classification portions have a non-trivial prose
+    // prior so the posterior never saturates above the default 0.95
+    // threshold). The lint post-pass demotes the diagnostic to
+    // `Severity::Suggest`; the engine's auto-apply gate
+    // (`Severity::is_promote_eligible`) hard-excludes Suggest, and
+    // the threshold gate would block it anyway.
+    //
+    // Asserts:
+    //   1. No decoder-path fix lands in `applied_fixes()`.
+    //   2. The candidate survives in `remaining_diagnostics` as
+    //      `Severity::Suggest` so callers can surface it as a
+    //      "did you mean?" hint without auto-applying.
+    let engine = test_engine();
+    let source: &[u8] = b"(SERCET)";
+    let result = engine.fix(source, FixMode::Apply);
+
+    let decoder_applied: Vec<_> = result
+        .applied_fixes()
+        .filter(|f| f.source == marque_rules::FixSource::DecoderPosterior)
+        .collect();
+    assert!(
+        decoder_applied.is_empty(),
+        "decoder-path fix for `(SERCET)` must NOT auto-apply at the \
+         default 0.95 threshold (recognition ~0.926 < threshold); \
+         applied count: {}",
+        decoder_applied.len(),
+    );
+
+    // Source must be unchanged — no splice happened because the
+    // decoder candidate was suppressed at the gate.
+    assert_eq!(
+        result.source.expose_secret(),
+        source,
+        "source must be unchanged when no fix lands"
+    );
+
+    // The decoder-recognition diagnostic survives as Suggest.
+    let suggest_decoder: Vec<_> = result
+        .remaining_diagnostics
+        .iter()
+        .filter(|d| d.severity == marque_rules::Severity::Suggest)
+        .filter(|d| {
+            d.fix
+                .as_ref()
+                .is_some_and(|f| f.source == marque_rules::FixSource::DecoderPosterior)
+        })
+        .collect();
+    assert!(
+        !suggest_decoder.is_empty(),
+        "sub-threshold decoder candidate must survive as Severity::Suggest \
+         in remaining_diagnostics so the renderer can show \"did you mean?\""
+    );
+
+    // Pin the load-bearing property explicitly: the surviving Suggest
+    // candidate's recognition is strictly below the default 0.95
+    // threshold. If a future decoder calibration shift raises the
+    // posterior above 0.95, the `decoder_applied.is_empty()` assertion
+    // above would fire first — but this explicit pin documents the
+    // sub-threshold property at the call site rather than leaving it
+    // implicit in behavioral coverage.
+    let suggest_recognition = suggest_decoder[0]
+        .fix
+        .as_ref()
+        .expect("filter above guarantees fix is Some")
+        .confidence
+        .recognition;
+    assert!(
+        suggest_recognition < 0.95,
+        "surviving Suggest candidate must have recognition < default \
+         threshold (0.95); got {suggest_recognition}. A drift above \
+         0.95 indicates decoder calibration shifted such that \
+         `(SERCET)` is no longer a sub-threshold gate fixture; pick a \
+         new fixture or relax the test's threshold.",
+    );
 }

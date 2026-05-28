@@ -18,8 +18,8 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken, FixIntent, FixSource,
-    Phase, RuleId, RuleSet, Severity, SmallVec,
+    CORRECTIONS_MAP_CITATION, Diagnostic, EnginePromotionToken, FixIntent, FixSource, Phase,
+    Recognition, RuleId, RuleSet, Severity, SmallVec,
 };
 use marque_scheme::Span;
 use marque_scheme::ambiguity::Parsed;

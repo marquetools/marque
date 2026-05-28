@@ -48,7 +48,7 @@ use std::time::SystemTime;
 
 use marque_capco::CapcoScheme;
 use marque_rules::{
-    AuditNote, AuditNoteKind, AuditNoteStructural, Confidence, EnginePromotionToken, RuleId,
+    AuditNote, AuditNoteKind, AuditNoteStructural, EnginePromotionToken, Recognition, RuleId,
 };
 use marque_scheme::{Scope, SectionLetter, Span, TokenId, TokenRef, capco};
 
@@ -80,8 +80,8 @@ fn audit_note_engine_promote_sealing_pattern() {
     // ALLOWED_SENTINELS list — TEST-AUDIT-99 is the audit-test-scoped sentinel).
     let classifier_id: Option<Arc<str>> = Some(Arc::from("TEST-AUDIT-99"));
 
-    // Confidence::strict(1.0) — strict-path recognizer, rule certainty 1.0.
-    let confidence = Confidence::strict(1.0);
+    // Recognition::strict() — strict-path recognizer, rule certainty 1.0.
+    let confidence = Recognition::strict();
 
     // Test-fixture carve-out per Constitution V Principle V — synthetic
     // AuditNote construction exercising the __engine_promote seal;
@@ -151,7 +151,7 @@ fn audit_note_clone_does_not_require_scheme_clone() {
         None,
         true,
         structural,
-        Confidence::strict(1.0),
+        Recognition::strict(),
         token,
     );
 

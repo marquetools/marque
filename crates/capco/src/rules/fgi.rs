@@ -16,7 +16,7 @@
 
 use marque_ism::{CanonicalAttrs, CountryCode, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition, Rule,
     RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, SectionLetter, capco};
@@ -295,7 +295,7 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
                         capco(SectionLetter::H, 7, 122),
                         candidate.to_owned(),
                         FixSource::BuiltinRule,
-                        Confidence::strict(1.0),
+                        Recognition::strict(),
                         None,
                     ));
                 }

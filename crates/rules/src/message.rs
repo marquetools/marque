@@ -27,7 +27,7 @@
 //! restricted to the audit-content-ignorance permitted set per
 //! Constitution V Principle V: [`marque_scheme::TokenId`],
 //! [`marque_scheme::CategoryId`], [`marque_scheme::Span`], [`Blake3Hash`],
-//! [`crate::Confidence`], [`crate::FeatureId`]. Two convenience-typed
+//! [`crate::Recognition`], [`crate::FeatureId`]. Two convenience-typed
 //! `Option<TokenId>` fields (`expected_token` / `actual_token`) are
 //! permitted because they carry the same type as `token` — the field
 //! name is the only distinction, for diagnostic-rendering ergonomics.
@@ -56,7 +56,7 @@ use marque_scheme::{CategoryId, Span, TokenId};
 use smallvec::SmallVec;
 
 use crate::RuleId;
-use crate::confidence::{Confidence, FeatureId};
+use crate::recognition::{FeatureId, Recognition};
 
 /// BLAKE3 digest — a re-export of [`blake3::Hash`].
 ///
@@ -80,7 +80,7 @@ use crate::confidence::{Confidence, FeatureId};
 /// the digest itself is opaque; no other accessor surfaces document
 /// bytes back out of the digest. Real digest computation flows through
 /// `AppliedReplacement::bytes_digest` and
-/// `AppliedFixDetail::original_digest` on the `marque-2.0` audit
+/// `AppliedFixDetail::original_digest` on the `marque-3.0` audit
 /// envelope.
 pub type Blake3Hash = blake3::Hash;
 
@@ -319,7 +319,7 @@ impl MessageTemplate {
 ///
 /// **Constitution V Principle V closure**: every field type is
 /// in the audit-content-ignorance permitted set: [`TokenId`],
-/// [`CategoryId`], [`Span`], [`Blake3Hash`], [`Confidence`],
+/// [`CategoryId`], [`Span`], [`Blake3Hash`], [`Recognition`],
 /// [`FeatureId`]. No `String`, no `&str`, no `Vec<u8>`, no `format!`-
 /// derived field. `MessageArgs` cannot carry input bytes by
 /// construction.
@@ -413,9 +413,9 @@ pub struct MessageArgs {
     /// BLAKE3 digest of content the message references.
     pub digest: Option<Blake3Hash>,
 
-    /// Confidence record snapshotted from the producing rule's
+    /// Recognition record snapshotted from the producing rule's
     /// `FixIntent`.
-    pub confidence: Option<Confidence>,
+    pub confidence: Option<Recognition>,
 
     /// What token the rule expected (the canonical / required value).
     pub expected_token: Option<TokenId>,
@@ -562,7 +562,7 @@ mod tests {
         // variant without an `as_str` arm fails the match
         // exhaustiveness check at compile time; this test pins the
         // *labels* themselves so a rename cannot slip through silently.
-        // Mirrors `confidence::tests::feature_id_as_str_matches_audit_contract`.
+        // Mirrors `recognition::tests::feature_id_as_str_matches_audit_contract`.
         assert_eq!(
             MessageTemplate::DecoderRecognized.as_str(),
             "DecoderRecognized"

@@ -54,23 +54,23 @@ use marque_rules::{FeatureContribution, FixSource};
 ///   i.e. the odds ratio between the top candidate and the second-
 ///   best. `None` when the decoder's K-truncated set had only one
 ///   surviving candidate. Threaded into
-///   [`Confidence::runner_up_ratio`](marque_rules::Confidence::runner_up_ratio)
+///   [`Recognition::runner_up_ratio`](marque_rules::Recognition::runner_up_ratio)
 ///   verbatim.
 /// - `features` — the per-feature `FeatureContribution` deltas the
 ///   decoder recorded while canonicalizing. Threaded into
-///   [`Confidence::features`](marque_rules::Confidence::features)
+///   [`Recognition::features`](marque_rules::Recognition::features)
 ///   verbatim.
 /// - `fix_source` — provenance discriminator for the decoder fix
 ///   path. [`FixSource::DecoderPosterior`] for vocab-based corrections
 ///   (the default decoder pipeline);
 ///   [`FixSource::DecoderClassificationHeuristic`] for fixes produced
 ///   by the position-aware short-token classification heuristic
-///   (issue #133). The engine reads this to choose
-///   `Severity::Fix` vs `Severity::Warn` and to cap
-///   `Confidence::rule` for the heuristic path so the combined
-///   confidence stays below the default `confidence_threshold` of
-///   `0.95` — the heuristic is always-visible but only auto-applies
-///   when the user explicitly opts into a lower threshold.
+///   (issue #133). The engine reads this to choose `Severity::Fix`
+///   vs `Severity::Warn` and to cap the sole surviving `recognition`
+///   axis at `HEURISTIC_RECOGNITION_CAP = 0.95` (exactly the default
+///   `confidence_threshold`) for the heuristic path — a single-
+///   candidate heuristic fix lands at-threshold rather than
+///   saturating above it.
 ///
 /// Held as `Box<[T]>` (not `Vec<T>`) so the in-memory size after
 /// recognition is the smallest legal representation — markings flow
@@ -124,7 +124,7 @@ impl DecoderProvenance {
     }
 
     /// Convert the decoder's natural-log posterior into a recognition
-    /// confidence in `[0.0, 1.0)` for `Confidence::recognition`.
+    /// confidence in `[0.0, 1.0)` for `Recognition::recognition`.
     ///
     /// Formula: softmax over top vs. runner-up using the stored
     /// `runner_up_ratio` (= `exp(top - runner_up)`). When no

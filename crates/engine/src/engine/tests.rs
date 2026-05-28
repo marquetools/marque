@@ -3,7 +3,7 @@ use super::fix::{TwoPassFixer, engine_promotion_token, partition_diags_by_phase}
 use super::fix_impl::Pass1Result;
 use super::page_context::check_portions_unchanged;
 use super::synthesis::{
-    HEURISTIC_RULE_AXIS_CAP, build_r002_diagnostic, find_containing_marking, lookup_marking,
+    HEURISTIC_RECOGNITION_CAP, build_r002_diagnostic, find_containing_marking, lookup_marking,
     sort_and_c1_dedup, span_is_within_marking, splice_fixes_forward,
 };
 use super::*;
@@ -153,22 +153,24 @@ pub(super) struct StubProposal {
     pub rule: RuleId,
     pub span: Span,
     pub replacement: Box<str>,
-    pub confidence: Confidence,
+    pub confidence: Recognition,
     pub source: FixSource,
 }
 
 #[test]
-fn heuristic_rule_axis_cap_matches_default_threshold() {
+fn heuristic_recognition_cap_matches_default_threshold() {
     // Issue #133 PR 4 invariant: the position-aware classification
-    // heuristic's `Confidence::rule` cap is pinned at the default
-    // `confidence_threshold` (0.95). Solo-candidate heuristic
-    // fixes auto-apply at the default threshold; the empirical
-    // corpus measurement (see `HEURISTIC_RULE_AXIS_CAP` doc and
+    // heuristic's `Recognition::recognition` cap (renamed from
+    // `HEURISTIC_RULE_AXIS_CAP` in PR B, when the `rule` axis was
+    // retired) is pinned at the default `confidence_threshold` (0.95).
+    // Solo-candidate heuristic fixes auto-apply at the default
+    // threshold; the empirical corpus measurement (see
+    // `HEURISTIC_RECOGNITION_CAP` doc and
     // `tools/corpus-analysis/output/heuristic_frequencies.json`)
     // justifies confidence ≥ 99.4% per-trigger, comfortably above
     // the cap.
     //
-    // If a future change drops `HEURISTIC_RULE_AXIS_CAP` below
+    // If a future change drops `HEURISTIC_RECOGNITION_CAP` below
     // `Config::default().confidence_threshold()`, that's a
     // behavioral regression: heuristic fixes that previously auto-
     // applied at the default threshold would silently stop
@@ -177,14 +179,14 @@ fn heuristic_rule_axis_cap_matches_default_threshold() {
     // intent recorded in the change.
     //
     // If a future change drops the default `confidence_threshold`
-    // below `HEURISTIC_RULE_AXIS_CAP`, that's the inverse problem:
+    // below `HEURISTIC_RECOGNITION_CAP`, that's the inverse problem:
     // the heuristic suddenly becomes more aggressive than the
     // governance signal we agreed on. Either way, the equality
     // pin here forces a coordinated decision.
     let default_threshold = Config::default().confidence_threshold();
     assert!(
-        (HEURISTIC_RULE_AXIS_CAP - default_threshold).abs() < 1e-6,
-        "HEURISTIC_RULE_AXIS_CAP={HEURISTIC_RULE_AXIS_CAP} must equal \
+        (HEURISTIC_RECOGNITION_CAP - default_threshold).abs() < 1e-6,
+        "HEURISTIC_RECOGNITION_CAP={HEURISTIC_RECOGNITION_CAP} must equal \
              Config::default().confidence_threshold()={default_threshold}; \
              a divergence requires an intentional governance change recorded \
              in the cap's doc comment"
@@ -301,7 +303,14 @@ fn proposal_with_confidence(
         rule: RuleId::new("test", rule),
         span: Span::new(start, end),
         replacement: replacement.into(),
-        confidence: marque_rules::Confidence::strict(confidence),
+        // Construct directly so the helper can synthesize sub-1.0
+        // recognition values for threshold-gate tests; `Recognition::strict`
+        // pins at 1.0 by definition (PR B).
+        confidence: marque_rules::Recognition {
+            recognition: confidence,
+            runner_up_ratio: None,
+            features: SmallVec::new(),
+        },
         source: FixSource::CorrectionsMap,
     }
 }
@@ -402,7 +411,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: marque_rules::Confidence::strict(1.0),
+        confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
         message: Message::new(
             // Test-fixture FixIntent.message must agree with the

@@ -27,7 +27,7 @@
 
 use marque_rules::audit::AppliedFix as AuditAppliedFix;
 use marque_rules::{
-    Confidence, EnginePromotionToken, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    EnginePromotionToken, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Recognition,
     RuleId, Severity,
 };
 use marque_scheme::canonical::Canonical;
@@ -133,7 +133,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(
             // Engine-promotion-seal fixture (synthetic test rule);

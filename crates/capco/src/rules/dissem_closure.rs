@@ -12,7 +12,7 @@
 
 use marque_ism::{CanonicalAttrs, MarkingType};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition,
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{
@@ -263,7 +263,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
                 token: FactRef::Cve(TOK_RELIDO),
                 scope: Scope::Portion,
             },
-            confidence: Confidence::strict(1.0),
+            confidence: Recognition::strict(),
             feature_ids: Default::default(),
             message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             source: FixSource::BuiltinRule,

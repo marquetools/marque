@@ -4,7 +4,7 @@
 //! Wire-format pin for [`marque_rules::Discriminant`].
 //!
 //! `Discriminant::as_str()` returns the JSON wire string for the
-//! `marque-2.0` audit record's `replacement.discriminant` field. A
+//! `marque-3.0` audit record's `replacement.discriminant` field. A
 //! silent rename of either arm — or an attribute change that swaps
 //! the encoded form — breaks this test, forcing a coordinated
 //! audit-schema bump per the closed-set discipline.

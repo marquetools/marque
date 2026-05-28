@@ -194,7 +194,7 @@ impl<'v> FuzzyVocabMatcher<'v> {
         let token = best_token?;
         let confidence = correction_confidence(best_dist, token_len);
 
-        // Confidence too low to be meaningful — treat as no match.
+        // Recognition too low to be meaningful — treat as no match.
         if confidence < MIN_USEFUL_CONFIDENCE {
             return None;
         }
@@ -354,7 +354,7 @@ pub const MAX_EDIT_DISTANCE: u8 = 2;
 const MIN_USEFUL_CONFIDENCE: f32 = 0.45;
 
 // ---------------------------------------------------------------------------
-// Confidence scoring
+// Recognition scoring
 // ---------------------------------------------------------------------------
 
 /// Derive a base confidence score from edit distance and token length.

@@ -173,7 +173,7 @@ pub(super) fn lookup_marking(
     None
 }
 
-/// Confidence-then-span sort + C-1 dedup walk extracted into a helper
+/// Recognition-then-span sort + C-1 dedup walk extracted into a helper
 /// so pass-1 and pass-2 share an identical ordering/dedup pipeline. The
 /// walks are run independently per pass; the helper exists to factor
 /// the algorithm, not the state.
@@ -288,7 +288,7 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// # Filters
 ///
 /// - `Severity::Suggest` → excluded (hard exclusion from auto-apply).
-/// - `Confidence::combined() < threshold` → excluded.
+/// - `Recognition::combined() < threshold` → excluded.
 /// - Empty `candidate_span` → excluded.
 /// - Candidate not present in `parsed_markings` → diagnostic dropped
 ///   with a `tracing::warn`.
@@ -450,8 +450,18 @@ pub(super) fn synthesize_fixes(
 
         // Audit-collapse: one SynthesizedFix per candidate-span group.
         // The owning rule is the lex-smallest rule_id; the carried
-        // `intent.confidence.rule` is scaled down so combined() equals
-        // the minimum across the group.
+        // intent's `recognition` axis is the minimum across the group
+        // so the audit envelope reflects the weakest signal in the
+        // batch.
+        //
+        // Pre-PR-B this branch scaled within-group `rule` axis. PR B
+        // retired the `rule` axis, so the scaling now lands on
+        // `recognition` directly — strict-path members carry
+        // `recognition = 1.0`, decoder-path members carry sub-1.0
+        // posteriors, and the lex-smallest owning intent's
+        // `recognition` is overwritten to the minimum so a mixed
+        // group's audit record honors the threshold gate against the
+        // weaker member.
         group_diags.sort_by_key(|a| a.rule);
         let owning_diag = group_diags[0];
         let owning_intent = owning_diag
@@ -464,27 +474,8 @@ pub(super) fn synthesize_fixes(
             .filter_map(|d| d.fix.as_ref().map(|i| i.confidence.combined()))
             .fold(f32::INFINITY, f32::min);
         let mut combined_intent = owning_intent.clone();
-        // Within-group audit-collapse scaling. The owning diagnostic's
-        // `rule` axis is scaled down so `combined()` equals the
-        // minimum across the group.
-        //
-        // Post-PR-A: every strict-path member has `combined() = 1.0`, so
-        // a group composed entirely of strict-path members yields
-        // `min_combined = 1.0`, the guard below is false, and this
-        // branch is a no-op. The scaling stays live because a
-        // mixed-provenance group — a decoder-path member
-        // (`recognition < 1.0`) sharing a candidate span with a
-        // strict-path member — is still possible once the decoder lands,
-        // and the audit envelope must reflect the weaker member.
-        let combined_intent_combined = combined_intent.confidence.combined();
-        if min_combined < combined_intent_combined && combined_intent.confidence.rule > 0.0 {
-            let scaled_rule = (min_combined
-                / combined_intent
-                    .confidence
-                    .recognition
-                    .max(f32::MIN_POSITIVE))
-            .clamp(0.0, 1.0);
-            combined_intent.confidence.rule = scaled_rule;
+        if min_combined < combined_intent.confidence.recognition {
+            combined_intent.confidence.recognition = min_combined.clamp(0.0, 1.0);
         }
 
         out.push(SynthesizedFix {
@@ -538,18 +529,16 @@ pub(super) fn synthesize_fixes(
 /// correctness issue tracked separately; the structural-intent path
 /// closes the audit-shape channel by construction.
 ///
-/// The fix's `Confidence` is populated entirely from the decoder's
+/// The fix's `Recognition` is populated entirely from the decoder's
 /// provenance trace:
 ///
 /// - `recognition` derives from `runner_up_ratio` via softmax (see
 ///   [`DecoderProvenance::recognition_score`]); strictly less than
 ///   `1.0` so audit consumers can distinguish strict from decoder
-///   provenance via a single field comparison.
-/// - `rule` is `1.0` — once the decoder has decided unambiguously the
-///   recognition-layer rewrite is itself unambiguous (rewrite the
-///   observed bytes to canonical bytes), so the rule axis carries no
-///   additional uncertainty. The decoder's recognition uncertainty is
-///   already captured in `recognition`.
+///   provenance via a single field comparison. For the position-aware
+///   classification heuristic (issue #133) the posterior is further
+///   capped at [`HEURISTIC_RECOGNITION_CAP`] so a single-candidate
+///   heuristic recognition cannot saturate above the default threshold.
 /// - `runner_up_ratio` and `features` thread through verbatim from the
 ///   provenance.
 /// - When `corpus_override_active` is `true`, an extra
@@ -569,7 +558,7 @@ pub(super) fn build_decoder_diagnostic(
     _kind: marque_ism::MarkingType,
     corpus_override_active: bool,
 ) -> Option<Diagnostic<CapcoScheme>> {
-    use marque_rules::confidence::{FeatureContribution, FeatureId};
+    use marque_rules::recognition::{FeatureContribution, FeatureId};
 
     let original = std::str::from_utf8(original_bytes).ok()?;
     let replacement = std::str::from_utf8(&provenance.canonical_bytes).ok()?;
@@ -581,7 +570,7 @@ pub(super) fn build_decoder_diagnostic(
     }
 
     // `provenance.features` is a `Box<[FeatureContribution]>`; copy into
-    // a `SmallVec<[…; 4]>` matching `Confidence::features` so the inline-4
+    // a `SmallVec<[…; 4]>` matching `Recognition::features` so the inline-4
     // case stays heap-free even after the optional override-marker push.
     let mut features: marque_rules::SmallVec<[FeatureContribution; 4]> =
         marque_rules::SmallVec::from_slice(&provenance.features);
@@ -593,18 +582,25 @@ pub(super) fn build_decoder_diagnostic(
     }
 
     // Dispatch on the decoder's `fix_source`. Standard vocab-based
-    // recognition emits at `Severity::Fix` with `rule = 1.0` (engine
-    // applies whenever `recognition >= confidence_threshold`). The
-    // position-aware classification heuristic (issue #133) emits
-    // at `Severity::Warn` (always-visible in `--check`, non-zero exit
-    // code) with `rule = HEURISTIC_RULE_AXIS_CAP = 0.95` matching the
-    // default `confidence_threshold`. The `0.95` value is justified by
-    // empirical corpus measurement — see the cap's doc comment for the
-    // analysis script and measured numbers.
-    let (severity, rule_axis, fix_source) = match provenance.fix_source {
+    // recognition emits at `Severity::Fix` with the decoder's full
+    // posterior on `recognition` (engine applies whenever
+    // `recognition >= confidence_threshold`). The position-aware
+    // classification heuristic (issue #133) emits at `Severity::Warn`
+    // (always-visible in `--check`, non-zero exit code) with
+    // `recognition` capped at [`HEURISTIC_RECOGNITION_CAP = 0.95`] —
+    // matching the default `confidence_threshold` so a single-candidate
+    // heuristic fix lands at-threshold rather than saturating above
+    // it. The `0.95` value is justified by empirical corpus measurement
+    // — see the cap's doc comment for the analysis script and measured
+    // numbers.
+    //
+    // Pre-PR-B the cap lived on the `rule` axis; PR B retired that
+    // axis and the cap moved onto `recognition` directly.
+    let raw_recognition = provenance.recognition_score();
+    let (severity, recognition, fix_source) = match provenance.fix_source {
         FixSource::DecoderClassificationHeuristic => (
             Severity::Warn,
-            HEURISTIC_RULE_AXIS_CAP,
+            raw_recognition.min(HEURISTIC_RECOGNITION_CAP),
             FixSource::DecoderClassificationHeuristic,
         ),
         // All non-heuristic decoder paths use the existing posterior
@@ -614,13 +610,11 @@ pub(super) fn build_decoder_diagnostic(
         // routing them to `DecoderPosterior` here is a defensive
         // default that preserves the existing strict-decoder shape
         // for any future fix-source variant.
-        _ => (Severity::Fix, 1.0, FixSource::DecoderPosterior),
+        _ => (Severity::Fix, raw_recognition, FixSource::DecoderPosterior),
     };
 
-    let confidence = Confidence {
-        recognition: provenance.recognition_score(),
-        rule: rule_axis,
-        region: None,
+    let confidence = Recognition {
+        recognition,
         runner_up_ratio: provenance.runner_up_ratio,
         features,
     };
@@ -770,4 +764,13 @@ pub(super) fn build_r002_diagnostic(
     )
 }
 
-pub(super) const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
+/// Cap applied to `recognition` for the position-aware classification
+/// heuristic (issue #133) — pinned at the default
+/// `confidence_threshold` (0.95) so a solo heuristic candidate lands
+/// at-threshold rather than saturating above it. Pre-PR-B this cap
+/// lived on the (now-retired) `Recognition::rule` axis as
+/// `HEURISTIC_RULE_AXIS_CAP`; PR B collapsed the two axes into one and
+/// the cap moved onto `recognition` directly. The empirical corpus
+/// measurement justifying the `0.95` value (≥99.4% confidence per
+/// trigger) is unchanged.
+pub(super) const HEURISTIC_RECOGNITION_CAP: f32 = 0.95;

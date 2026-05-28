@@ -26,7 +26,7 @@
 //! `&str`, `Vec<u8>`, or `format!`-derived field can land without
 //! a coordinated audit-schema change.
 
-use marque_rules::{Blake3Hash, Confidence, FeatureId, MessageArgs, RuleId};
+use marque_rules::{Blake3Hash, FeatureId, MessageArgs, Recognition, RuleId};
 use marque_scheme::{CategoryId, Span, TokenId};
 use smallvec::SmallVec;
 
@@ -48,7 +48,7 @@ fn message_args_field_set_pin_destructures_every_permitted_field() {
     let _: Option<CategoryId> = category;
     let _: Option<Span> = span;
     let _: Option<Blake3Hash> = digest;
-    let _: Option<Confidence> = confidence;
+    let _: Option<Recognition> = confidence;
     let _: Option<TokenId> = expected_token;
     let _: Option<TokenId> = actual_token;
     let _: SmallVec<[FeatureId; 4]> = feature_ids;
@@ -78,7 +78,7 @@ fn message_args_round_trips_each_permitted_field() {
         category: Some(CategoryId(2)),
         span: Some(Span::new(0, 4)),
         digest: Some(Blake3Hash::from([0u8; 32])),
-        confidence: Some(Confidence::strict(0.9)),
+        confidence: Some(Recognition::strict()),
         expected_token: Some(TokenId(3)),
         actual_token: Some(TokenId(4)),
         feature_ids,

@@ -34,10 +34,12 @@ pub enum FixSource {
     /// closed vocabulary." The engine therefore (a) emits the
     /// diagnostic at [`crate::Severity::Warn`] (the fix-and-warn pattern —
     /// always visible, non-zero exit code in `--check`), and
-    /// (b) caps [`crate::Confidence::rule`] at `0.80` so `combined ≤ 0.80`
-    /// stays below the default `confidence_threshold` of `0.95`.
-    /// The fix only auto-applies when the user has explicitly
-    /// lowered the threshold to opt into the heuristic's bar.
+    /// (b) caps the sole surviving recognition axis at
+    /// `HEURISTIC_RECOGNITION_CAP = 0.95` — exactly the default
+    /// `confidence_threshold` — so a single-candidate heuristic fix
+    /// lands at-threshold rather than saturating above it. See
+    /// `marque_engine::engine::synthesis::HEURISTIC_RECOGNITION_CAP`
+    /// for the cap's authoritative doc.
     DecoderClassificationHeuristic,
 }
 

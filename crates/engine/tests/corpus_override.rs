@@ -52,7 +52,7 @@ const MANGLED_PORTION: &[u8] = b"(SERCET//NF)";
 
 /// With corpus override active, every decoder-path fix MUST carry
 /// exactly one `CorpusOverrideInEffect` feature contribution
-/// appended to its `Confidence.features` list.
+/// appended to its `Recognition.features` list.
 #[test]
 fn decoder_fix_carries_corpus_override_feature_when_active() {
     let engine = deep_scan_engine_with_override();
@@ -63,7 +63,7 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
 
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
-    // `Confidence` is nested at `fix.fix.replacement.confidence`. The
+    // `Recognition` is nested at `fix.fix.replacement.confidence`. The
     // iteration is by way of `applied_fixes()` (zero-alloc
     // `impl Iterator`) so we only walk the marking-side audit lines —
     // text-correction lines don't carry a DecoderPosterior `FixSource`.

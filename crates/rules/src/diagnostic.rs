@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-use crate::{Confidence, FixIntent, FixSource, Message, RuleId, Severity};
+use crate::{FixIntent, FixSource, Message, Recognition, RuleId, Severity};
 use marque_scheme::{Citation, MarkingScheme, Span};
 use smol_str::SmolStr;
 
@@ -122,7 +122,7 @@ pub struct Diagnostic<S: MarkingScheme> {
 /// is a literal byte substitution that the engine applies atomically
 /// in its pre-scanner pass. Carries the rule's provenance so the
 /// engine's promotion path produces a faithful audit record (without
-/// silently overwriting `FixSource` / `Confidence` / `migration_ref`).
+/// silently overwriting `FixSource` / `Recognition` / `migration_ref`).
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct TextCorrection {
@@ -131,9 +131,9 @@ pub struct TextCorrection {
     pub replacement: SmolStr,
     /// Provenance of the fix.
     pub source: FixSource,
-    /// Multi-axis confidence. Threshold-gated like any other fix in
-    /// the engine's promotion path.
-    pub confidence: Confidence,
+    /// Recognition-axis confidence. Threshold-gated like any other
+    /// fix in the engine's promotion path.
+    pub confidence: Recognition,
     /// Reference to the migration document or CAPCO row justifying
     /// this fix (e.g., a `§F p…` cite for E006 deprecations).
     pub migration_ref: Option<&'static str>,
@@ -280,7 +280,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
         citation: Citation,
         replacement: impl Into<SmolStr>,
         source: FixSource,
-        confidence: Confidence,
+        confidence: Recognition,
         migration_ref: Option<&'static str>,
     ) -> Self {
         Self {

@@ -36,7 +36,7 @@ use std::time::SystemTime;
 
 use marque_scheme::{Citation, MarkingScheme, Scope, Span, TokenId, TokenRef};
 
-use crate::{Confidence, EnginePromotionToken, RuleId};
+use crate::{EnginePromotionToken, Recognition, RuleId};
 
 /// Kind discriminator for `AuditNote`. v1 ships `InferredFact` only.
 ///
@@ -143,10 +143,10 @@ pub struct AuditNote<S: MarkingScheme> {
     pub dry_run: bool,
     /// Structural payload (content-ignorant).
     pub structural: AuditNoteStructural,
-    /// Confidence propagated from the underlying parse/recognition step.
+    /// Recognition propagated from the underlying parse/recognition step.
     /// Mirrors `AppliedFix.confidence` semantics; closure firings carry
     /// the recognition confidence of the trigger fact that caused the firing.
-    pub confidence: Confidence,
+    pub confidence: Recognition,
     /// Scheme phantom; AuditNote is parameterized over MarkingScheme so
     /// downstream tooling can dispatch on scheme identity if needed.
     _scheme: std::marker::PhantomData<S>,
@@ -215,7 +215,7 @@ impl<S: MarkingScheme> AuditNote<S> {
         classifier_id: Option<Arc<str>>,
         dry_run: bool,
         structural: AuditNoteStructural,
-        confidence: Confidence,
+        confidence: Recognition,
         _token: EnginePromotionToken,
     ) -> Self {
         // Per-kind invariant enforcement (D19 A v1):

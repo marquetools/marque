@@ -14,7 +14,7 @@ use std::borrow::Cow;
 
 use marque_core::fuzzy::FuzzyVocabMatcher;
 use marque_ism::{CapcoTokenSet, token_set::TokenSet as _};
-use marque_rules::confidence::FeatureId;
+use marque_rules::recognition::FeatureId;
 use smallvec::SmallVec;
 
 use super::types::FeatureEntry;
@@ -382,7 +382,7 @@ mod tests {
         CapcoTokenSet, Classification, DissemControl, MarkingClassification,
         span::{MarkingCandidate, MarkingType, Span},
     };
-    use marque_rules::confidence::FeatureId;
+    use marque_rules::recognition::FeatureId;
     use marque_scheme::MarkingScheme;
     use marque_scheme::ambiguity::Parsed;
     use marque_scheme::recognizer::{LinePrefix, ParseContext, Recognizer};

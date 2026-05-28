@@ -21,7 +21,7 @@
 use super::constraints::{self, sci_per_system_emit};
 use super::*;
 use marque_ism::{CanonicalAttrs, MarkingType};
-use marque_rules::{Confidence, FixIntent, FixSource, Message, MessageArgs, MessageTemplate};
+use marque_rules::{FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Recognition};
 use marque_scheme::{Category, Constraint, FactRef, ReplacementIntent, Scope, Template};
 
 /// CAPCO's implementation of `MarkingScheme`.
@@ -165,7 +165,7 @@ impl CapcoScheme {
     /// The method returns `Some(FixIntent { ... })` for the
     /// following catalog row names and `None` otherwise:
     ///
-    /// Every row below emits at `Confidence::strict(1.0)` per the PR A
+    /// Every row below emits at `Recognition::strict()` per the PR A
     /// invariant — strict-path rules do not carry sub-unit `rule`
     /// confidence. Severity remains the auto-apply gate.
     ///
@@ -231,7 +231,7 @@ impl CapcoScheme {
                     token: FactRef::Cve(TOK_NOFORN),
                     scope: Scope::Portion,
                 },
-                confidence: Confidence::strict(1.0),
+                confidence: Recognition::strict(),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
                 source: FixSource::BuiltinRule,
@@ -258,7 +258,7 @@ impl CapcoScheme {
                         token: FactRef::Cve(TOK_NOFORN),
                         scope,
                     },
-                    confidence: Confidence::strict(1.0),
+                    confidence: Recognition::strict(),
                     feature_ids: Default::default(),
                     message: Message::new(
                         MessageTemplate::RequiredByPresence,
@@ -278,7 +278,7 @@ impl CapcoScheme {
                         FactRef::Cve(TOK_REL_TO),
                         Scope::Portion,
                     ),
-                    confidence: Confidence::strict(1.0),
+                    confidence: Recognition::strict(),
                     feature_ids: Default::default(),
                     message: Message::new(
                         MessageTemplate::ConflictsWith,
@@ -308,7 +308,7 @@ impl CapcoScheme {
                     FactRef::Cve(TOK_RELIDO),
                     Scope::Portion,
                 ),
-                confidence: Confidence::strict(1.0),
+                confidence: Recognition::strict(),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
                 source: FixSource::BuiltinRule,
@@ -330,7 +330,7 @@ impl CapcoScheme {
             // this PR — tracked separately for parallel wiring.
             "portion.aea.frd-tfni-precedence" => Some(FixIntent {
                 replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_TFNI), Scope::Portion),
-                confidence: Confidence::strict(1.0),
+                confidence: Recognition::strict(),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                 source: FixSource::BuiltinRule,

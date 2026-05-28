@@ -12,7 +12,7 @@
 
 use marque_ism::{CanonicalAttrs, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Rule,
+    Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition, Rule,
     RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, SectionLetter, capco};
@@ -387,7 +387,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
                 capco(SectionLetter::H, 8, 150),
                 candidate.to_owned(),
                 FixSource::BuiltinRule,
-                Confidence::strict(1.0),
+                Recognition::strict(),
                 None,
             ));
         }

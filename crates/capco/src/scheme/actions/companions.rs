@@ -44,7 +44,7 @@ pub(crate) fn emit_companion_insert(
     citation: marque_scheme::Citation,
 ) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_rules::{
-        Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+        Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Recognition,
         Severity,
     };
     use marque_scheme::{FactRef, ReplacementIntent};
@@ -79,7 +79,7 @@ pub(crate) fn emit_companion_insert(
             token: FactRef::Cve(token_id),
             scope: fix_scope,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
         source: FixSource::BuiltinRule,

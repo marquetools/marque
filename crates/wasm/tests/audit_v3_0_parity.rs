@@ -2,17 +2,17 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `marque-2.0` audit-record byte-identity parity.
+//! `marque-3.0` audit-record byte-identity parity.
 //!
 //! The CLI's `marque::render::render_audit_line` and the WASM crate's
 //! `audit_line_to_json_v1_0` MUST produce byte-identical NDJSON for
 //! every `AuditLine<CapcoScheme>` value the engine emits. This test
 //! exercises the WASM-side projection through every variant of the
-//! v2.0 shape — strict / decoder discriminants, AppliedFix /
+//! v3.0 shape — strict / decoder discriminants, AppliedFix /
 //! TextCorrection arms, optional-field null-emit, MessageArgs
 //! partial-emit — and validates the contract-shape invariants.
 //!
-//! The `marque-2.0` schema carries the 2-tuple `RuleId` shape: the
+//! The `marque-3.0` schema carries the 2-tuple `RuleId` shape: the
 //! `rule` field on the wire is a structured `{scheme, predicate_id}`
 //! object.
 //!
@@ -25,7 +25,7 @@
 //! The CLI-vs-WASM byte-identity at the production emit boundary is
 //! verified end-to-end by `tests/parity.rs` and `tests/native_parity.rs`
 //! which drive the same engine through both surfaces. This test
-//! focuses on the v2.0 shape's structural correctness across the
+//! focuses on the v3.0 shape's structural correctness across the
 //! audit-record variants.
 //!
 //! Native-only target — `target_arch = "wasm32"` cannot host this
@@ -38,8 +38,8 @@ use marque_capco::CapcoScheme;
 use marque_ism::Span;
 use marque_rules::audit::{AppliedFix as AuditAppliedFix, AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    Confidence, EnginePromotionToken, FeatureId, FixIntent, FixSource, Message, MessageArgs,
-    MessageTemplate, RuleId, Severity,
+    EnginePromotionToken, FeatureId, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    Recognition, RuleId, Severity,
 };
 use marque_scheme::canonical::{Canonical, CanonicalConstructor, EngineConstructor};
 use marque_scheme::fix_intent::RecanonScope;
@@ -117,7 +117,7 @@ fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(template_for_rule(rule), MessageArgs::default()),
         source: FixSource::BuiltinRule,
@@ -188,7 +188,7 @@ fn synth_text_correction(
         original_digest,
         "SECRET".into(),
         FixSource::CorrectionsMap,
-        Confidence::strict(1.0),
+        Recognition::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(1_700_000_000),
@@ -367,18 +367,34 @@ fn applied_fix_confidence_round_trip() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let confidence = &v["fix"]["replacement"]["confidence"];
+    // PR B retired `rule`, `region`, and `combined` from the wire
+    // shape — strict-path emissions are pinned at `recognition = 1.0`,
+    // the decoder uses span info elsewhere, and `combined` was a
+    // tautology after the axis collapse (`combined == recognition`).
+    // `Recognition::combined()` stays as an engine-internal method
+    // for threshold gates but is no longer projected onto the wire.
     assert_eq!(confidence["recognition"], 1.0);
-    assert_eq!(confidence["rule"], 1.0);
-    assert_eq!(confidence["combined"], 1.0);
-    // Confidence::strict produces region / runner_up_ratio = None;
+    assert!(
+        confidence.get("rule").is_none(),
+        "PR B retired the rule axis; field must not appear on the wire"
+    );
+    assert!(
+        confidence.get("region").is_none(),
+        "PR B retired the region field; must not appear on the wire"
+    );
+    assert!(
+        confidence.get("combined").is_none(),
+        "PR B retired the combined wire field (tautology with \
+         recognition post-axis-collapse); field must not appear"
+    );
+    // Recognition::strict produces runner_up_ratio = None;
     // serde emits as explicit null.
-    assert!(confidence["region"].is_null());
     assert!(confidence["runner_up_ratio"].is_null());
-    // Default Confidence::strict's features SmallVec is empty.
+    // Default Recognition::strict's features SmallVec is empty.
     assert_eq!(
         confidence["features"].as_array().unwrap().len(),
         0,
-        "Confidence::strict has empty features"
+        "Recognition::strict has empty features"
     );
 }
 

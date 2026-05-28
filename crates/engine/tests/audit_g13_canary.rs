@@ -54,7 +54,7 @@ use marque_engine::{Engine, FixMode};
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::message::Blake3Hash;
 use marque_rules::{
-    Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, RuleId,
+    EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, Recognition, RuleId,
 };
 use marque_scheme::{Severity, Span};
 use marque_test_utils::{
@@ -160,7 +160,7 @@ fn render_audit_line_to_json(
     // via `serde_json::to_string` against the same shape — the
     // canary's job is to scan the wire bytes, and any structural
     // drift between the inline projection and the CLI emit would
-    // surface as a separate test failure in `audit_v1_0_parity.rs`.
+    // surface as a separate test failure in `audit_v3_0_parity.rs`.
     use serde_json::json;
     // The `"rule"` field renders as the structured 2-tuple
     // `{"scheme": ..., "predicate_id": ...}`. The canary's
@@ -194,8 +194,6 @@ fn render_audit_line_to_json(
                     },
                     "confidence": {
                         "recognition": f.fix.replacement.confidence.recognition,
-                        "rule": f.fix.replacement.confidence.rule,
-                        "combined": f.fix.replacement.confidence.combined(),
                     },
                 },
                 "original_span": {"start": f.fix.original_span.start, "end": f.fix.original_span.end},
@@ -474,7 +472,7 @@ fn canary_fires_on_synthetic_regression() {
     // 2-tuple. The fixture below carries the same shape that the
     // canary's `rule_id_json` helper produces.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
+        r#"{{"type":"text_correction","schema":"marque-3.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":10}},
           "leak_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",
@@ -552,7 +550,7 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
         Blake3Hash::from_bytes([0u8; 32]),
         SmolStr::new(std::str::from_utf8(leak).unwrap_or("non-utf8")),
         FixSource::CorrectionsMap,
-        Confidence::strict(1.0),
+        Recognition::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         SystemTime::now(),
@@ -607,7 +605,7 @@ fn canary_fires_on_synthetic_text_correction_regression() {
     // for the `applied_fix` shape. `"rule"` is the structured 2-tuple
     // shape.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
+        r#"{{"type":"text_correction","schema":"marque-3.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":43}},
           "bogus_text_corr_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",

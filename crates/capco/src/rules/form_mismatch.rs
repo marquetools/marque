@@ -17,7 +17,7 @@
 
 use marque_ism::{CanonicalAttrs, MarkingType, Span, TokenKind};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition,
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, RecanonScope, ReplacementIntent, SectionLetter, capco};
@@ -385,7 +385,7 @@ fn emit_form_mismatch(
 ) -> Diagnostic<CapcoScheme> {
     let fix_intent = FixIntent {
         replacement: ReplacementIntent::Recanonicalize { scope },
-        confidence: Confidence::strict(1.0),
+        confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::WrongTokenForm, MessageArgs::default()),
         source: FixSource::BuiltinRule,

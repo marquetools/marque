@@ -3,33 +3,38 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Contract: Audit Record (NDJSON, schema `marque-2.0`)
+# Contract: Audit Record (NDJSON, schema `marque-3.0`)
 
-**Active schema**: `marque-2.0` (was `marque-1.0` pre-T044).
-**Active as of**: T044 merge (atomic schema cutover, 2026-05-22).
+**Active schema**: `marque-3.0` (was `marque-2.0` pre-PR-B).
+**Introduced by**: PR B (recognition-axis cutover; opened 2026-05-28).
+The "active" designation takes effect when PR B merges; until then
+the live `main` branch still emits `marque-2.0`.
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-035a, FR-037, FR-041, FR-044, FR-049
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 
-T044 landed the atomic cutover from `marque-1.0` to `marque-2.0` (2026-05-22), carrying the FR-026 / FR-044 `RuleId` 2-tuple migration. The rule field is now a structured `{"scheme": "...", "predicate_id": "..."}` object instead of the prior flat string (`"rule": "E054"`). T044 unfroze FR-049's stability commitment for a single atomic PR; the freeze re-engaged at T044's merge with `marque-2.0` as the new inflection.
+PR B (2026-05-28) bumped the schema from `marque-2.0` to `marque-3.0` to carry the `Confidence → Recognition` two-PR cleanup. The audit-record `"confidence"` sub-object drops the `rule` and `region` fields — strict-path emissions pin `recognition = 1.0` (PR A landed the value collapse, PR B retired the surface). The 2-tuple `RuleId` structured-object `"rule"` field carries forward unchanged from `marque-2.0`. Pre-PR-B binaries cannot read `marque-3.0` records and vice versa; the cutover is a clean break under FR-037.
 
-The earlier PR 3c.2.D cutover (`marque-mvp-3` → `marque-1.0`, 2026-05-20) baked in the four FR-035a structural commitments — `Canonical<S>` provenance wired into audit emit, BLAKE3 digesting of pre-fix and canonical bytes, closed-set `MessageTemplate` JSON serialization, and the `AppliedFix` v2 reshape with the `AppliedTextCorrection` split — all of which carry forward unchanged into `marque-2.0`.
+T044 (2026-05-22) was the prior atomic cutover from `marque-1.0` to `marque-2.0`, carrying the FR-026 / FR-044 `RuleId` 2-tuple migration. The rule field shifted from a flat string (`"rule": "E054"`) to a structured `{"scheme": "...", "predicate_id": "..."}` object. T044 unfroze FR-049's stability commitment for a single atomic PR; the freeze re-engaged at T044's merge.
 
-Per FR-037 every pre-cutover envelope (`mvp-1` / `mvp-2` / `mvp-3` / `marque-1.0`) is not interoperable with `marque-2.0` binaries (clean break, no `marque-audit-reader` crate scheduled).
+The earlier PR 3c.2.D cutover (`marque-mvp-3` → `marque-1.0`, 2026-05-20) baked in the four FR-035a structural commitments — `Canonical<S>` provenance wired into audit emit, BLAKE3 digesting of pre-fix and canonical bytes, closed-set `MessageTemplate` JSON serialization, and the `AppliedFix` v2 reshape with the `AppliedTextCorrection` split — all of which carry forward unchanged into `marque-3.0`.
+
+Per FR-037 every pre-cutover envelope (`mvp-1` / `mvp-2` / `mvp-3` / `marque-1.0` / `marque-2.0`) is not interoperable with `marque-3.0` binaries (clean break, no `marque-audit-reader` crate scheduled).
 
 ---
 
 ## Schema identifier
 
 ```text
-"schema": "marque-2.0"
+"schema": "marque-3.0"
 ```
 
 `MARQUE_AUDIT_SCHEMA` is build-time-pinned to a single value via
 `marque-engine::AUDIT_SCHEMA_VERSION` (FR-034). One binary emits
 exactly one schema. The build-time accept-list at HEAD is
-`["marque-2.0"]` (was `["marque-1.0"]` pre-T044); pre-cutover records
-are unreadable by post-cutover binaries (FR-037 — clean break, no
-`marque-audit-reader` crate scheduled).
+`["marque-3.0"]` (was `["marque-2.0"]` pre-PR-B, `["marque-1.0"]`
+pre-T044); pre-cutover records are unreadable by post-cutover
+binaries (FR-037 — clean break, no `marque-audit-reader` crate
+scheduled).
 
 ---
 
@@ -41,7 +46,7 @@ promotion (I-5).
 
 ```jsonc
 {
-  "schema": "marque-2.0",
+  "schema": "marque-3.0",
 
   "rule": {
     "scheme": "capco",
@@ -70,11 +75,8 @@ promotion (I-5).
       },
 
       "confidence": {
-        "recognition": 0.95,
-        "rule": 1.00,
-        "combined": 0.95,
-        "region": null,                  // optional posterior region marker
-        "runner_up_ratio": null,         // optional
+        "recognition": 1.00,             // strict-path emissions pin at 1.0; decoder posterior fills sub-1.0
+        "runner_up_ratio": null,         // optional decoder K-truncated-set tail
         "features": ["StrictExactMatch"] // closed-set FeatureId labels
       }
     },
@@ -113,8 +115,9 @@ promotion (I-5).
 
 ## Rule ID encoding
 
-`marque-2.0` uses the 2-tuple `(scheme, predicate_id)` structured-object
-form (FR-026 / FR-044 / R-3; landed at T044, 2026-05-22):
+`marque-3.0` carries forward the 2-tuple `(scheme, predicate_id)`
+structured-object form (FR-026 / FR-044 / R-3; introduced at T044,
+2026-05-22, in `marque-2.0`):
 
 ```jsonc
 "rule": {
@@ -335,7 +338,7 @@ identifier types in audit output are:
 - Category IDs (e.g., `Classification`, `SciSubCompartment`)
 - Span offsets (start/end byte indices into the original buffer)
 - BLAKE3 digests (of canonical bytes; of original bytes)
-- Posterior scalars (recognition / rule / combined confidence values)
+- Posterior scalars (`recognition` value; optional `runner_up_ratio`)
 - Enumerated `FeatureId` labels (closed Rust enum)
 - Enumerated `MessageTemplate` labels (closed Rust enum, FR-003)
 
@@ -352,8 +355,9 @@ Forbidden in audit output:
 
 The `marque-1.0` schema introduced a `Severity::Suggest` variant
 distinct from the prior set (`Off | Info | Warn | Error | Fix`); this
-variant carries forward unchanged into `marque-2.0`. Its
-NDJSON serialization is the lowercase string `"suggest"`. Semantics:
+variant carries forward unchanged through `marque-2.0` into
+`marque-3.0`. Its NDJSON serialization is the lowercase string
+`"suggest"`. Semantics:
 
 - **Source**: produced by `Engine::fix_inner` when a pass-2
   `Phase::WholeMarking` rule's fix span overlaps a pass-1 fix span (I-18
@@ -380,15 +384,15 @@ Error | Fix`.
 
 There is none. Per FR-037:
 - No `marque-audit-reader` crate is scheduled.
-- Pre-cutover envelopes (`marque-mvp-2`, `marque-mvp-3`, `marque-1.0`)
-  are unreadable by post-cutover `marque-2.0` binaries.
+- Pre-cutover envelopes (`marque-mvp-2`, `marque-mvp-3`, `marque-1.0`,
+  `marque-2.0`) are unreadable by post-cutover `marque-3.0` binaries.
 - This is a type-level guarantee, not a runtime concern: there are no
   pre-cutover records (no users, no deployment) at the time of cutover.
 - The window for clean-break refactor closes when external consumers
-  attach (per spec Assumptions); this refactor is the last clean-break
-  window. After `marque-2.0`, subsequent bumps follow the semver
-  cadence below — additive minor bumps stay forward-readable; the next
-  breaking bump (`marque-3.0`) would again clean-break.
+  attach (per spec Assumptions); the pre-user window remains open as
+  of PR B. Subsequent bumps follow the semver cadence below — additive
+  minor bumps stay forward-readable; the next breaking bump
+  (`marque-4.0`) would again clean-break.
 
 ## Schema discoverability (D3)
 
@@ -397,7 +401,7 @@ MUST be discoverable by external consumers without parsing audit
 records.
 
 **Per-record discoverability** (already in place): every record's
-first field is `"schema": "marque-2.0"` (mandatory, FR-035 / T044).
+first field is `"schema": "marque-3.0"` (mandatory, FR-035 / T044).
 Streaming NDJSON consumers detect schema by reading the first record
 they see.
 
@@ -406,17 +410,18 @@ active audit schema name in its output. Format choice (JSON,
 key/value lines, or human-readable) is implementer's call; the
 binding constraint is that the schema name appears such that:
 
-- A shell script can grep for `marque-2.0` in `marque --version`
+- A shell script can grep for `marque-3.0` in `marque --version`
   output and detect schema-major changes.
 - The schema name shown matches the value baked into
   `marque_engine::AUDIT_SCHEMA_VERSION` (FR-034) — single source of
   truth.
 
-**Cutover changelog** (T044): the changelog entry MUST explicitly
-state that the audit schema's `"schema"` field is the discriminator
-external consumers should branch on, and that pre-cutover binaries
-producing `marque-1.0` / `marque-mvp-*` records are not interoperable
-with post-cutover `marque-2.0` binaries.
+**Cutover changelog** (PR B, 2026-05-28): the changelog entry MUST
+explicitly state that the audit schema's `"schema"` field is the
+discriminator external consumers should branch on, and that pre-
+cutover binaries producing `marque-mvp-*` / `marque-1.0` /
+`marque-2.0` records are not interoperable with post-cutover
+`marque-3.0` binaries.
 
 This closes the discoverability gap left by FR-037's "no reader crate"
 posture: external consumers who do exist (per the no-consumers
@@ -427,21 +432,22 @@ schema changed, even though no compatibility shim is provided.
 
 ## Schema-bump policy
 
-`marque-2.0` is the active audit schema as of T044 (2026-05-22).
-Subsequent schema bumps (`marque-2.1`, `marque-2.2`, `marque-3.0`)
+`marque-3.0` is the active audit schema as of PR B (2026-05-28).
+Subsequent schema bumps (`marque-3.1`, `marque-3.2`, `marque-4.0`)
 follow semver:
 
-- **Minor bump (`marque-2.x`)**: additive — new `MessageTemplate`
+- **Minor bump (`marque-3.x`)**: additive — new `MessageTemplate`
   variant, new `FeatureId` variant, new `MessageArgs` field type
   (still closed-set), additive `RuleId` predicate renames recorded
   in `docs/refactor-006/legacy-rule-id-map.md`. Reader compatibility
   is forward-only; `MARQUE_AUDIT_SCHEMA` validates against the exact
   bumped value.
-- **Major bump (`marque-3.0`)**: structural — `RuleId` shape change,
+- **Major bump (`marque-4.0`)**: structural — `RuleId` shape change,
   `Canonical<S>` shape change, removal of a permitted identifier type.
   Constitutes a clean-break event of the same magnitude as the prior
-  `marque-1.0 → marque-2.0` (T044) and `marque-mvp-3 → marque-1.0`
-  (PR 3c.2.D) cutovers.
+  `marque-2.0 → marque-3.0` (PR B, Confidence→Recognition cutover),
+  `marque-1.0 → marque-2.0` (T044, `RuleId` 2-tuple) and
+  `marque-mvp-3 → marque-1.0` (PR 3c.2.D) cutovers.
 
 PR 8's `marque-priors-3` is a separate priors-bake schema, not the
 audit schema (FR-036). Audit-schema bumps and priors-bake schema bumps

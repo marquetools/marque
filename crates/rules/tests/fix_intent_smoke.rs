@@ -13,7 +13,7 @@
 //! `specs/006-engine-rule-refactor/architecture.md` "What fixes
 //! are."
 
-use marque_rules::{Confidence, FixIntent, FixSource, Message, MessageArgs, MessageTemplate};
+use marque_rules::{FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Recognition};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
@@ -105,7 +105,7 @@ fn external_crate_constructs_fix_intent_with_fact_add() {
             token: FactRef::Cve(TokenId(1)),
             scope: Scope::Portion,
         },
-        confidence: Confidence::strict(0.95),
+        confidence: Recognition::strict(),
         feature_ids: SmallVec::new(),
         message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
         source: FixSource::BuiltinRule,
@@ -125,7 +125,7 @@ fn external_crate_constructs_fix_intent_with_fact_add() {
 fn external_crate_constructs_fix_intent_with_fact_remove() {
     let intent: FixIntent<StubScheme> = FixIntent {
         replacement: ReplacementIntent::fact_remove(FactRef::Cve(TokenId(2)), Scope::Page),
-        confidence: Confidence::strict(0.85),
+        confidence: Recognition::strict(),
         feature_ids: SmallVec::new(),
         message: Message::new(
             // Smoke test exercising the cross-crate FactRemove
@@ -155,7 +155,7 @@ fn external_crate_constructs_fix_intent_with_recanonicalize() {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Document,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Recognition::strict(),
         feature_ids: SmallVec::new(),
         message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
         source: FixSource::BuiltinRule,

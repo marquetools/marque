@@ -133,20 +133,22 @@ fn applied_fixes_always_meet_configured_threshold() {
     // Structural gate invariant: every fix the engine promotes to
     // `applied_fixes()` must have `combined() >= configured_threshold`.
     //
-    // PR A collapsed every strict-path `rule` confidence to 1.0, so
-    // the pre-PR-A version of this test (set threshold = 0.99,
-    // depend on E002 at 0.97 to be sub-threshold) no longer has a
-    // sub-threshold strict-path fix to block. The structural
-    // invariant — "no sub-threshold proposal ever appears in applied"
-    // — is unchanged; this test pins it at the strictest threshold
-    // the config layer admits.
+    // PR A pinned every strict-path emission at `recognition = 1.0`,
+    // so strict-path fixes always clear any threshold ≤ 1.0. The
+    // meaningful sub-threshold-blocks-apply assertion comes from the
+    // decoder path: `(SERCET)` is a bare-classification mangled
+    // portion the decoder recognizes as `(SECRET)` with recognition
+    // ≈ 0.926 (the prose null-hypothesis runner-up shrinks the
+    // posterior for short fuzzy fixes — bare-classification portions
+    // have a non-trivial prose prior so the posterior never saturates
+    // above the default 0.95 threshold). At default threshold the
+    // decoder candidate is sub-threshold and MUST NOT be auto-applied;
+    // the lint post-pass demotes its diagnostic to `Severity::Suggest`.
     //
-    // A meaningful "sub-threshold proposal is blocked" assertion
-    // returns when PR B introduces decoder-path sub-1.0 confidences.
-    let mut config = Config::default();
-    config
-        .set_confidence_threshold(1.0)
-        .expect("1.0 is in [0.0, 1.0]");
+    // The engine is constructed with the default
+    // `StrictOrDecoderRecognizer` (no explicit `with_recognizer` call)
+    // so the decoder fallback fires on the mangled input.
+    let config = Config::default();
     let threshold = config.confidence_threshold();
     let engine = Engine::with_clock(
         config,
@@ -156,10 +158,27 @@ fn applied_fixes_always_meet_configured_threshold() {
     )
     .expect("default CAPCO scheme has no rewrite cycles");
 
-    let source = b"SECRET//REL TO GBR\n";
+    let source: &[u8] = b"(SERCET)";
     let result = engine.fix(source, FixMode::Apply);
 
-    // The gate is honored: every applied fix meets the threshold.
+    // No decoder-path fix lands in applied at the default threshold:
+    // the recognition score is sub-threshold so the lint post-pass
+    // has already demoted the diagnostic to Suggest, which is then
+    // a hard exclusion from auto-apply.
+    let decoder_applied: Vec<_> = result
+        .applied_fixes()
+        .filter(|f| f.source == marque_rules::FixSource::DecoderPosterior)
+        .collect();
+    assert!(
+        decoder_applied.is_empty(),
+        "decoder-path fix for `(SERCET)` must NOT auto-apply at \
+         the default threshold {threshold} (recognition ~0.926 is \
+         sub-threshold); applied count: {}",
+        decoder_applied.len(),
+    );
+
+    // Every applied fix that DID land (strict-path collateral, if
+    // any) still satisfies the gate.
     for fix in result.applied_fixes() {
         let combined = fix.fix.replacement.confidence.combined();
         assert!(
@@ -168,6 +187,27 @@ fn applied_fixes_always_meet_configured_threshold() {
              applied at threshold {threshold}"
         );
     }
+
+    // Pin the load-bearing property explicitly: the sub-threshold
+    // decoder candidate survives in remaining_diagnostics as a
+    // Suggest with recognition strictly below 0.95. The
+    // `decoder_applied.is_empty()` assertion above would fire first
+    // on calibration drift above threshold; this pin documents the
+    // sub-threshold property at the call site so a future maintainer
+    // doesn't have to re-derive it.
+    let suggest_recognition = result
+        .remaining_diagnostics
+        .iter()
+        .find(|d| d.severity == marque_rules::Severity::Suggest)
+        .and_then(|d| d.fix.as_ref())
+        .map(|f| f.confidence.recognition);
+    assert!(
+        suggest_recognition.is_some_and(|r| r < threshold),
+        "surviving Suggest candidate must have recognition < threshold \
+         {threshold}; got {suggest_recognition:?}. A drift above the \
+         threshold indicates decoder calibration shifted such that \
+         `(SERCET)` is no longer a sub-threshold gate fixture.",
+    );
 }
 
 #[test]

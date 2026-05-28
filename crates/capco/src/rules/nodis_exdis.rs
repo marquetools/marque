@@ -14,7 +14,7 @@
 
 use marque_ism::{CanonicalAttrs, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase, Recognition,
     Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{Citation, FactRef, ReplacementIntent, Scope, SectionLetter, capco};
@@ -388,7 +388,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
 /// portion mark"). Scope is portion-only: the supersession rule
 /// names the portion mark explicitly at both source passages.
 ///
-/// Confidence is `Confidence::strict(1.0)` — the source is
+/// Recognition is `Recognition::strict()` — the source is
 /// unambiguous about which token survives, and the strict recognizer
 /// path is what produced the parse that surfaced both tokens.
 ///
@@ -399,7 +399,7 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
     use crate::scheme::{TOK_EXDIS, TOK_NODIS};
     FixIntent {
         replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_EXDIS), Scope::Portion),
-        confidence: Confidence::strict(1.0),
+        confidence: Recognition::strict(),
         feature_ids: Default::default(),
         // `ConflictsWith` (not `SupersededToken`): §H.9 mutual-exclusion
         // with a dominated + surviving token, NOT §F deprecation /

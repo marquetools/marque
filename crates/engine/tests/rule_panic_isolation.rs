@@ -8,7 +8,7 @@
 //! `Engine::lint` wraps every `Rule::check` call in
 //! `std::panic::catch_unwind`. A buggy rule that panics — most
 //! commonly via `FixProposal::new` rejecting an out-of-range
-//! `Confidence`, but any panic source qualifies — must NOT abort the
+//! `Recognition`, but any panic source qualifies — must NOT abort the
 //! whole document. The catch logs a `marque_engine::rule_panic`
 //! warning naming the rule and skips it; sibling rules and remaining
 //! candidates keep running.
@@ -33,7 +33,7 @@ use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 /// A rule that always panics in `check()`.
 ///
 /// Mimics the failure mode in whitepaper §6.3: a rule that constructs
-/// an invalid `Confidence` would panic inside `FixProposal::new`. Here
+/// an invalid `Recognition` would panic inside `FixProposal::new`. Here
 /// we panic directly with a recognizable string so the test can
 /// assert (where it would matter) that the panic was contained.
 struct AlwaysPanicsRule;
@@ -245,60 +245,13 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
 }
 
 // ---------------------------------------------------------------------------
-// Direct exercise of the original failure mode (invalid Confidence).
-// ---------------------------------------------------------------------------
-//
-// The whitepaper §6.3 / gap register #10 narrative names
-// `FixProposal::new` panicking on out-of-range `Confidence` as the
-// canonical failure. Rule `AlwaysPanicsRule` uses a hand-rolled
-// panic message that names the same shape, but exercising the real
-// `FixProposal::new` panic site on the engine path proves the catch
-// works against the actual API surface, not just our test
-// imitation. This rule would normally be a code defect — the test
-// is the fence around it.
-
-struct InvalidConfidenceRule;
-
-impl Rule<CapcoScheme> for InvalidConfidenceRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("test", "synthetic.z003-rule-panic-isolation")
-    }
-    fn name(&self) -> &'static str {
-        "invalid-confidence-test-rule"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Fix
-    }
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        // `Confidence::strict(2.0)` is out of `[0.0, 1.0]` and
-        // panics directly. The engine's catch_unwind wrapper must
-        // catch the rule-side panic and continue.
-        let _bad = marque_rules::Confidence::strict(2.0);
-        Vec::new() // unreachable
-    }
-}
-
-#[test]
-fn invalid_confidence_in_fix_proposal_does_not_abort_lint() {
-    // Use the canonical failure-mode rule (calls real
-    // `FixProposal::new` with bad confidence) instead of our hand-
-    // rolled `AlwaysPanicsRule`. If this passes, we've proved the
-    // catch_unwind wrapper handles the *actual* API surface the
-    // gap register names, not just our imitation of it.
-    let engine = Engine::new(
-        Config::default(),
-        vec![Box::new(TestRuleSet::new(vec![Box::new(
-            InvalidConfidenceRule,
-        )]))],
-        marque_engine::default_scheme(),
-    )
-    .expect("default CAPCO scheme has no rewrite cycles");
-
-    let source = b"TOP SECRET//SI//NOFORN\n";
-    let result = engine.lint(source);
-
-    assert_eq!(result.diagnostics.len(), 0);
-}
+// Note: the previous `InvalidConfidenceRule` test exercised the panic
+// raised by `Recognition::strict(arg)` when `arg` was out of `[0.0, 1.0]`.
+// PR B retired the strict-path `rule` axis entirely; `Recognition::strict()`
+// is now argumentless and infallible, so that panic site no longer
+// exists. The general rule-panic-isolation contract is still pinned by
+// `AlwaysPanicsRule` above (lint pipeline) and
+// `fix_pipeline_does_not_abort_when_a_rule_panics` (fix pipeline).
 
 // ---------------------------------------------------------------------------
 // Production rule set is unaffected by the wrapper.
