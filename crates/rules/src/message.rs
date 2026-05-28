@@ -80,7 +80,7 @@ use crate::recognition::{FeatureId, Recognition};
 /// the digest itself is opaque; no other accessor surfaces document
 /// bytes back out of the digest. Real digest computation flows through
 /// `AppliedReplacement::bytes_digest` and
-/// `AppliedFixDetail::original_digest` on the `marque-2.0` audit
+/// `AppliedFixDetail::original_digest` on the `marque-3.0` audit
 /// envelope.
 pub type Blake3Hash = blake3::Hash;
 

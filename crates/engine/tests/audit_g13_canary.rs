@@ -473,7 +473,7 @@ fn canary_fires_on_synthetic_regression() {
     // 2-tuple. The fixture below carries the same shape that the
     // canary's `rule_id_json` helper produces.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
+        r#"{{"type":"text_correction","schema":"marque-3.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":10}},
           "leak_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",
@@ -606,7 +606,7 @@ fn canary_fires_on_synthetic_text_correction_regression() {
     // for the `applied_fix` shape. `"rule"` is the structured 2-tuple
     // shape.
     let synthetic_ndjson = format!(
-        r#"{{"type":"text_correction","schema":"marque-2.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
+        r#"{{"type":"text_correction","schema":"marque-3.0","rule":{{"scheme":"test","predicate_id":"synthetic.r999-fixture"}},
           "severity":"info","span":{{"start":0,"end":43}},
           "bogus_text_corr_field":"{leak}",
           "original_digest":"blake3:abcd","replacement":"SECRET",

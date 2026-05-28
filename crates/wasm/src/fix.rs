@@ -52,7 +52,7 @@ pub fn fix_native(
             // Emit reads from `result.audit_lines`. Must produce
             // byte-identical NDJSON to the CLI's render path
             // (`marque/src/render.rs::render_audit_line`) — the parity
-            // test at `crates/wasm/tests/audit_v2_0_parity.rs` pins this.
+            // test at `crates/wasm/tests/audit_v3_0_parity.rs` pins this.
             let scheme = engine.scheme();
             let applied: Vec<Box<serde_json::value::RawValue>> = result
                 .audit_lines

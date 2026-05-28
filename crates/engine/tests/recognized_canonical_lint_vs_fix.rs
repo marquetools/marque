@@ -24,7 +24,7 @@
 //! `audit_g13_canary.rs::render_audit_line_to_json`. Structural
 //! drift between the inline projection and the CLI emit would
 //! surface as a separate test failure in `audit_v1_0_parity.rs`
-//! / `audit_v2_0_parity.rs` (the inline projection scans the bytes
+//! / `audit_v3_0_parity.rs` (the inline projection scans the bytes
 //! we'd otherwise rely on the CLI to emit).
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};

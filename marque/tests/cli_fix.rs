@@ -431,7 +431,7 @@ fn fix_explain_config_mutual_exclusion() {
 // lifetime of the build — never a mix of pre-cutover and post-cutover
 // records on the same stream. The build-layer half is enforced in
 // `crates/engine/build.rs`, which validates `MARQUE_AUDIT_SCHEMA` to
-// the closed accept-list `["marque-2.0"]` and panics on anything else.
+// the closed accept-list `["marque-3.0"]` and panics on anything else.
 // This test pins the runtime-emitter half: every audit record on
 // stderr must declare the matching `schema` string, and any
 // pre-cutover label must not appear anywhere in the stream.

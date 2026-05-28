@@ -5,12 +5,14 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! The accept-list is a single value: `["marque-2.0"]`. Under that
-//! schema, `RuleId` is a `(scheme, predicate_id)` 2-tuple and the
-//! audit-record `"rule"` JSON field is an object (never a flattened
-//! string). Older record shapes are not interoperable with current
-//! binaries (clean break — there is no audit-reader crate). A single
-//! build emits exactly one schema version.
+//! The accept-list is a single value: `["marque-3.0"]`. Under that
+//! schema, the `Confidence` two-axis payload was retired in favor of a
+//! single `Recognition` axis (PR B); the audit-record `"confidence"`
+//! sub-object on the wire drops the `rule` and `region` fields. The
+//! 2-tuple `RuleId` shape (introduced at `marque-2.0`) is unchanged.
+//! Older record shapes are not interoperable with current binaries
+//! (clean break — there is no audit-reader crate). A single build
+//! emits exactly one schema version.
 //!
 //! The value is surfaced to downstream code via
 //! `env!("MARQUE_AUDIT_SCHEMA")`. Rebuilds are triggered when the
@@ -21,8 +23,8 @@ fn main() {
     // or removing a value MUST coordinate with audit-emit paths.
     // `crates/engine/tests/audit_schema_accept_list.rs` regression-
     // pins this verbatim.
-    const ACCEPTED: &[&str] = &["marque-2.0"];
-    const DEFAULT: &str = "marque-2.0";
+    const ACCEPTED: &[&str] = &["marque-3.0"];
+    const DEFAULT: &str = "marque-3.0";
 
     let schema = std::env::var("MARQUE_AUDIT_SCHEMA").unwrap_or_else(|_| DEFAULT.to_string());
 

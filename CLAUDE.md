@@ -156,7 +156,7 @@ ATOMAL is a NATO AEA marking — Atomic Energy Act information shared with NATO+
 - `Recognizer<S>` (trait in `marque-scheme`; impls in `marque-engine`) — pluggable first stage of the engine. Turns a byte slice + `ParseContext` into `Parsed<S::Marking>`. The trait lives in `marque_scheme::recognizer`; the three shipped concrete implementations are `marque_engine::StrictRecognizer` (zero-FP header-only, the existing structural parser), `marque_engine::DecoderRecognizer` (probabilistic / bag-of-tokens), and `marque_engine::StrictOrDecoderRecognizer` (the strict-first / decoder-fallback dispatcher installed by default in `Engine::new`). Callers that need strict-only dispatch (the interactive-latency benchmark, tests asserting strict behavior) install `StrictRecognizer` explicitly via `Engine::with_recognizer`. Trait is domain-neutral: depends only on the scheme's `Marking` and the `Parsed` / `Candidate` / `EvidenceFeature` primitives in `marque_scheme::ambiguity`.
 - `Vocabulary<S>` (`marque-scheme`) — per-token metadata surface (authority, owner/producer, point of contact, deprecation, URN, schema version, portion/banner forms). Returns `&'static` data, zero runtime allocation. Implemented for `CapcoScheme` from build-time-generated tables; rules read this instead of hardcoding metadata.
 - `Codec<S>` (`marque-scheme`) — pinned trait surface for grammar serialization (encode/decode round-trip). No production/library impls ship in-tree yet; only test stubs exist. XML and JSON are planned. `Codec::decode` returns `Parsed<S::Marking>` so ambiguity preserves through the codec layer.
-- `Confidence` + `FeatureId` (`marque-rules`) — audit-provenance payload attached to every `FixProposal`. Carries `recognition` and `rule` confidence axes (combined as their product), optional `region` and `runner_up_ratio`, and a closed list of named `FeatureId` contributions. `f32` at the audit boundary (`f64` internally in the decoder). Adding a `FeatureId` variant requires a coordinated bump of `MARQUE_AUDIT_SCHEMA`.
+- `Recognition` + `FeatureId` (`marque-rules`) — audit-provenance payload attached to every `FixProposal` (renamed from `Confidence` at PR B). Carries a single `recognition` axis, optional `runner_up_ratio`, and a closed list of named `FeatureId` contributions. `Recognition::combined()` is a thin accessor returning `recognition` (was `recognition × rule` pre-PR-B). `f32` at the audit boundary (`f64` internally in the decoder). Adding a `FeatureId` variant requires a coordinated bump of `MARQUE_AUDIT_SCHEMA`.
 - Topological scheduler (`marque_engine::scheduler`) — runs Kahn's algorithm over `PageRewrite::reads` / `writes` once at `Engine::new` to produce a deterministic rewrite order (writers before readers). Cycles fail with `EngineConstructionError::RewriteCycle`; `Custom` rewrites with empty axis annotations fail with `UnannotatedCustomAxes`. The cached order drives per-document evaluation without re-sorting.
 
 ### Architectural Invariants (do not bypass)
@@ -260,9 +260,11 @@ Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch
 ## Stable API Surface
 
 The following surfaces are committed. Changing any of them requires a
-coordinated audit-schema bump — `marque-2.1` for additive changes,
-`marque-3.0` for breaking ones. The current audit schema is
-`marque-2.0`.
+coordinated audit-schema bump — `marque-3.1` for additive changes,
+`marque-4.0` for breaking ones. The current audit schema is
+`marque-3.0` (PR B retired the two-axis `Confidence` payload and the
+unused `region` field in favor of a single `Recognition` axis;
+the `marque-2.0 → marque-3.0` cutover is the live inflection).
 
 - **Crate dependency graph** per Constitution VII §IV — the
   canonical graph diagram in this file's `Crate Dependency Graph`
@@ -302,9 +304,11 @@ coordinated audit-schema bump — `marque-2.1` for additive changes,
   `EngineInternal` variants.
 - **`AppliedFix<S>` audit-record envelope** — sealed
   `__engine_promote` constructor (Constitution V Principle V); the
-  `marque-2.0` JSON wire format (`MARQUE_AUDIT_SCHEMA = "marque-2.0"`);
+  `marque-3.0` JSON wire format (`MARQUE_AUDIT_SCHEMA = "marque-3.0"`);
   structured 2-tuple `"rule"` field; BLAKE3 digest field; closed
-  `MessageTemplate` JSON projection.
+  `MessageTemplate` JSON projection; single-axis `Recognition`
+  confidence sub-object (post-PR-B `recognition` / `combined` /
+  `runner_up_ratio` / `features` only — no `rule`, no `region`).
 - **Audit content-ignorance invariant** — the canary
   scan at `crates/engine/tests/audit_g13_canary.rs` is the
   type-system + corpus-regression form of the invariant. Adding
@@ -352,6 +356,6 @@ MVP complete. Full lint → fix → audit pipeline for raw text with **32 regist
 
 **Build-time inputs**: ODNI XML pulled from the `ism` and `ism-ismcat` build-deps (vendored in [`marquetools/ism-data`](https://github.com/marquetools/ism-data) at snapshot `20230609.0.0`, package label `ISM-v2022-DEC`); `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored); `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). **Test inputs**: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable).
 
-**Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-2.0"]` and defaulting to `"marque-2.0"`. The audit envelope carries a structural `proposal: FixIntent | TextCorrection` sub-object (no free-form content, keeping audit records content-ignorant), a BLAKE3 digest, and a closed `MessageTemplate` JSON projection. Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema.
+**Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-3.0"]` and defaulting to `"marque-3.0"`. The audit envelope carries a structural `proposal: FixIntent | TextCorrection` sub-object (no free-form content, keeping audit records content-ignorant), a BLAKE3 digest, a closed `MessageTemplate` JSON projection, and the single-axis `Recognition` confidence sub-object (post-PR-B). Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema.
 
 ## Recent Changes

@@ -133,8 +133,8 @@ const ENV_HELP: &str = "ENVIRONMENT VARIABLES:
     MARQUE_CLASSIFIER_ID             Identity stamped into audit records.
     MARQUE_CLASSIFICATION_AUTHORITY  Authority string stamped into audit records.
     MARQUE_AUDIT_SCHEMA              Build-time audit schema selector
-                                     (accept-list: \"marque-2.0\"; default
-                                     \"marque-2.0\"). Read at build time only.
+                                     (accept-list: \"marque-3.0\"; default
+                                     \"marque-3.0\"). Read at build time only.
                                      Run \"marque --version\" to discover the
                                      active schema in any binary.
     MARQUE_ALLOW_FIXED_CLOCK         Set to \"1\" to permit `--fixed-timestamp`

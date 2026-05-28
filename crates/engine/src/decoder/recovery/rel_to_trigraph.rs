@@ -306,7 +306,7 @@ pub(in crate::decoder) fn try_rel_to_fuzzy_trigraph_candidates(
 ///   the corpus prior without changing score or double-counting that
 ///   prior in the posterior. Reusing `BaseRateCommonMarking` (vs
 ///   introducing a new variant) keeps the audit schema closed —
-///   `MARQUE_AUDIT_SCHEMA` stays at `marque-2.0`.
+///   `MARQUE_AUDIT_SCHEMA` stays at `marque-3.0`.
 // Complements try_rel_to_fuzzy_trigraph_candidates (sibling function above) by handling
 // 1- and 2-char first entries that fall below that function's 3-char floor. The
 // partition is shape-based, not vocabulary-based.

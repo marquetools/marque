@@ -5,7 +5,7 @@
 //! `FixSource → Discriminant` collapse table.
 //!
 //! This is the audit-emit-time mapping the CLI / WASM renderers
-//! consume to project the `marque-2.0` `replacement.discriminant`
+//! consume to project the `marque-3.0` `replacement.discriminant`
 //! JSON field. Any future [`marque_rules::FixSource`] variant
 //! addition must update [`marque_rules::audit::discriminant_from_source`]
 //! and add a corresponding row here.

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! `marque-2.0` audit-record byte-identity parity.
+//! `marque-3.0` audit-record byte-identity parity.
 //!
 //! The CLI's `marque::render::render_audit_line` and the WASM crate's
 //! `audit_line_to_json_v1_0` MUST produce byte-identical NDJSON for
@@ -12,7 +12,7 @@
 //! TextCorrection arms, optional-field null-emit, MessageArgs
 //! partial-emit — and validates the contract-shape invariants.
 //!
-//! The `marque-2.0` schema carries the 2-tuple `RuleId` shape: the
+//! The `marque-3.0` schema carries the 2-tuple `RuleId` shape: the
 //! `rule` field on the wire is a structured `{scheme, predicate_id}`
 //! object.
 //!

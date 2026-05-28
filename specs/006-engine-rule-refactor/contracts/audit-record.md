@@ -3,25 +3,27 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Contract: Audit Record (NDJSON, schema `marque-2.0`)
+# Contract: Audit Record (NDJSON, schema `marque-3.0`)
 
-**Active schema**: `marque-2.0` (was `marque-1.0` pre-T044).
-**Active as of**: T044 merge (atomic schema cutover, 2026-05-22).
+**Active schema**: `marque-3.0` (was `marque-2.0` pre-PR-B).
+**Active as of**: PR B merge (recognition-axis cutover, 2026-05-28).
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-035a, FR-037, FR-041, FR-044, FR-049
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 
-T044 landed the atomic cutover from `marque-1.0` to `marque-2.0` (2026-05-22), carrying the FR-026 / FR-044 `RuleId` 2-tuple migration. The rule field is now a structured `{"scheme": "...", "predicate_id": "..."}` object instead of the prior flat string (`"rule": "E054"`). T044 unfroze FR-049's stability commitment for a single atomic PR; the freeze re-engaged at T044's merge with `marque-2.0` as the new inflection.
+PR B (2026-05-28) bumped the schema from `marque-2.0` to `marque-3.0` to carry the `Confidence → Recognition` two-PR cleanup. The audit-record `"confidence"` sub-object drops the `rule` and `region` fields — strict-path emissions pin `recognition = 1.0` (PR A landed the value collapse, PR B retired the surface). The 2-tuple `RuleId` structured-object `"rule"` field carries forward unchanged from `marque-2.0`. Pre-PR-B binaries cannot read `marque-3.0` records and vice versa; the cutover is a clean break under FR-037.
 
-The earlier PR 3c.2.D cutover (`marque-mvp-3` → `marque-1.0`, 2026-05-20) baked in the four FR-035a structural commitments — `Canonical<S>` provenance wired into audit emit, BLAKE3 digesting of pre-fix and canonical bytes, closed-set `MessageTemplate` JSON serialization, and the `AppliedFix` v2 reshape with the `AppliedTextCorrection` split — all of which carry forward unchanged into `marque-2.0`.
+T044 (2026-05-22) was the prior atomic cutover from `marque-1.0` to `marque-2.0`, carrying the FR-026 / FR-044 `RuleId` 2-tuple migration. The rule field shifted from a flat string (`"rule": "E054"`) to a structured `{"scheme": "...", "predicate_id": "..."}` object. T044 unfroze FR-049's stability commitment for a single atomic PR; the freeze re-engaged at T044's merge.
 
-Per FR-037 every pre-cutover envelope (`mvp-1` / `mvp-2` / `mvp-3` / `marque-1.0`) is not interoperable with `marque-2.0` binaries (clean break, no `marque-audit-reader` crate scheduled).
+The earlier PR 3c.2.D cutover (`marque-mvp-3` → `marque-1.0`, 2026-05-20) baked in the four FR-035a structural commitments — `Canonical<S>` provenance wired into audit emit, BLAKE3 digesting of pre-fix and canonical bytes, closed-set `MessageTemplate` JSON serialization, and the `AppliedFix` v2 reshape with the `AppliedTextCorrection` split — all of which carry forward unchanged into `marque-3.0`.
+
+Per FR-037 every pre-cutover envelope (`mvp-1` / `mvp-2` / `mvp-3` / `marque-1.0` / `marque-2.0`) is not interoperable with `marque-3.0` binaries (clean break, no `marque-audit-reader` crate scheduled).
 
 ---
 
 ## Schema identifier
 
 ```text
-"schema": "marque-2.0"
+"schema": "marque-3.0"
 ```
 
 `MARQUE_AUDIT_SCHEMA` is build-time-pinned to a single value via
