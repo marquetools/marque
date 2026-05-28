@@ -238,13 +238,12 @@ non-overlapping work:**
    `DecisionSource::Closure` / `DefaultFill` / `Supersession` by
    diffing the `FactBitmask` between stages, and it emits
    `DecisionSource::PageRewrite` Scheduled/Applied pairs from the
-   page-rewrite fan-out (`marking_scheme_impl.rs:1660`, `:1743`).
+   page-rewrite fan-out (in `project_attrs_pipeline_with_sink`).
 3. **Engine bridge / finalization layer.** The constraint bridge
-   (`engine/src/engine/bridge.rs:56`) emits
+   (`apply_constraint_bridge_for_marking`) emits
    `DecisionSource::Constraint(label)` when a `MarkingScheme::Constraint`
    matches. The banner-rollup paths
-   (`engine/src/engine/lint_helpers.rs:50`,
-   `engine/src/engine/pipeline.rs:206`) emit
+   (`handle_page_break_candidate` and `lint_with_options_internal_with_cache`) emit
    `DecisionSource::BannerRollup`.
 
 **Why the scheme-layer *bitmask-diff* sources often emit nothing on
@@ -257,7 +256,7 @@ the join already covers it. The per-portion closure-style cascade is
 fully captured at the rule layer; the scheme-layer `PageRewrite`
 fan-out still fires on dense documents because page rewrites run
 unconditionally per rewrite, iterating the scheme's `page_rewrites`
-slice in catalog/declaration order (`marking_scheme_impl.rs:1629`).
+slice in catalog/declaration order (iterating `page_rewrites` inside `project_attrs_pipeline_with_sink`).
 The engine's topological scheduler in `marque-engine::scheduler` runs
 once at `Engine::new` to detect cycles and validate axis annotations;
 it does not reorder the scheme's per-page emission loop.

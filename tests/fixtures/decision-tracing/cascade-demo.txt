@@ -13,9 +13,10 @@ banner-rollup rules detect the mismatch.
 (U) ==== SECTION A: NOFORN-IMPLIES CASCADES =====================================
 
 (U) Each portion below is bare-classified with a caveated token but omits
-explicit NOFORN. The closure-stage diff catches "caveated but missing
-NOFORN" and proposes the fix; downstream PageRewrites then strip REL TO,
-the FD&R family, and DISPLAY ONLY tokens that NOFORN supersedes.
+explicit NOFORN. On this dense document the scheme-layer closure/default-fill
+bitmask-diff is collapsed (those cone bits are already set by the join); the
+PageRewrite chain carries the cascade — stripping REL TO, the FD&R family,
+and DISPLAY ONLY tokens that NOFORN supersedes.
 
 (S//SI) Imagery interpretation of facility complex BLACKSITE-3 indicates
 continued construction activity along the southern perimeter.
