@@ -5,11 +5,20 @@
 //! Fix pipeline integration tests.
 //!
 //! Drives `Engine::fix` against corpus fixtures and stub rules, verifying:
-//! - Mixed confidence: only high-confidence fixes applied
+//! - Auto-apply gating: a fixable diagnostic is applied while a
+//!   sibling no-fix diagnostic persists in `remaining_diagnostics`
 //! - Dry-run parity: identical applied list, dry_run=true, source unchanged
 //! - Missing classifier identity: field is None
 //! - Overlap guard: deterministic confidence-then-span ordering
 //! - Post-fix re-lint: fewer diagnostics after fixing
+//!
+//! Pre-PR-A, the first bullet was "Mixed confidence: only
+//! high-confidence fixes applied" — a sub-threshold strict-path fix was
+//! the no-apply side of the test. Post-PR-A every strict-path fix
+//! emits at `Confidence::strict(1.0)`, so the no-apply side is now a
+//! genuinely fix-less diagnostic (bare HCS, conscious-defer per §H.4
+//! p62). The sub-threshold-blocks-apply assertion returns when PR B
+//! introduces decoder-path sub-1.0 confidence.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -31,35 +40,44 @@ fn test_engine() -> Engine {
 }
 
 fn mixed_confidence_source() -> Vec<u8> {
-    // First line: REL TO missing USA at confidence 0.97 → fix applied.
+    // First line: REL TO missing USA — `Severity::Error` with a
+    // strict-path fix at `Confidence::strict(1.0)` (PR A invariant) →
+    // auto-applied.
     // Second line `(TS//HCS)`: bare HCS legacy form (§H.4 p62) emitting
-    // a no-fix Severity::Error diagnostic that stays in
+    // a no-fix `Severity::Error` diagnostic that stays in
     // `remaining_diagnostics`. HCS-O vs HCS-P is a classifier decision
     // per §H.4, so the rule has no auto-fix path and its diagnostic
     // persists through the fix pass.
+    //
+    // Pre-PR-A the first line emitted at sub-1.0 strict confidence and
+    // the helper name reflected that "mixed" axis. PR B will restore a
+    // genuine mixed-confidence fixture when decoder-path sub-1.0
+    // emissions land; until then, the helper name is forward-looking.
     b"SECRET//REL TO GBR, AUS\n(TS//HCS)\n".to_vec()
 }
 
 #[test]
-fn mixed_confidence_applies_only_high_confidence_fix() {
+fn applies_fix_when_sibling_diagnostic_has_no_fix() {
     let engine = test_engine();
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // Only the REL-TO-missing-USA fix (confidence 0.97 ≥ 0.95) should
-    // be applied. The remaining diagnostic on this fixture is the bare
-    // HCS legacy form (no-fix on the `(TS//HCS)\n` second line —
-    // conscious-defer per §H.4 p62, classifier picks HCS-O vs HCS-P) —
-    // verified below in the `remaining_diagnostics` assertion.
-    // `applied_fixes()` returns `impl Iterator`; collect once for index
-    // access + Debug formatting.
+    // Only the REL-TO-missing-USA fix should be applied. Post-PR-A
+    // strict-path fix proposals emit at `Confidence::strict(1.0)`;
+    // the per-fix confidence assertion pins that collapse here.
+    // The remaining diagnostic on this fixture is the bare HCS legacy
+    // form (no-fix on the `(TS//HCS)\n` second line — conscious-defer
+    // per §H.4 p62, classifier picks HCS-O vs HCS-P) — verified below
+    // in the `remaining_diagnostics` assertion. `applied_fixes()`
+    // returns `impl Iterator`; collect once for index access + Debug
+    // formatting.
     let applied: Vec<_> = result.applied_fixes().collect();
     assert_eq!(applied.len(), 1, "applied: {applied:?}");
     assert_eq!(
         applied[0].rule.predicate_id(),
         "portion.dissem.rel-to-missing-usa"
     );
-    assert!((applied[0].fix.replacement.confidence.combined() - 0.97).abs() < 0.001);
+    assert!((applied[0].fix.replacement.confidence.combined() - 1.0).abs() < 0.001);
 
     // The post-fix first line should have USA elevated and codes
     // sorted alphabetically.

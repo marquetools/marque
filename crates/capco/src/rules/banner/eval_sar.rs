@@ -119,7 +119,6 @@ pub(super) fn evaluate_sar_banner_rollup(
                 // `span.start..span.end` being a zero-length slice.
                 original: String::new(),
                 replacement,
-                confidence: 0.9,
                 migration_ref: None,
             })]
         }

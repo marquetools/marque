@@ -79,7 +79,7 @@ pub(crate) fn emit_companion_insert(
             token: FactRef::Cve(token_id),
             scope: fix_scope,
         },
-        confidence: Confidence::strict(0.9),
+        confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
         source: FixSource::BuiltinRule,
@@ -178,7 +178,6 @@ pub(crate) fn emit_hcs_o_companions(
             citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
-            confidence: 0.9,
             migration_ref: None,
         }));
     }
@@ -247,7 +246,6 @@ pub(crate) fn emit_hcs_p_sub_companions(
             citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
-            confidence: 0.9,
             migration_ref: None,
         }));
     }
@@ -314,7 +312,6 @@ pub(crate) fn emit_si_g_companions(
             citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
-            confidence: 0.9,
             migration_ref: None,
         }));
     }

@@ -64,9 +64,8 @@ use crate::scheme::CapcoScheme;
 ///    entry exceeds [`SUGGEST_LOG_MARGIN`].
 /// 3. If such a neighbor exists, emit a `Severity::Suggest`
 ///    diagnostic via `Diagnostic::text_correction` whose
-///    `replacement` is the neighbor and `confidence` is a
-///    strict-built scalar [`SUGGEST_CONFIDENCE`] (purely
-///    informational — `Suggest` diagnostics never auto-apply).
+///    `replacement` is the neighbor. `Severity::Suggest` is a hard
+///    exclusion from auto-apply regardless of confidence value.
 ///
 /// # Coverage of #186 ambiguous fixtures
 ///
@@ -149,25 +148,6 @@ pub(super) struct RelToTrigraphSuggestRule;
 /// closer pairs (e.g., `USA`/`UKR` at delta ≈ 1.2 if it were ever
 /// triggered) do not.
 pub(crate) const SUGGEST_LOG_MARGIN: f32 = 4.0;
-
-/// Strict-built confidence axis value for S004 fixes. The actual
-/// number is informational only — the engine never auto-applies a
-/// `Severity::Suggest` diagnostic's fix regardless of confidence.
-/// Picked at `0.5` to make the audit-record posterior land in a
-/// neutral middle bucket (a value at `1.0` would suggest "we're
-/// sure" and confuse downstream tooling that filters by confidence).
-///
-/// **Config-override interaction**: setting `S004 = "fix"` in
-/// `.marque.toml` is a no-op. The severity-override pass would
-/// rewrite `Suggest → Fix`, but the engine's lint post-pass then
-/// demotes any `Fix`-severity diagnostic with a sub-threshold
-/// fix back to `Suggest` — and `0.5 < 0.95` (the default
-/// confidence threshold) means S004's fix never clears the gate.
-/// To get S004 fixes auto-applied a user would need both
-/// `S004 = "fix"` AND a per-call `--confidence 0.5` (or lower)
-/// override; for now the suggest-don't-fix channel is intentionally
-/// hard advisory.
-pub(crate) const SUGGEST_CONFIDENCE: f32 = 0.5;
 
 /// Compute Levenshtein edit distance between two byte slices.
 ///
@@ -407,7 +387,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
                 capco(SectionLetter::H, 8, 150),
                 candidate.to_owned(),
                 FixSource::BuiltinRule,
-                Confidence::strict(SUGGEST_CONFIDENCE),
+                Confidence::strict(1.0),
                 None,
             ));
         }

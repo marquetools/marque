@@ -193,16 +193,15 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
 /// tokens via two paths:
 ///
 /// 1. **Migration table lookup**: exact match in the seed `MIGRATIONS`
-///    table (e.g., `25X1-` → `25X1`, `50X1-` → `50X1-HUM`). This path
-///    uses the table's authoritative confidence and reference.
+///    table (e.g., `25X1-` → `25X1`, `50X1-` → `50X1-HUM`). The
+///    authoritative replacement and policy reference are taken from the
+///    table entry.
 /// 2. **Pattern match** (fallback): any `TokenKind::Unknown` whose text
 ///    matches the `\d+X\d+(-[A-Z]+)?-` shape — i.e., a CAPCO
 ///    X-shorthand form with a trailing `-`. This catches forms the
 ///    seed table does not enumerate (e.g., `25X2-`, `25X5-`, `25X9-`).
 ///    The suggested replacement is the text with the trailing `-`
-///    stripped; confidence is 0.95 (slightly lower than the 0.97 used
-///    for table-backed matches to reflect the lack of an authoritative
-///    replacement mapping).
+///    stripped.
 pub(super) struct XShorthandDateRule;
 
 /// Citations E007 may emit on diagnostics. See
@@ -261,7 +260,6 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                     citation: capco(SectionLetter::E, 6, 33),
                     original: text.to_owned(),
                     replacement: entry.replacement.to_owned(),
-                    confidence: entry.confidence,
                     migration_ref: Some(entry.reference),
                 }));
                 continue;
@@ -289,10 +287,6 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                     citation: capco(SectionLetter::E, 6, 33),
                     original: text.to_owned(),
                     replacement,
-                    // 0.95: slightly below table-backed 0.97 because
-                    // the canonical form is derived by pattern stripping
-                    // rather than an authoritative CVE mapping.
-                    confidence: 0.95,
                     migration_ref: None,
                 }));
             }
@@ -547,7 +541,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 
 /// Scans token spans against the organization-specific corrections map from
 /// `[corrections]` in `.marque.toml`. Each match produces a fix proposal with
-/// `FixSource::CorrectionsMap` and `confidence = 1.0`.
+/// `FixSource::CorrectionsMap` and `Confidence::strict(1.0)`.
 ///
 /// # Not a CAPCO rule
 ///
@@ -663,7 +657,6 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
                 citation: marque_rules::CORRECTIONS_MAP_CITATION,
                 original: text.to_owned(),
                 replacement: replacement.clone(),
-                confidence: 1.0,
                 migration_ref: None,
             }));
         }

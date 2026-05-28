@@ -50,20 +50,6 @@ use crate::scheme::CapcoScheme;
 // against `crates/capco/docs/CAPCO-2016.md` at authorship.
 // ---------------------------------------------------------------------------
 
-/// Confidence scalar emitted by S008 (`relido-implied-by-closure`)
-/// alongside its `FactAdd` fix intent.
-///
-/// **Calibration.** Mirrors `BARE_NATO_REQUIRES_REL_TO_CONFIDENCE = 0.85` —
-/// example/closure-derived guidance that ships at `Severity::Suggest`
-/// with confidence high enough to clear a relaxed
-/// `confidence_threshold` when paired with `[rules] S008 = "fix"`.
-/// The §B.3 Table 2 p21 default-if-absent obligation + §H.8 p154
-/// RELIDO template + §D.2 Table 3 rule 17 backing the post-#704
-/// `default_fill::row{8,9}_should_fill` predicates is
-/// defaulting-rule prose plus FD&R-defaults derivation, not
-/// "MUST"-mandate prose; the suggest channel is the right home.
-const SUGGEST_CONFIDENCE: f32 = 0.85;
-
 /// Shared `CapcoScheme` used by S008's `check()` to apply the closure
 /// fixpoint to a portion's marking. Constructed lazily — `CapcoScheme::new()`
 /// runs the constraint/page-rewrite/closure-rule catalog build once,
@@ -79,8 +65,9 @@ static SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(Capco
 /// Fires on a portion whose closure-applied projection carries RELIDO
 /// in `dissem_us` AND whose source text does NOT already carry RELIDO.
 /// Emits a `Severity::Suggest` diagnostic with a
-/// `FactAdd(TOK_RELIDO, Scope::Portion)` intent at confidence
-/// [`SUGGEST_CONFIDENCE`].
+/// `FactAdd(TOK_RELIDO, Scope::Portion)` intent. `Severity::Suggest`
+/// is a hard exclusion from auto-apply; the fix surfaces as a
+/// suggestion regardless of confidence value.
 ///
 /// # Project-based trigger detection
 ///
@@ -276,7 +263,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
                 token: FactRef::Cve(TOK_RELIDO),
                 scope: Scope::Portion,
             },
-            confidence: Confidence::strict(SUGGEST_CONFIDENCE),
+            confidence: Confidence::strict(1.0),
             feature_ids: Default::default(),
             message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             source: FixSource::BuiltinRule,

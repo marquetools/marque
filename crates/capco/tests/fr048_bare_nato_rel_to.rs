@@ -49,24 +49,16 @@ fn engine() -> Engine {
 
 /// Engine with S007 severity overridden to `Fix` so the engine applies
 /// the text correction. The default `Severity::Suggest` is a hard
-/// exclusion from auto-apply (`engine.rs::Engine::fix_inner` line
-/// 2853); the override mirrors the production code path users take via
+/// exclusion from auto-apply (`engine.rs::Engine::fix_inner`); the
+/// override mirrors the production code path users take via
 /// `[rules] S007 = "fix"` in `.marque.toml`.
 ///
-/// The default `confidence_threshold` is `0.95`; S007 emits at the
-/// `S007_SUGGEST_CONFIDENCE` constant defined in
-/// `marque_capco::rules` (currently `0.85` — example-derived citation
-/// calibrates with S005). Without the threshold drop the
-/// suggest-channel demotion loop in `engine.rs::lint` would demote the
-/// overridden `Fix` back to `Suggest` because `0.85 < 0.95`, which
-/// would defeat the override. We drop the threshold to `0.80` here to
-/// exercise the apply path end-to-end — users who want auto-apply set
-/// both `[rules] S007 = "fix"` AND `confidence_threshold = 0.80` (or
-/// lower) in `.marque.toml`. The threshold ladder relationship and
-/// the rationale for the `0.85` calibration live on the
-/// `S007_SUGGEST_CONFIDENCE` constant doc-comment in `rules.rs`; this
-/// helper deliberately does NOT import the constant (the indirection
-/// is the production contract, not a test detail to pin numerically).
+/// Strict-path fix proposals emit at `Confidence::strict(1.0)`, which
+/// clears the default `confidence_threshold = 0.95` unconditionally.
+/// PR A collapsed sub-1.0 strict-path confidence values; the dual-
+/// override pattern (severity + threshold) the pre-PR-A version of
+/// this test exercised is retired — the severity override alone is
+/// sufficient.
 fn engine_with_s007_as_fix() -> Engine {
     let mut overrides = HashMap::new();
     // Rule-override keys use the wire-string form.
@@ -76,9 +68,6 @@ fn engine_with_s007_as_fix() -> Engine {
     );
     let mut config = Config::default();
     config.rules = RuleConfig { overrides };
-    config
-        .set_confidence_threshold(0.80)
-        .expect("0.80 is in [0.0, 1.0]");
 
     Engine::with_clock(
         config,

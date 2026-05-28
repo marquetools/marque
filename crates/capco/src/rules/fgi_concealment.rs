@@ -48,17 +48,6 @@ use crate::scheme::CapcoScheme;
 //   Suggest: acknowledge all (drop FGI, keep trigraphs).
 //   Suggest: conceal all (drop trigraphs, keep FGI) + optional NF.
 
-/// Case A confidence: countries fully ⊆ REL TO; unambiguous acknowledged-source fix.
-const ACK_ALL_CONFIDENCE: f32 = 1.0;
-/// Case C primary confidence: conceal all (drop trigraphs).
-const CONCEAL_ALL_CONFIDENCE: f32 = 0.8;
-/// Case C alternate confidence: acknowledge (drop FGI prefix).
-const CASE_C_ALT_CONFIDENCE: f32 = 0.6;
-/// Case D suggest confidence: partial overlap, both paths offered.
-const CASE_D_CONFIDENCE: f32 = 0.6;
-/// NOFORN companion confidence.
-const NF_CONFIDENCE: f32 = 0.7;
-
 /// Overlap relationship between the FGI trigraphs in the classification
 /// block and the REL TO country list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,7 +199,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     replacement,
                     FixSource::BuiltinRule,
-                    Confidence::strict(ACK_ALL_CONFIDENCE),
+                    Confidence::strict(1.0),
                     None,
                 ));
             }
@@ -228,7 +217,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     conceal_form,
                     FixSource::BuiltinRule,
-                    Confidence::strict(CONCEAL_ALL_CONFIDENCE),
+                    Confidence::strict(1.0),
                     None,
                 ));
                 // Alternate Suggest: drop FGI → "DEU R" (acknowledged path).
@@ -241,7 +230,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     ack_form,
                     FixSource::BuiltinRule,
-                    Confidence::strict(CASE_C_ALT_CONFIDENCE),
+                    Confidence::strict(1.0),
                     None,
                 ));
                 // Optional NF companion: unacknowledged FGI is caveated per IC
@@ -252,7 +241,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                             token: FactRef::Cve(TOK_NOFORN),
                             scope: Scope::Portion,
                         },
-                        confidence: Confidence::strict(NF_CONFIDENCE),
+                        confidence: Confidence::strict(1.0),
                         feature_ids: Default::default(),
                         message: Message::new(
                             MessageTemplate::RequiredByPresence,
@@ -293,7 +282,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     ack_all,
                     FixSource::BuiltinRule,
-                    Confidence::strict(CASE_D_CONFIDENCE),
+                    Confidence::strict(1.0),
                     None,
                 ));
                 // Suggest 2: conceal all (drop trigraphs, keep FGI).
@@ -306,7 +295,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     conceal_all,
                     FixSource::BuiltinRule,
-                    Confidence::strict(CASE_D_CONFIDENCE),
+                    Confidence::strict(1.0),
                     None,
                 ));
                 // NF companion for the conceal-all path.
@@ -316,7 +305,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                             token: FactRef::Cve(TOK_NOFORN),
                             scope: Scope::Portion,
                         },
-                        confidence: Confidence::strict(NF_CONFIDENCE),
+                        confidence: Confidence::strict(1.0),
                         feature_ids: Default::default(),
                         message: Message::new(
                             MessageTemplate::RequiredByPresence,

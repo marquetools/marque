@@ -22,7 +22,7 @@ use marque_rules::{
 use marque_scheme::{Citation, SectionLetter, capco};
 
 use super::rel_to_suggest::{
-    SUGGEST_CONFIDENCE, SUGGEST_LOG_MARGIN, s004_candidate_covered_by_block, s004_edit_distance,
+    SUGGEST_LOG_MARGIN, s004_candidate_covered_by_block, s004_edit_distance,
 };
 use crate::scheme::CapcoScheme;
 
@@ -295,7 +295,7 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
                         capco(SectionLetter::H, 7, 122),
                         candidate.to_owned(),
                         FixSource::BuiltinRule,
-                        Confidence::strict(SUGGEST_CONFIDENCE),
+                        Confidence::strict(1.0),
                         None,
                     ));
                 }

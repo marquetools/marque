@@ -953,8 +953,6 @@ pub struct MigrationEntry {
     pub deprecated: &'static str,
     /// The replacement marking string.
     pub replacement: &'static str,
-    /// Confidence score for auto-fix (0.0–1.0).
-    pub confidence: f32,
     /// Policy reference (CAPCO section).
     pub reference: &'static str,
     /// Schema version after which the deprecated marking is no longer
@@ -972,9 +970,8 @@ pub struct MigrationEntry {
 /// Deprecated-marking migration table.
 ///
 /// Policy-driven replacements for markings that CAPCO has formally retired
-/// or renamed. All entries have confidence >= 0.95, and every
-/// `reference` cites a real passage in `crates/capco/docs/CAPCO-2016.md`
-/// per Constitution VIII.
+/// or renamed. Every `reference` cites a real passage in
+/// `crates/capco/docs/CAPCO-2016.md` per Constitution VIII.
 ///
 /// # What is NOT a migration
 ///
@@ -1017,14 +1014,12 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
     MigrationEntry {
         deprecated: "25X1-",
         replacement: "25X1",
-        confidence: 0.97,
         reference: "CAPCO-2016 §E.6 p34",
         valid_until: None,
     },
     MigrationEntry {
         deprecated: "50X1-",
         replacement: "50X1-HUM",
-        confidence: 0.95,
         // §E.6 p34: "The derivative classifier must not carry forward
         // the 25X1-human declassification instruction from the source
         // document; but instead, derivative classifiers should use the
