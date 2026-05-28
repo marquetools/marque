@@ -39,7 +39,7 @@ The year **is 2026**.
 **Vulnerability:** The custom Node.js static dev server `demo/bin/serve.js` did not set a `Content-Security-Policy` (CSP) header.
 **Learning:** Without a CSP, the application lacks defense-in-depth against Cross-Site Scripting (XSS) attacks. Even if the codebase itself avoids insecure practices (like using `innerHTML`), a CSP restricts where scripts and styles can be loaded from or executed, mitigating the impact of any potential future injection flaws.
 **Prevention:** Always implement a restrictive `Content-Security-Policy` header in custom HTTP servers. For applications utilizing WebAssembly, ensure `script-src` includes `'wasm-unsafe-eval'` to allow WASM compilation without resorting to the broader `'unsafe-eval'` where possible.
-## 2025-05-28 - [CRITICAL] Prevent Sensitive Data Leakage via Browser/Proxy Caching
+## 2026-05-28 - [MEDIUM] Prevent Sensitive Data Leakage via Browser/Proxy Caching
 **Vulnerability:** The `marque-server` REST API responses were missing the `Cache-Control: no-store, max-age=0` header.
 **Learning:** By default, REST API responses might be cached by browsers or intermediate proxies (like CDNs). For an engine dealing with security classification labels and text, caching these responses could leak sensitive text or audit data to unauthorized viewers on shared networks or machines.
 **Prevention:** Always explicitly include `Cache-Control: no-store, max-age=0` on sensitive API endpoints to ensure responses are never cached anywhere in the chain. This was addressed by adding a global `SetResponseHeaderLayer` in `crates/server/src/middleware.rs`.
