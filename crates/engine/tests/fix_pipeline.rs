@@ -17,8 +17,11 @@
 //! the no-apply side of the test. Post-PR-A every strict-path fix
 //! emits at `Recognition::strict()`, so the no-apply side is now a
 //! genuinely fix-less diagnostic (bare HCS, conscious-defer per §H.4
-//! p62). The sub-threshold-blocks-apply assertion returns when PR B
-//! introduces decoder-path sub-1.0 confidence.
+//! p62). PR B restores the sub-threshold-blocks-apply assertion via
+//! the decoder path — `decoder_sub_threshold_fix_blocked_from_apply`
+//! exercises `(SERCET)` (recognition ≈ 0.926) against the default
+//! 0.95 threshold and asserts the candidate stays out of the applied
+//! stream.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -474,4 +477,65 @@ fn r002_fired_field_independent_of_applied_count() {
     // Fixture is mixed_confidence_source -> E002 fires.
     assert!(result.applied_fixes().next().is_some());
     assert!(!result.r002_fired);
+}
+
+#[test]
+fn decoder_sub_threshold_fix_blocked_from_apply() {
+    // Sub-threshold-blocks-apply gate restored via the decoder path
+    // (PR B). At the default `confidence_threshold = 0.95`,
+    // `(SERCET)` is a bare-classification mangled portion the decoder
+    // recognizes as `(SECRET)` with `recognition ≈ 0.926` (the prose
+    // null-hypothesis runner-up shrinks the posterior for short fuzzy
+    // fixes — bare-classification portions have a non-trivial prose
+    // prior so the posterior never saturates above the default 0.95
+    // threshold). The lint post-pass demotes the diagnostic to
+    // `Severity::Suggest`; the engine's auto-apply gate
+    // (`Severity::is_promote_eligible`) hard-excludes Suggest, and
+    // the threshold gate would block it anyway.
+    //
+    // Asserts:
+    //   1. No decoder-path fix lands in `applied_fixes()`.
+    //   2. The candidate survives in `remaining_diagnostics` as
+    //      `Severity::Suggest` so callers can surface it as a
+    //      "did you mean?" hint without auto-applying.
+    let engine = test_engine();
+    let source: &[u8] = b"(SERCET)";
+    let result = engine.fix(source, FixMode::Apply);
+
+    let decoder_applied: Vec<_> = result
+        .applied_fixes()
+        .filter(|f| f.source == marque_rules::FixSource::DecoderPosterior)
+        .collect();
+    assert!(
+        decoder_applied.is_empty(),
+        "decoder-path fix for `(SERCET)` must NOT auto-apply at the \
+         default 0.95 threshold (recognition ~0.926 < threshold); \
+         applied count: {}",
+        decoder_applied.len(),
+    );
+
+    // Source must be unchanged — no splice happened because the
+    // decoder candidate was suppressed at the gate.
+    assert_eq!(
+        result.source.expose_secret(),
+        source,
+        "source must be unchanged when no fix lands"
+    );
+
+    // The decoder-recognition diagnostic survives as Suggest.
+    let suggest_decoder: Vec<_> = result
+        .remaining_diagnostics
+        .iter()
+        .filter(|d| d.severity == marque_rules::Severity::Suggest)
+        .filter(|d| {
+            d.fix
+                .as_ref()
+                .is_some_and(|f| f.source == marque_rules::FixSource::DecoderPosterior)
+        })
+        .collect();
+    assert!(
+        !suggest_decoder.is_empty(),
+        "sub-threshold decoder candidate must survive as Severity::Suggest \
+         in remaining_diagnostics so the renderer can show \"did you mean?\""
+    );
 }

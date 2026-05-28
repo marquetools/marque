@@ -185,16 +185,17 @@ fn severity_override_off_suppresses_rule() {
 
 // F-08: Layer 4 (CLI flag) overrides all other layers.
 //
-// PR A collapsed every strict-path `rule` confidence to 1.0, so the
-// pre-PR-A version of this test (config threshold 0.5, CLI override
-// 0.99, asserts the 0.97-confidence rel-to-missing-usa fix is blocked
-// by the CLI override) no longer has a sub-1.0 strict-path fix to
-// exercise. The layered-override mechanism itself is unchanged — the
-// CLI flag still overrides the config layer — so this test now
-// verifies the flag is plumbed and accepted end-to-end, with both the
-// config layer and the CLI override admitting the strict-1.0 fix.
-// A meaningful "CLI threshold blocks a sub-threshold fix" assertion
-// returns when PR B introduces decoder-path sub-1.0 confidences.
+// PR A pinned every strict-path emission at `recognition = 1.0` and
+// PR B retired the second axis, so strict-path fixes always clear any
+// threshold ≤ 1.0. The CLI threshold-override gate is now exercised
+// via the decoder path: `(SERCET)` produces a decoder candidate at
+// recognition ≈ 0.926 (the prose null-hypothesis runner-up shrinks
+// the posterior for short fuzzy fixes — bare-classification portions
+// have a non-trivial prose prior so the posterior never saturates
+// above the default 0.95 threshold). A relaxed config threshold
+// (0.5) lets the candidate land; a CLI override at 0.99 blocks it.
+// The pair shows the CLI override has priority over the config layer
+// end-to-end.
 #[test]
 fn cli_confidence_threshold_overrides_config() {
     let tmp_dir = tempfile::tempdir().unwrap();
@@ -205,20 +206,26 @@ fn cli_confidence_threshold_overrides_config() {
     )
     .unwrap();
 
-    let assert = marque()
+    // CLI flag overrides config: at 0.99, the decoder candidate
+    // (recognition ≈ 0.926) is sub-threshold and must NOT auto-apply,
+    // even though the config layer at 0.5 would have admitted it.
+    // The remaining sub-threshold Suggest diagnostic causes a non-zero
+    // exit code ("issues require manual review"); the test asserts on
+    // the stdout payload, not the exit code.
+    let output = marque()
         .args(["fix", "--confidence-threshold", "0.99", "--config"])
         .arg(&config_path)
-        .write_stdin("SECRET//REL TO GBR\n")
-        .assert()
-        .success();
-
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+        .write_stdin("(SERCET)")
+        .output()
+        .expect("marque fix should produce output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(
         stdout.as_ref(),
-        "SECRET//REL TO USA, GBR\n",
-        "CLI --confidence-threshold=0.99 accepts the strict-1.0 \
-         rel-to-missing-usa fix; the override is plumbed end-to-end \
-         and the fix applies"
+        "(SERCET)",
+        "CLI --confidence-threshold=0.99 must block the decoder-path \
+         fix for `(SERCET)` (recognition ~0.926 < 0.99 threshold), \
+         even though the config layer at 0.5 would have admitted it; \
+         got stdout: {stdout:?}"
     );
 }
 
