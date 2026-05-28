@@ -48,8 +48,23 @@ guard() {
     # it as whitespace; POSIX ERE treats it as the literal 's' char).
     # Use `[[:space:]]` so the doc-comment exclusion works on both
     # GNU grep (CI Linux) and BSD grep (macOS dev).
+    #
+    # cfg(test) carve-out. Guards target production-code shapes; inline
+    # `#[cfg(test)]` / `#[cfg(all(test, ...))]` modules at file-bottom
+    # legitimately construct fixtures using the very patterns the guard
+    # forbids in production (e.g. `Us(Secret)` as a test-input
+    # classification). This matches the design comment on Guard 2,
+    # which carves out peer files for the same reason. The cutoff is
+    # the line of the first `#[cfg(...test...)]` marker; matches at or
+    # after that line are dropped. Default `999999` keeps the guard
+    # behavior unchanged for files with no test module.
+    local cfg_line
+    cfg_line=$(grep -nE '^#\[cfg\(.*test' "$file" 2>/dev/null | head -1 | cut -d: -f1)
+    : "${cfg_line:=999999}"
     matches=$(grep -nE "$pattern" "$file" 2>/dev/null \
-        | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*//' || true)
+        | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*//' \
+        | awk -F: -v cutoff="$cfg_line" '$1 + 0 < cutoff + 0' \
+        || true)
 
     if [ -n "$matches" ]; then
         echo
