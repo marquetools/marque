@@ -200,6 +200,20 @@ impl RecordingSink {
         &self.events
     }
 
+    /// Build a [`DecisionReport`] from a caller-supplied event vector
+    /// without going through a [`RecordingSink`] instance.
+    ///
+    /// Phase E `marque trace` uses this to bridge the
+    /// `Arc<Mutex<Vec<DecisionEvent>>>` capture pattern (the same one
+    /// the Phase C smoke tests use) into the report-with-cascade-chains
+    /// surface that the CLI's `summary` and `narrate` formats consume.
+    /// Identical semantics to [`RecordingSink::into_report`] —
+    /// implementation is a 1-line forward into a temporary
+    /// [`RecordingSink`].
+    pub fn into_report_from_events(events: Vec<DecisionEvent>) -> DecisionReport {
+        Self { events }.into_report()
+    }
+
     /// Convert the recorded event stream into a [`DecisionReport`].
     ///
     /// Walks [`DecisionEvent::triggered_by`] edges to reconstruct

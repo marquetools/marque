@@ -50,6 +50,9 @@
 
 use crate::category::CategoryId;
 
+#[cfg(feature = "serde")]
+use serde::Serialize;
+
 pub mod report;
 pub mod sinks;
 
@@ -84,6 +87,7 @@ pub trait DecisionSink {
 /// fields are IDs, indices, or enum tags; Constitution Principle V
 /// (content ignorance) is preserved by construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DecisionEvent {
     /// Monotone per-document step counter, assigned by the engine.
     /// Used to correlate events into cascade chains.
@@ -109,6 +113,7 @@ pub struct DecisionEvent {
 /// pipeline: portions are indexed in document order; banner and document
 /// are single-instance; page carries the page index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum DecisionSite {
     /// A specific portion marking. The index is the portion's
     /// document-order position.
@@ -129,6 +134,7 @@ pub enum DecisionSite {
 /// [`report::DecisionReport`] aggregations and for the small
 /// fixed-size `by_kind` array in [`sinks::CountingSink`]. Don't reorder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum DecisionKind {
     /// A rule/constraint/closure was evaluated against the marking.
     /// Includes vacuous evaluations (predicate had no effect).
@@ -166,6 +172,7 @@ pub enum DecisionKind {
 /// / [`crate::page_rewrite::RewriteId`] — content-neutral by
 /// construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum DecisionSource {
     /// Parser dispatch (recognizer chose this marking shape, or
     /// strict-vs-decoder path).

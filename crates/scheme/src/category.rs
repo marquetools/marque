@@ -34,6 +34,7 @@
 /// single category's axis). Schemes MUST assign concrete categories
 /// starting at `CategoryId(1)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CategoryId(pub u32);
 
 impl CategoryId {

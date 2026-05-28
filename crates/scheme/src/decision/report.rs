@@ -13,6 +13,9 @@
 
 use std::collections::BTreeMap;
 
+#[cfg(feature = "serde")]
+use serde::Serialize;
+
 use crate::category::CategoryId;
 use crate::decision::{DecisionKind, DecisionSite};
 
@@ -28,6 +31,7 @@ use crate::decision::{DecisionKind, DecisionSite};
 /// because it has the lowest numeric value). Stable order makes the
 /// report directly usable in snapshot tests without a follow-up sort.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DecisionReport {
     /// Total number of recorded events.
     pub total: u64,
@@ -62,6 +66,7 @@ pub struct DecisionReport {
 /// engine's chronological emit order when descendants don't reorder
 /// against their siblings.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CascadeChain {
     /// Step number of the root event (the cascade's `triggered_by`
     /// is `None`, or its parent step is not present in the recorded
