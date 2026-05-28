@@ -256,7 +256,11 @@ regression: page-level closure really does have nothing to add when
 the join already covers it. The per-portion closure-style cascade is
 fully captured at the rule layer; the scheme-layer `PageRewrite`
 fan-out still fires on dense documents because page rewrites run
-unconditionally per rewrite in the topological order.
+unconditionally per rewrite, iterating the scheme's `page_rewrites`
+slice in catalog/declaration order (`marking_scheme_impl.rs:1629`).
+The engine's topological scheduler in `marque-engine::scheduler` runs
+once at `Engine::new` to detect cycles and validate axis annotations;
+it does not reorder the scheme's per-page emission loop.
 
 **Where the page-layer diff *does* emit.** Single-portion documents (or
 documents engineered so each form-feed-separated page joins to an

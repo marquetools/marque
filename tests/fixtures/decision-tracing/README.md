@@ -9,7 +9,8 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 Hand-curated fixtures for the `marque trace` subcommand (gated behind
 `--features decision-tracing`). They are not generated artifacts and are
 not consumed by the corpus accuracy harness — their purpose is to drive
-the `DecisionSink` instrumentation through both of its emission layers.
+the `DecisionSink` instrumentation through all three of its emission
+layers.
 
 ## The three emission layers
 
@@ -24,11 +25,11 @@ purpose of having two files:
    inspects a portion's dissem and SCI state and adds RELIDO when the
    closure-table predicate says it's implicit.
 2. **Scheme layer (per page-join).** `CapcoScheme::project_attrs_pipeline_with_sink`
-   runs a five-stage pipeline (`close → apply_default_fill →
-   apply_supersession_overlays → page-rewrites`) once on the joined
-   page accumulator and emits events by diffing the bitmask between
-   stages and by fanning out per page-rewrite. This is where
-   `DecisionSource::Closure`, `DefaultFill`, `Supersession`, and
+   runs a five-stage pipeline (`join_via_lattice → close →
+   apply_default_fill → apply_supersession_overlays → page-rewrites`)
+   once on the joined page accumulator and emits events by diffing the
+   bitmask between stages and by fanning out per page-rewrite. This is
+   where `DecisionSource::Closure`, `DefaultFill`, `Supersession`, and
    `PageRewrite` come from. Per-portion projection (`Scope::Portion`)
    is identity by design (see `CapcoScheme::project` in
    `crates/capco/src/scheme/marking_scheme_impl.rs`) — there is no
@@ -46,7 +47,12 @@ typically already set by *some* portion, so `close → default-fill →
 supersession` produces an empty delta and emits nothing. That collapse
 is correct behavior, not a wiring bug. The `PageRewrite` fan-out
 emissions still fire on dense documents because page rewrites run
-unconditionally per rewrite in the topological order.
+unconditionally per rewrite in catalog/declaration order along the
+scheme's `page_rewrites` slice (the engine's topological scheduler in
+`marque-engine::scheduler` runs once at `Engine::new` to detect cycles
+and validate axis annotations; the per-page emission order at the
+scheme layer is the scheme's own catalog order, distinct from the
+engine's construction-time topological order).
 
 ## `cascade-demo.txt`
 

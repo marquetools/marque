@@ -104,11 +104,12 @@ coverage, non-us-requires-dissem, joint-requires-usa).
 
 (U) ==== SECTION E: CLOSING ASSESSMENT ============================================
 
-(U) The combinatorial structure above (~30 portions across 8 category
-axes evaluated by ~18 registered rules each) represents on the order of
-several thousand machine-equivalent marking decisions, of which several
-hundred are substantive enough that a human classifier would re-evaluate
-them when any single token in any single portion changed. Marque records
+(U) The combinatorial structure above (~39 portions across 8 category
+axes evaluated by the full registered rule set on each) represents on
+the order of several thousand machine-equivalent marking decisions, of
+which several hundred are substantive enough that a human classifier
+would re-evaluate them when any single token in any single portion
+changed. Marque records
 the full causal graph deterministically in microseconds and emits it
 through the DecisionSink instrumentation surface; this fixture is the
 canonical input for that machinery.
