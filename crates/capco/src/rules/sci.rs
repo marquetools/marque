@@ -364,12 +364,10 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
                 capco(SectionLetter::H, 4, 62),
                 *candidate,
                 FixSource::BuiltinRule,
-                // Confidence 0.75: the canonical replacement is one of
-                // three, and Marque cannot pick the right one. The
-                // value is below typical auto-apply thresholds (0.95)
-                // so even an engine that ignored the Suggest gate
-                // would not auto-apply.
-                Confidence::strict(0.75),
+                // Strict-path fix proposal: confidence 1.0. Severity::Suggest
+                // is the hard exclusion from auto-apply; the three candidates
+                // surface for human selection regardless of confidence value.
+                Confidence::strict(1.0),
                 None,
             ));
         }
