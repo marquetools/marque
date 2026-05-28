@@ -6,11 +6,16 @@
 //!
 //! Pins the constitutional invariant the `decision-tracing` feature
 //! exists to satisfy: when the feature is ON and the engine's default
-//! `NoopSink` is in place, the per-call cost MUST be indistinguishable
-//! from the no-feature path (< 2% overhead). [`marque_scheme::NoopSink`]
-//! is a ZST with an `#[inline(always)]` empty body; the optimizer
-//! collapses every emission site to no instructions, so the engine's
-//! `Mutex<Box<dyn SyncDecisionSink>>` field is the only residual cost.
+//! `NoopSink` is in place, the per-call cost MUST be within 2% of the
+//! no-feature path. [`marque_scheme::NoopSink`] is a ZST with an
+//! `#[inline(always)]` empty body, but it is boxed behind
+//! `Mutex<Box<dyn SyncDecisionSink>>` on the engine field, so each
+//! `emit()` call still incurs three residual operations even on the
+//! Noop path: (1) an `AtomicU32::fetch_add` on the per-document step
+//! counter, (2) a `Mutex::lock` on the sink, and (3) one vtable call
+//! to the empty `record` body. The 2% ratio gate budgets these
+//! against the no-feature baseline, where none of the three happen
+//! because the engine field is compiled out entirely.
 //!
 //! ## Bench pair
 //!

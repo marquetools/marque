@@ -1407,18 +1407,17 @@ impl CapcoScheme {
     ///
     /// # Step coordination
     ///
-    /// Uses a **local step counter** starting at `0`. Events emitted
-    /// here are correctly ordered + `triggered_by`-linkable WITHIN this
-    /// call, but their step IDs do NOT correlate with engine-emitted
-    /// events for the same document. This is a Phase D simplification:
-    /// the trait signature receives `&mut dyn DecisionSink` directly
-    /// (the engine's `next_step` counter is not visible across the
-    /// crate boundary), and adding a step-counter parameter would
-    /// require revising the Phase B trait surface. Cross-boundary
-    /// cascade chains are a Phase D refinement deferral; for the
-    /// page-rewrite fan-out demo asset, intra-call linkage between
-    /// `RewriteScheduled` and `RewriteApplied` is the load-bearing
-    /// property and is preserved by this local counter.
+    /// Uses a **local step counter** starting at `0` when constructing
+    /// events. Consumers see globally-unique step IDs because the
+    /// engine wraps this call's sink argument in
+    /// `Engine::with_remapping_sink`, an adapter that mints a fresh
+    /// global step from `Engine::next_step` per emitted event and
+    /// remaps each `triggered_by: Some(local)` through a per-call
+    /// `local → global` HashMap. Intra-call cascade edges
+    /// (`RewriteScheduled → RewriteApplied`, closure-cone chaining)
+    /// survive the remap; cross-boundary edges into engine-emitted
+    /// events for the same document are NOT created (scheme-side
+    /// code has no view of engine-emitted parent steps).
     ///
     /// # Stage events
     ///
@@ -1429,8 +1428,11 @@ impl CapcoScheme {
     ///    [`crate::scheme::closure_table::bit_to_row_name`].
     /// 2. **Default-fill** — diff post-close vs. post-default-fill
     ///    bitmask; emit one
-    ///    [`marque_scheme::DecisionKind::ClosureFired`] per row that
+    ///    [`marque_scheme::DecisionKind::Mutated`] per row that
     ///    fired with [`marque_scheme::DecisionSource::DefaultFill(name)`].
+    ///    (`Mutated` rather than `ClosureFired` because default-fill
+    ///    is a distinct grammar stage that adds bits when an axis was
+    ///    absent — semantically a mutation, not a closure-rule firing.)
     /// 3. **Supersession overlays** — diff dissem/REL-TO axes; emit
     ///    [`marque_scheme::DecisionKind::Mutated`] with
     ///    [`marque_scheme::DecisionSource::Supersession(name)`].

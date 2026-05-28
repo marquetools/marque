@@ -182,12 +182,17 @@ impl Engine {
             emitted_id_overrides,
             // Default to `NoopSink`. Constitution Principle I — the
             // sink is `#[cfg(feature = "decision-tracing")]`-only, so
-            // the OFF-feature build has no field and no allocation.
-            // ON-feature builds default to the ZST `NoopSink` which
-            // monomorphizes the boxed-dyn vtable to a no-op record
-            // body; callers that want real instrumentation call
-            // [`Engine::with_decision_sink`] to install a non-Noop
-            // sink.
+            // the OFF-feature build has no field, no Mutex lock, and
+            // no allocation; SC-001 is preserved by construction.
+            // ON-feature builds default to the ZST `NoopSink` boxed
+            // behind `Mutex<Box<dyn SyncDecisionSink>>`; the dispatch
+            // is necessarily through the vtable (not monomorphized
+            // away), but `NoopSink::record` is `#[inline(always)]`
+            // with an empty body, so every `emit()` call pays the
+            // step-counter `fetch_add` + `Mutex::lock` + vtable call
+            // and then immediately returns. Callers that want real
+            // instrumentation call [`Engine::with_decision_sink`] to
+            // install a non-Noop sink.
             #[cfg(feature = "decision-tracing")]
             sink: std::sync::Mutex::new(Box::new(marque_scheme::NoopSink)),
             #[cfg(feature = "decision-tracing")]

@@ -16,11 +16,11 @@
 //!   ignorant: every label is a `&'static` rule / closure / rewrite
 //!   identifier sourced from the scheme catalog (Constitution V).
 //!
-//! Feature-gated. Without `decision-tracing` the subcommand exists in
-//! `marque/src/main.rs` only as a stub that returns `EX_USAGE` with a
-//! clear "rebuild with --features decision-tracing" message.
-
-#![cfg(feature = "decision-tracing")]
+//! Feature-gated at the module declaration in `marque/src/main.rs`
+//! (`#[cfg(feature = "decision-tracing")] mod trace;`). Without the
+//! feature the subcommand exists in `main.rs` only as a stub that
+//! returns `EX_USAGE` with a clear "rebuild with --features
+//! decision-tracing" message.
 
 use std::io::Write;
 use std::path::PathBuf;
