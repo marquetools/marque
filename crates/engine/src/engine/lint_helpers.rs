@@ -1,6 +1,5 @@
 use super::dispatch::panic_payload_to_string;
 use super::fix::pre_pass_1_attrs_for_span;
-#[cfg(not(feature = "decision-tracing"))]
 use super::page_context::project_page_marking;
 #[cfg(feature = "decision-tracing")]
 use super::page_context::project_page_marking_with_sink;
@@ -60,10 +59,13 @@ pub(super) fn handle_page_break_candidate(
     // and the OFF-feature build is byte-identical.
     #[cfg(feature = "decision-tracing")]
     {
-        if !page_portions.is_empty() && page_marking_arc.is_none() {
+        if engine.tracing_active() && !page_portions.is_empty() && page_marking_arc.is_none() {
             // Step-remapping wrapper translates scheme-side local
             // step IDs into the engine's global step space; see
-            // `Engine::with_remapping_sink`.
+            // `Engine::with_remapping_sink`. Only pre-init through the
+            // sink-aware path when an observer is installed; otherwise
+            // `dispatch_page_finalization` populates the cell lazily via
+            // the plain projection, matching the OFF-feature path.
             *page_marking_arc = Some(Arc::new(engine.with_remapping_sink(|sink| {
                 project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
             })));
@@ -247,14 +249,22 @@ pub(super) fn dispatch_rules_for_marking(
                     // signature with zero extra work on the hot path.
                     #[cfg(feature = "decision-tracing")]
                     {
-                        // Use the step-remapping adapter so scheme-side
-                        // local step IDs (0, 1, 2, …) are translated
-                        // into the engine's global step space — keeps
-                        // cascade reconstruction sound across the
-                        // engine/scheme boundary.
-                        Arc::new(engine.with_remapping_sink(|sink| {
-                            project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
-                        }))
+                        if engine.tracing_active() {
+                            // Use the step-remapping adapter so scheme-side
+                            // local step IDs (0, 1, 2, …) are translated
+                            // into the engine's global step space — keeps
+                            // cascade reconstruction sound across the
+                            // engine/scheme boundary.
+                            Arc::new(engine.with_remapping_sink(|sink| {
+                                project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
+                            }))
+                        } else {
+                            // No observer: take the plain projection so the
+                            // feature-ON / no-observer path is identical to
+                            // the OFF-feature path (no lock, no remapping
+                            // HashMap, no per-stage diff events).
+                            Arc::new(project_page_marking(&engine.scheme, page_join_acc))
+                        }
                     }
                     #[cfg(not(feature = "decision-tracing"))]
                     {
@@ -304,15 +314,23 @@ pub(super) fn dispatch_rules_for_marking(
             // `DecisionSite::Banner`.
             #[cfg(feature = "decision-tracing")]
             {
-                let predicate_id: &'static str = rule_id.predicate_id();
-                engine.emit(|step| marque_scheme::DecisionEvent {
-                    step,
-                    site: decision_site,
-                    category: marque_scheme::CategoryId::MARKING,
-                    kind: marque_scheme::DecisionKind::Evaluated,
-                    source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
-                    triggered_by: None,
-                });
+                // Gate the whole emission block on the observer flag, not
+                // just `emit()` internally: this fires once per
+                // (rule × candidate) — ~300×/10KB doc — so skipping the
+                // `predicate_id` read and closure construction when no
+                // observer is installed keeps the feature-ON / no-observer
+                // path on the no-feature path's latency floor.
+                if engine.tracing_active() {
+                    let predicate_id: &'static str = rule_id.predicate_id();
+                    engine.emit(|step| marque_scheme::DecisionEvent {
+                        step,
+                        site: decision_site,
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::Evaluated,
+                        source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
+                        triggered_by: None,
+                    });
+                }
             }
             let mut diags = if rule.trusted() {
                 rule.check(attrs, &ctx)
@@ -355,17 +373,22 @@ pub(super) fn dispatch_rules_for_marking(
             // pre-check `Evaluated` emission above.
             #[cfg(feature = "decision-tracing")]
             {
-                let any_fix = diags.iter().any(|d| d.fix.is_some());
-                if any_fix {
-                    let predicate_id: &'static str = rule_id.predicate_id();
-                    engine.emit(|step| marque_scheme::DecisionEvent {
-                        step,
-                        site: decision_site,
-                        category: marque_scheme::CategoryId::MARKING,
-                        kind: marque_scheme::DecisionKind::Mutated,
-                        source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
-                        triggered_by: None,
-                    });
+                // Same observer gate as the `Evaluated` block above: skip
+                // the per-rule `any_fix` diagnostic scan + closure
+                // construction entirely when no observer is listening.
+                if engine.tracing_active() {
+                    let any_fix = diags.iter().any(|d| d.fix.is_some());
+                    if any_fix {
+                        let predicate_id: &'static str = rule_id.predicate_id();
+                        engine.emit(|step| marque_scheme::DecisionEvent {
+                            step,
+                            site: decision_site,
+                            category: marque_scheme::CategoryId::MARKING,
+                            kind: marque_scheme::DecisionKind::Mutated,
+                            source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
+                            triggered_by: None,
+                        });
+                    }
                 }
             }
             diagnostics.extend(diags);

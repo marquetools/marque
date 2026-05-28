@@ -449,6 +449,30 @@ pub struct Engine {
     #[cfg(feature = "decision-tracing")]
     sink: std::sync::Mutex<Box<dyn SyncDecisionSink>>,
 
+    /// `true` once a non-Noop sink is installed via
+    /// [`Engine::with_decision_sink`]; `false` while the engine carries
+    /// its default [`marque_scheme::NoopSink`].
+    ///
+    /// This is the hot-path gate that keeps the feature-ON / no-observer
+    /// build within the SC-001 latency floor. Every emission site is
+    /// already `#[cfg(feature = "decision-tracing")]`-compiled-out on the
+    /// OFF-feature build, but on the ON-feature build the default sink is
+    /// still a boxed trait object behind a `Mutex`, so a naive `emit()`
+    /// would pay an `AtomicU32::fetch_add` + `Mutex::lock` + vtable call
+    /// per decision point even when no observer is listening. Gating
+    /// [`Engine::emit`] and the scheme-side projection routing on this
+    /// flag makes the no-observer path a single predictable-branch `bool`
+    /// read, so wiring the feature in but leaving it off stays free.
+    ///
+    /// Set once at construction (`false` in [`Engine::new`], flipped to
+    /// `true` by [`Engine::with_decision_sink`]) and never mutated after
+    /// the engine is shared, so a plain `bool` is `Sync`-clean — no atomic
+    /// needed.
+    ///
+    /// Only present when the `decision-tracing` Cargo feature is on.
+    #[cfg(feature = "decision-tracing")]
+    tracing_active: bool,
+
     /// Monotone per-document step counter assigned by [`Engine::emit`].
     /// Used by [`marque_scheme::DecisionEvent::triggered_by`] consumers
     /// (e.g., [`marque_scheme::RecordingSink::into_report`]) to
@@ -487,6 +511,15 @@ impl Engine {
     /// itself surfaces through the caller's normal unwind path.
     #[inline]
     pub(crate) fn emit(&self, ev_builder: impl FnOnce(u32) -> marque_scheme::DecisionEvent) {
+        // No observer installed: skip the step-counter `fetch_add`, the
+        // `Mutex::lock`, and the vtable call entirely. This is the
+        // feature-ON / default-`NoopSink` hot path; the branch is a
+        // single `bool` read that predicts taken, so the cost collapses
+        // to the no-feature path (`scripts/bench-check.sh`
+        // `decision_tracing_overhead`'s 2% gate).
+        if !self.tracing_active {
+            return;
+        }
         let step = self
             .next_step
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -494,6 +527,17 @@ impl Engine {
         if let Ok(mut sink) = self.sink.lock() {
             sink.record(event);
         }
+    }
+
+    /// Whether a non-Noop [`DecisionSink`](marque_scheme::DecisionSink)
+    /// is installed. Call sites that would otherwise route a real value
+    /// (e.g. the per-page projection) through the sink-aware path use
+    /// this to fall back to the plain, lock-free path when no observer
+    /// is listening — keeping the feature-ON / no-observer build on the
+    /// same code path as the OFF-feature build.
+    #[inline]
+    pub(crate) fn tracing_active(&self) -> bool {
+        self.tracing_active
     }
 
     /// Run `body` with the engine's sink locked so a Phase D scheme-

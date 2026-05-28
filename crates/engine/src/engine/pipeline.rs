@@ -216,10 +216,14 @@ impl Engine {
         // and the OFF-feature build is byte-identical.
         #[cfg(feature = "decision-tracing")]
         {
-            if !page_portions.is_empty() && page_marking_arc.is_none() {
+            if self.tracing_active() && !page_portions.is_empty() && page_marking_arc.is_none() {
                 // Use the step-remapping adapter so scheme-side local
                 // step IDs translate into the engine's global step
-                // space — see `Engine::with_remapping_sink`.
+                // space — see `Engine::with_remapping_sink`. Only pre-init
+                // through the sink-aware path when an observer is
+                // installed; otherwise `dispatch_page_finalization`
+                // populates the cell lazily via the plain projection,
+                // matching the OFF-feature path.
                 page_marking_arc = Some(std::sync::Arc::new(self.with_remapping_sink(|sink| {
                     super::page_context::project_page_marking_with_sink(
                         &self.scheme,
