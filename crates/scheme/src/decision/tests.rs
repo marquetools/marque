@@ -244,6 +244,87 @@ fn recording_sink_records_in_order() {
     }
 }
 
+#[test]
+fn project_with_sink_default_delegates_and_emits_nothing() {
+    // Minimal MarkingScheme impl: every required method is a stub.
+    // The Phase B contract under test is the default-delegating
+    // body of `project_with_sink` — it MUST call `project` and MUST
+    // NOT touch the sink.
+    use crate::ambiguity::Parsed;
+    use crate::scheme::MarkingScheme;
+    use crate::scope::Scope;
+
+    #[derive(Debug)]
+    struct StubErr;
+    impl core::fmt::Display for StubErr {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.write_str("StubErr")
+        }
+    }
+    impl std::error::Error for StubErr {}
+
+    struct MinimalScheme;
+    impl MarkingScheme for MinimalScheme {
+        type Token = u32;
+        type Marking = u8;
+        type ParseError = StubErr;
+        type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
+
+        fn name(&self) -> &str {
+            "minimal"
+        }
+        fn schema_version(&self) -> &str {
+            "0"
+        }
+        fn categories(&self) -> &[crate::category::Category] {
+            &[]
+        }
+        fn constraints(&self) -> &[crate::constraint::Constraint] {
+            &[]
+        }
+        fn templates(&self) -> &[crate::template::Template] {
+            &[]
+        }
+        fn parse(&self, _: &str) -> Result<Parsed<u8>, StubErr> {
+            Ok(Parsed::Ambiguous {
+                candidates: Vec::new(),
+            })
+        }
+        fn project(&self, _scope: Scope, markings: &[u8]) -> u8 {
+            markings.iter().copied().fold(0, u8::saturating_add)
+        }
+        fn render_canonical(
+            &self,
+            _m: &u8,
+            _ctx: &crate::RenderContext,
+            _out: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
+        }
+    }
+
+    let scheme = MinimalScheme;
+    let markings = [3u8, 4u8, 5u8];
+    let expected = scheme.project(Scope::Page, &markings);
+
+    let mut sink = RecordingSink::new();
+    let actual = scheme.project_with_sink(Scope::Page, &markings, &mut sink);
+
+    assert_eq!(actual, expected);
+    assert_eq!(sink.events().len(), 0);
+
+    // Symmetric contract: `closure_with_sink` must also default-delegate
+    // to `closure` and emit no events. Same MinimalScheme; the default
+    // `closure` is a no-op so the assertion is that the marking
+    // round-trips and the sink stays empty.
+    let mut closure_sink = RecordingSink::new();
+    let closed = scheme.closure_with_sink(42u8, &mut closure_sink);
+    assert_eq!(closed, scheme.closure(42u8));
+    assert_eq!(closure_sink.events().len(), 0);
+}
+
 fn make_event(
     step: u32,
     site: DecisionSite,

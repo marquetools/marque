@@ -392,6 +392,36 @@ pub trait MarkingScheme {
     ///   still well-defined.
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking;
 
+    /// Project a set of markings into a single marking under the given
+    /// scope, emitting [`DecisionEvent`]s to the supplied sink as
+    /// projection-stage decisions are made (component-wise category
+    /// joins, page rewrites, supersession overlays, recanonicalization).
+    ///
+    /// The default implementation delegates to [`Self::project`] and
+    /// emits no events — this is the zero-cost off-mode path that
+    /// keeps Constitution Principle I (SC-001 16 ms p95) intact for
+    /// schemes that don't opt in to instrumentation.
+    ///
+    /// Schemes that want to surface per-rewrite cascade events to a
+    /// `marque trace` consumer override this method and call
+    /// `sink.record(...)` between stages. The engine threads a sink
+    /// here only when the user has opted into the `decision-tracing`
+    /// feature and configured a non-[`crate::NoopSink`] sink on the
+    /// engine.
+    ///
+    /// See `crates/scheme/src/decision.rs` for the event model and
+    /// the [`crate::DecisionSink`] trait.
+    ///
+    /// [`DecisionEvent`]: crate::DecisionEvent
+    fn project_with_sink(
+        &self,
+        scope: Scope,
+        markings: &[Self::Marking],
+        _sink: &mut dyn crate::DecisionSink,
+    ) -> Self::Marking {
+        self.project(scope, markings)
+    }
+
     /// Convenience shim: project at page scope. Default implementation
     /// calls `project(Scope::Page, portions)`.
     #[inline]
@@ -575,6 +605,27 @@ pub trait MarkingScheme {
         // method. The no-op is correct for any scheme where
         // closure_rules() returns &[].
         marking
+    }
+
+    /// Apply the closure operator to `marking`, emitting one
+    /// [`DecisionEvent`] per closure rule that fires.
+    ///
+    /// Default: delegates to [`Self::closure`] and emits no events.
+    /// Schemes that want to thread events through their closure
+    /// walker override this method; `marque-capco` is the planned
+    /// override site for the §B.3 Table 2 caveated-implies-NOFORN
+    /// rows and the post-#704 bitmask Kleene fixpoint stages, but
+    /// at the trait level the default delegation is the contract.
+    ///
+    /// See `crates/scheme/src/decision.rs` for the event model.
+    ///
+    /// [`DecisionEvent`]: crate::DecisionEvent
+    fn closure_with_sink(
+        &self,
+        marking: Self::Marking,
+        _sink: &mut dyn crate::DecisionSink,
+    ) -> Self::Marking {
+        self.closure(marking)
     }
 
     /// Render a marking in canonical form per the given
