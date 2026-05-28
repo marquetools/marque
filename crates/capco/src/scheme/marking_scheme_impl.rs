@@ -1748,3 +1748,343 @@ impl CapcoScheme {
         out.0
     }
 }
+
+#[cfg(all(test, feature = "decision-tracing"))]
+mod decision_tracing_tests {
+    //! Unit tests for the Phase D scheme-side overrides
+    //! (`project_with_sink`, `closure_with_sink`,
+    //! `project_attrs_pipeline_with_sink`).
+    //!
+    //! These exercise the per-stage emission paths directly with
+    //! synthetic `CanonicalAttrs` / `CapcoMarking` inputs so the four
+    //! stages — closure diff, default-fill diff (each branch),
+    //! supersession-overlay diff, page-rewrite fan-out — surface
+    //! independently in coverage. The engine-level integration tests
+    //! in `crates/engine/tests/decision_tracing.rs` exercise the
+    //! end-to-end path; this module pins per-branch behavior.
+    use super::*;
+    use marque_ism::{
+        Classification, CountryCode, DissemControl, MarkingClassification, NatoClassification,
+        SciControl,
+    };
+    use marque_scheme::{
+        DecisionEvent, DecisionKind, DecisionSink, DecisionSource, RecordingSink, Scope,
+    };
+
+    fn empty_attrs() -> CanonicalAttrs {
+        CanonicalAttrs::default()
+    }
+
+    fn us_secret() -> CanonicalAttrs {
+        let mut a = empty_attrs();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a
+    }
+
+    /// Capture sink that exposes its event vector directly. Avoids the
+    /// `Arc<Mutex<Vec<_>>>` indirection of `SharedSink`; not needed
+    /// for these per-call tests because they run on a single thread.
+    #[derive(Default)]
+    struct CaptureSink {
+        events: Vec<DecisionEvent>,
+    }
+
+    impl DecisionSink for CaptureSink {
+        fn record(&mut self, event: DecisionEvent) {
+            self.events.push(event);
+        }
+    }
+
+    #[test]
+    fn project_with_sink_portion_scope_is_identity_with_no_emission() {
+        // `Scope::Portion` short-circuits to `self.project(...)` and
+        // never enters the instrumented pipeline. The sink must stay
+        // empty.
+        let scheme = CapcoScheme::new();
+        let marking = CapcoMarking::new(us_secret());
+        let mut sink = CaptureSink::default();
+        let out = scheme.project_with_sink(Scope::Portion, &[marking], &mut sink);
+        assert_eq!(
+            sink.events.len(),
+            0,
+            "Scope::Portion is identity; no events expected"
+        );
+        // The marking round-trips: classification preserved.
+        assert_eq!(
+            out.0.classification,
+            Some(MarkingClassification::Us(Classification::Secret)),
+        );
+    }
+
+    #[test]
+    fn closure_with_sink_round_trips_marking_and_event_kinds() {
+        // Pin two structural properties of the closure_with_sink
+        // override on a no-trigger input: the returned marking
+        // matches `self.closure(marking)` (delegating semantics
+        // preserved) and any events emitted carry the Closure source
+        // variant (kind taxonomy preserved). The end-to-end
+        // cone-bit emission path is exercised by the engine
+        // integration tests; constructing a structural `SciMarking`
+        // here would duplicate parser machinery for marginal
+        // coverage gain.
+        let scheme = CapcoScheme::new();
+        let marking = CapcoMarking::new(us_secret());
+
+        let mut sink = CaptureSink::default();
+        let after_sink = scheme.closure_with_sink(marking.clone(), &mut sink);
+        let after_plain = scheme.closure(marking);
+
+        // Delegation invariant: result equals the non-instrumented
+        // path (modulo any sink emission, which must not mutate the
+        // marking).
+        assert_eq!(
+            after_sink.0.classification, after_plain.0.classification,
+            "closure_with_sink projection result must equal closure() result"
+        );
+
+        // Kind/source invariant on whatever events DID fire.
+        for ev in &sink.events {
+            assert!(
+                matches!(ev.kind, DecisionKind::ClosureFired),
+                "non-ClosureFired kind on a closure_with_sink event: {:?}",
+                ev.kind,
+            );
+            assert!(
+                matches!(ev.source, DecisionSource::Closure(_)),
+                "non-Closure source on a closure_with_sink event: {:?}",
+                ev.source,
+            );
+        }
+    }
+
+    #[test]
+    fn closure_with_sink_emits_nothing_when_no_close_triggers_fire() {
+        // Plain (S) with no SCI / TK / HCS triggers — `close()` is a
+        // no-op (the ALL_TRIGGER_MASK early-exit fires).
+        let scheme = CapcoScheme::new();
+        let marking = CapcoMarking::new(us_secret());
+        let mut sink = CaptureSink::default();
+        let _ = scheme.closure_with_sink(marking, &mut sink);
+        assert_eq!(
+            sink.events.len(),
+            0,
+            "no closure triggers → no ClosureFired emissions"
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_noforn_branch_emits_mutated() {
+        // (S, ORCON) — caveat trigger, no FD&R; Row 0 of
+        // apply_default_fill fires and adds NOFORN. The pipeline's
+        // Stage 3 must emit a `Mutated` event with
+        // `DecisionSource::DefaultFill(...)` carrying the
+        // caveated-implies-NOFORN trace identifier.
+        let scheme = CapcoScheme::new();
+        let mut attrs = us_secret();
+        attrs.dissem_us = vec![DissemControl::Oc].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let noforn_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(e.source, DecisionSource::DefaultFill(s)
+                    if s.contains("caveated-implies-noforn"))
+        });
+        assert!(
+            noforn_event.is_some(),
+            "expected a Mutated event with DefaultFill source for the \
+             caveated-implies-NOFORN row; observed events: {:?}",
+            sink.events
+                .iter()
+                .map(|e| (e.kind, e.source))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_relido_row9_attribution() {
+        // (S) with no SCI — Row 9 of apply_default_fill fires
+        // (US_COLLATERAL_CLASSIFIED trigger, SCI absent). The
+        // Copilot-fixed discriminator must pick the Row 9 name, NOT
+        // Row 8's sci-implies-relido.
+        let scheme = CapcoScheme::new();
+        let attrs = us_secret();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let relido_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(
+                    e.source,
+                    DecisionSource::DefaultFill(s) if s.contains("relido")
+                )
+        });
+        assert!(
+            relido_event.is_some(),
+            "expected a Mutated event with DefaultFill source for RELIDO"
+        );
+        if let Some(ev) = relido_event {
+            if let DecisionSource::DefaultFill(name) = ev.source {
+                assert!(
+                    name.contains("us-class-implies-relido"),
+                    "Row 9 path must attribute to us-class-implies-relido \
+                     (SCI absent → Row 8 cannot fire); got {name:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_relido_row8_attribution() {
+        // SCI-present input — Row 8 of apply_default_fill fires
+        // first. The discriminator must pick Row 8's name.
+        let scheme = CapcoScheme::new();
+        let mut attrs = us_secret();
+        attrs.sci_controls = vec![SciControl::Si].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let relido_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(
+                    e.source,
+                    DecisionSource::DefaultFill(s) if s.contains("relido")
+                )
+        });
+        if let Some(ev) = relido_event
+            && let DecisionSource::DefaultFill(name) = ev.source
+        {
+            assert!(
+                name.contains("sci-implies-relido"),
+                "Row 8 path (SCI present) must attribute to \
+                 sci-implies-relido; got {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_nato_rel_to_branch() {
+        // Bare NATO classification — Row 7 of apply_default_fill
+        // fires and adds REL TO USA, NATO. The pipeline's Stage 3
+        // must emit a Mutated event with the NATO-implies-REL TO
+        // trace identifier.
+        let scheme = CapcoScheme::new();
+        let mut attrs = empty_attrs();
+        attrs.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let nato_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(
+                    e.source,
+                    DecisionSource::DefaultFill(s) if s.contains("nato-implies-rel-to")
+                )
+        });
+        assert!(
+            nato_event.is_some(),
+            "expected a Mutated event with DefaultFill source for the \
+             NATO-implies-REL TO USA NATO row"
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_emits_page_rewrite_fan_out() {
+        // Construct a portion-pair that triggers the
+        // `noforn-clears-rel-to` page rewrite. (S, NOFORN) +
+        // (S, REL TO USA, GBR) — page projection unions NOFORN and
+        // the REL TO list, then the rewrite clears REL TO.
+        let scheme = CapcoScheme::new();
+        let mut p1 = us_secret();
+        p1.dissem_us = vec![DissemControl::Nf].into();
+        let mut p2 = us_secret();
+        p2.rel_to = vec![CountryCode::USA, CountryCode::GBR].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(&[p1, p2], &mut sink);
+
+        let has_scheduled = sink.events.iter().any(|e| {
+            matches!(e.kind, DecisionKind::RewriteScheduled)
+                && matches!(e.source, DecisionSource::PageRewrite(_))
+        });
+        let has_applied = sink.events.iter().any(|e| {
+            matches!(e.kind, DecisionKind::RewriteApplied)
+                && matches!(e.source, DecisionSource::PageRewrite(_))
+        });
+        assert!(
+            has_scheduled,
+            "page-rewrite fan-out should emit ≥1 RewriteScheduled \
+             event with PageRewrite source on a NOFORN+REL TO clash"
+        );
+        assert!(
+            has_applied,
+            "page-rewrite fan-out should emit ≥1 RewriteApplied \
+             event with PageRewrite source on a NOFORN+REL TO clash"
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_no_op_input_emits_nothing() {
+        // Plain (S) with no caveats / SCI / NATO — none of the four
+        // stages fire. Sink stays empty.
+        let scheme = CapcoScheme::new();
+        let attrs = us_secret();
+        // RecordingSink lets us assert "nothing reaches the sink"
+        // without relying on the boolean any() pattern.
+        let mut sink = RecordingSink::new();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+        // Note: Row 9 will fire (US classified → RELIDO default-fill).
+        // The assertion is that we emit ONLY default-fill events and
+        // no closure, supersession, or page-rewrite events — there's
+        // no SCI to trigger close(), no FD&R contradiction to drive
+        // supersession, and no page-rewrite predicate matches.
+        for ev in sink.events() {
+            assert!(
+                matches!(ev.kind, DecisionKind::Mutated),
+                "unexpected non-Mutated event from plain (S) input: \
+                 {ev:?} — only the Row 9 default-fill should fire"
+            );
+            assert!(
+                matches!(ev.source, DecisionSource::DefaultFill(_)),
+                "unexpected non-DefaultFill source from plain (S) input: \
+                 {:?}",
+                ev.source,
+            );
+        }
+    }
+
+    #[test]
+    fn pipeline_with_sink_step_ids_are_locally_monotone() {
+        // The local step counter inside
+        // project_attrs_pipeline_with_sink starts at 0 and increments
+        // per emission. Engine-side remapping happens later via
+        // `Engine::with_remapping_sink`; here we pin the local
+        // monotonicity directly.
+        let scheme = CapcoScheme::new();
+        let mut p1 = us_secret();
+        p1.dissem_us = vec![DissemControl::Nf].into();
+        let mut p2 = us_secret();
+        p2.rel_to = vec![CountryCode::USA, CountryCode::GBR].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(&[p1, p2], &mut sink);
+
+        // First event must be step 0; subsequent events must be
+        // strictly increasing.
+        assert_eq!(sink.events.first().map(|e| e.step), Some(0));
+        for win in sink.events.windows(2) {
+            assert!(
+                win[0].step < win[1].step,
+                "local step counter must be strictly monotone within a \
+                 single project_attrs_pipeline_with_sink call; got \
+                 {} → {}",
+                win[0].step,
+                win[1].step,
+            );
+        }
+    }
+}

@@ -380,3 +380,315 @@ fn source_label(s: DecisionSource) -> String {
         DecisionSource::RuleCheck(name) => format!("rule-check:{name}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the pure helpers and the three render functions.
+    //!
+    //! The integration test at `marque/tests/trace_cli.rs` exercises
+    //! the binary's stdin / stdout / argument plumbing; the helpers
+    //! below are easier to assert on directly than through the CLI
+    //! subprocess.
+
+    use super::*;
+    use marque_scheme::CascadeChain;
+    use std::collections::BTreeMap;
+
+    fn event(
+        step: u32,
+        kind: DecisionKind,
+        source: DecisionSource,
+        site: DecisionSite,
+        triggered_by: Option<u32>,
+    ) -> DecisionEvent {
+        DecisionEvent {
+            step,
+            site,
+            category: CategoryId::MARKING,
+            kind,
+            source,
+            triggered_by,
+        }
+    }
+
+    fn empty_report() -> DecisionReport {
+        DecisionReport {
+            total: 0,
+            by_category: BTreeMap::new(),
+            by_kind: BTreeMap::new(),
+            by_portion: Vec::new(),
+            cascade_chains: Vec::new(),
+            max_cascade_depth: 0,
+        }
+    }
+
+    #[test]
+    fn category_label_uses_marking_sentinel_for_zero() {
+        assert_eq!(category_label(CategoryId::MARKING), "MARKING");
+    }
+
+    #[test]
+    fn category_label_falls_through_to_numeric_for_non_sentinel() {
+        assert_eq!(category_label(CategoryId(1)), "category#1");
+        assert_eq!(category_label(CategoryId(42)), "category#42");
+    }
+
+    #[test]
+    fn kind_label_covers_every_variant() {
+        // Exhaustive coverage so a future variant addition surfaces as
+        // a missing-match-arm compiler error (because `kind_label`
+        // itself is exhaustive). The asserts pin the wire strings.
+        assert_eq!(kind_label(DecisionKind::Evaluated), "Evaluated");
+        assert_eq!(
+            kind_label(DecisionKind::EvaluatedSubstantive),
+            "EvaluatedSubstantive"
+        );
+        assert_eq!(kind_label(DecisionKind::Mutated), "Mutated");
+        assert_eq!(kind_label(DecisionKind::ConstraintFired), "ConstraintFired");
+        assert_eq!(
+            kind_label(DecisionKind::RewriteScheduled),
+            "RewriteScheduled"
+        );
+        assert_eq!(kind_label(DecisionKind::RewriteApplied), "RewriteApplied");
+        assert_eq!(kind_label(DecisionKind::ClosureFired), "ClosureFired");
+        assert_eq!(kind_label(DecisionKind::Recanonicalized), "Recanonicalized");
+    }
+
+    #[test]
+    fn site_label_covers_every_variant() {
+        assert_eq!(site_label(DecisionSite::Portion(3)), "portion#3");
+        assert_eq!(site_label(DecisionSite::Banner), "banner");
+        assert_eq!(site_label(DecisionSite::Page(2)), "page#2");
+        assert_eq!(site_label(DecisionSite::Document), "document");
+    }
+
+    #[test]
+    fn source_label_covers_every_variant() {
+        assert_eq!(source_label(DecisionSource::Parser), "parser");
+        assert_eq!(
+            source_label(DecisionSource::Constraint("c.x")),
+            "constraint:c.x"
+        );
+        assert_eq!(
+            source_label(DecisionSource::PageRewrite("p.x")),
+            "rewrite:p.x"
+        );
+        assert_eq!(
+            source_label(DecisionSource::Closure("cl.x")),
+            "closure:cl.x"
+        );
+        assert_eq!(
+            source_label(DecisionSource::DefaultFill("df.x")),
+            "default-fill:df.x"
+        );
+        assert_eq!(
+            source_label(DecisionSource::Supersession("s.x")),
+            "supersession:s.x"
+        );
+        assert_eq!(source_label(DecisionSource::BannerRollup), "banner-rollup");
+        assert_eq!(
+            source_label(DecisionSource::RuleCheck("r.x")),
+            "rule-check:r.x"
+        );
+    }
+
+    #[test]
+    fn compute_depth_returns_zero_for_root_event() {
+        let evt = event(
+            0,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            None,
+        );
+        let mut by_step: std::collections::HashMap<u32, &DecisionEvent> =
+            std::collections::HashMap::new();
+        by_step.insert(0, &evt);
+        assert_eq!(compute_depth(evt, &by_step, 0), 0);
+    }
+
+    #[test]
+    fn compute_depth_walks_chain_to_root() {
+        // root(0) <- mid(1) <- leaf(2)
+        let root = event(
+            0,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            None,
+        );
+        let mid = event(
+            1,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            Some(0),
+        );
+        let leaf = event(
+            2,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            Some(1),
+        );
+        let by_step: std::collections::HashMap<u32, &DecisionEvent> =
+            [(0, &root), (1, &mid), (2, &leaf)].into_iter().collect();
+        assert_eq!(compute_depth(leaf, &by_step, 0), 2);
+        assert_eq!(compute_depth(mid, &by_step, 0), 1);
+    }
+
+    #[test]
+    fn compute_depth_returns_partial_when_parent_missing() {
+        // event(5) claims parent step 99 which doesn't exist in by_step.
+        // The walker increments once (for the missing parent edge),
+        // then returns when the lookup fails.
+        let evt = event(
+            5,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            Some(99),
+        );
+        let by_step: std::collections::HashMap<u32, &DecisionEvent> =
+            [(5, &evt)].into_iter().collect();
+        assert_eq!(compute_depth(evt, &by_step, 0), 1);
+    }
+
+    #[test]
+    fn compute_depth_short_circuits_on_self_loop() {
+        // Self-referential event: triggered_by == own step. The walker
+        // returns immediately at the self-loop guard, before
+        // incrementing — depth is the count BEFORE encountering the
+        // self-loop edge.
+        let evt = event(
+            7,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            Some(7),
+        );
+        let by_step: std::collections::HashMap<u32, &DecisionEvent> =
+            [(7, &evt)].into_iter().collect();
+        // Not the root (root would be step 0) and not None-triggered;
+        // the self-loop arm fires.
+        assert_eq!(compute_depth(evt, &by_step, 0), 0);
+    }
+
+    #[test]
+    fn write_ndjson_emits_one_line_per_event() {
+        let evts = vec![
+            event(
+                0,
+                DecisionKind::Evaluated,
+                DecisionSource::Parser,
+                DecisionSite::Banner,
+                None,
+            ),
+            event(
+                1,
+                DecisionKind::Mutated,
+                DecisionSource::PageRewrite("r1"),
+                DecisionSite::Page(0),
+                Some(0),
+            ),
+        ];
+        let mut buf: Vec<u8> = Vec::new();
+        write_ndjson(&mut buf, &evts).unwrap();
+        let out = std::str::from_utf8(&buf).unwrap();
+        assert_eq!(out.lines().count(), 2);
+        assert!(out.contains("\"step\":0"));
+        assert!(out.contains("\"step\":1"));
+        // `DecisionSource::PageRewrite("r1")` serializes as the
+        // externally-tagged form `{"PageRewrite":"r1"}` — assert the
+        // tag + value appear, not the wire string from `source_label`
+        // (which is the human-narration mapping, not the serde shape).
+        assert!(out.contains("\"PageRewrite\":\"r1\""));
+    }
+
+    #[test]
+    fn write_ndjson_emits_nothing_for_empty_input() {
+        let mut buf: Vec<u8> = Vec::new();
+        write_ndjson(&mut buf, &[]).unwrap();
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn write_summary_renders_empty_buckets_as_none() {
+        let mut buf: Vec<u8> = Vec::new();
+        write_summary(&mut buf, "test", &empty_report()).unwrap();
+        let out = std::str::from_utf8(&buf).unwrap();
+        assert!(out.contains("total decisions: 0"));
+        assert!(out.contains("by category: (none)"));
+        assert!(out.contains("by kind: (none)"));
+        assert!(out.contains("max cascade depth: 0"));
+    }
+
+    #[test]
+    fn write_summary_sorts_categories_by_count_descending() {
+        let mut report = empty_report();
+        report.total = 30;
+        report.by_category.insert(CategoryId(1), 5);
+        report.by_category.insert(CategoryId(2), 20);
+        report.by_category.insert(CategoryId(3), 5);
+        report.by_kind.insert(DecisionKind::Evaluated, 30);
+        let mut buf: Vec<u8> = Vec::new();
+        write_summary(&mut buf, "fixture", &report).unwrap();
+        let out = std::str::from_utf8(&buf).unwrap();
+        // category#2 should appear before category#1 / category#3
+        // (count 20 vs 5; lexicographic id is the tiebreaker).
+        let cat2 = out.find("category#2").expect("category#2 in output");
+        let cat1 = out.find("category#1").expect("category#1 in output");
+        let cat3 = out.find("category#3").expect("category#3 in output");
+        assert!(
+            cat2 < cat1,
+            "category#2 (count 20) should come before category#1"
+        );
+        assert!(
+            cat1 < cat3,
+            "id-ascending tiebreak: category#1 before category#3"
+        );
+    }
+
+    #[test]
+    fn write_narrate_handles_empty_report() {
+        let mut buf: Vec<u8> = Vec::new();
+        write_narrate(&mut buf, "test", &[], &empty_report()).unwrap();
+        let out = std::str::from_utf8(&buf).unwrap();
+        assert!(out.contains("marque trace: test"));
+        assert!(out.contains("0 decisions in 0 cascade chain"));
+        // Both section headers render even with no content.
+        assert!(out.contains("Decisions (record order):"));
+        assert!(out.contains("Cascade chains:"));
+    }
+
+    #[test]
+    fn write_narrate_skips_chains_whose_root_is_not_in_event_stream() {
+        // Defensive: a report can carry a CascadeChain whose root_event
+        // step is missing from the events vec (partial-capture
+        // simulation). The narration must not panic and must skip the
+        // chain.
+        let evts = vec![event(
+            0,
+            DecisionKind::Evaluated,
+            DecisionSource::Parser,
+            DecisionSite::Banner,
+            None,
+        )];
+        let mut report = empty_report();
+        report.total = 1;
+        report.cascade_chains.push(CascadeChain {
+            root_event: 999, // not in evts
+            root_site: DecisionSite::Banner,
+            events: vec![999],
+            depth: 0,
+        });
+        let mut buf: Vec<u8> = Vec::new();
+        write_narrate(&mut buf, "test", &evts, &report).unwrap();
+        let out = std::str::from_utf8(&buf).unwrap();
+        // The chain header is gated by `by_step.contains_key(&root)`
+        // so a missing-root chain must not appear in the output.
+        assert!(!out.contains("Chain 1"));
+        // The record-order decision line for step 0 still renders.
+        assert!(out.contains("Decision 0"));
+    }
+}
