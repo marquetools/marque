@@ -42,9 +42,16 @@
 //! `decision_tracing_overhead_baseline` mean against the no-feature
 //! baseline produced by `lint_latency::lint_10kb`. Both benches use the
 //! same 10 KB representative input shape (`build_representative_input`
-//! copied verbatim from `deadline_overhead.rs`) so the ratio is
-//! meaningful. Wiring the comparison into `scripts/bench-check.sh` is
-//! a follow-up; for now, the bench reports a Criterion mean.
+//! copied verbatim from `deadline_overhead.rs`) AND the same engine
+//! configuration — specifically, both pin `.with_strict_recognizer()`
+//! so the ratio isolates the decision-tracing feature's per-call cost
+//! rather than conflating it with `StrictOrDecoderRecognizer` dispatch
+//! overhead. PR #811 first-run measured a 36 % gap between
+//! default-recognizer and strict-pinned `lint_10kb` on the same input
+//! before the pinning was added.
+//!
+//! Wired into `scripts/bench-check.sh::check_decision_tracing_overhead`
+//! via PR #811; `benches/baseline.json` carries `max_ratio_pct = 2`.
 //!
 //! ## Bench config
 //!
@@ -98,12 +105,21 @@ fn build_representative_input(target_bytes: usize) -> Vec<u8> {
 
 fn decision_tracing_overhead_baseline(c: &mut Criterion) {
     let input = build_representative_input(10_000);
+    // Pin the strict recognizer to match `lint_latency::lint_10kb`'s
+    // engine configuration. The ratio gate in
+    // `scripts/bench-check.sh::check_decision_tracing_overhead` compares
+    // this bench's mean against `lint_10kb`'s mean to isolate the
+    // decision-tracing feature's per-call cost. Both engines MUST use
+    // the same recognizer or the ratio conflates recognizer-dispatch
+    // overhead (~36 % delta observed in CI on PR #811 first run) with
+    // decision-tracing overhead.
     let engine = Engine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
     )
-    .expect("default CAPCO scheme has no rewrite cycles");
+    .expect("default CAPCO scheme has no rewrite cycles")
+    .with_strict_recognizer();
 
     c.bench_function("decision_tracing_overhead_baseline", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -112,12 +128,17 @@ fn decision_tracing_overhead_baseline(c: &mut Criterion) {
 
 fn decision_tracing_overhead_with_recording_sink(c: &mut Criterion) {
     let input = build_representative_input(10_000);
+    // Same strict-recognizer pinning rationale as
+    // `decision_tracing_overhead_baseline` above — keeps both functions
+    // in this bench file on identical engine config so the
+    // recording-sink/noop-sink delta is the only variable.
     let engine = Engine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
+    .with_strict_recognizer()
     .with_decision_sink(RecordingSink::new());
 
     c.bench_function("decision_tracing_overhead_with_recording_sink", |b| {
