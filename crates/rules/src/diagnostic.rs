@@ -131,8 +131,8 @@ pub struct TextCorrection {
     pub replacement: SmolStr,
     /// Provenance of the fix.
     pub source: FixSource,
-    /// Multi-axis confidence. Threshold-gated like any other fix in
-    /// the engine's promotion path.
+    /// Recognition-axis confidence. Threshold-gated like any other
+    /// fix in the engine's promotion path.
     pub confidence: Recognition,
     /// Reference to the migration document or CAPCO row justifying
     /// this fix (e.g., a `§F p…` cite for E006 deprecations).

@@ -238,7 +238,7 @@ fn classifier_id_propagated_when_configured() {
 //
 //   1. `marque/src/render.rs::render_audit_line_produces_valid_v1_0_ndjson`
 //      exercises the CLI emit path on a synthetic AuditLine.
-//   2. `crates/wasm/tests/audit_v1_0_parity.rs` pins CLI/WASM
+//   2. `crates/wasm/tests/audit_v3_0_parity.rs` pins CLI/WASM
 //      byte-identity on the same shape.
 //
 // `contracts/audit-record.md` is the single wire-format source of truth.
@@ -537,5 +537,27 @@ fn decoder_sub_threshold_fix_blocked_from_apply() {
         !suggest_decoder.is_empty(),
         "sub-threshold decoder candidate must survive as Severity::Suggest \
          in remaining_diagnostics so the renderer can show \"did you mean?\""
+    );
+
+    // Pin the load-bearing property explicitly: the surviving Suggest
+    // candidate's recognition is strictly below the default 0.95
+    // threshold. If a future decoder calibration shift raises the
+    // posterior above 0.95, the `decoder_applied.is_empty()` assertion
+    // above would fire first — but this explicit pin documents the
+    // sub-threshold property at the call site rather than leaving it
+    // implicit in behavioral coverage.
+    let suggest_recognition = suggest_decoder[0]
+        .fix
+        .as_ref()
+        .expect("filter above guarantees fix is Some")
+        .confidence
+        .recognition;
+    assert!(
+        suggest_recognition < 0.95,
+        "surviving Suggest candidate must have recognition < default \
+         threshold (0.95); got {suggest_recognition}. A drift above \
+         0.95 indicates decoder calibration shifted such that \
+         `(SERCET)` is no longer a sub-threshold gate fixture; pick a \
+         new fixture or relax the test's threshold.",
     );
 }

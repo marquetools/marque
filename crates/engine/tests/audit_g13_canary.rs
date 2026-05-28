@@ -160,7 +160,7 @@ fn render_audit_line_to_json(
     // via `serde_json::to_string` against the same shape — the
     // canary's job is to scan the wire bytes, and any structural
     // drift between the inline projection and the CLI emit would
-    // surface as a separate test failure in `audit_v1_0_parity.rs`.
+    // surface as a separate test failure in `audit_v3_0_parity.rs`.
     use serde_json::json;
     // The `"rule"` field renders as the structured 2-tuple
     // `{"scheme": ..., "predicate_id": ...}`. The canary's

@@ -8,7 +8,7 @@
 //! `audit_line_to_json_v1_0` MUST produce byte-identical NDJSON for
 //! every `AuditLine<CapcoScheme>` value the engine emits. This test
 //! exercises the WASM-side projection through every variant of the
-//! v2.0 shape — strict / decoder discriminants, AppliedFix /
+//! v3.0 shape — strict / decoder discriminants, AppliedFix /
 //! TextCorrection arms, optional-field null-emit, MessageArgs
 //! partial-emit — and validates the contract-shape invariants.
 //!
@@ -25,7 +25,7 @@
 //! The CLI-vs-WASM byte-identity at the production emit boundary is
 //! verified end-to-end by `tests/parity.rs` and `tests/native_parity.rs`
 //! which drive the same engine through both surfaces. This test
-//! focuses on the v2.0 shape's structural correctness across the
+//! focuses on the v3.0 shape's structural correctness across the
 //! audit-record variants.
 //!
 //! Native-only target — `target_arch = "wasm32"` cannot host this

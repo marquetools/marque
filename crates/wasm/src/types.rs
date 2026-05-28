@@ -152,7 +152,7 @@ pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<
 // ---------------------------------------------------------------------------
 // `marque-3.0` audit-record JSON projection
 //
-// Mirrors the CLI's `marque/src/render.rs` v1.0 surface — CLI and WASM
+// Mirrors the CLI's `marque/src/render.rs` v3.0 surface — CLI and WASM
 // emit byte-identical NDJSON. The struct shapes are duplicated verbatim
 // (a shared `marque-audit-render` crate is a future consolidation);
 // `crates/wasm/tests/audit_v3_0_parity.rs` pins the byte-identity at

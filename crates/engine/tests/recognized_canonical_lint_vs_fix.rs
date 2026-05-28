@@ -20,12 +20,12 @@
 //!
 //! The CLI renderer (`marque::render::audit_line_to_json_v1_0`)
 //! lives in a `[[bin]]`-only crate that integration tests cannot
-//! reach. We mirror the v1.0 projection inline — same pattern as
+//! reach. We mirror the projection inline — same pattern as
 //! `audit_g13_canary.rs::render_audit_line_to_json`. Structural
 //! drift between the inline projection and the CLI emit would
-//! surface as a separate test failure in `audit_v1_0_parity.rs`
-//! / `audit_v3_0_parity.rs` (the inline projection scans the bytes
-//! we'd otherwise rely on the CLI to emit).
+//! surface as a separate test failure in `audit_v3_0_parity.rs`
+//! (the inline projection scans the bytes we'd otherwise rely on
+//! the CLI to emit).
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;

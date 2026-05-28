@@ -187,6 +187,27 @@ fn applied_fixes_always_meet_configured_threshold() {
              applied at threshold {threshold}"
         );
     }
+
+    // Pin the load-bearing property explicitly: the sub-threshold
+    // decoder candidate survives in remaining_diagnostics as a
+    // Suggest with recognition strictly below 0.95. The
+    // `decoder_applied.is_empty()` assertion above would fire first
+    // on calibration drift above threshold; this pin documents the
+    // sub-threshold property at the call site so a future maintainer
+    // doesn't have to re-derive it.
+    let suggest_recognition = result
+        .remaining_diagnostics
+        .iter()
+        .find(|d| d.severity == marque_rules::Severity::Suggest)
+        .and_then(|d| d.fix.as_ref())
+        .map(|f| f.confidence.recognition);
+    assert!(
+        suggest_recognition.is_some_and(|r| r < threshold),
+        "surviving Suggest candidate must have recognition < threshold \
+         {threshold}; got {suggest_recognition:?}. A drift above the \
+         threshold indicates decoder calibration shifted such that \
+         `(SERCET)` is no longer a sub-threshold gate fixture.",
+    );
 }
 
 #[test]

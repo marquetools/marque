@@ -306,7 +306,8 @@ mod tests {
     fn feature_id_as_str_matches_audit_contract() {
         // Pin the on-the-wire labels for `FeatureId`. These strings are
         // part of the audit-record contract (see
-        // `contracts/audit-record-v2.md`); a future rename here MUST be
+        // `specs/006-engine-rule-refactor/contracts/audit-record.md`);
+        // a future rename here MUST be
         // a deliberate audit-schema bump (`MARQUE_AUDIT_SCHEMA`), not an
         // accidental refactor. Kept as an explicit per-variant table
         // (rather than a round-trip) so a label drift is loud.
