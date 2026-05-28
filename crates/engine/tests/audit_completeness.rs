@@ -129,17 +129,25 @@ fn applied_fix_has_all_required_fields() {
 }
 
 #[test]
-fn sub_threshold_proposals_never_in_applied() {
-    // Override the default 0.95 threshold to 0.99 so E002's 0.97 fix
-    // is **below** threshold — exercising the sub-threshold gate
-    // without depending on any rule whose default fix is <0.95.
-    // (Pre-PR-3c.B-Commit-6 this test relied on E003 at 0.6 being
-    // sub-threshold against the default 0.95; E003 retired into the
-    // renderer.)
+fn applied_fixes_always_meet_configured_threshold() {
+    // Structural gate invariant: every fix the engine promotes to
+    // `applied_fixes()` must have `combined() >= configured_threshold`.
+    //
+    // PR A collapsed every strict-path `rule` confidence to 1.0, so
+    // the pre-PR-A version of this test (set threshold = 0.99,
+    // depend on E002 at 0.97 to be sub-threshold) no longer has a
+    // sub-threshold strict-path fix to block. The structural
+    // invariant — "no sub-threshold proposal ever appears in applied"
+    // — is unchanged; this test pins it at the strictest threshold
+    // the config layer admits.
+    //
+    // A meaningful "sub-threshold proposal is blocked" assertion
+    // returns when PR B introduces decoder-path sub-1.0 confidences.
     let mut config = Config::default();
     config
-        .set_confidence_threshold(0.99)
-        .expect("0.99 is in [0.0, 1.0]");
+        .set_confidence_threshold(1.0)
+        .expect("1.0 is in [0.0, 1.0]");
+    let threshold = config.confidence_threshold();
     let engine = Engine::with_clock(
         config,
         vec![Box::new(capco_rules())],
@@ -151,41 +159,15 @@ fn sub_threshold_proposals_never_in_applied() {
     let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
-    // No fix should be applied at threshold 0.99 — the
-    // REL-TO-missing-USA fix's 0.97 is sub-threshold.
-    // `applied_fixes()` is `impl Iterator` (not `Debug`); collect once
-    // for the `is_empty` + Debug-render path.
-    let applied: Vec<_> = result.applied_fixes().collect();
-    assert!(
-        applied.is_empty(),
-        "no sub-threshold fix may appear in applied; got: {applied:?}",
-    );
-
-    // Every entry (vacuously none here) would have ≥0.99 confidence.
-    // The audit-contract assertion: the gate is honored.
+    // The gate is honored: every applied fix meets the threshold.
     for fix in result.applied_fixes() {
         let combined = fix.fix.replacement.confidence.combined();
         assert!(
-            combined >= 0.99,
-            "sub-threshold fix (confidence {combined}) must not appear in applied"
+            combined >= threshold,
+            "sub-threshold fix (confidence {combined}) appeared in \
+             applied at threshold {threshold}"
         );
     }
-
-    // The REL-TO-missing-USA rule
-    // (`portion.dissem.rel-to-missing-usa`) should remain in
-    // remaining_diagnostics.
-    assert!(
-        result
-            .remaining_diagnostics
-            .iter()
-            .any(|d| d.rule.predicate_id() == "portion.dissem.rel-to-missing-usa"),
-        "E002 should remain as a suggestion in remaining_diagnostics; got: {:?}",
-        result
-            .remaining_diagnostics
-            .iter()
-            .map(|d| d.rule.to_string())
-            .collect::<Vec<_>>()
-    );
 }
 
 #[test]

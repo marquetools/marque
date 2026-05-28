@@ -46,20 +46,22 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // Only the REL-TO-missing-USA fix (confidence 0.97 ≥ 0.95) should
-    // be applied. The remaining diagnostic on this fixture is the bare
-    // HCS legacy form (no-fix on the `(TS//HCS)\n` second line —
-    // conscious-defer per §H.4 p62, classifier picks HCS-O vs HCS-P) —
-    // verified below in the `remaining_diagnostics` assertion.
-    // `applied_fixes()` returns `impl Iterator`; collect once for index
-    // access + Debug formatting.
+    // Only the REL-TO-missing-USA fix should be applied. Post-PR-A
+    // strict-path fix proposals emit at `Confidence::strict(1.0)`;
+    // the per-fix confidence assertion pins that collapse here.
+    // The remaining diagnostic on this fixture is the bare HCS legacy
+    // form (no-fix on the `(TS//HCS)\n` second line — conscious-defer
+    // per §H.4 p62, classifier picks HCS-O vs HCS-P) — verified below
+    // in the `remaining_diagnostics` assertion. `applied_fixes()`
+    // returns `impl Iterator`; collect once for index access + Debug
+    // formatting.
     let applied: Vec<_> = result.applied_fixes().collect();
     assert_eq!(applied.len(), 1, "applied: {applied:?}");
     assert_eq!(
         applied[0].rule.predicate_id(),
         "portion.dissem.rel-to-missing-usa"
     );
-    assert!((applied[0].fix.replacement.confidence.combined() - 0.97).abs() < 0.001);
+    assert!((applied[0].fix.replacement.confidence.combined() - 1.0).abs() < 0.001);
 
     // The post-fix first line should have USA elevated and codes
     // sorted alphabetically.
