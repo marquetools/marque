@@ -57,6 +57,7 @@ pub mod report;
 pub mod sinks;
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
 
 /// Sink for [`DecisionEvent`]s emitted by the engine during evaluation.

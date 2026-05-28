@@ -1750,6 +1750,7 @@ impl CapcoScheme {
 }
 
 #[cfg(all(test, feature = "decision-tracing"))]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod decision_tracing_tests {
     //! Unit tests for the Phase D scheme-side overrides
     //! (`project_with_sink`, `closure_with_sink`,

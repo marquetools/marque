@@ -382,6 +382,7 @@ fn source_label(s: DecisionSource) -> String {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     //! Unit tests for the pure helpers and the three render functions.
     //!
