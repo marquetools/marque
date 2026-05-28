@@ -206,9 +206,7 @@ struct AuditCanonicalJsonV1_0<'a> {
 #[derive(Debug, Serialize)]
 struct AuditConfidenceJsonV1_0<'a> {
     recognition: f32,
-    rule: f32,
     combined: f32,
-    region: Option<f32>,
     runner_up_ratio: Option<f32>,
     features: Vec<AuditFeatureJsonV1_0<'a>>,
 }
@@ -318,9 +316,7 @@ fn project_confidence_to_json_v1_0(
 ) -> AuditConfidenceJsonV1_0<'_> {
     AuditConfidenceJsonV1_0 {
         recognition: confidence.recognition,
-        rule: confidence.rule,
         combined: confidence.combined(),
-        region: confidence.region,
         runner_up_ratio: confidence.runner_up_ratio,
         features: confidence
             .features

@@ -367,7 +367,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
                 // Strict-path fix proposal: confidence 1.0. Severity::Suggest
                 // is the hard exclusion from auto-apply; the three candidates
                 // surface for human selection regardless of confidence value.
-                Confidence::strict(1.0),
+                Confidence::strict(),
                 None,
             ));
         }

@@ -518,7 +518,7 @@ fn fabricate_leaky_text_correction() -> AppliedTextCorrection {
         original_digest,
         leaky_replacement.into(),
         FixSource::CorrectionsMap,
-        Confidence::strict(1.0),
+        Confidence::strict(),
         /* migration_ref */ None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),

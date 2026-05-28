@@ -97,8 +97,8 @@ pub struct FixIntent<S: MarkingScheme> {
     /// What to do — fact-set add / remove / recanonicalize.
     pub replacement: ReplacementIntent<S>,
 
-    /// Multi-axis confidence. `recognition × rule` is gated against
-    /// the engine's threshold.
+    /// Recognition-axis confidence. `Confidence::combined()` is the
+    /// scalar gated against the engine's threshold.
     pub confidence: Confidence,
 
     /// Closed-set list of contributing features. Inline-4 capacity
@@ -252,7 +252,7 @@ mod tests {
                 token: FactRef::Cve(TokenId(7)),
                 scope: Scope::Portion,
             },
-            confidence: Confidence::strict(0.95),
+            confidence: Confidence::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
             source: FixSource::BuiltinRule,
@@ -272,7 +272,7 @@ mod tests {
     fn fix_intent_fact_remove() {
         let intent: FixIntent<TestScheme> = FixIntent {
             replacement: ReplacementIntent::fact_remove(FactRef::Cve(TokenId(11)), Scope::Page),
-            confidence: Confidence::strict(0.9),
+            confidence: Confidence::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
             source: FixSource::BuiltinRule,
@@ -294,7 +294,7 @@ mod tests {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
             },
-            confidence: Confidence::strict(1.0),
+            confidence: Confidence::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(
                 // Generic Recanonicalize FixIntent unit test —

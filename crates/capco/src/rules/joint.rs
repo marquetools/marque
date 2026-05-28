@@ -225,7 +225,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
             },
-            confidence: Confidence::strict(1.0),
+            confidence: Confidence::strict(),
             feature_ids: Default::default(),
             // #739: mirror the parent diagnostic's category-bearing
             // message so the JOINT axis context survives in the

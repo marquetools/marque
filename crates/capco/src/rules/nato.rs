@@ -40,7 +40,7 @@ use crate::scheme::CapcoScheme;
 // `Constraint::Custom` today.
 // ---------------------------------------------------------------------------
 
-// All strict-path fix proposals emit Confidence::strict(1.0). Severity controls auto-apply, not confidence.
+// All strict-path fix proposals emit Confidence::strict(). Severity controls auto-apply, not confidence.
 
 /// Fires on a portion whose classification axis is a bare
 /// [`MarkingClassification::Nato`] variant when the page also carries at
@@ -156,7 +156,7 @@ use crate::scheme::CapcoScheme;
 /// `Engine::fix_inner`. Users who want auto-apply set
 /// `[rules] capco:portion.nato.bare-nato-requires-rel-to-usa-nato =
 /// "fix"` in `.marque.toml`. Confidence is not part of the gate; every
-/// strict-path fix proposal emits at `Confidence::strict(1.0)`. End-to-
+/// strict-path fix proposal emits at `Confidence::strict()`. End-to-
 /// end coverage of the severity-override path lives in
 /// `crates/capco/tests/fr048_bare_nato_rel_to.rs`.
 pub(super) struct BareNatoRequiresRelToRule;
@@ -389,7 +389,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
             capco(SectionLetter::H, 7, 127),
             replacement,
             FixSource::BuiltinRule,
-            Confidence::strict(1.0),
+            Confidence::strict(),
             None,
         )]
     }
@@ -589,7 +589,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
 
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize { scope },
-            confidence: Confidence::strict(1.0),
+            confidence: Confidence::strict(),
             feature_ids: Default::default(),
             message: Message::new(
                 MessageTemplate::WrongTokenForm,

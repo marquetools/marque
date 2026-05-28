@@ -79,7 +79,7 @@ pub(crate) struct FixDiagnosticParams {
 /// `Diagnostic.text_correction` for the replacement bytes + provenance.
 /// The helper threads `source` and `migration_ref` through to the
 /// `TextCorrection` payload. Strict-path fixes always emit
-/// `Confidence::strict(1.0)` — severity controls auto-apply, not
+/// `Confidence::strict()` — severity controls auto-apply, not
 /// confidence. The `original` field is discarded
 /// (audit content-ignorance).
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
@@ -92,7 +92,7 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
         p.citation,
         p.replacement,
         p.source,
-        Confidence::strict(1.0),
+        Confidence::strict(),
         p.migration_ref,
     )
 }

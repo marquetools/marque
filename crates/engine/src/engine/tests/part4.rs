@@ -33,7 +33,7 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
                 },
-                confidence: marque_rules::Confidence::strict(1.0),
+                confidence: marque_rules::Confidence::strict(),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
                     // Test-fixture FixIntent.message must agree with the
@@ -239,7 +239,7 @@ fn synth_fix(rule: &'static str, start: usize, end: usize, replacement: &str) ->
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
             },
-            confidence: marque_rules::Confidence::strict(1.0),
+            confidence: marque_rules::Confidence::strict(),
             feature_ids: SmallVec::new(),
             message: Message::new(
                 // Test-fixture FixIntent.message; the splice/sort
@@ -492,7 +492,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: marque_rules::Confidence::strict(1.0),
+        confidence: marque_rules::Confidence::strict(),
         feature_ids: SmallVec::new(),
         message: Message::new(
             // Synthetic AuditLine fixture; the R002-assembler tests

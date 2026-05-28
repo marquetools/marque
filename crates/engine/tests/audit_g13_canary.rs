@@ -194,7 +194,6 @@ fn render_audit_line_to_json(
                     },
                     "confidence": {
                         "recognition": f.fix.replacement.confidence.recognition,
-                        "rule": f.fix.replacement.confidence.rule,
                         "combined": f.fix.replacement.confidence.combined(),
                     },
                 },
@@ -552,7 +551,7 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
         Blake3Hash::from_bytes([0u8; 32]),
         SmolStr::new(std::str::from_utf8(leak).unwrap_or("non-utf8")),
         FixSource::CorrectionsMap,
-        Confidence::strict(1.0),
+        Confidence::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         SystemTime::now(),

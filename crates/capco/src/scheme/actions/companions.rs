@@ -79,7 +79,7 @@ pub(crate) fn emit_companion_insert(
             token: FactRef::Cve(token_id),
             scope: fix_scope,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Confidence::strict(),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
         source: FixSource::BuiltinRule,

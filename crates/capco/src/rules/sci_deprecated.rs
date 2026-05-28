@@ -526,7 +526,7 @@ fn emit_diagnostic(
             // The fix performs the manual's "re-mark to HCS / SI / TK"
             // instruction verbatim; no ambiguity in either the trigger
             // or the canonical form.
-            Confidence::strict(1.0),
+            Confidence::strict(),
             None,
         ),
         ReplacementKind::WithCompartment { prefix } => {
@@ -548,7 +548,7 @@ fn emit_diagnostic(
                 // `KDK`/`KLONDIKE`); rule-level severity-override is
                 // the user's escape hatch when org policy disagrees
                 // with the manual.
-                Confidence::strict(1.0),
+                Confidence::strict(),
                 None,
             )
         }
@@ -579,7 +579,7 @@ fn emit_diagnostic(
                         // Authoritative mapping: §H.4 p85 + p87/p91/p95
                         // document the BLUEFISH→BLFH / IDITAROD→IDIT /
                         // KANDIK→KAND abbreviation. Full confidence.
-                        Confidence::strict(1.0),
+                        Confidence::strict(),
                         None,
                     )
                 }

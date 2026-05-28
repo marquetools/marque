@@ -199,7 +199,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     replacement,
                     FixSource::BuiltinRule,
-                    Confidence::strict(1.0),
+                    Confidence::strict(),
                     None,
                 ));
             }
@@ -217,7 +217,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     conceal_form,
                     FixSource::BuiltinRule,
-                    Confidence::strict(1.0),
+                    Confidence::strict(),
                     None,
                 ));
                 // Alternate Suggest: drop FGI → "DEU R" (acknowledged path).
@@ -230,7 +230,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     ack_form,
                     FixSource::BuiltinRule,
-                    Confidence::strict(1.0),
+                    Confidence::strict(),
                     None,
                 ));
                 // Optional NF companion: unacknowledged FGI is caveated per IC
@@ -241,7 +241,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                             token: FactRef::Cve(TOK_NOFORN),
                             scope: Scope::Portion,
                         },
-                        confidence: Confidence::strict(1.0),
+                        confidence: Confidence::strict(),
                         feature_ids: Default::default(),
                         message: Message::new(
                             MessageTemplate::RequiredByPresence,
@@ -282,7 +282,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     ack_all,
                     FixSource::BuiltinRule,
-                    Confidence::strict(1.0),
+                    Confidence::strict(),
                     None,
                 ));
                 // Suggest 2: conceal all (drop trigraphs, keep FGI).
@@ -295,7 +295,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                     citation,
                     conceal_all,
                     FixSource::BuiltinRule,
-                    Confidence::strict(1.0),
+                    Confidence::strict(),
                     None,
                 ));
                 // NF companion for the conceal-all path.
@@ -305,7 +305,7 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
                             token: FactRef::Cve(TOK_NOFORN),
                             scope: Scope::Portion,
                         },
-                        confidence: Confidence::strict(1.0),
+                        confidence: Confidence::strict(),
                         feature_ids: Default::default(),
                         message: Message::new(
                             MessageTemplate::RequiredByPresence,

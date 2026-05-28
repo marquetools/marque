@@ -295,7 +295,7 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
                         capco(SectionLetter::H, 7, 122),
                         candidate.to_owned(),
                         FixSource::BuiltinRule,
-                        Confidence::strict(1.0),
+                        Confidence::strict(),
                         None,
                     ));
                 }

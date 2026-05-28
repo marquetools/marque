@@ -190,8 +190,8 @@ proptest! {
         }
     }
 
-    // Every Confidence value in an AppliedFix has recognition, rule, and
-    // combined() all in [0.0, 1.0].
+    // Every Confidence value in an AppliedFix has recognition and
+    // combined() in [0.0, 1.0]. Post-PR-B there is no `rule` axis.
     #[test]
     fn confidence_bounds(src in arb_source()) {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
@@ -201,11 +201,6 @@ proptest! {
                 (0.0..=1.0).contains(&c.recognition),
                 "recognition {} out of range for {src:?}",
                 c.recognition,
-            );
-            prop_assert!(
-                (0.0..=1.0).contains(&c.rule),
-                "rule confidence {} out of range for {src:?}",
-                c.rule,
             );
             let combined = c.combined();
             prop_assert!(

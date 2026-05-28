@@ -458,7 +458,7 @@ fn partition_diags_by_phase_routes_by_localized_id_set() {
         stub_citation(),
         "REPL",
         FixSource::CorrectionsMap,
-        marque_rules::Confidence::strict(0.4),
+        marque_rules::Confidence::strict(),
         None,
     );
 
@@ -555,14 +555,14 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
         stub_citation(),
         "SECRET",
         FixSource::CorrectionsMap,
-        marque_rules::Confidence::strict(0.4),
+        marque_rules::Confidence::strict(),
         None,
     );
     tc.fix = Some(FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: marque_rules::Confidence::strict(0.4),
+        confidence: marque_rules::Confidence::strict(),
         feature_ids: SmallVec::new(),
         // Phase-partition filtering test keyed on rule phase; message
         // templates are irrelevant here. Reuse the shared stub so the
@@ -636,7 +636,7 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
                 },
-                confidence: marque_rules::Confidence::strict(1.0),
+                confidence: marque_rules::Confidence::strict(),
                 feature_ids: SmallVec::new(),
                 message: Message::new(
                     // Test-fixture FixIntent.message must agree with the

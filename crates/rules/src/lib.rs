@@ -20,9 +20,9 @@
 //!   graph. The `Display` impl emits the citation-lint regex form
 //!   (`§<L>.<sub>[.<sub_sub>] [Table <N>] p<page>`). Const-fn
 //!   construction; no runtime validation.
-//! - [`confidence`] — `Confidence` (recognition × rule axes), `FeatureId`,
-//!   `FeatureContribution`. Audit-provenance payload attached to
-//!   every `FixIntent<S>`.
+//! - [`confidence`] — `Confidence` (single `recognition` axis post-PR-B),
+//!   `FeatureId`, `FeatureContribution`. Audit-provenance payload
+//!   attached to every `FixIntent<S>`.
 //! - [`message`] — `Message`, `MessageTemplate` (closed enum), `MessageArgs`
 //!   (closed-set struct). The type-system closure of the diagnostic-message
 //!   leak channel: only `Message::new(template, args)` constructs a `Message`,

@@ -78,7 +78,7 @@ fn message_args_round_trips_each_permitted_field() {
         category: Some(CategoryId(2)),
         span: Some(Span::new(0, 4)),
         digest: Some(Blake3Hash::from([0u8; 32])),
-        confidence: Some(Confidence::strict(0.9)),
+        confidence: Some(Confidence::strict()),
         expected_token: Some(TokenId(3)),
         actual_token: Some(TokenId(4)),
         feature_ids,

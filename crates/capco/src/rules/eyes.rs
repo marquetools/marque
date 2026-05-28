@@ -154,7 +154,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                             CountryCode::NZL.to_string(),
                         ]),
                         FixSource::BuiltinRule,
-                        Confidence::strict(1.0),
+                        Confidence::strict(),
                         None,
                     ));
                 }
@@ -180,7 +180,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                 capco(SectionLetter::H, 8, 157),
                 canonical,
                 FixSource::BuiltinRule,
-                Confidence::strict(1.0),
+                Confidence::strict(),
                 None,
             ));
         }

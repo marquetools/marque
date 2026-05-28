@@ -186,18 +186,19 @@ fn fix_accuracy_invalid_fixtures() {
         // ≥ threshold).
         //
         // `Severity::Suggest` is a hard exclusion from auto-apply
-        // regardless of confidence (engine's
-        // `is_promote_eligible` returns false for Suggest). PR A
-        // collapsed every strict-path `rule` confidence to 1.0; the
-        // severity gate is now the load-bearing channel discriminator
-        // for "is this an auto-applied fix?".
+        // regardless of confidence (engine's `is_promote_eligible`
+        // returns false for Suggest). The severity gate is the
+        // load-bearing channel discriminator for "is this an
+        // auto-applied fix?"; strict-path emissions pin
+        // `recognition = 1.0` so the confidence gate only blocks
+        // sub-1.0 decoder-path candidates.
         //
         // "Confidence" here is the scalar `Confidence::combined()`
-        // (= recognition × rule) that the engine applies at the
-        // promotion boundary. `Confidence` carries additional
-        // axes (`region`, `runner_up_ratio`, feature contributions)
-        // for audit provenance, but this harness and every
-        // threshold-gated consumer compare on `.combined()` only.
+        // (= `recognition`, post-PR-B) that the engine applies at the
+        // promotion boundary. `Confidence` carries additional decoder
+        // provenance (`runner_up_ratio`, feature contributions) for
+        // audit but this harness and every threshold-gated consumer
+        // compare on `.combined()` only.
         let lint_result = engine.lint(&source);
         let fixable_rules: std::collections::HashSet<String> = lint_result
             .diagnostics

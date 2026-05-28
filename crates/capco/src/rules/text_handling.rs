@@ -541,7 +541,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 
 /// Scans token spans against the organization-specific corrections map from
 /// `[corrections]` in `.marque.toml`. Each match produces a fix proposal with
-/// `FixSource::CorrectionsMap` and `Confidence::strict(1.0)`.
+/// `FixSource::CorrectionsMap` and `Confidence::strict()`.
 ///
 /// # Not a CAPCO rule
 ///

@@ -9,7 +9,7 @@
 //! a legacy NATO compound text
 //! (eight portion forms + five banner forms) into bare class + AEA/SCI
 //! companion, and emits a `ReplacementIntent::Recanonicalize` fix at
-//! `Confidence::strict(1.0)` so the engine auto-applies it.
+//! `Confidence::strict()` so the engine auto-applies it.
 //!
 //! This file covers all thirteen legacy patterns plus two negative
 //! cases (bare canonical NATO + bare US classification). Per pattern
@@ -18,7 +18,7 @@
 //! 1. E066 fires in `Engine::lint` output for the legacy input.
 //! 2. The emitted `FixIntent`'s `replacement` is a
 //!    `ReplacementIntent::Recanonicalize` payload with
-//!    `Confidence::strict(1.0)`.
+//!    `Confidence::strict()`.
 //! 3. `Engine::fix(..., FixMode::Apply)` produces the canonical
 //!    multi-block form as a byte-identical output.
 //!
@@ -104,7 +104,7 @@ fn assert_e066_fires_and_rewrites_to(
         }
         ref other => panic!("E066 FixIntent must be Recanonicalize on {input:?}; got: {other:?}"),
     }
-    let expected_conf = Confidence::strict(1.0);
+    let expected_conf = Confidence::strict();
     assert_eq!(
         fix_intent.confidence, expected_conf,
         "E066 confidence must be strict(1.0) on {input:?}; got: {:?}",

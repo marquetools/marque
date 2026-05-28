@@ -583,12 +583,16 @@ pub struct AuditCanonicalJson<'a> {
 }
 
 /// `Confidence` projection.
+///
+/// `marque-3.0` shape (PR B): one scalar axis (`recognition`),
+/// optional decoder provenance (`runner_up_ratio`), and a closed
+/// `features` list. The pre-PR-B `rule` and `region` fields were
+/// retired — strict-path emissions are pinned at `recognition = 1.0`
+/// and the decoder uses span info elsewhere.
 #[derive(Debug, Serialize)]
 pub struct AuditConfidenceJson<'a> {
     pub recognition: f32,
-    pub rule: f32,
     pub combined: f32,
-    pub region: Option<f32>,
     pub runner_up_ratio: Option<f32>,
     pub features: Vec<AuditFeatureJson<'a>>,
 }
@@ -734,9 +738,7 @@ fn project_canonical_to_json<'a>(
 fn project_confidence_to_json(confidence: &marque_rules::Confidence) -> AuditConfidenceJson<'_> {
     AuditConfidenceJson {
         recognition: confidence.recognition,
-        rule: confidence.rule,
         combined: confidence.combined(),
-        region: confidence.region,
         runner_up_ratio: confidence.runner_up_ratio,
         features: confidence
             .features
@@ -1096,7 +1098,7 @@ mod tests {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
             },
-            confidence: marque_rules::Confidence::strict(1.0),
+            confidence: marque_rules::Confidence::strict(),
             feature_ids: Default::default(),
             message: Message::new(
                 MessageTemplate::BannerRollupMismatch,
@@ -1676,14 +1678,22 @@ mod tests {
         // CVE-only field elides for open_vocab arms.
         assert!(canonical_json.get("token_id").is_none());
 
-        // `confidence` sub-object.
+        // `confidence` sub-object. Post-PR-B shape: only `recognition`
+        // / `combined` / `runner_up_ratio` / `features` — `rule` and
+        // `region` were retired with the strict-path axis collapse.
         let confidence = &replacement["confidence"];
         assert_eq!(confidence["recognition"], 1.0);
-        assert_eq!(confidence["rule"], 1.0);
         assert_eq!(confidence["combined"], 1.0);
-        // Strict-path fix: region / runner_up_ratio are present but
-        // None per Confidence::strict; serde emits them as `null`.
-        assert!(confidence["region"].is_null());
+        assert!(
+            confidence.get("rule").is_none(),
+            "PR B retired the rule axis; field must not appear on the wire"
+        );
+        assert!(
+            confidence.get("region").is_none(),
+            "PR B retired the region field; must not appear on the wire"
+        );
+        // Strict-path fix: runner_up_ratio present but None; serde
+        // emits as `null`.
         assert!(confidence["runner_up_ratio"].is_null());
         // Features SmallVec defaulted to empty for the test fixture.
         assert!(confidence["features"].as_array().unwrap().is_empty());
@@ -1733,7 +1743,7 @@ mod tests {
             original_digest,
             "SECRET".into(),
             FixSource::CorrectionsMap,
-            Confidence::strict(1.0),
+            Confidence::strict(),
             None,
             Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),

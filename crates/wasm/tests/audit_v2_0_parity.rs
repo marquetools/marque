@@ -117,7 +117,7 @@ fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Confidence::strict(),
         feature_ids: Default::default(),
         message: Message::new(template_for_rule(rule), MessageArgs::default()),
         source: FixSource::BuiltinRule,
@@ -188,7 +188,7 @@ fn synth_text_correction(
         original_digest,
         "SECRET".into(),
         FixSource::CorrectionsMap,
-        Confidence::strict(1.0),
+        Confidence::strict(),
         None,
         Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(1_700_000_000),
@@ -367,12 +367,21 @@ fn applied_fix_confidence_round_trip() {
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let confidence = &v["fix"]["replacement"]["confidence"];
+    // PR B retired `rule` and `region` from the wire shape — strict-
+    // path emissions are pinned at `recognition = 1.0` and the decoder
+    // uses span info elsewhere.
     assert_eq!(confidence["recognition"], 1.0);
-    assert_eq!(confidence["rule"], 1.0);
     assert_eq!(confidence["combined"], 1.0);
-    // Confidence::strict produces region / runner_up_ratio = None;
+    assert!(
+        confidence.get("rule").is_none(),
+        "PR B retired the rule axis; field must not appear on the wire"
+    );
+    assert!(
+        confidence.get("region").is_none(),
+        "PR B retired the region field; must not appear on the wire"
+    );
+    // Confidence::strict produces runner_up_ratio = None;
     // serde emits as explicit null.
-    assert!(confidence["region"].is_null());
     assert!(confidence["runner_up_ratio"].is_null());
     // Default Confidence::strict's features SmallVec is empty.
     assert_eq!(

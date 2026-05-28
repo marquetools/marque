@@ -387,7 +387,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
                 capco(SectionLetter::H, 8, 150),
                 candidate.to_owned(),
                 FixSource::BuiltinRule,
-                Confidence::strict(1.0),
+                Confidence::strict(),
                 None,
             ));
         }

@@ -28,9 +28,10 @@
 //!
 //! The bench uses the RELIDO-conflicts-NOFORN rule (`E054` in the
 //! function names) because it fires a deterministic strict-path fix
-//! (`Confidence::strict(1.0)` per the PR A invariant). A
-//! portion-mark-in-banner expansion would not work here: the renderer
-//! absorbs that by construction and produces no `AppliedFix`.
+//! (`Confidence::strict()` — `recognition = 1.0`, no other axes
+//! post-PR-B). A portion-mark-in-banner expansion would not work here:
+//! the renderer absorbs that by construction and produces no
+//! `AppliedFix`.
 //!
 //! Headline number is `fix_single_e054_apply`: total wall-clock
 //! time to detect, promote, apply, and audit one fix on a one-portion
@@ -58,10 +59,10 @@ const SINGLE_FIX_INPUT: &[u8] = b"(S//NF/RELIDO)\n";
 /// abbreviation for NOFORN (§A.6 p16 / CAPCO-2016 Table 4 row 8 p36).
 const EXPECTED_FIXED_SOURCE: &[u8] = b"(S//NF)\n";
 
-/// Expected combined confidence for the E054 fix. Per the PR A
-/// invariant, every strict-path rule emits `Confidence::strict(1.0)`
-/// (recognition=1.0, rule=1.0); combined equals 1.0, comfortably above
-/// the default 0.95 threshold so the fix auto-applies.
+/// Expected combined confidence for the E054 fix. Every strict-path
+/// rule emits `Confidence::strict()` (`recognition = 1.0`, the sole
+/// axis post-PR-B); combined equals 1.0, comfortably above the default
+/// 0.95 threshold so the fix auto-applies.
 const EXPECTED_CONFIDENCE: f32 = 1.0;
 
 fn build_engine() -> Engine {
@@ -119,11 +120,11 @@ fn assert_bench_invariants(engine: &Engine) {
         e054_fix.rule.predicate_id(),
     );
 
-    // Combined confidence must be exactly 1.0 (Confidence::strict(1.0):
-    // recognition=1.0 × rule=1.0). A deviation here means the bench is
-    // measuring a different code path than the deterministic strict-path
-    // FactRemove this benchmark documents — or that PR A's invariant
-    // (every strict-path rule emits 1.0) has regressed.
+    // Combined confidence must be exactly 1.0 (Confidence::strict():
+    // recognition = 1.0, the sole axis post-PR-B). A deviation here
+    // means the bench is measuring a different code path than the
+    // deterministic strict-path FactRemove this benchmark documents,
+    // or that the strict-path 1.0 invariant has regressed.
     let combined = e054_fix.fix.replacement.confidence.combined();
     assert!(
         (combined - EXPECTED_CONFIDENCE).abs() < 1e-6_f32,

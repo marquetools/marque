@@ -163,7 +163,7 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: marque_rules::Confidence::strict(1.0),
+        confidence: marque_rules::Confidence::strict(),
         feature_ids: SmallVec::new(),
         // Phase-partition filtering test keyed on (rule, span); message
         // templates are irrelevant to what it asserts. Reuse the shared

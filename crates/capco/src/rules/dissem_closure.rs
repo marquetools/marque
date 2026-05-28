@@ -263,7 +263,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
                 token: FactRef::Cve(TOK_RELIDO),
                 scope: Scope::Portion,
             },
-            confidence: Confidence::strict(1.0),
+            confidence: Confidence::strict(),
             feature_ids: Default::default(),
             message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             source: FixSource::BuiltinRule,

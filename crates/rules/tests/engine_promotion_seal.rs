@@ -133,7 +133,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
         },
-        confidence: Confidence::strict(1.0),
+        confidence: Confidence::strict(),
         feature_ids: Default::default(),
         message: Message::new(
             // Engine-promotion-seal fixture (synthetic test rule);

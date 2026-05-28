@@ -75,7 +75,6 @@ fn render_audit_line(line: &AuditLine<CapcoScheme>) -> Option<String> {
                     },
                     "confidence": {
                         "recognition": f.fix.replacement.confidence.recognition,
-                        "rule": f.fix.replacement.confidence.rule,
                         "combined": f.fix.replacement.confidence.combined(),
                     },
                 },
