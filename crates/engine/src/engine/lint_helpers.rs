@@ -1,8 +1,10 @@
 use super::dispatch::panic_payload_to_string;
 use super::fix::pre_pass_1_attrs_for_span;
-use super::page_context::{
-    PageFinalizationContext, dispatch_page_finalization, project_page_marking,
-};
+#[cfg(not(feature = "decision-tracing"))]
+use super::page_context::project_page_marking;
+#[cfg(feature = "decision-tracing")]
+use super::page_context::project_page_marking_with_sink;
+use super::page_context::{PageFinalizationContext, dispatch_page_finalization};
 use super::synthesis::build_decoder_diagnostic;
 use super::*;
 
@@ -48,6 +50,20 @@ pub(super) fn handle_page_break_candidate(
                 source: marque_scheme::DecisionSource::BannerRollup,
                 triggered_by: None,
             });
+        }
+    }
+    // Phase D decision-tracing — pre-init `page_marking_arc`
+    // through the sink-aware projection so the engine's sink
+    // observes per-stage projection events at the page boundary.
+    // The subsequent `dispatch_page_finalization`
+    // `get_or_insert_with` becomes a no-op (cell already populated)
+    // and the OFF-feature build is byte-identical.
+    #[cfg(feature = "decision-tracing")]
+    {
+        if !page_portions.is_empty() && page_marking_arc.is_none() {
+            *page_marking_arc = Some(Arc::new(engine.with_sink(|sink| {
+                project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
+            })));
         }
     }
     if !page_portions.is_empty()
@@ -198,7 +214,22 @@ pub(super) fn dispatch_rules_for_marking(
         Some(
             page_marking_arc
                 .get_or_insert_with(|| {
-                    Arc::new(project_page_marking(&engine.scheme, page_join_acc))
+                    // Phase D decision-tracing — route the per-page
+                    // projection through the sink-aware variant so the
+                    // engine's sink observes per-stage events
+                    // (closure / default-fill / supersession / page
+                    // rewrites). OFF-feature build keeps the original
+                    // signature with zero extra work on the hot path.
+                    #[cfg(feature = "decision-tracing")]
+                    {
+                        Arc::new(engine.with_sink(|sink| {
+                            project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
+                        }))
+                    }
+                    #[cfg(not(feature = "decision-tracing"))]
+                    {
+                        Arc::new(project_page_marking(&engine.scheme, page_join_acc))
+                    }
                 })
                 .clone(),
         )

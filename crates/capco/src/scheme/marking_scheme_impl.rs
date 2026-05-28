@@ -318,6 +318,105 @@ impl MarkingScheme for CapcoScheme {
         evaluate_custom_by_attrs(&marking.0, bits, name)
     }
 
+    /// Project with decision-tracing instrumentation.
+    ///
+    /// Overrides the [`MarkingScheme::project_with_sink`] default to
+    /// emit per-stage [`marque_scheme::DecisionEvent`]s as the
+    /// [`Self::project_attrs_pipeline`] traverses its stages
+    /// (`close` → `apply_default_fill` → `apply_supersession_overlays`
+    /// → page rewrites). The default delegation would call
+    /// [`Self::project`] and emit nothing; this override delegates to
+    /// the instrumented variant [`Self::project_attrs_pipeline_with_sink`].
+    ///
+    /// # Step coordination
+    ///
+    /// The trait signature receives `&mut dyn DecisionSink` directly
+    /// (the engine's per-document step counter is not visible here).
+    /// Events emitted within this call use a **local step counter**
+    /// starting at `0`; `triggered_by` references between scheme-
+    /// emitted events resolve correctly within the call, but they
+    /// will NOT correlate with engine-emitted events from the same
+    /// document. Cascade chains across the scheme/engine boundary
+    /// are a Phase D refinement deferral — documented at the
+    /// emission sites.
+    ///
+    /// Only compiled under the `decision-tracing` feature; without it,
+    /// the default trait impl (delegating to [`Self::project`]) is
+    /// active and OFF-mode behavior is byte-identical to a build that
+    /// never declared the feature.
+    #[cfg(feature = "decision-tracing")]
+    fn project_with_sink(
+        &self,
+        scope: Scope,
+        markings: &[Self::Marking],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> Self::Marking {
+        match scope {
+            Scope::Portion => self.project(scope, markings),
+            Scope::Page | Scope::Document | Scope::Diff => {
+                let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
+                let out_attrs = self.project_attrs_pipeline_with_sink(&raw, sink);
+                CapcoMarking::new(out_attrs)
+            }
+        }
+    }
+
+    /// Closure with decision-tracing instrumentation.
+    ///
+    /// Overrides the [`MarkingScheme::closure_with_sink`] default to
+    /// diff the pre-close vs. post-close bitmask and emit one
+    /// [`marque_scheme::DecisionEvent`] per cone bit added by
+    /// `close()`. Events carry
+    /// [`marque_scheme::DecisionSource::Closure(row_name)`] where
+    /// `row_name` comes from [`crate::scheme::closure_table::bit_to_row_name`]
+    /// (first-match-by-catalog-order attribution).
+    ///
+    /// See [`Self::project_with_sink`] for step-coordination notes —
+    /// the same local-counter semantics apply.
+    ///
+    /// Only compiled under the `decision-tracing` feature; without it,
+    /// the default trait impl (delegating to [`Self::closure`]) is
+    /// active.
+    #[cfg(feature = "decision-tracing")]
+    fn closure_with_sink(
+        &self,
+        marking: Self::Marking,
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> Self::Marking {
+        use crate::fact_bitmask::derive_bits;
+        use crate::scheme::closure_table::bit_to_row_name;
+
+        let input_bits = derive_bits(&marking.0).bits();
+        let closed_marking = self.closure(marking);
+        let closed_bits = derive_bits(&closed_marking.0).bits();
+
+        // Emit one ClosureFired event per 0→1 flipped cone bit.
+        // Local step counter (see method doc comment).
+        let mut local_step: u32 = 0;
+        let delta = closed_bits & !input_bits;
+        if delta != 0 {
+            let mut remaining = delta;
+            while remaining != 0 {
+                let bit_index = remaining.trailing_zeros();
+                remaining &= remaining - 1;
+                if let Some(row_name) = bit_to_row_name(bit_index) {
+                    let step = local_step;
+                    local_step = local_step.saturating_add(1);
+                    sink.record(marque_scheme::DecisionEvent {
+                        step,
+                        site: marque_scheme::DecisionSite::Page(0),
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::ClosureFired,
+                        source: marque_scheme::DecisionSource::Closure(row_name),
+                        triggered_by: None,
+                    });
+                }
+            }
+        }
+
+        closed_marking
+    }
+
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
         match scope {
             Scope::Portion => {
@@ -866,6 +965,25 @@ impl CapcoScheme {
         self.project_attrs_pipeline(raw)
     }
 
+    /// Sink-aware variant of [`Self::project_from_attrs_slice`] used
+    /// by the engine when the `decision-tracing` feature is on.
+    ///
+    /// Delegates to [`Self::project_attrs_pipeline_with_sink`] which
+    /// emits per-stage [`marque_scheme::DecisionEvent`]s for closure
+    /// fires, default-fill fires, supersession-overlay mutations,
+    /// and page-rewrite fan-outs. Engine callers reach this entry
+    /// when the engine's per-document sink is non-`NoopSink`; the
+    /// off-feature build never compiles this surface (the engine
+    /// gates the call site under `#[cfg(feature = "decision-tracing")]`).
+    #[cfg(feature = "decision-tracing")]
+    pub fn project_from_attrs_slice_with_sink(
+        &self,
+        raw: &[CanonicalAttrs],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> CanonicalAttrs {
+        self.project_attrs_pipeline_with_sink(raw, sink)
+    }
+
     /// Issue #704 — re-apply per-axis supersession overlays to the
     /// post-`close()` / post-`apply_default_fill` CanonicalAttrs.
     ///
@@ -1275,6 +1393,344 @@ impl CapcoScheme {
                         }
                     }
                 }
+            }
+        }
+        out.0
+    }
+
+    /// Sink-aware variant of [`Self::project_attrs_pipeline`] that
+    /// emits per-stage [`marque_scheme::DecisionEvent`]s as the
+    /// projection pipeline traverses its stages
+    /// (`close` → `apply_default_fill` → `apply_supersession_overlays`
+    /// → page rewrites).
+    ///
+    /// # Step coordination
+    ///
+    /// Uses a **local step counter** starting at `0`. Events emitted
+    /// here are correctly ordered + `triggered_by`-linkable WITHIN this
+    /// call, but their step IDs do NOT correlate with engine-emitted
+    /// events for the same document. This is a Phase D simplification:
+    /// the trait signature receives `&mut dyn DecisionSink` directly
+    /// (the engine's `next_step` counter is not visible across the
+    /// crate boundary), and adding a step-counter parameter would
+    /// require revising the Phase B trait surface. Cross-boundary
+    /// cascade chains are a Phase D refinement deferral; for the
+    /// page-rewrite fan-out demo asset, intra-call linkage between
+    /// `RewriteScheduled` and `RewriteApplied` is the load-bearing
+    /// property and is preserved by this local counter.
+    ///
+    /// # Stage events
+    ///
+    /// 1. **Closure** — diff input vs. post-`close()` bitmask; emit
+    ///    one [`marque_scheme::DecisionKind::ClosureFired`] per
+    ///    flipped cone bit with
+    ///    [`marque_scheme::DecisionSource::Closure(row_name)`] from
+    ///    [`crate::scheme::closure_table::bit_to_row_name`].
+    /// 2. **Default-fill** — diff post-close vs. post-default-fill
+    ///    bitmask; emit one
+    ///    [`marque_scheme::DecisionKind::ClosureFired`] per row that
+    ///    fired with [`marque_scheme::DecisionSource::DefaultFill(name)`].
+    /// 3. **Supersession overlays** — diff dissem/REL-TO axes; emit
+    ///    [`marque_scheme::DecisionKind::Mutated`] with
+    ///    [`marque_scheme::DecisionSource::Supersession(name)`].
+    /// 4. **Page rewrites** — one `RewriteScheduled` per fire and one
+    ///    `RewriteApplied` with `triggered_by` pointing at the parent.
+    #[cfg(feature = "decision-tracing")]
+    fn project_attrs_pipeline_with_sink(
+        &self,
+        raw: &[CanonicalAttrs],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> CanonicalAttrs {
+        use crate::fact_bitmask::derive_bits;
+        use crate::scheme::closure_table::bit_to_row_name;
+
+        // Local step counter — see method doc-comment for the
+        // step-coordination caveat. Within the call,
+        // `triggered_by` references resolve into the events emitted
+        // here; across the engine boundary they do not correlate.
+        let mut local_step: u32 = 0;
+        let mut next_step = || {
+            let s = local_step;
+            local_step = local_step.saturating_add(1);
+            s
+        };
+
+        #[cfg(debug_assertions)]
+        let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
+
+        // Stage 1 — join_via_lattice (no events; the lattice fold is
+        // a single algebraic op, not a multi-rule cascade).
+        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(raw));
+
+        // Stage 2 — closure. Capture pre/post bitmasks for diff.
+        let pre_close_bits = derive_bits(&joined.0).bits();
+        let mut out = self.closure(joined);
+        let post_close_bits = derive_bits(&out.0).bits();
+        let close_delta = post_close_bits & !pre_close_bits;
+        if close_delta != 0 {
+            let mut remaining = close_delta;
+            while remaining != 0 {
+                let bit_index = remaining.trailing_zeros();
+                remaining &= remaining - 1;
+                if let Some(row_name) = bit_to_row_name(bit_index) {
+                    let step = next_step();
+                    sink.record(marque_scheme::DecisionEvent {
+                        step,
+                        site: marque_scheme::DecisionSite::Page(0),
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::ClosureFired,
+                        source: marque_scheme::DecisionSource::Closure(row_name),
+                        triggered_by: None,
+                    });
+                }
+            }
+        }
+
+        // Stage 3 — apply_default_fill. Diff against post-close
+        // bitmask; the four default-fill rows (Row 0 caveated→NOFORN,
+        // Row 7 NATO→REL TO USA NATO, Row 8 SCI→RELIDO, Row 9
+        // US-class→RELIDO) each map to a specific bit. The mapping
+        // is hardcoded because `apply_default_fill` is internal to
+        // CAPCO and its 4-row inventory is stable post-#704.
+        crate::scheme::default_fill::apply_default_fill(&mut out.0);
+        let post_default_fill_bits = derive_bits(&out.0).bits();
+        let default_fill_delta = post_default_fill_bits & !post_close_bits;
+        if default_fill_delta != 0 {
+            // The four default-fill rows that can flip bits in the
+            // post-close delta. Attribution is bit-driven (NOFORN
+            // came from Row 0; REL_TO_USA came from Row 7; RELIDO
+            // came from either Row 8 or Row 9 — discriminated by the
+            // post-close bitmask below).
+            //
+            // The `capco:default-fill.*` strings here and the
+            // `capco:supersession.*` string further down are
+            // **trace identifiers**, not `RuleId` wire strings.
+            // They share the `capco:` scheme prefix for grep
+            // ergonomics in `marque trace` consumers but they do
+            // NOT live in the rule-checker catalog and a §-citation
+            // auditor will not find them there — they label
+            // implicit grammar stages (`apply_default_fill`,
+            // `apply_supersession_overlays`) rather than checker
+            // rules. The `DecisionSource::DefaultFill` /
+            // `DecisionSource::Supersession` enum variants
+            // discriminate them from `RuleId`-shaped sources at
+            // runtime.
+            use crate::fact_bitmask::fact_bit;
+            if (default_fill_delta & (1u128 << fact_bit::NOFORN)) != 0 {
+                let step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::ClosureFired,
+                    source: marque_scheme::DecisionSource::DefaultFill(
+                        "capco:default-fill.dissem.caveated-implies-noforn",
+                    ),
+                    triggered_by: None,
+                });
+            }
+            if (default_fill_delta & (1u128 << fact_bit::REL_TO_USA)) != 0 {
+                let step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::ClosureFired,
+                    source: marque_scheme::DecisionSource::DefaultFill(
+                        "capco:default-fill.rel-to.nato-implies-rel-to-usa-nato",
+                    ),
+                    triggered_by: None,
+                });
+            }
+            if (default_fill_delta & (1u128 << fact_bit::RELIDO)) != 0 {
+                // RELIDO can be flipped by Row 8 (SCI_PRESENT trigger)
+                // or Row 9 (US_COLLATERAL_CLASSIFIED trigger; no SCI
+                // required). Discriminate by checking the post-close
+                // bitmask: if SCI was present at close-time, Row 8
+                // fires (and Row 9 is suppressed by Row 8 having
+                // already added RELIDO); otherwise Row 9 fires.
+                let row8_fired = (post_close_bits & (1u128 << fact_bit::SCI_PRESENT)) != 0;
+                let row_name = if row8_fired {
+                    "capco:default-fill.dissem.sci-implies-relido"
+                } else {
+                    "capco:default-fill.dissem.us-class-implies-relido"
+                };
+                let step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::ClosureFired,
+                    source: marque_scheme::DecisionSource::DefaultFill(row_name),
+                    triggered_by: None,
+                });
+            }
+        }
+
+        // Stage 4 — apply_supersession_overlays. The overlay clears
+        // dominated tokens (§H.8 p145 NOFORN-dominates) and runs OC >
+        // OC-USGOV / RELIDO observed-unanimity. Diff the dissem and
+        // REL-TO axes by length comparison to detect a mutation; the
+        // overlay does not add bits, so the delta is purely
+        // subtractive (bits that were set before are clear after).
+        let pre_overlay_dissem_len = out.0.dissem_us.len();
+        let pre_overlay_rel_to_len = out.0.rel_to.len();
+        let pre_overlay_display_only_len = out.0.display_only_to.len();
+        Self::apply_supersession_overlays(&mut out.0);
+        let post_overlay_dissem_len = out.0.dissem_us.len();
+        let post_overlay_rel_to_len = out.0.rel_to.len();
+        let post_overlay_display_only_len = out.0.display_only_to.len();
+        if post_overlay_dissem_len != pre_overlay_dissem_len
+            || post_overlay_rel_to_len != pre_overlay_rel_to_len
+            || post_overlay_display_only_len != pre_overlay_display_only_len
+        {
+            let step = next_step();
+            sink.record(marque_scheme::DecisionEvent {
+                step,
+                site: marque_scheme::DecisionSite::Page(0),
+                category: marque_scheme::CategoryId::MARKING,
+                kind: marque_scheme::DecisionKind::Mutated,
+                source: marque_scheme::DecisionSource::Supersession(
+                    "capco:supersession.dissem.h8-p145-overlays",
+                ),
+                triggered_by: None,
+            });
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            if raw != raw_snapshot.as_slice() {
+                panic!(
+                    "closure() mutated the per-portion CanonicalAttrs slice \
+                     ({} portion(s) before vs {} after) — violates the \
+                     PageRewrite read-only-attrs invariant",
+                    raw_snapshot.len(),
+                    raw.len(),
+                );
+            }
+        }
+
+        // Stage 5 — page rewrites. Emit one `RewriteScheduled` parent
+        // event per fire and one `RewriteApplied` child with
+        // `triggered_by` pointing at the parent.
+        let mut page_mask = capco_axis_mask(&out);
+        for rw in &self.page_rewrites {
+            let eligible = match &rw.trigger {
+                CategoryPredicate::Contains { category, .. } => {
+                    page_mask & (1u64 << category.0) != 0
+                }
+                CategoryPredicate::Empty { category } => page_mask & (1u64 << category.0) == 0,
+                CategoryPredicate::Custom(_) => rw
+                    .reads
+                    .iter()
+                    .chain(rw.writes.iter())
+                    .any(|c| page_mask & (1u64 << c.0) != 0),
+            };
+            if !eligible {
+                continue;
+            }
+            let fires = match &rw.trigger {
+                CategoryPredicate::Contains { category, token } => {
+                    capco_category_contains(&out, *category, *token)
+                }
+                CategoryPredicate::Empty { category } => {
+                    !capco_category_has_values(&out, *category)
+                }
+                CategoryPredicate::Custom(f) => f(&out),
+            };
+            if fires {
+                let scheduled_step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step: scheduled_step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::RewriteScheduled,
+                    source: marque_scheme::DecisionSource::PageRewrite(rw.id),
+                    triggered_by: None,
+                });
+
+                for w in rw.writes {
+                    page_mask |= 1u64 << w.0;
+                }
+                match &rw.action {
+                    CategoryAction::Clear { category } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Clear",
+                            ?category,
+                            "PageRewrite fired",
+                        );
+                        capco_category_clear(&mut out, *category);
+                        if !capco_category_has_values(&out, *category) {
+                            page_mask &= !(1u64 << category.0);
+                        }
+                    }
+                    CategoryAction::Replace { category, with } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Replace",
+                            ?category,
+                            "PageRewrite fired",
+                        );
+                        capco_category_replace(&mut out, *category, with);
+                    }
+                    CategoryAction::Promote { from, to, .. } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Promote",
+                            ?from,
+                            ?to,
+                            "PageRewrite fired (Promote — renderer-territory no-op)",
+                        );
+                    }
+                    CategoryAction::Custom(f) => {
+                        tracing::debug!(rewrite_id = rw.id, action = "Custom", "PageRewrite fired",);
+                        f(&mut out);
+                    }
+                    CategoryAction::Intent(intent) => {
+                        match apply_intent_to_marking(self, &mut out, intent) {
+                            Ok(()) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Intent",
+                                    "PageRewrite fired (CategoryAction::Intent)",
+                                );
+                            }
+                            Err(ApplyIntentError::IntentInapplicable) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Intent",
+                                    "PageRewrite no-op (intent already satisfied)",
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    rewrite_id = rw.id,
+                                    error = ?e,
+                                    "PageRewrite Intent failed at runtime — expected to be \
+                                     caught at Engine::new validation. Treating as no-op.",
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Child event: one `RewriteApplied` linked to the
+                // parent `RewriteScheduled` via `triggered_by`. We
+                // emit one applied event per scheduled fire (not one
+                // per affected portion); per-portion granularity is a
+                // Phase D refinement deferral — the current `out`
+                // accumulator stores the rolled-up marking, not the
+                // per-portion writeback.
+                let applied_step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step: applied_step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::RewriteApplied,
+                    source: marque_scheme::DecisionSource::PageRewrite(rw.id),
+                    triggered_by: Some(scheduled_step),
+                });
             }
         }
         out.0

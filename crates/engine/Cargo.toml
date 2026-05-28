@@ -142,7 +142,7 @@ batch = ["dep:futures", "dep:tokio", "dep:marque-utils", "marque-utils/concur_co
 # scheme feature is just a marker today, but propagating it keeps the
 # feature graph consistent if scheme-side code later opts into the
 # gate.
-decision-tracing = ["marque-scheme/decision-tracing"]
+decision-tracing = ["marque-scheme/decision-tracing", "marque-capco/decision-tracing"]
 # Enables the byte-identical CAPCO corpus equivalence harness in the
 # engine's integration tests; proxies to `marque-capco/corpus-harness`.
 corpus-harness = ["marque-capco/corpus-harness"]

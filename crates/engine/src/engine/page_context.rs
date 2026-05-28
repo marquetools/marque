@@ -460,6 +460,25 @@ pub(super) fn project_page_marking(
     marque_ism::ProjectedMarking::from_canonical(projected)
 }
 
+/// Sink-aware variant of [`project_page_marking`].
+///
+/// Routes through [`CapcoScheme::project_from_attrs_slice_with_sink`]
+/// so per-stage [`marque_scheme::DecisionEvent`]s flow to the
+/// engine's sink (Phase D of the decision-tracing pipeline). Only
+/// compiled when the `decision-tracing` Cargo feature is on; the
+/// off-feature build keeps the original [`project_page_marking`]
+/// signature on every call site.
+#[cfg(feature = "decision-tracing")]
+pub(super) fn project_page_marking_with_sink(
+    scheme: &CapcoScheme,
+    page_join_acc: &marque_ism::CanonicalAttrs,
+    sink: &mut dyn marque_scheme::DecisionSink,
+) -> marque_ism::ProjectedMarking {
+    let projected =
+        scheme.project_from_attrs_slice_with_sink(std::slice::from_ref(page_join_acc), sink);
+    marque_ism::ProjectedMarking::from_canonical(projected)
+}
+
 /// Compare two `CanonicalAttrs` slices for the PageFinalization
 /// read-only-attrs sentinel. Returns `Ok(())` on equality,
 /// `Err(msg)` with a content-ignorant diagnostic message on mismatch

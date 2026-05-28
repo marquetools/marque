@@ -207,6 +207,24 @@ impl Engine {
                 });
             }
         }
+        // Phase D decision-tracing — pre-init `page_marking_arc`
+        // through the sink-aware projection so the engine's sink
+        // observes per-stage projection events at end-of-document.
+        // The subsequent `dispatch_page_finalization`
+        // `get_or_insert_with` becomes a no-op (cell already populated)
+        // and the OFF-feature build is byte-identical.
+        #[cfg(feature = "decision-tracing")]
+        {
+            if !page_portions.is_empty() && page_marking_arc.is_none() {
+                page_marking_arc = Some(std::sync::Arc::new(self.with_sink(|sink| {
+                    super::page_context::project_page_marking_with_sink(
+                        &self.scheme,
+                        &page_join_acc,
+                        sink,
+                    )
+                })));
+            }
+        }
         if !page_portions.is_empty()
             && dispatch_page_finalization(
                 &self.scheme,

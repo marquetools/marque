@@ -101,6 +101,14 @@ corpus-override = []
 # count-allocs --test vocabulary_zero_alloc`.
 count-allocs = []
 decoder-harness = []
+# `decision-tracing`: enables capco-side `DecisionSink` emission inside
+# `MarkingScheme::project_with_sink` / `closure_with_sink` overrides
+# and the `bit_to_row_name` reverse lookup in `closure_table`. Off by
+# default; propagated from `marque-engine/decision-tracing` which
+# threads the sink through the engine pipeline. Constitution I
+# (SC-001 16 ms p95): OFF-mode is byte-identical to a build without
+# the feature.
+decision-tracing = ["marque-scheme/decision-tracing"]
 
 [lints]
 workspace = true

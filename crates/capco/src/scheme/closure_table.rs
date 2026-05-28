@@ -360,6 +360,54 @@ pub fn close(input: FactBitmask) -> FactBitmask {
     );
 }
 
+/// Map a single cone-mask bit position to the stable name of the
+/// first [`CLOSURE_TABLE`] row whose `cone_mask` contains it.
+///
+/// Used by Phase D decision-tracing instrumentation: when the engine
+/// diffs the pre-close vs. post-close bitmask and finds a flipped
+/// `0 → 1` bit, this helper attributes the bit to the closure-row
+/// name a `DecisionEvent` should carry.
+///
+/// # Determinism + first-match semantics
+///
+/// A cone bit can appear in multiple rows' `cone_mask` values
+/// (e.g., `NOFORN` is in Rows 1, 2, 4, 5, 6 — five different rows
+/// can add it). This helper returns the FIRST row by catalog order
+/// (Row 1 over Row 2, etc.). The first-match choice is deliberate:
+/// the catalog is ordered by §-citation precedence, so the first
+/// row to fire on a given trigger is the §-canonical attribution.
+///
+/// # Resolution
+///
+/// Returns `None` when `bit_index` is not in any row's `cone_mask`.
+/// This is the expected response for bits added by stages OTHER
+/// than `close()` (e.g., `apply_default_fill`-added bits or §H.8
+/// supersession overlays); callers should route such bits through
+/// their own attribution path.
+///
+/// `bit_index` is the position within the `u128` fact bitmask
+/// (0-127, matching [`crate::fact_bitmask::fact_bit`] constants).
+///
+/// Only compiled under the `decision-tracing` feature on
+/// `marque-engine` (propagated to `marque-scheme/decision-tracing`)
+/// — the sole caller is `project_attrs_pipeline_with_sink` in
+/// `marking_scheme_impl.rs`, which is itself feature-gated. Gating
+/// here keeps OFF-mode builds free of dead-code lints.
+#[cfg(feature = "decision-tracing")]
+#[must_use]
+pub(crate) fn bit_to_row_name(bit_index: u32) -> Option<&'static str> {
+    if bit_index >= 128 {
+        return None;
+    }
+    let bit = 1u128 << bit_index;
+    for row in CLOSURE_TABLE {
+        if (row.cone_mask & bit) != 0 {
+            return Some(row.name);
+        }
+    }
+    None
+}
+
 /// Union of every row's `trigger_mask` in [`CLOSURE_TABLE`].
 ///
 /// The `closure()` body uses this as the HOT-1 early-exit gate:
@@ -539,5 +587,60 @@ mod tests {
         let input = FactBitmask::EMPTY.with_bit(fact_bit::NATO_CLASS);
         let closed = close(input);
         assert_eq!(closed.bits(), input.bits());
+    }
+
+    /// `bit_to_row_name` resolves cone bits to their first matching
+    /// row by catalog order. NOFORN appears in Rows 1, 2, 4, 5, 6 —
+    /// the helper returns Row 1's name (the catalog-order first
+    /// match), which is the §-canonical attribution.
+    #[cfg(feature = "decision-tracing")]
+    #[test]
+    fn bit_to_row_name_returns_first_match_for_noforn() {
+        let name = bit_to_row_name(fact_bit::NOFORN);
+        assert_eq!(
+            name,
+            Some("capco:closure.dissem.hcs-o-implies-noforn-orcon"),
+            "NOFORN bit should attribute to Row 1 (HCS-O implies NOFORN+ORCON), \
+             the first catalog row whose cone_mask carries it",
+        );
+    }
+
+    /// ORCON appears in Rows 1, 2, 3 — first match by catalog order
+    /// is Row 1 (HCS-O implies NOFORN+ORCON).
+    #[cfg(feature = "decision-tracing")]
+    #[test]
+    fn bit_to_row_name_returns_first_match_for_orcon() {
+        let name = bit_to_row_name(fact_bit::ORCON);
+        assert_eq!(
+            name,
+            Some("capco:closure.dissem.hcs-o-implies-noforn-orcon"),
+        );
+    }
+
+    /// Bits that no row's `cone_mask` carries return `None` — those
+    /// bits flip via `apply_default_fill` or supersession overlays,
+    /// not via `close()`, and the engine attributes them through
+    /// other paths.
+    #[cfg(feature = "decision-tracing")]
+    #[test]
+    fn bit_to_row_name_returns_none_for_non_cone_bits() {
+        // RELIDO retired from CLOSURE_TABLE post-#704 (Row 8 / Row 9
+        // relocated to default-fill); a RELIDO flip MUST attribute
+        // through DefaultFill, not Closure.
+        assert!(bit_to_row_name(fact_bit::RELIDO).is_none());
+        // REL_TO_USA same story (Row 7 retired to default-fill).
+        assert!(bit_to_row_name(fact_bit::REL_TO_USA).is_none());
+        // Trigger atoms (SCI_HCS_O, SCI_SI_G, etc.) are never in any
+        // row's cone — they're triggers, not cone bits.
+        assert!(bit_to_row_name(fact_bit::SCI_HCS_O).is_none());
+    }
+
+    /// Out-of-range `bit_index` values (≥ 128) return `None` without
+    /// panicking — the `u128` width is the conceptual ceiling.
+    #[cfg(feature = "decision-tracing")]
+    #[test]
+    fn bit_to_row_name_returns_none_for_out_of_range() {
+        assert!(bit_to_row_name(128).is_none());
+        assert!(bit_to_row_name(255).is_none());
     }
 }

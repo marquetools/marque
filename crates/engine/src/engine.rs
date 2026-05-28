@@ -496,6 +496,36 @@ impl Engine {
         }
     }
 
+    /// Run `body` with the engine's sink locked so a Phase D scheme-
+    /// side call (`CapcoScheme::project_with_sink` /
+    /// `closure_with_sink` / `project_from_attrs_slice_with_sink`) can
+    /// thread the sink through projection-stage event emission.
+    ///
+    /// The closure receives `&mut dyn DecisionSink` (the trait object
+    /// behind the boxed sink). The lock is held for the entire `body`
+    /// invocation, which is acceptable because per-document
+    /// evaluation is single-threaded and no other code path tries to
+    /// acquire the sink lock concurrently.
+    ///
+    /// Poisoned-mutex handling: if the lock is poisoned, `body` is
+    /// invoked against a transient `NoopSink` — the projection still
+    /// runs; events for this document are silently dropped. This
+    /// matches OFF-feature semantics and avoids unwinding into Tower
+    /// middleware per Constitution VI.
+    #[inline]
+    pub(crate) fn with_sink<R>(
+        &self,
+        body: impl FnOnce(&mut dyn marque_scheme::DecisionSink) -> R,
+    ) -> R {
+        match self.sink.lock() {
+            Ok(mut guard) => body(&mut **guard),
+            Err(_poisoned) => {
+                let mut noop = marque_scheme::NoopSink;
+                body(&mut noop)
+            }
+        }
+    }
+
     /// Reset the per-document step counter to zero.
     ///
     /// Called at the top of every public lint entry point so that
