@@ -229,7 +229,7 @@ non-overlapping work:**
    `relido-implied-by-closure` adds RELIDO to a portion whose SCI/dissem
    state would imply it under closure semantics. Per-portion projection
    (`CapcoScheme::project(Scope::Portion, ...)`) is identity by design
-   (`marking_scheme_impl.rs::project`) — the pipeline does not run at
+   (`CapcoScheme::project`) — the pipeline does not run at
    portion scope, so there is nothing to instrument there.
 2. **Scheme layer (per page-join).**
    `CapcoScheme::project_attrs_pipeline_with_sink` runs `close →

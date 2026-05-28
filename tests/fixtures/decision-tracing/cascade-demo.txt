@@ -14,8 +14,8 @@ banner-rollup rules detect the mismatch.
 
 (U) Each portion below is bare-classified with a caveated token but omits
 explicit NOFORN. On this dense document the scheme-layer closure/default-fill
-bitmask-diff is collapsed (those cone bits are already set by the join); the
-PageRewrite chain carries the cascade — stripping REL TO, the FD&R family,
+bitmask-diff sources do NOT fire (those cone bits are already set by the join);
+the PageRewrite chain carries the cascade — stripping REL TO, the FD&R family,
 and DISPLAY ONLY tokens that NOFORN supersedes.
 
 (S//SI) Imagery interpretation of facility complex BLACKSITE-3 indicates
