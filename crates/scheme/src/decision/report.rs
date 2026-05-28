@@ -48,9 +48,13 @@ pub struct DecisionReport {
     /// `DecisionSite::Portion(i as u32)`. Portions never seen carry
     /// zero. Trailing zeros are not trimmed.
     pub by_portion: Vec<u64>,
-    /// Reconstructed cascade chains rooted at events with
-    /// `triggered_by == None`. Empty for reports produced by a
-    /// counting sink.
+    /// Reconstructed cascade chains. An event is a chain root when
+    /// any of these hold: `triggered_by == None`; the parent step is
+    /// not present in the recorded event stream (defensive against
+    /// partial captures); or the event is its own parent
+    /// (`triggered_by == Some(own_step)`, the self-edge case the
+    /// adjacency builder drops). Empty for reports produced by a
+    /// counting sink (no event stream to reconstruct from).
     pub cascade_chains: Vec<CascadeChain>,
     /// Longest path from root to leaf across all cascade chains.
     /// Zero when no chain has any descendants (every event is a root).
@@ -68,9 +72,11 @@ pub struct DecisionReport {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CascadeChain {
-    /// Step number of the root event (the cascade's `triggered_by`
-    /// is `None`, or its parent step is not present in the recorded
-    /// stream).
+    /// Step number of the root event. The event qualifies as a root
+    /// when `triggered_by == None`, when its parent step is not
+    /// present in the recorded stream (defensive against partial
+    /// captures), or when it is its own parent (self-edge dropped at
+    /// adjacency build).
     pub root_event: u32,
     /// Site of the root event. Carried explicitly so reporting
     /// surfaces don't have to index back into the full event stream.

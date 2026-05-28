@@ -147,6 +147,7 @@ impl Engine {
                 self,
                 candidate,
                 &recognized.attrs,
+                &page_portions,
                 &mut diagnostics,
             );
 
@@ -216,7 +217,10 @@ impl Engine {
         #[cfg(feature = "decision-tracing")]
         {
             if !page_portions.is_empty() && page_marking_arc.is_none() {
-                page_marking_arc = Some(std::sync::Arc::new(self.with_sink(|sink| {
+                // Use the step-remapping adapter so scheme-side local
+                // step IDs translate into the engine's global step
+                // space — see `Engine::with_remapping_sink`.
+                page_marking_arc = Some(std::sync::Arc::new(self.with_remapping_sink(|sink| {
                     super::page_context::project_page_marking_with_sink(
                         &self.scheme,
                         &page_join_acc,

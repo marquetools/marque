@@ -545,6 +545,86 @@ impl Engine {
         self.next_step
             .store(0, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// Run `body` with a step-remapping sink wrapping the engine's
+    /// real sink.
+    ///
+    /// Scheme-side `project_with_sink` / `closure_with_sink`
+    /// overrides emit events with a **local** step counter starting
+    /// at zero (the trait signature receives `&mut dyn DecisionSink`
+    /// and has no visibility into the engine's per-document
+    /// `next_step` counter). Without remapping, those local IDs
+    /// would collide with engine-assigned IDs in the merged stream,
+    /// breaking `RecordingSink::into_report` cascade reconstruction.
+    ///
+    /// `StepRemappingSink` translates each scheme-emitted event by
+    /// minting a fresh global step via `Engine::next_step` and
+    /// looking up the event's `triggered_by` (if any) in a per-call
+    /// `local → global` map so scheme-internal cascade edges
+    /// continue to resolve correctly after remapping. The map is
+    /// dropped when `body` returns.
+    #[inline]
+    pub(crate) fn with_remapping_sink<R>(
+        &self,
+        body: impl FnOnce(&mut StepRemappingSink<'_>) -> R,
+    ) -> R {
+        self.with_sink(|inner| {
+            let mut remapper = StepRemappingSink {
+                inner,
+                next_step: &self.next_step,
+                local_to_global: std::collections::HashMap::new(),
+            };
+            body(&mut remapper)
+        })
+    }
+}
+
+/// Adapter that translates scheme-emitted [`marque_scheme::DecisionEvent`]s
+/// into the engine's global step-ID space before forwarding to the
+/// real sink.
+///
+/// The scheme-side `project_with_sink` / `closure_with_sink` overrides
+/// use a local counter starting at zero (the trait carries no global
+/// step-minter handle). This adapter:
+///
+/// 1. Mints a fresh global step from
+///    [`Engine::next_step`](Engine::emit) for each event the scheme
+///    emits.
+/// 2. Records `local → global` in a per-call `HashMap` so subsequent
+///    events whose `triggered_by` references an earlier local step
+///    resolve to the right global parent.
+/// 3. Forwards the rewritten event to the wrapped real sink.
+///
+/// The adapter is created and dropped within
+/// [`Engine::with_remapping_sink`]; the map's lifetime never escapes
+/// the call.
+#[cfg(feature = "decision-tracing")]
+pub(crate) struct StepRemappingSink<'a> {
+    inner: &'a mut dyn marque_scheme::DecisionSink,
+    next_step: &'a std::sync::atomic::AtomicU32,
+    local_to_global: std::collections::HashMap<u32, u32>,
+}
+
+#[cfg(feature = "decision-tracing")]
+impl marque_scheme::DecisionSink for StepRemappingSink<'_> {
+    fn record(&mut self, mut event: marque_scheme::DecisionEvent) {
+        let local_step = event.step;
+        let global_step = self
+            .next_step
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.local_to_global.insert(local_step, global_step);
+        // Remap triggered_by if the parent's local step was recorded
+        // during this call. Parents from outside the scheme call
+        // (engine-emitted siblings) won't be in the map; resolving
+        // to None preserves cascade-chain rootedness — the missing-
+        // parent case is already a documented root condition for
+        // `RecordingSink::into_report`.
+        event.triggered_by = event
+            .triggered_by
+            .and_then(|t| self.local_to_global.get(&t).copied());
+        event.step = global_step;
+        self.inner.record(event);
+    }
 }
 
 // Constitution VI: `Engine` must remain `Send + Sync` so

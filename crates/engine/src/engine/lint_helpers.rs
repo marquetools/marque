@@ -61,7 +61,10 @@ pub(super) fn handle_page_break_candidate(
     #[cfg(feature = "decision-tracing")]
     {
         if !page_portions.is_empty() && page_marking_arc.is_none() {
-            *page_marking_arc = Some(Arc::new(engine.with_sink(|sink| {
+            // Step-remapping wrapper translates scheme-side local
+            // step IDs into the engine's global step space; see
+            // `Engine::with_remapping_sink`.
+            *page_marking_arc = Some(Arc::new(engine.with_remapping_sink(|sink| {
                 project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
             })));
         }
@@ -209,6 +212,28 @@ pub(super) fn dispatch_rules_for_marking(
     use marque_ism::MarkingType;
     use marque_rules::RuleContext;
 
+    // Decision-tracing site discriminator (Copilot-flagged correctness
+    // fix): `DecisionSite::Portion(idx)` is documented as a portion
+    // ordinal, NOT a byte offset. Earlier wiring populated it with
+    // `candidate.span.start`, which would have caused `CountingSink`
+    // and `DecisionReport::by_portion` to allocate vectors sized to
+    // the largest byte offset seen — pathological on real inputs.
+    // Now: portions use their per-page ordinal (`page_portions.len()`
+    // is the upcoming index because the candidate hasn't been pushed
+    // yet); banner / CAB candidates route to `DecisionSite::Banner`;
+    // page-breaks never reach here.
+    #[cfg(feature = "decision-tracing")]
+    let decision_site = match candidate.kind {
+        MarkingType::Portion => {
+            marque_scheme::DecisionSite::Portion(page_portions.len().min(u32::MAX as usize) as u32)
+        }
+        MarkingType::Banner | MarkingType::Cab => marque_scheme::DecisionSite::Banner,
+        // `MarkingType` is `#[non_exhaustive]`; PageBreak doesn't
+        // reach here (handled by `handle_page_break_candidate`) and
+        // any future kind falls back to a document-scope event.
+        _ => marque_scheme::DecisionSite::Document,
+    };
+
     let ctx_page_portions: Option<Arc<Box<[marque_ism::CanonicalAttrs]>>> = None;
     let ctx_page_marking = if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
         Some(
@@ -222,7 +247,12 @@ pub(super) fn dispatch_rules_for_marking(
                     // signature with zero extra work on the hot path.
                     #[cfg(feature = "decision-tracing")]
                     {
-                        Arc::new(engine.with_sink(|sink| {
+                        // Use the step-remapping adapter so scheme-side
+                        // local step IDs (0, 1, 2, …) are translated
+                        // into the engine's global step space — keeps
+                        // cascade reconstruction sound across the
+                        // engine/scheme boundary.
+                        Arc::new(engine.with_remapping_sink(|sink| {
                             project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
                         }))
                     }
@@ -268,20 +298,16 @@ pub(super) fn dispatch_rules_for_marking(
             // per-portion per-rule-check call (NOT per-axis); the
             // `EvaluatedSubstantive` refinement is deferred per
             // `plans/i-see-this-as-jiggly-lobster.md` "Open items"
-            // §1. The site index is captured by candidate.span's
-            // start byte offset truncated into `u32` — engine docs
-            // measured in portion-index order would require a
-            // separate counter; the byte-offset approximation lets
-            // sinks correlate events back to the source location
-            // without an additional integer threaded through the
-            // dispatch.
+            // §1. Site comes from the kind-discriminated
+            // `decision_site` computed above; portions carry their
+            // per-page ordinal, banner/CAB candidates carry
+            // `DecisionSite::Banner`.
             #[cfg(feature = "decision-tracing")]
             {
                 let predicate_id: &'static str = rule_id.predicate_id();
-                let site_idx = candidate.span.start.min(u32::MAX as usize) as u32;
                 engine.emit(|step| marque_scheme::DecisionEvent {
                     step,
-                    site: marque_scheme::DecisionSite::Portion(site_idx),
+                    site: decision_site,
                     category: marque_scheme::CategoryId::MARKING,
                     kind: marque_scheme::DecisionKind::Evaluated,
                     source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
@@ -332,10 +358,9 @@ pub(super) fn dispatch_rules_for_marking(
                 let any_fix = diags.iter().any(|d| d.fix.is_some());
                 if any_fix {
                     let predicate_id: &'static str = rule_id.predicate_id();
-                    let site_idx = candidate.span.start.min(u32::MAX as usize) as u32;
                     engine.emit(|step| marque_scheme::DecisionEvent {
                         step,
-                        site: marque_scheme::DecisionSite::Portion(site_idx),
+                        site: decision_site,
                         category: marque_scheme::CategoryId::MARKING,
                         kind: marque_scheme::DecisionKind::Mutated,
                         source: marque_scheme::DecisionSource::RuleCheck(predicate_id),

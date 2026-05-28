@@ -333,12 +333,13 @@ impl MarkingScheme for CapcoScheme {
     /// The trait signature receives `&mut dyn DecisionSink` directly
     /// (the engine's per-document step counter is not visible here).
     /// Events emitted within this call use a **local step counter**
-    /// starting at `0`; `triggered_by` references between scheme-
-    /// emitted events resolve correctly within the call, but they
-    /// will NOT correlate with engine-emitted events from the same
-    /// document. Cascade chains across the scheme/engine boundary
-    /// are a Phase D refinement deferral — documented at the
-    /// emission sites.
+    /// starting at `0`; the engine wraps the sink it passes in a
+    /// `StepRemappingSink` adapter (`Engine::with_remapping_sink`)
+    /// that mints a fresh global step for each scheme-emitted event
+    /// and rewrites `triggered_by` references through a per-call
+    /// `local → global` map, so cascade chains across the
+    /// scheme/engine boundary stay sound after merging into the
+    /// engine's stream.
     ///
     /// Only compiled under the `decision-tracing` feature; without it,
     /// the default trait impl (delegating to [`Self::project`]) is
@@ -1502,6 +1503,15 @@ impl CapcoScheme {
             // came from either Row 8 or Row 9 — discriminated by the
             // post-close bitmask below).
             //
+            // Kind taxonomy: default-fill emissions use
+            // `DecisionKind::Mutated` rather than `ClosureFired`.
+            // The `ClosureFired` variant is reserved for
+            // `ClosureRule` firings (the Kleene fixpoint inside
+            // `close()`); default-fill is a distinct grammar stage
+            // that adds bits when an axis was absent — semantically
+            // a mutation, not a closure firing. Per-row attribution
+            // still flows through `DecisionSource::DefaultFill(...)`.
+            //
             // The `capco:default-fill.*` strings here and the
             // `capco:supersession.*` string further down are
             // **trace identifiers**, not `RuleId` wire strings.
@@ -1522,7 +1532,7 @@ impl CapcoScheme {
                     step,
                     site: marque_scheme::DecisionSite::Page(0),
                     category: marque_scheme::CategoryId::MARKING,
-                    kind: marque_scheme::DecisionKind::ClosureFired,
+                    kind: marque_scheme::DecisionKind::Mutated,
                     source: marque_scheme::DecisionSource::DefaultFill(
                         "capco:default-fill.dissem.caveated-implies-noforn",
                     ),
@@ -1535,7 +1545,7 @@ impl CapcoScheme {
                     step,
                     site: marque_scheme::DecisionSite::Page(0),
                     category: marque_scheme::CategoryId::MARKING,
-                    kind: marque_scheme::DecisionKind::ClosureFired,
+                    kind: marque_scheme::DecisionKind::Mutated,
                     source: marque_scheme::DecisionSource::DefaultFill(
                         "capco:default-fill.rel-to.nato-implies-rel-to-usa-nato",
                     ),
@@ -1560,7 +1570,7 @@ impl CapcoScheme {
                     step,
                     site: marque_scheme::DecisionSite::Page(0),
                     category: marque_scheme::CategoryId::MARKING,
-                    kind: marque_scheme::DecisionKind::ClosureFired,
+                    kind: marque_scheme::DecisionKind::Mutated,
                     source: marque_scheme::DecisionSource::DefaultFill(row_name),
                     triggered_by: None,
                 });
