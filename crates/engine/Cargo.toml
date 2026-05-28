@@ -71,6 +71,26 @@ required-features = ["batch"]
 name = "decision_tracing_smoke"
 required-features = ["decision-tracing"]
 
+# Phase F at-scale integration test for engine-side decision-tracing.
+# Pins event-volume, wiring-coverage, content-ignorance, and cascade
+# reconstruction on a 10 KB representative input. Same gating shape as
+# the Phase C smoke above; the inner `#![cfg]` in the source file is
+# belt-and-braces.
+[[test]]
+name = "decision_tracing"
+required-features = ["decision-tracing"]
+
+# Phase F paired-bench for decision-tracing overhead. Mirrors
+# `deadline_overhead`'s sample_size=500 / measurement_time=10s tuning
+# so the constitutional 2% ratio gate (vs. `lint_latency::lint_10kb`
+# under the no-feature build) has the same noise headroom as the
+# deadline-overhead gate. Gated `required-features = ["decision-tracing"]`
+# so the bench only compiles when the feature is enabled.
+[[bench]]
+harness = false
+name = "decision_tracing_overhead"
+required-features = ["decision-tracing"]
+
 [dependencies]
 aho-corasick = { workspace = true }
 # The engine slices pre-fix bytes at `span` and threads them into
