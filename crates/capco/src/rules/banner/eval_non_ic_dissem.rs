@@ -93,7 +93,6 @@ pub(super) fn evaluate_non_ic_dissem_banner_rollup(
                 citation: CITATION,
                 original: String::new(),
                 replacement,
-                confidence: 0.9,
                 migration_ref: None,
             })]
         }

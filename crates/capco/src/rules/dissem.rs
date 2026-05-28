@@ -126,7 +126,6 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
                 citation: capco_section(SectionLetter::F, 35),
                 original: token.text.to_string(),
                 replacement: entry.replacement.to_owned(),
-                confidence: entry.confidence,
                 migration_ref: Some(entry.reference),
             }));
         }

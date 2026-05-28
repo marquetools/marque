@@ -183,7 +183,6 @@ pub(super) fn evaluate_sci_banner_rollup(
         citation: CITATION,
         original,
         replacement,
-        confidence: 0.9,
         migration_ref: None,
     })]
 }
