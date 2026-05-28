@@ -467,6 +467,15 @@ pub(super) fn synthesize_fixes(
         // Within-group audit-collapse scaling. The owning diagnostic's
         // `rule` axis is scaled down so `combined()` equals the
         // minimum across the group.
+        //
+        // Post-PR-A: every strict-path member has `combined() = 1.0`, so
+        // a group composed entirely of strict-path members yields
+        // `min_combined = 1.0`, the guard below is false, and this
+        // branch is a no-op. The scaling stays live because a
+        // mixed-provenance group — a decoder-path member
+        // (`recognition < 1.0`) sharing a candidate span with a
+        // strict-path member — is still possible once the decoder lands,
+        // and the audit envelope must reflect the weaker member.
         let combined_intent_combined = combined_intent.confidence.combined();
         if min_combined < combined_intent_combined && combined_intent.confidence.rule > 0.0 {
             let scaled_rule = (min_combined
