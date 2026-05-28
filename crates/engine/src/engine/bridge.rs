@@ -12,6 +12,27 @@ pub(super) fn apply_constraint_bridge_for_marking(
 
     let marking = marque_capco::CapcoMarking::from(attrs.clone());
     for v in engine.scheme.validate(&marking) {
+        // Phase C decision-tracing — `ConstraintFired` event per
+        // emitted `ConstraintViolation`. The non-firing path
+        // (constraint evaluated but did NOT fire) is the noisy
+        // case and is deferred per
+        // `plans/i-see-this-as-jiggly-lobster.md` insertion-point
+        // table. `constraint_label` is the catalog-row stable
+        // identifier and IS the predicate id (see
+        // `Engine::bridge_constraint_diagnostic` doc-comment).
+        #[cfg(feature = "decision-tracing")]
+        {
+            let label: &'static str = v.constraint_label;
+            let site_idx = candidate.span.start.min(u32::MAX as usize) as u32;
+            engine.emit(|step| marque_scheme::DecisionEvent {
+                step,
+                site: marque_scheme::DecisionSite::Portion(site_idx),
+                category: marque_scheme::CategoryId::MARKING,
+                kind: marque_scheme::DecisionKind::ConstraintFired,
+                source: marque_scheme::DecisionSource::Constraint(label),
+                triggered_by: None,
+            });
+        }
         if let Some(diag) = engine.bridge_constraint_diagnostic(&v, attrs, candidate) {
             diagnostics.push(diag);
         }

@@ -63,6 +63,14 @@ harness = false
 name = "throughput_pages"
 required-features = ["batch"]
 
+# Phase C smoke test for engine-side decision-tracing. Gated by
+# `required-features` so `cargo test` (without `--features
+# decision-tracing`) skips compilation outright rather than building
+# a binary with zero discoverable tests behind an inner `#![cfg]`.
+[[test]]
+name = "decision_tracing_smoke"
+required-features = ["decision-tracing"]
+
 [dependencies]
 aho-corasick = { workspace = true }
 # The engine slices pre-fix bytes at `span` and threads them into
@@ -124,6 +132,17 @@ static_assertions = { workspace = true }
 [features]
 default = ["batch"]
 batch = ["dep:futures", "dep:tokio", "dep:marque-utils", "marque-utils/concur_control"]
+# Enables the engine-side threading of a `DecisionSink` through the
+# evaluator (Phase C of the decision-tracing pipeline). When OFF (the
+# default), the engine carries no sink field and no per-call-site emit
+# branches — Constitution Principle I (SC-001 16 ms p95) is preserved
+# by construction. When ON, the engine threads a caller-supplied sink
+# (default `NoopSink`) through every instrumented decision point.
+# Proxies to `marque-scheme/decision-tracing` for symmetry — the
+# scheme feature is just a marker today, but propagating it keeps the
+# feature graph consistent if scheme-side code later opts into the
+# gate.
+decision-tracing = ["marque-scheme/decision-tracing"]
 # Enables the byte-identical CAPCO corpus equivalence harness in the
 # engine's integration tests; proxies to `marque-capco/corpus-harness`.
 corpus-harness = ["marque-capco/corpus-harness"]

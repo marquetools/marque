@@ -180,6 +180,18 @@ impl Engine {
             pass_finalization_rule_indices,
             fast_path_severities,
             emitted_id_overrides,
+            // Default to `NoopSink`. Constitution Principle I — the
+            // sink is `#[cfg(feature = "decision-tracing")]`-only, so
+            // the OFF-feature build has no field and no allocation.
+            // ON-feature builds default to the ZST `NoopSink` which
+            // monomorphizes the boxed-dyn vtable to a no-op record
+            // body; callers that want real instrumentation call
+            // [`Engine::with_decision_sink`] to install a non-Noop
+            // sink.
+            #[cfg(feature = "decision-tracing")]
+            sink: std::sync::Mutex::new(Box::new(marque_scheme::NoopSink)),
+            #[cfg(feature = "decision-tracing")]
+            next_step: std::sync::atomic::AtomicU32::new(0),
         })
     }
 
@@ -227,6 +239,41 @@ impl Engine {
     #[must_use = "with_strict_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_strict_recognizer(mut self) -> Self {
         self.recognizer = EngineRecognizer::Strict(StrictRecognizer::new());
+        self
+    }
+
+    /// Install a [`DecisionSink`](marque_scheme::DecisionSink) on the
+    /// engine. Every instrumented decision point (per-rule dispatch,
+    /// constraint firing, banner roll-up, scheme-side
+    /// `project_with_sink` / `closure_with_sink`) emits one
+    /// [`DecisionEvent`](marque_scheme::DecisionEvent) through this
+    /// sink during a subsequent [`Engine::lint`] call.
+    ///
+    /// Only available when the engine is built with the
+    /// `decision-tracing` Cargo feature. With the feature off the
+    /// method does not exist and the engine carries no sink field —
+    /// Constitution Principle I (SC-001 16 ms p95) is preserved by
+    /// the absence of any per-call-site branch on the hot path.
+    ///
+    /// Returns the engine by value so callers can chain:
+    ///
+    /// ```ignore
+    /// let sink = marque_scheme::RecordingSink::new();
+    /// let engine = Engine::new(config, rules, scheme)?
+    ///     .with_decision_sink(sink);
+    /// ```
+    ///
+    /// Replacing the sink resets the per-document step counter to
+    /// zero — events recorded after this call start a fresh cascade
+    /// graph.
+    #[cfg(feature = "decision-tracing")]
+    #[must_use = "with_decision_sink returns a new Engine; the returned value must be bound for the sink to take effect"]
+    pub fn with_decision_sink<S>(mut self, sink: S) -> Self
+    where
+        S: SyncDecisionSink + 'static,
+    {
+        self.sink = std::sync::Mutex::new(Box::new(sink));
+        self.next_step = std::sync::atomic::AtomicU32::new(0);
         self
     }
 

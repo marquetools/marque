@@ -203,6 +203,28 @@ impl std::fmt::Display for InvalidThreshold {
 
 impl std::error::Error for InvalidThreshold {}
 
+/// Marker trait combining [`marque_scheme::DecisionSink`] with the
+/// `Send + Sync` bounds the engine needs to store a boxed sink behind
+/// a `Mutex` without requiring those bounds at the [`marque_scheme`]
+/// trait level (Phase C of the decision-tracing pipeline).
+///
+/// The blanket impl makes every `Send + Sync` `DecisionSink` (the
+/// built-in [`NoopSink`](marque_scheme::NoopSink),
+/// [`CountingSink`](marque_scheme::CountingSink),
+/// [`RecordingSink`](marque_scheme::RecordingSink), plus any
+/// downstream sink that holds only `Send + Sync` data) usable as
+/// [`Engine::with_decision_sink`] input without any additional
+/// declaration on the sink side.
+///
+/// Only compiled when the `decision-tracing` Cargo feature is on. With
+/// the feature off, the engine carries no sink field and this trait
+/// is unused.
+#[cfg(feature = "decision-tracing")]
+pub trait SyncDecisionSink: marque_scheme::DecisionSink + Send + Sync {}
+
+#[cfg(feature = "decision-tracing")]
+impl<T: marque_scheme::DecisionSink + Send + Sync> SyncDecisionSink for T {}
+
 /// A configured engine instance.
 pub struct Engine {
     config: Config,
@@ -404,7 +426,105 @@ pub struct Engine {
     /// `[rules] "capco:marking.sci.<row>" = "<severity>"`; the bridge
     /// dispatches per-row in `bridge_sci_per_system_diagnostics`.
     emitted_id_overrides: dispatch::EmittedIdOverrides,
+
+    /// Boxed [`DecisionSink`] threaded through every instrumented
+    /// engine decision point (Phase C of the decision-tracing
+    /// pipeline).
+    ///
+    /// Defaults to [`marque_scheme::NoopSink`] when no caller supplies
+    /// one via [`Engine::with_decision_sink`]. The `Mutex` is the
+    /// thread-safety boundary: `Engine::lint` takes `&self`, so the
+    /// sink needs interior mutability AND `Engine: Send + Sync` must
+    /// hold for the `BatchEngine` path. The lock contention is
+    /// trivial — at most one sink event per microsecond in the worst
+    /// case, no callers wait — and pays for the broader API surface
+    /// (any `Send + Sync` `DecisionSink` is usable without changing
+    /// the trait's bound shape in `marque-scheme`).
+    ///
+    /// Only present when the `decision-tracing` Cargo feature is on.
+    /// With the feature off the field doesn't exist and every
+    /// emission site is `#[cfg(feature = "decision-tracing")]`-gated,
+    /// so the engine's per-document hot path carries no extra
+    /// branches.
+    #[cfg(feature = "decision-tracing")]
+    sink: std::sync::Mutex<Box<dyn SyncDecisionSink>>,
+
+    /// Monotone per-document step counter assigned by [`Engine::emit`].
+    /// Used by [`marque_scheme::DecisionEvent::triggered_by`] consumers
+    /// (e.g., [`marque_scheme::RecordingSink::into_report`]) to
+    /// reconstruct cascade chains.
+    ///
+    /// Atomic so the increment is `Send + Sync`-clean without
+    /// double-locking the sink mutex; `Ordering::Relaxed` is
+    /// sufficient because step ordering is established by the engine's
+    /// single-threaded per-document execution (sink events from one
+    /// document never race against another document's events).
+    ///
+    /// Only present when the `decision-tracing` Cargo feature is on.
+    #[cfg(feature = "decision-tracing")]
+    next_step: std::sync::atomic::AtomicU32,
 }
+
+#[cfg(feature = "decision-tracing")]
+impl Engine {
+    /// Mint the next monotone step counter and record one
+    /// [`DecisionEvent`](marque_scheme::DecisionEvent) on the engine's
+    /// sink.
+    ///
+    /// The closure receives the freshly-minted `step` and returns the
+    /// constructed event. Wrapping construction in a closure keeps the
+    /// per-emission cost off the OFF-feature build entirely — every
+    /// call site is `#[cfg(feature = "decision-tracing")]`-gated so the
+    /// closure body never compiles into a release artifact without the
+    /// feature.
+    ///
+    /// Lock contention on the sink mutex is negligible: per-document
+    /// evaluation is single-threaded, so the only path that could
+    /// contend is a hypothetical `BatchEngine` worker sharing the
+    /// engine across documents — and the worker pool holds one engine
+    /// per worker today. Poison from a panic-while-holding is treated
+    /// as a no-op record (the engine drops the event); the panic
+    /// itself surfaces through the caller's normal unwind path.
+    #[inline]
+    pub(crate) fn emit(&self, ev_builder: impl FnOnce(u32) -> marque_scheme::DecisionEvent) {
+        let step = self
+            .next_step
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let event = ev_builder(step);
+        if let Ok(mut sink) = self.sink.lock() {
+            sink.record(event);
+        }
+    }
+
+    /// Reset the per-document step counter to zero.
+    ///
+    /// Called at the top of every public lint entry point so that
+    /// step IDs and `triggered_by` references resolve correctly
+    /// within a single document. Without the reset a long-lived
+    /// engine would emit monotonically growing step IDs across
+    /// documents, breaking [`marque_scheme::RecordingSink::into_report`]'s
+    /// cascade-chain reconstruction (which assumes step IDs index
+    /// into the current document's event stream).
+    ///
+    /// `Ordering::Relaxed` is sufficient: per-document evaluation is
+    /// single-threaded, so the reset only needs to be visible to the
+    /// subsequent `emit` calls on the same thread, which is guaranteed
+    /// by program order.
+    #[inline]
+    pub(crate) fn reset_decision_step_counter(&self) {
+        self.next_step
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+// Constitution VI: `Engine` must remain `Send + Sync` so
+// `BatchEngine` can share it across Tokio workers. The Phase C
+// decision-tracing fields (`Mutex<Box<dyn SyncDecisionSink>>` and
+// `AtomicU32`) preserve both bounds by construction; the invariant
+// is pinned in
+// `crates/engine/tests/decision_tracing_smoke.rs` via
+// `static_assertions::assert_impl_all!(Engine: Send, Sync)` (kept
+// test-only because `static_assertions` is a `dev-dependency`).
 
 #[derive(Clone)]
 enum EngineRecognizer {

@@ -41,6 +41,13 @@ impl Engine {
         use marque_core::Scanner;
         use marque_ism::MarkingType;
 
+        // Decision-tracing: zero step IDs at the document boundary so
+        // a long-lived engine doesn't leak step IDs across documents.
+        // `triggered_by` references resolve into the current document's
+        // event stream only.
+        #[cfg(feature = "decision-tracing")]
+        self.reset_decision_step_counter();
+
         if deadline_expired(opts.deadline) {
             return (
                 LintResult {
@@ -183,6 +190,23 @@ impl Engine {
             }
         }
 
+        // Phase C decision-tracing — `Evaluated` event at the
+        // end-of-document banner roll-up boundary. Paired with
+        // the per-PageBreak emission in `handle_page_break_candidate`
+        // so every page boundary (PageBreak or EOD) is observed.
+        #[cfg(feature = "decision-tracing")]
+        {
+            if !page_portions.is_empty() {
+                self.emit(|step| marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Banner,
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Evaluated,
+                    source: marque_scheme::DecisionSource::BannerRollup,
+                    triggered_by: None,
+                });
+            }
+        }
         if !page_portions.is_empty()
             && dispatch_page_finalization(
                 &self.scheme,

@@ -33,6 +33,23 @@ pub(super) fn handle_page_break_candidate(
         return Ok(false);
     }
 
+    // Phase C decision-tracing — `Evaluated` event at the page
+    // boundary marking the banner roll-up dispatch entry. One
+    // event per page boundary (PageBreak or EOD); per-axis
+    // refinement deferred.
+    #[cfg(feature = "decision-tracing")]
+    {
+        if !page_portions.is_empty() {
+            engine.emit(|step| marque_scheme::DecisionEvent {
+                step,
+                site: marque_scheme::DecisionSite::Banner,
+                category: marque_scheme::CategoryId::MARKING,
+                kind: marque_scheme::DecisionKind::Evaluated,
+                source: marque_scheme::DecisionSource::BannerRollup,
+                triggered_by: None,
+            });
+        }
+    }
     if !page_portions.is_empty()
         && dispatch_page_finalization(
             &engine.scheme,
@@ -215,6 +232,31 @@ pub(super) fn dispatch_rules_for_marking(
                 }
             }
             let rule_id = rule.id();
+            // Phase C decision-tracing emission — `Evaluated`
+            // event before the rule body runs. Granularity is
+            // per-portion per-rule-check call (NOT per-axis); the
+            // `EvaluatedSubstantive` refinement is deferred per
+            // `plans/i-see-this-as-jiggly-lobster.md` "Open items"
+            // §1. The site index is captured by candidate.span's
+            // start byte offset truncated into `u32` — engine docs
+            // measured in portion-index order would require a
+            // separate counter; the byte-offset approximation lets
+            // sinks correlate events back to the source location
+            // without an additional integer threaded through the
+            // dispatch.
+            #[cfg(feature = "decision-tracing")]
+            {
+                let predicate_id: &'static str = rule_id.predicate_id();
+                let site_idx = candidate.span.start.min(u32::MAX as usize) as u32;
+                engine.emit(|step| marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Portion(site_idx),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Evaluated,
+                    source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
+                    triggered_by: None,
+                });
+            }
             let mut diags = if rule.trusted() {
                 rule.check(attrs, &ctx)
             } else {
@@ -246,6 +288,30 @@ pub(super) fn dispatch_rules_for_marking(
                     None => true,
                 }
             });
+            // Phase C decision-tracing — `Mutated` event when the
+            // rule produced a fix-carrying diagnostic that survived
+            // severity-override filtering. Emitting after
+            // `retain_mut` ensures the event reflects diagnostics
+            // the engine will actually surface, not ones suppressed
+            // by `Severity::Off`. Diagnostics without a fix are
+            // observations, not mutations, and are covered by the
+            // pre-check `Evaluated` emission above.
+            #[cfg(feature = "decision-tracing")]
+            {
+                let any_fix = diags.iter().any(|d| d.fix.is_some());
+                if any_fix {
+                    let predicate_id: &'static str = rule_id.predicate_id();
+                    let site_idx = candidate.span.start.min(u32::MAX as usize) as u32;
+                    engine.emit(|step| marque_scheme::DecisionEvent {
+                        step,
+                        site: marque_scheme::DecisionSite::Portion(site_idx),
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::Mutated,
+                        source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
+                        triggered_by: None,
+                    });
+                }
+            }
             diagnostics.extend(diags);
         }
     }
