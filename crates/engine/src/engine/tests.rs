@@ -1,6 +1,7 @@
 use super::dispatch::{canonicalize_rule_overrides, levenshtein, suggest_closest};
 use super::fix::{TwoPassFixer, engine_promotion_token, partition_diags_by_phase};
 use super::fix_impl::Pass1Result;
+#[cfg(debug_assertions)]
 use super::page_context::check_portions_unchanged;
 use super::synthesis::{
     HEURISTIC_RECOGNITION_CAP, build_r002_diagnostic, find_containing_marking, lookup_marking,

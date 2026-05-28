@@ -219,7 +219,7 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
 // module makes the comparison + error-message-construction paths
 // of `check_portions_unchanged` visible to the coverage tool.
 
-#[cfg(test)]
+#[cfg(all(test, debug_assertions))]
 mod sentinel_tests {
     use super::check_portions_unchanged;
     use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
