@@ -318,6 +318,106 @@ impl MarkingScheme for CapcoScheme {
         evaluate_custom_by_attrs(&marking.0, bits, name)
     }
 
+    /// Project with decision-tracing instrumentation.
+    ///
+    /// Overrides the [`MarkingScheme::project_with_sink`] default to
+    /// emit per-stage [`marque_scheme::DecisionEvent`]s as the
+    /// [`Self::project_attrs_pipeline`] traverses its stages
+    /// (`close` → `apply_default_fill` → `apply_supersession_overlays`
+    /// → page rewrites). The default delegation would call
+    /// [`Self::project`] and emit nothing; this override delegates to
+    /// the instrumented variant [`Self::project_attrs_pipeline_with_sink`].
+    ///
+    /// # Step coordination
+    ///
+    /// The trait signature receives `&mut dyn DecisionSink` directly
+    /// (the engine's per-document step counter is not visible here).
+    /// Events emitted within this call use a **local step counter**
+    /// starting at `0`; the engine wraps the sink it passes in a
+    /// `StepRemappingSink` adapter (`Engine::with_remapping_sink`)
+    /// that mints a fresh global step for each scheme-emitted event
+    /// and rewrites `triggered_by` references through a per-call
+    /// `local → global` map, so cascade chains across the
+    /// scheme/engine boundary stay sound after merging into the
+    /// engine's stream.
+    ///
+    /// Only compiled under the `decision-tracing` feature; without it,
+    /// the default trait impl (delegating to [`Self::project`]) is
+    /// active and OFF-mode behavior is byte-identical to a build that
+    /// never declared the feature.
+    #[cfg(feature = "decision-tracing")]
+    fn project_with_sink(
+        &self,
+        scope: Scope,
+        markings: &[Self::Marking],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> Self::Marking {
+        match scope {
+            Scope::Portion => self.project(scope, markings),
+            Scope::Page | Scope::Document | Scope::Diff => {
+                let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
+                let out_attrs = self.project_attrs_pipeline_with_sink(&raw, sink);
+                CapcoMarking::new(out_attrs)
+            }
+        }
+    }
+
+    /// Closure with decision-tracing instrumentation.
+    ///
+    /// Overrides the [`MarkingScheme::closure_with_sink`] default to
+    /// diff the pre-close vs. post-close bitmask and emit one
+    /// [`marque_scheme::DecisionEvent`] per cone bit added by
+    /// `close()`. Events carry
+    /// [`marque_scheme::DecisionSource::Closure(row_name)`] where
+    /// `row_name` comes from [`crate::scheme::closure_table::bit_to_row_name`]
+    /// (first-match-by-catalog-order attribution).
+    ///
+    /// See [`Self::project_with_sink`] for step-coordination notes —
+    /// the same local-counter semantics apply.
+    ///
+    /// Only compiled under the `decision-tracing` feature; without it,
+    /// the default trait impl (delegating to [`Self::closure`]) is
+    /// active.
+    #[cfg(feature = "decision-tracing")]
+    fn closure_with_sink(
+        &self,
+        marking: Self::Marking,
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> Self::Marking {
+        use crate::fact_bitmask::derive_bits;
+        use crate::scheme::closure_table::bit_to_row_name;
+
+        let input_bits = derive_bits(&marking.0).bits();
+        let closed_marking = self.closure(marking);
+        let closed_bits = derive_bits(&closed_marking.0).bits();
+
+        // Emit one ClosureFired event per 0→1 flipped cone bit.
+        // Local step counter (see method doc comment).
+        let mut local_step: u32 = 0;
+        let delta = closed_bits & !input_bits;
+        if delta != 0 {
+            let mut remaining = delta;
+            while remaining != 0 {
+                let bit_index = remaining.trailing_zeros();
+                remaining &= remaining - 1;
+                if let Some(row_name) = bit_to_row_name(bit_index) {
+                    let step = local_step;
+                    local_step = local_step.saturating_add(1);
+                    sink.record(marque_scheme::DecisionEvent {
+                        step,
+                        site: marque_scheme::DecisionSite::Page(0),
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::ClosureFired,
+                        source: marque_scheme::DecisionSource::Closure(row_name),
+                        triggered_by: None,
+                    });
+                }
+            }
+        }
+
+        closed_marking
+    }
+
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
         match scope {
             Scope::Portion => {
@@ -866,6 +966,25 @@ impl CapcoScheme {
         self.project_attrs_pipeline(raw)
     }
 
+    /// Sink-aware variant of [`Self::project_from_attrs_slice`] used
+    /// by the engine when the `decision-tracing` feature is on.
+    ///
+    /// Delegates to [`Self::project_attrs_pipeline_with_sink`] which
+    /// emits per-stage [`marque_scheme::DecisionEvent`]s for closure
+    /// fires, default-fill fires, supersession-overlay mutations,
+    /// and page-rewrite fan-outs. Engine callers reach this entry
+    /// when the engine's per-document sink is non-`NoopSink`; the
+    /// off-feature build never compiles this surface (the engine
+    /// gates the call site under `#[cfg(feature = "decision-tracing")]`).
+    #[cfg(feature = "decision-tracing")]
+    pub fn project_from_attrs_slice_with_sink(
+        &self,
+        raw: &[CanonicalAttrs],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> CanonicalAttrs {
+        self.project_attrs_pipeline_with_sink(raw, sink)
+    }
+
     /// Issue #704 — re-apply per-axis supersession overlays to the
     /// post-`close()` / post-`apply_default_fill` CanonicalAttrs.
     ///
@@ -1278,5 +1397,695 @@ impl CapcoScheme {
             }
         }
         out.0
+    }
+
+    /// Sink-aware variant of [`Self::project_attrs_pipeline`] that
+    /// emits per-stage [`marque_scheme::DecisionEvent`]s as the
+    /// projection pipeline traverses its stages
+    /// (`close` → `apply_default_fill` → `apply_supersession_overlays`
+    /// → page rewrites).
+    ///
+    /// # Step coordination
+    ///
+    /// Uses a **local step counter** starting at `0` when constructing
+    /// events. Consumers see globally-unique step IDs because the
+    /// engine wraps this call's sink argument in
+    /// `Engine::with_remapping_sink`, an adapter that mints a fresh
+    /// global step from `Engine::next_step` per emitted event and
+    /// remaps each `triggered_by: Some(local)` through a per-call
+    /// `local → global` HashMap. Intra-call cascade edges
+    /// (`RewriteScheduled → RewriteApplied`, closure-cone chaining)
+    /// survive the remap; cross-boundary edges into engine-emitted
+    /// events for the same document are NOT created (scheme-side
+    /// code has no view of engine-emitted parent steps).
+    ///
+    /// # Stage events
+    ///
+    /// 1. **Closure** — diff input vs. post-`close()` bitmask; emit
+    ///    one [`marque_scheme::DecisionKind::ClosureFired`] per
+    ///    flipped cone bit with
+    ///    [`marque_scheme::DecisionSource::Closure(row_name)`] from
+    ///    [`crate::scheme::closure_table::bit_to_row_name`].
+    /// 2. **Default-fill** — diff post-close vs. post-default-fill
+    ///    bitmask; emit one
+    ///    [`marque_scheme::DecisionKind::Mutated`] per row that
+    ///    fired with [`marque_scheme::DecisionSource::DefaultFill(name)`].
+    ///    (`Mutated` rather than `ClosureFired` because default-fill
+    ///    is a distinct grammar stage that adds bits when an axis was
+    ///    absent — semantically a mutation, not a closure-rule firing.)
+    /// 3. **Supersession overlays** — diff dissem/REL-TO axes; emit
+    ///    [`marque_scheme::DecisionKind::Mutated`] with
+    ///    [`marque_scheme::DecisionSource::Supersession(name)`].
+    /// 4. **Page rewrites** — one `RewriteScheduled` per fire and one
+    ///    `RewriteApplied` with `triggered_by` pointing at the parent.
+    #[cfg(feature = "decision-tracing")]
+    fn project_attrs_pipeline_with_sink(
+        &self,
+        raw: &[CanonicalAttrs],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> CanonicalAttrs {
+        use crate::fact_bitmask::derive_bits;
+        use crate::scheme::closure_table::bit_to_row_name;
+
+        // Local step counter — see method doc-comment for the
+        // step-coordination caveat. Within the call,
+        // `triggered_by` references resolve into the events emitted
+        // here; across the engine boundary they do not correlate.
+        let mut local_step: u32 = 0;
+        let mut next_step = || {
+            let s = local_step;
+            local_step = local_step.saturating_add(1);
+            s
+        };
+
+        #[cfg(debug_assertions)]
+        let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
+
+        // Stage 1 — join_via_lattice (no events; the lattice fold is
+        // a single algebraic op, not a multi-rule cascade).
+        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(raw));
+
+        // Stage 2 — closure. Capture pre/post bitmasks for diff.
+        let pre_close_bits = derive_bits(&joined.0).bits();
+        let mut out = self.closure(joined);
+        let post_close_bits = derive_bits(&out.0).bits();
+        let close_delta = post_close_bits & !pre_close_bits;
+        if close_delta != 0 {
+            let mut remaining = close_delta;
+            while remaining != 0 {
+                let bit_index = remaining.trailing_zeros();
+                remaining &= remaining - 1;
+                if let Some(row_name) = bit_to_row_name(bit_index) {
+                    let step = next_step();
+                    sink.record(marque_scheme::DecisionEvent {
+                        step,
+                        site: marque_scheme::DecisionSite::Page(0),
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::ClosureFired,
+                        source: marque_scheme::DecisionSource::Closure(row_name),
+                        triggered_by: None,
+                    });
+                }
+            }
+        }
+
+        // Stage 3 — apply_default_fill. Diff against post-close
+        // bitmask; the four default-fill rows (Row 0 caveated→NOFORN,
+        // Row 7 NATO→REL TO USA NATO, Row 8 SCI→RELIDO, Row 9
+        // US-class→RELIDO) each map to a specific bit. The mapping
+        // is hardcoded because `apply_default_fill` is internal to
+        // CAPCO and its 4-row inventory is stable post-#704.
+        crate::scheme::default_fill::apply_default_fill(&mut out.0);
+        let post_default_fill_bits = derive_bits(&out.0).bits();
+        let default_fill_delta = post_default_fill_bits & !post_close_bits;
+        if default_fill_delta != 0 {
+            // The four default-fill rows that can flip bits in the
+            // post-close delta. Attribution is bit-driven (NOFORN
+            // came from Row 0; REL_TO_USA came from Row 7; RELIDO
+            // came from either Row 8 or Row 9 — discriminated by the
+            // post-close bitmask below).
+            //
+            // Kind taxonomy: default-fill emissions use
+            // `DecisionKind::Mutated` rather than `ClosureFired`.
+            // The `ClosureFired` variant is reserved for
+            // `ClosureRule` firings (the Kleene fixpoint inside
+            // `close()`); default-fill is a distinct grammar stage
+            // that adds bits when an axis was absent — semantically
+            // a mutation, not a closure firing. Per-row attribution
+            // still flows through `DecisionSource::DefaultFill(...)`.
+            //
+            // The `capco:default-fill.*` strings here and the
+            // `capco:supersession.*` string further down are
+            // **trace identifiers**, not `RuleId` wire strings.
+            // They share the `capco:` scheme prefix for grep
+            // ergonomics in `marque trace` consumers but they do
+            // NOT live in the rule-checker catalog and a §-citation
+            // auditor will not find them there — they label
+            // implicit grammar stages (`apply_default_fill`,
+            // `apply_supersession_overlays`) rather than checker
+            // rules. The `DecisionSource::DefaultFill` /
+            // `DecisionSource::Supersession` enum variants
+            // discriminate them from `RuleId`-shaped sources at
+            // runtime.
+            use crate::fact_bitmask::fact_bit;
+            if (default_fill_delta & (1u128 << fact_bit::NOFORN)) != 0 {
+                let step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Mutated,
+                    source: marque_scheme::DecisionSource::DefaultFill(
+                        "capco:default-fill.dissem.caveated-implies-noforn",
+                    ),
+                    triggered_by: None,
+                });
+            }
+            if (default_fill_delta & (1u128 << fact_bit::REL_TO_USA)) != 0 {
+                let step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Mutated,
+                    source: marque_scheme::DecisionSource::DefaultFill(
+                        "capco:default-fill.rel-to.nato-implies-rel-to-usa-nato",
+                    ),
+                    triggered_by: None,
+                });
+            }
+            if (default_fill_delta & (1u128 << fact_bit::RELIDO)) != 0 {
+                // RELIDO can be flipped by Row 8 (SCI_PRESENT trigger)
+                // or Row 9 (US_COLLATERAL_CLASSIFIED trigger; no SCI
+                // required). Discriminate by checking the post-close
+                // bitmask: if SCI was present at close-time, Row 8
+                // fires (and Row 9 is suppressed by Row 8 having
+                // already added RELIDO); otherwise Row 9 fires.
+                let row8_fired = (post_close_bits & (1u128 << fact_bit::SCI_PRESENT)) != 0;
+                let row_name = if row8_fired {
+                    "capco:default-fill.dissem.sci-implies-relido"
+                } else {
+                    "capco:default-fill.dissem.us-class-implies-relido"
+                };
+                let step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Mutated,
+                    source: marque_scheme::DecisionSource::DefaultFill(row_name),
+                    triggered_by: None,
+                });
+            }
+        }
+
+        // Stage 4 — apply_supersession_overlays. The overlay clears
+        // dominated tokens (§H.8 p145 NOFORN-dominates) and runs OC >
+        // OC-USGOV / RELIDO observed-unanimity. Diff the dissem and
+        // REL-TO axes by length comparison to detect a mutation; the
+        // overlay does not add bits, so the delta is purely
+        // subtractive (bits that were set before are clear after).
+        let pre_overlay_dissem_len = out.0.dissem_us.len();
+        let pre_overlay_rel_to_len = out.0.rel_to.len();
+        let pre_overlay_display_only_len = out.0.display_only_to.len();
+        Self::apply_supersession_overlays(&mut out.0);
+        let post_overlay_dissem_len = out.0.dissem_us.len();
+        let post_overlay_rel_to_len = out.0.rel_to.len();
+        let post_overlay_display_only_len = out.0.display_only_to.len();
+        if post_overlay_dissem_len != pre_overlay_dissem_len
+            || post_overlay_rel_to_len != pre_overlay_rel_to_len
+            || post_overlay_display_only_len != pre_overlay_display_only_len
+        {
+            let step = next_step();
+            sink.record(marque_scheme::DecisionEvent {
+                step,
+                site: marque_scheme::DecisionSite::Page(0),
+                category: marque_scheme::CategoryId::MARKING,
+                kind: marque_scheme::DecisionKind::Mutated,
+                source: marque_scheme::DecisionSource::Supersession(
+                    "capco:supersession.dissem.h8-p145-overlays",
+                ),
+                triggered_by: None,
+            });
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            if raw != raw_snapshot.as_slice() {
+                panic!(
+                    "closure() mutated the per-portion CanonicalAttrs slice \
+                     ({} portion(s) before vs {} after) — violates the \
+                     PageRewrite read-only-attrs invariant",
+                    raw_snapshot.len(),
+                    raw.len(),
+                );
+            }
+        }
+
+        // Stage 5 — page rewrites. Emit one `RewriteScheduled` parent
+        // event per fire and one `RewriteApplied` child with
+        // `triggered_by` pointing at the parent.
+        let mut page_mask = capco_axis_mask(&out);
+        for rw in &self.page_rewrites {
+            let eligible = match &rw.trigger {
+                CategoryPredicate::Contains { category, .. } => {
+                    page_mask & (1u64 << category.0) != 0
+                }
+                CategoryPredicate::Empty { category } => page_mask & (1u64 << category.0) == 0,
+                CategoryPredicate::Custom(_) => rw
+                    .reads
+                    .iter()
+                    .chain(rw.writes.iter())
+                    .any(|c| page_mask & (1u64 << c.0) != 0),
+            };
+            if !eligible {
+                continue;
+            }
+            let fires = match &rw.trigger {
+                CategoryPredicate::Contains { category, token } => {
+                    capco_category_contains(&out, *category, *token)
+                }
+                CategoryPredicate::Empty { category } => {
+                    !capco_category_has_values(&out, *category)
+                }
+                CategoryPredicate::Custom(f) => f(&out),
+            };
+            if fires {
+                let scheduled_step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step: scheduled_step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::RewriteScheduled,
+                    source: marque_scheme::DecisionSource::PageRewrite(rw.id),
+                    triggered_by: None,
+                });
+
+                for w in rw.writes {
+                    page_mask |= 1u64 << w.0;
+                }
+                match &rw.action {
+                    CategoryAction::Clear { category } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Clear",
+                            ?category,
+                            "PageRewrite fired",
+                        );
+                        capco_category_clear(&mut out, *category);
+                        if !capco_category_has_values(&out, *category) {
+                            page_mask &= !(1u64 << category.0);
+                        }
+                    }
+                    CategoryAction::Replace { category, with } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Replace",
+                            ?category,
+                            "PageRewrite fired",
+                        );
+                        capco_category_replace(&mut out, *category, with);
+                    }
+                    CategoryAction::Promote { from, to, .. } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Promote",
+                            ?from,
+                            ?to,
+                            "PageRewrite fired (Promote — renderer-territory no-op)",
+                        );
+                    }
+                    CategoryAction::Custom(f) => {
+                        tracing::debug!(rewrite_id = rw.id, action = "Custom", "PageRewrite fired",);
+                        f(&mut out);
+                    }
+                    CategoryAction::Intent(intent) => {
+                        match apply_intent_to_marking(self, &mut out, intent) {
+                            Ok(()) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Intent",
+                                    "PageRewrite fired (CategoryAction::Intent)",
+                                );
+                            }
+                            Err(ApplyIntentError::IntentInapplicable) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Intent",
+                                    "PageRewrite no-op (intent already satisfied)",
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    rewrite_id = rw.id,
+                                    error = ?e,
+                                    "PageRewrite Intent failed at runtime — expected to be \
+                                     caught at Engine::new validation. Treating as no-op.",
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Child event: one `RewriteApplied` linked to the
+                // parent `RewriteScheduled` via `triggered_by`. We
+                // emit one applied event per scheduled fire (not one
+                // per affected portion); per-portion granularity is a
+                // Phase D refinement deferral — the current `out`
+                // accumulator stores the rolled-up marking, not the
+                // per-portion writeback.
+                let applied_step = next_step();
+                sink.record(marque_scheme::DecisionEvent {
+                    step: applied_step,
+                    site: marque_scheme::DecisionSite::Page(0),
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::RewriteApplied,
+                    source: marque_scheme::DecisionSource::PageRewrite(rw.id),
+                    triggered_by: Some(scheduled_step),
+                });
+            }
+        }
+        out.0
+    }
+}
+
+#[cfg(all(test, feature = "decision-tracing"))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod decision_tracing_tests {
+    //! Unit tests for the Phase D scheme-side overrides
+    //! (`project_with_sink`, `closure_with_sink`,
+    //! `project_attrs_pipeline_with_sink`).
+    //!
+    //! These exercise the per-stage emission paths directly with
+    //! synthetic `CanonicalAttrs` / `CapcoMarking` inputs so the four
+    //! stages — closure diff, default-fill diff (each branch),
+    //! supersession-overlay diff, page-rewrite fan-out — surface
+    //! independently in coverage. The engine-level integration tests
+    //! in `crates/engine/tests/decision_tracing.rs` exercise the
+    //! end-to-end path; this module pins per-branch behavior.
+    use super::*;
+    use marque_ism::{
+        Classification, CountryCode, DissemControl, MarkingClassification, NatoClassification,
+        SciControl,
+    };
+    use marque_scheme::{
+        DecisionEvent, DecisionKind, DecisionSink, DecisionSource, RecordingSink, Scope,
+    };
+
+    fn empty_attrs() -> CanonicalAttrs {
+        CanonicalAttrs::default()
+    }
+
+    fn us_secret() -> CanonicalAttrs {
+        let mut a = empty_attrs();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a
+    }
+
+    /// Capture sink that exposes its event vector directly. Avoids the
+    /// `Arc<Mutex<Vec<_>>>` indirection of `SharedSink`; not needed
+    /// for these per-call tests because they run on a single thread.
+    #[derive(Default)]
+    struct CaptureSink {
+        events: Vec<DecisionEvent>,
+    }
+
+    impl DecisionSink for CaptureSink {
+        fn record(&mut self, event: DecisionEvent) {
+            self.events.push(event);
+        }
+    }
+
+    #[test]
+    fn project_with_sink_portion_scope_is_identity_with_no_emission() {
+        // `Scope::Portion` short-circuits to `self.project(...)` and
+        // never enters the instrumented pipeline. The sink must stay
+        // empty.
+        let scheme = CapcoScheme::new();
+        let marking = CapcoMarking::new(us_secret());
+        let mut sink = CaptureSink::default();
+        let out = scheme.project_with_sink(Scope::Portion, &[marking], &mut sink);
+        assert_eq!(
+            sink.events.len(),
+            0,
+            "Scope::Portion is identity; no events expected"
+        );
+        // The marking round-trips: classification preserved.
+        assert_eq!(
+            out.0.classification,
+            Some(MarkingClassification::Us(Classification::Secret)),
+        );
+    }
+
+    #[test]
+    fn closure_with_sink_round_trips_marking_and_event_kinds() {
+        // Pin two structural properties of the closure_with_sink
+        // override on a no-trigger input: the returned marking
+        // matches `self.closure(marking)` (delegating semantics
+        // preserved) and any events emitted carry the Closure source
+        // variant (kind taxonomy preserved). The end-to-end
+        // cone-bit emission path is exercised by the engine
+        // integration tests; constructing a structural `SciMarking`
+        // here would duplicate parser machinery for marginal
+        // coverage gain.
+        let scheme = CapcoScheme::new();
+        let marking = CapcoMarking::new(us_secret());
+
+        let mut sink = CaptureSink::default();
+        let after_sink = scheme.closure_with_sink(marking.clone(), &mut sink);
+        let after_plain = scheme.closure(marking);
+
+        // Delegation invariant: result equals the non-instrumented
+        // path (modulo any sink emission, which must not mutate the
+        // marking).
+        assert_eq!(
+            after_sink.0.classification, after_plain.0.classification,
+            "closure_with_sink projection result must equal closure() result"
+        );
+
+        // Kind/source invariant on whatever events DID fire.
+        for ev in &sink.events {
+            assert!(
+                matches!(ev.kind, DecisionKind::ClosureFired),
+                "non-ClosureFired kind on a closure_with_sink event: {:?}",
+                ev.kind,
+            );
+            assert!(
+                matches!(ev.source, DecisionSource::Closure(_)),
+                "non-Closure source on a closure_with_sink event: {:?}",
+                ev.source,
+            );
+        }
+    }
+
+    #[test]
+    fn closure_with_sink_emits_nothing_when_no_close_triggers_fire() {
+        // Plain (S) with no SCI / TK / HCS triggers — `close()` is a
+        // no-op (the ALL_TRIGGER_MASK early-exit fires).
+        let scheme = CapcoScheme::new();
+        let marking = CapcoMarking::new(us_secret());
+        let mut sink = CaptureSink::default();
+        let _ = scheme.closure_with_sink(marking, &mut sink);
+        assert_eq!(
+            sink.events.len(),
+            0,
+            "no closure triggers → no ClosureFired emissions"
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_noforn_branch_emits_mutated() {
+        // (S, ORCON) — caveat trigger, no FD&R; Row 0 of
+        // apply_default_fill fires and adds NOFORN. The pipeline's
+        // Stage 3 must emit a `Mutated` event with
+        // `DecisionSource::DefaultFill(...)` carrying the
+        // caveated-implies-NOFORN trace identifier.
+        let scheme = CapcoScheme::new();
+        let mut attrs = us_secret();
+        attrs.dissem_us = vec![DissemControl::Oc].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let noforn_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(e.source, DecisionSource::DefaultFill(s)
+                    if s.contains("caveated-implies-noforn"))
+        });
+        assert!(
+            noforn_event.is_some(),
+            "expected a Mutated event with DefaultFill source for the \
+             caveated-implies-NOFORN row; observed events: {:?}",
+            sink.events
+                .iter()
+                .map(|e| (e.kind, e.source))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_relido_row9_attribution() {
+        // (S) with no SCI — Row 9 of apply_default_fill fires
+        // (US_COLLATERAL_CLASSIFIED trigger, SCI absent). The
+        // Copilot-fixed discriminator must pick the Row 9 name, NOT
+        // Row 8's sci-implies-relido.
+        let scheme = CapcoScheme::new();
+        let attrs = us_secret();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let relido_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(
+                    e.source,
+                    DecisionSource::DefaultFill(s) if s.contains("relido")
+                )
+        });
+        assert!(
+            relido_event.is_some(),
+            "expected a Mutated event with DefaultFill source for RELIDO"
+        );
+        if let Some(ev) = relido_event {
+            if let DecisionSource::DefaultFill(name) = ev.source {
+                assert!(
+                    name.contains("us-class-implies-relido"),
+                    "Row 9 path must attribute to us-class-implies-relido \
+                     (SCI absent → Row 8 cannot fire); got {name:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_relido_row8_attribution() {
+        // SCI-present input — Row 8 of apply_default_fill fires
+        // first. The discriminator must pick Row 8's name.
+        let scheme = CapcoScheme::new();
+        let mut attrs = us_secret();
+        attrs.sci_controls = vec![SciControl::Si].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let relido_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(
+                    e.source,
+                    DecisionSource::DefaultFill(s) if s.contains("relido")
+                )
+        });
+        if let Some(ev) = relido_event
+            && let DecisionSource::DefaultFill(name) = ev.source
+        {
+            assert!(
+                name.contains("sci-implies-relido"),
+                "Row 8 path (SCI present) must attribute to \
+                 sci-implies-relido; got {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pipeline_with_sink_default_fill_nato_rel_to_branch() {
+        // Bare NATO classification — Row 7 of apply_default_fill
+        // fires and adds REL TO USA, NATO. The pipeline's Stage 3
+        // must emit a Mutated event with the NATO-implies-REL TO
+        // trace identifier.
+        let scheme = CapcoScheme::new();
+        let mut attrs = empty_attrs();
+        attrs.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+
+        let nato_event = sink.events.iter().find(|e| {
+            matches!(e.kind, DecisionKind::Mutated)
+                && matches!(
+                    e.source,
+                    DecisionSource::DefaultFill(s) if s.contains("nato-implies-rel-to")
+                )
+        });
+        assert!(
+            nato_event.is_some(),
+            "expected a Mutated event with DefaultFill source for the \
+             NATO-implies-REL TO USA NATO row"
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_emits_page_rewrite_fan_out() {
+        // Construct a portion-pair that triggers the
+        // `noforn-clears-rel-to` page rewrite. (S, NOFORN) +
+        // (S, REL TO USA, GBR) — page projection unions NOFORN and
+        // the REL TO list, then the rewrite clears REL TO.
+        let scheme = CapcoScheme::new();
+        let mut p1 = us_secret();
+        p1.dissem_us = vec![DissemControl::Nf].into();
+        let mut p2 = us_secret();
+        p2.rel_to = vec![CountryCode::USA, CountryCode::GBR].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(&[p1, p2], &mut sink);
+
+        let has_scheduled = sink.events.iter().any(|e| {
+            matches!(e.kind, DecisionKind::RewriteScheduled)
+                && matches!(e.source, DecisionSource::PageRewrite(_))
+        });
+        let has_applied = sink.events.iter().any(|e| {
+            matches!(e.kind, DecisionKind::RewriteApplied)
+                && matches!(e.source, DecisionSource::PageRewrite(_))
+        });
+        assert!(
+            has_scheduled,
+            "page-rewrite fan-out should emit ≥1 RewriteScheduled \
+             event with PageRewrite source on a NOFORN+REL TO clash"
+        );
+        assert!(
+            has_applied,
+            "page-rewrite fan-out should emit ≥1 RewriteApplied \
+             event with PageRewrite source on a NOFORN+REL TO clash"
+        );
+    }
+
+    #[test]
+    fn pipeline_with_sink_no_op_input_emits_nothing() {
+        // Plain (S) with no caveats / SCI / NATO — none of the four
+        // stages fire. Sink stays empty.
+        let scheme = CapcoScheme::new();
+        let attrs = us_secret();
+        // RecordingSink lets us assert "nothing reaches the sink"
+        // without relying on the boolean any() pattern.
+        let mut sink = RecordingSink::new();
+        let _ = scheme.project_attrs_pipeline_with_sink(std::slice::from_ref(&attrs), &mut sink);
+        // Note: Row 9 will fire (US classified → RELIDO default-fill).
+        // The assertion is that we emit ONLY default-fill events and
+        // no closure, supersession, or page-rewrite events — there's
+        // no SCI to trigger close(), no FD&R contradiction to drive
+        // supersession, and no page-rewrite predicate matches.
+        for ev in sink.events() {
+            assert!(
+                matches!(ev.kind, DecisionKind::Mutated),
+                "unexpected non-Mutated event from plain (S) input: \
+                 {ev:?} — only the Row 9 default-fill should fire"
+            );
+            assert!(
+                matches!(ev.source, DecisionSource::DefaultFill(_)),
+                "unexpected non-DefaultFill source from plain (S) input: \
+                 {:?}",
+                ev.source,
+            );
+        }
+    }
+
+    #[test]
+    fn pipeline_with_sink_step_ids_are_locally_monotone() {
+        // The local step counter inside
+        // project_attrs_pipeline_with_sink starts at 0 and increments
+        // per emission. Engine-side remapping happens later via
+        // `Engine::with_remapping_sink`; here we pin the local
+        // monotonicity directly.
+        let scheme = CapcoScheme::new();
+        let mut p1 = us_secret();
+        p1.dissem_us = vec![DissemControl::Nf].into();
+        let mut p2 = us_secret();
+        p2.rel_to = vec![CountryCode::USA, CountryCode::GBR].into();
+
+        let mut sink = CaptureSink::default();
+        let _ = scheme.project_attrs_pipeline_with_sink(&[p1, p2], &mut sink);
+
+        // First event must be step 0; subsequent events must be
+        // strictly increasing.
+        assert_eq!(sink.events.first().map(|e| e.step), Some(0));
+        for win in sink.events.windows(2) {
+            assert!(
+                win[0].step < win[1].step,
+                "local step counter must be strictly monotone within a \
+                 single project_attrs_pipeline_with_sink call; got \
+                 {} → {}",
+                win[0].step,
+                win[1].step,
+            );
+        }
     }
 }

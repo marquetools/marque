@@ -31,6 +31,11 @@ static_assertions = { workspace = true }
 [features]
 default = []
 serde = ["dep:serde"]
+# Marker for engine-side threading of `DecisionSink` instrumentation.
+# The types in `marque_scheme::decision` always compile; this feature
+# only gates whether the engine threads a non-`NoopSink` through its
+# evaluator. Off-mode has zero hot-path cost.
+decision-tracing = []
 
 [lints]
 workspace = true

@@ -58,6 +58,10 @@
 //!   `EngineConstructor<S>`. Closes the audit content-ignorance leak
 //!   channel as a type invariant for closed-CVE tokens; the rule-API
 //!   surface `FixIntent<S>` lives in `marque-rules`.
+//! - [`decision`] — opt-in `DecisionSink` instrumentation surface
+//!   (`NoopSink` / `CountingSink` / `RecordingSink`) for counting and
+//!   tracing the marking decisions an engine run makes. Off by default;
+//!   engine threading is gated on the `decision-tracing` feature.
 //!
 //! ## Status
 //!
@@ -78,6 +82,7 @@ pub mod citation;
 pub mod closure;
 pub mod codec;
 pub mod constraint;
+pub mod decision;
 pub mod fact_bitmask;
 pub mod fix_intent;
 pub mod lattice;
@@ -109,6 +114,9 @@ pub use citation::{
 pub use closure::{ClosureRule, ClosureRuleMetadata, ConeDerivedFn, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef};
+pub use decision::report::{CascadeChain, DecisionReport};
+pub use decision::sinks::{CountingSink, NoopSink, RecordingSink};
+pub use decision::{DecisionEvent, DecisionKind, DecisionSink, DecisionSite, DecisionSource};
 pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{

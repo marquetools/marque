@@ -67,13 +67,29 @@ tempfile = { workspace = true }
 # time (Constitution III). Proxying through
 # `marque-engine/corpus-override` pulls the matching gates in capco +
 # config along with it.
-default = []
+#
+# `decision-tracing` is default-on for the CLI because the `marque
+# trace` subcommand is the user-facing entry point for the
+# decision-tracing feature — users will reasonably expect it to "just
+# work" without rebuilding with a flag. The OFF-mode invariant
+# (Constitution Principle I, SC-001 16 ms p95) is preserved at the
+# `marque-engine` level: `cargo build -p marque-engine` (no feature)
+# still produces a zero-hot-path-cost engine. Flipping default-on at
+# the CLI is acceptable because the CLI is not the WASM build target
+# (Constitution III, WASM-safe set excludes `marque` the binary).
+default = ["decision-tracing"]
 # Harness pass-throughs for convenience on the CLI crate; individual
 # harnesses are exercised from `marque-capco` and `marque-engine`
 # integration tests, not from the CLI binary itself.
 corpus-harness = ["marque-engine/corpus-harness"]
 corpus-override = ["marque-engine/corpus-override"]
 decoder-harness = ["marque-engine/decoder-harness"]
+# Threads a `DecisionSink` through the engine and lights up the
+# `marque trace` subcommand. Proxies to `marque-engine/decision-tracing`
+# (which itself proxies to `marque-scheme/decision-tracing` +
+# `marque-capco/decision-tracing`) and pulls `marque-scheme/serde` so
+# the CLI can serialize `DecisionEvent` / `DecisionReport` to NDJSON.
+decision-tracing = ["marque-engine/decision-tracing", "marque-scheme/serde"]
 
 [lints]
 workspace = true

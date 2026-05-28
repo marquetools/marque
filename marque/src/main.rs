@@ -13,6 +13,8 @@
 //! exclusive with paths and `fix`), and the documented exit codes.
 
 mod render;
+#[cfg(feature = "decision-tracing")]
+mod trace;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use marque_capco::capco_rules;
@@ -192,6 +194,47 @@ enum Command {
         #[arg(long)]
         strip: bool,
     },
+
+    /// Render a per-document decision trace from the decision-tracing
+    /// instrumentation. Three output formats: `summary` (human-readable
+    /// totals), `ndjson` (one event per line), `narrate` (English
+    /// cascade-chain walk).
+    ///
+    /// Only useful when this build was compiled with `--features
+    /// decision-tracing`; otherwise the subcommand exits EX_USAGE with
+    /// a "rebuild with the feature" message.
+    Trace {
+        /// File to trace. Use `-` to read from stdin. If no PATH is
+        /// given, reads from stdin.
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = TraceFormatArg::Summary)]
+        format: TraceFormatArg,
+    },
+}
+
+/// `--format` value for the `trace` subcommand. Mirrored from
+/// [`trace::TraceFormat`] so the clap `ValueEnum` derive does not need
+/// to be feature-gated (the variant always exists; the handler is what
+/// gets gated out).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum TraceFormatArg {
+    Summary,
+    Ndjson,
+    Narrate,
+}
+
+#[cfg(feature = "decision-tracing")]
+impl From<TraceFormatArg> for trace::TraceFormat {
+    fn from(value: TraceFormatArg) -> Self {
+        match value {
+            TraceFormatArg::Summary => trace::TraceFormat::Summary,
+            TraceFormatArg::Ndjson => trace::TraceFormat::Ndjson,
+            TraceFormatArg::Narrate => trace::TraceFormat::Narrate,
+        }
+    }
 }
 
 #[derive(Args, Debug, Clone)]
@@ -285,7 +328,7 @@ async fn main() {
 
     let verbose = match &cli.command {
         Command::Check { common, .. } | Command::Fix { common, .. } => common.verbose,
-        Command::Metadata { .. } => false,
+        Command::Metadata { .. } | Command::Trace { .. } => false,
     };
     let env_filter = if verbose {
         "marque=debug".to_owned()
@@ -322,6 +365,7 @@ async fn main() {
             fixed_timestamp,
         ),
         Command::Metadata { files, strip } => run_metadata(&files, strip).await,
+        Command::Trace { path, format } => run_trace(path, format),
     };
 
     process::exit(exit_code);
@@ -1043,6 +1087,23 @@ fn run_fix(
 async fn run_metadata(_files: &[PathBuf], _strip: bool) -> i32 {
     eprintln!("metadata command: Kreuzberg integration pending (TODO)");
     EX_UNAVAILABLE
+}
+
+/// Dispatch the `trace` subcommand. With `decision-tracing` enabled,
+/// forwards to [`trace::run_trace`]. Without the feature, returns
+/// `EX_USAGE` with a message instructing the operator to rebuild.
+#[cfg(feature = "decision-tracing")]
+fn run_trace(path: Option<PathBuf>, format: TraceFormatArg) -> i32 {
+    trace::run_trace(path, format.into())
+}
+
+#[cfg(not(feature = "decision-tracing"))]
+fn run_trace(_path: Option<PathBuf>, _format: TraceFormatArg) -> i32 {
+    eprintln!(
+        "error: this build of marque does not have decision-tracing enabled; \
+         rebuild with `cargo build -p marque --features decision-tracing`"
+    );
+    EX_USAGE
 }
 
 fn read_stdin() -> std::io::Result<Vec<u8>> {

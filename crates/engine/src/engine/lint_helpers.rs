@@ -1,8 +1,10 @@
 use super::dispatch::panic_payload_to_string;
 use super::fix::pre_pass_1_attrs_for_span;
-use super::page_context::{
-    PageFinalizationContext, dispatch_page_finalization, project_page_marking,
-};
+#[cfg(not(feature = "decision-tracing"))]
+use super::page_context::project_page_marking;
+#[cfg(feature = "decision-tracing")]
+use super::page_context::project_page_marking_with_sink;
+use super::page_context::{PageFinalizationContext, dispatch_page_finalization};
 use super::synthesis::build_decoder_diagnostic;
 use super::*;
 
@@ -33,6 +35,40 @@ pub(super) fn handle_page_break_candidate(
         return Ok(false);
     }
 
+    // Phase C decision-tracing — `Evaluated` event at the page
+    // boundary marking the banner roll-up dispatch entry. One
+    // event per page boundary (PageBreak or EOD); per-axis
+    // refinement deferred.
+    #[cfg(feature = "decision-tracing")]
+    {
+        if !page_portions.is_empty() {
+            engine.emit(|step| marque_scheme::DecisionEvent {
+                step,
+                site: marque_scheme::DecisionSite::Banner,
+                category: marque_scheme::CategoryId::MARKING,
+                kind: marque_scheme::DecisionKind::Evaluated,
+                source: marque_scheme::DecisionSource::BannerRollup,
+                triggered_by: None,
+            });
+        }
+    }
+    // Phase D decision-tracing — pre-init `page_marking_arc`
+    // through the sink-aware projection so the engine's sink
+    // observes per-stage projection events at the page boundary.
+    // The subsequent `dispatch_page_finalization`
+    // `get_or_insert_with` becomes a no-op (cell already populated)
+    // and the OFF-feature build is byte-identical.
+    #[cfg(feature = "decision-tracing")]
+    {
+        if !page_portions.is_empty() && page_marking_arc.is_none() {
+            // Step-remapping wrapper translates scheme-side local
+            // step IDs into the engine's global step space; see
+            // `Engine::with_remapping_sink`.
+            *page_marking_arc = Some(Arc::new(engine.with_remapping_sink(|sink| {
+                project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
+            })));
+        }
+    }
     if !page_portions.is_empty()
         && dispatch_page_finalization(
             &engine.scheme,
@@ -176,12 +212,54 @@ pub(super) fn dispatch_rules_for_marking(
     use marque_ism::MarkingType;
     use marque_rules::RuleContext;
 
+    // Decision-tracing site discriminator (Copilot-flagged correctness
+    // fix): `DecisionSite::Portion(idx)` is documented as a portion
+    // ordinal, NOT a byte offset. Earlier wiring populated it with
+    // `candidate.span.start`, which would have caused `CountingSink`
+    // and `DecisionReport::by_portion` to allocate vectors sized to
+    // the largest byte offset seen — pathological on real inputs.
+    // Now: portions use their per-page ordinal (`page_portions.len()`
+    // is the upcoming index because the candidate hasn't been pushed
+    // yet); banner / CAB candidates route to `DecisionSite::Banner`;
+    // page-breaks never reach here.
+    #[cfg(feature = "decision-tracing")]
+    let decision_site = match candidate.kind {
+        MarkingType::Portion => {
+            marque_scheme::DecisionSite::Portion(page_portions.len().min(u32::MAX as usize) as u32)
+        }
+        MarkingType::Banner | MarkingType::Cab => marque_scheme::DecisionSite::Banner,
+        // `MarkingType` is `#[non_exhaustive]`; PageBreak doesn't
+        // reach here (handled by `handle_page_break_candidate`) and
+        // any future kind falls back to a document-scope event.
+        _ => marque_scheme::DecisionSite::Document,
+    };
+
     let ctx_page_portions: Option<Arc<Box<[marque_ism::CanonicalAttrs]>>> = None;
     let ctx_page_marking = if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
         Some(
             page_marking_arc
                 .get_or_insert_with(|| {
-                    Arc::new(project_page_marking(&engine.scheme, page_join_acc))
+                    // Phase D decision-tracing — route the per-page
+                    // projection through the sink-aware variant so the
+                    // engine's sink observes per-stage events
+                    // (closure / default-fill / supersession / page
+                    // rewrites). OFF-feature build keeps the original
+                    // signature with zero extra work on the hot path.
+                    #[cfg(feature = "decision-tracing")]
+                    {
+                        // Use the step-remapping adapter so scheme-side
+                        // local step IDs (0, 1, 2, …) are translated
+                        // into the engine's global step space — keeps
+                        // cascade reconstruction sound across the
+                        // engine/scheme boundary.
+                        Arc::new(engine.with_remapping_sink(|sink| {
+                            project_page_marking_with_sink(&engine.scheme, page_join_acc, sink)
+                        }))
+                    }
+                    #[cfg(not(feature = "decision-tracing"))]
+                    {
+                        Arc::new(project_page_marking(&engine.scheme, page_join_acc))
+                    }
                 })
                 .clone(),
         )
@@ -215,6 +293,27 @@ pub(super) fn dispatch_rules_for_marking(
                 }
             }
             let rule_id = rule.id();
+            // Phase C decision-tracing emission — `Evaluated`
+            // event before the rule body runs. Granularity is
+            // per-portion per-rule-check call (NOT per-axis); the
+            // `EvaluatedSubstantive` refinement is deferred per
+            // `plans/i-see-this-as-jiggly-lobster.md` "Open items"
+            // §1. Site comes from the kind-discriminated
+            // `decision_site` computed above; portions carry their
+            // per-page ordinal, banner/CAB candidates carry
+            // `DecisionSite::Banner`.
+            #[cfg(feature = "decision-tracing")]
+            {
+                let predicate_id: &'static str = rule_id.predicate_id();
+                engine.emit(|step| marque_scheme::DecisionEvent {
+                    step,
+                    site: decision_site,
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Evaluated,
+                    source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
+                    triggered_by: None,
+                });
+            }
             let mut diags = if rule.trusted() {
                 rule.check(attrs, &ctx)
             } else {
@@ -246,6 +345,29 @@ pub(super) fn dispatch_rules_for_marking(
                     None => true,
                 }
             });
+            // Phase C decision-tracing — `Mutated` event when the
+            // rule produced a fix-carrying diagnostic that survived
+            // severity-override filtering. Emitting after
+            // `retain_mut` ensures the event reflects diagnostics
+            // the engine will actually surface, not ones suppressed
+            // by `Severity::Off`. Diagnostics without a fix are
+            // observations, not mutations, and are covered by the
+            // pre-check `Evaluated` emission above.
+            #[cfg(feature = "decision-tracing")]
+            {
+                let any_fix = diags.iter().any(|d| d.fix.is_some());
+                if any_fix {
+                    let predicate_id: &'static str = rule_id.predicate_id();
+                    engine.emit(|step| marque_scheme::DecisionEvent {
+                        step,
+                        site: decision_site,
+                        category: marque_scheme::CategoryId::MARKING,
+                        kind: marque_scheme::DecisionKind::Mutated,
+                        source: marque_scheme::DecisionSource::RuleCheck(predicate_id),
+                        triggered_by: None,
+                    });
+                }
+            }
             diagnostics.extend(diags);
         }
     }

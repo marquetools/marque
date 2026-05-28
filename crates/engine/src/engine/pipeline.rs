@@ -41,6 +41,13 @@ impl Engine {
         use marque_core::Scanner;
         use marque_ism::MarkingType;
 
+        // Decision-tracing: zero step IDs at the document boundary so
+        // a long-lived engine doesn't leak step IDs across documents.
+        // `triggered_by` references resolve into the current document's
+        // event stream only.
+        #[cfg(feature = "decision-tracing")]
+        self.reset_decision_step_counter();
+
         if deadline_expired(opts.deadline) {
             return (
                 LintResult {
@@ -140,6 +147,7 @@ impl Engine {
                 self,
                 candidate,
                 &recognized.attrs,
+                &page_portions,
                 &mut diagnostics,
             );
 
@@ -183,6 +191,44 @@ impl Engine {
             }
         }
 
+        // Phase C decision-tracing — `Evaluated` event at the
+        // end-of-document banner roll-up boundary. Paired with
+        // the per-PageBreak emission in `handle_page_break_candidate`
+        // so every page boundary (PageBreak or EOD) is observed.
+        #[cfg(feature = "decision-tracing")]
+        {
+            if !page_portions.is_empty() {
+                self.emit(|step| marque_scheme::DecisionEvent {
+                    step,
+                    site: marque_scheme::DecisionSite::Banner,
+                    category: marque_scheme::CategoryId::MARKING,
+                    kind: marque_scheme::DecisionKind::Evaluated,
+                    source: marque_scheme::DecisionSource::BannerRollup,
+                    triggered_by: None,
+                });
+            }
+        }
+        // Phase D decision-tracing — pre-init `page_marking_arc`
+        // through the sink-aware projection so the engine's sink
+        // observes per-stage projection events at end-of-document.
+        // The subsequent `dispatch_page_finalization`
+        // `get_or_insert_with` becomes a no-op (cell already populated)
+        // and the OFF-feature build is byte-identical.
+        #[cfg(feature = "decision-tracing")]
+        {
+            if !page_portions.is_empty() && page_marking_arc.is_none() {
+                // Use the step-remapping adapter so scheme-side local
+                // step IDs translate into the engine's global step
+                // space — see `Engine::with_remapping_sink`.
+                page_marking_arc = Some(std::sync::Arc::new(self.with_remapping_sink(|sink| {
+                    super::page_context::project_page_marking_with_sink(
+                        &self.scheme,
+                        &page_join_acc,
+                        sink,
+                    )
+                })));
+            }
+        }
         if !page_portions.is_empty()
             && dispatch_page_finalization(
                 &self.scheme,

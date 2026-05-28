@@ -4,14 +4,59 @@ pub(super) fn apply_constraint_bridge_for_marking(
     engine: &Engine,
     candidate: &marque_ism::MarkingCandidate,
     attrs: &marque_ism::CanonicalAttrs,
+    page_portions: &[marque_ism::CanonicalAttrs],
     diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
 ) {
     if !engine.scheme.has_diagnostic_constraints() {
         return;
     }
 
+    // Decision-tracing site discriminator (Copilot-flagged correctness
+    // fix): `DecisionSite::Portion` is documented as a portion ordinal,
+    // not a byte offset. Earlier wiring populated it with
+    // `candidate.span.start`, which would have caused per-portion
+    // aggregations to allocate vectors sized to the largest byte offset
+    // seen. Portions use their per-page ordinal
+    // (`page_portions.len()` — the candidate hasn't been pushed yet);
+    // banner/CAB candidates route to `DecisionSite::Banner`.
+    #[cfg(feature = "decision-tracing")]
+    let decision_site = match candidate.kind {
+        marque_ism::MarkingType::Portion => {
+            marque_scheme::DecisionSite::Portion(page_portions.len().min(u32::MAX as usize) as u32)
+        }
+        marque_ism::MarkingType::Banner | marque_ism::MarkingType::Cab => {
+            marque_scheme::DecisionSite::Banner
+        }
+        // `MarkingType` is `#[non_exhaustive]`; PageBreak doesn't
+        // reach here (handled by `handle_page_break_candidate`) and
+        // any future kind falls back to a document-scope event.
+        _ => marque_scheme::DecisionSite::Document,
+    };
+    #[cfg(not(feature = "decision-tracing"))]
+    let _ = page_portions;
+
     let marking = marque_capco::CapcoMarking::from(attrs.clone());
     for v in engine.scheme.validate(&marking) {
+        // Phase C decision-tracing — `ConstraintFired` event per
+        // emitted `ConstraintViolation`. The non-firing path
+        // (constraint evaluated but did NOT fire) is the noisy
+        // case and is deferred per
+        // `plans/i-see-this-as-jiggly-lobster.md` insertion-point
+        // table. `constraint_label` is the catalog-row stable
+        // identifier and IS the predicate id (see
+        // `Engine::bridge_constraint_diagnostic` doc-comment).
+        #[cfg(feature = "decision-tracing")]
+        {
+            let label: &'static str = v.constraint_label;
+            engine.emit(|step| marque_scheme::DecisionEvent {
+                step,
+                site: decision_site,
+                category: marque_scheme::CategoryId::MARKING,
+                kind: marque_scheme::DecisionKind::ConstraintFired,
+                source: marque_scheme::DecisionSource::Constraint(label),
+                triggered_by: None,
+            });
+        }
         if let Some(diag) = engine.bridge_constraint_diagnostic(&v, attrs, candidate) {
             diagnostics.push(diag);
         }
