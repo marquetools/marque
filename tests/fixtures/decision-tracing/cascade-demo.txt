@@ -1,0 +1,118 @@
+TOP SECRET//SI/TK//FGI GBR/RD//RELIDO
+
+(U) MARQUE DECISION-TRACING DEMO FIXTURE
+
+(U) This document is a synthetic intelligence assessment shaped to exercise
+the full marking-decision cascade Marque tracks. Every portion below is a
+real CAPCO marking that triggers a specific rule, constraint, page rewrite,
+default-fill, or banner-rollup decision. Section dividers describe what each
+group is designed to exercise; the banner above and the banner at the end of
+the document are intentionally inconsistent with the projected roll-up so
+banner-rollup rules detect the mismatch.
+
+(U) ==== SECTION A: NOFORN-IMPLIES CASCADES =====================================
+
+(U) Each portion below is bare-classified with a caveated token but omits
+explicit NOFORN. On this dense document the scheme-layer closure/default-fill
+bitmask-diff sources do NOT fire (those cone bits are already set by the join);
+the PageRewrite chain carries the cascade — stripping REL TO, the FD&R family,
+and DISPLAY ONLY tokens that NOFORN supersedes.
+
+(S//SI) Imagery interpretation of facility complex BLACKSITE-3 indicates
+continued construction activity along the southern perimeter.
+
+(S//SI-G) Compartmented imagery sub-system reporting on the same site.
+
+(S//TK) Telemetry intercepts from launch corridor confirm propellant type.
+
+(S//HCS) HUMINT product corroborating telemetry analysis.
+
+(S//SAR-BLACKLIGHT) SAR-program activity report (program identifier
+synthetic).
+
+(S//RD) Yield estimates derived from operational testing programs.
+
+(S//RD/ATOMAL) Yield estimates shared under bilateral NATO sharing
+arrangements; AEA axis routes ATOMAL alongside RD.
+
+(S//FGI GBR) Liaison reporting from a partner service.
+
+(S//FGI DEU) Second-partner liaison reporting on the same activity.
+
+(S//IMCON) Imagery method-of-collection protection.
+
+(S//ORCON) Originator-controlled assessment summary.
+
+(C//UCNI) Unclassified Controlled Nuclear Information at adjacent
+safeguards facility. In classified context this triggers a five-step
+rewrite chain: promote NOFORN -> evict UCNI -> clear REL TO -> clear FDR
+family -> clear DISPLAY ONLY.
+
+(U) ==== SECTION B: REL TO SUPERSESSION CASCADES ================================
+
+(U) Portions that explicitly carry REL TO alongside caveated tokens. The
+caveated default-fill promotes NOFORN; the noforn-clears-rel-to PageRewrite
+then drops REL TO from the same portion.
+
+(S//REL TO USA, GBR) Standalone REL TO portion, no caveat - should NOT
+trigger the supersession chain.
+
+(S//REL TO USA, GBR/SI) REL TO commingled with SCI - SCI is caveated and
+implies RELIDO; the cascade fires here.
+
+(S//SI/REL TO USA, GBR) Same content, tokens in opposite order - confirms
+order-independence at the lattice layer.
+
+(S//DSEN) Display-statement special enabled marking - caveated.
+
+(S//DISPLAY ONLY TO USA, GBR/IMCON) DISPLAY ONLY commingled with IMCON;
+IMCON triggers caveated NOFORN; NOFORN-clears-display-only fires.
+
+(U) ==== SECTION C: RELIDO UNANIMITY AT BANNER ROLLUP ===========================
+
+(U) Banner-level RELIDO should appear only if every classified portion in
+the document carries RELIDO. The first five portions carry it; portion C-6
+intentionally omits RELIDO; banner roll-up should drop RELIDO from the
+projected banner.
+
+(S//RELIDO) Section-C portion one with RELIDO.
+(S//RELIDO) Section-C portion two with RELIDO.
+(S//RELIDO) Section-C portion three with RELIDO.
+(S//RELIDO) Section-C portion four with RELIDO.
+(S//RELIDO) Section-C portion five with RELIDO.
+
+(S) Section-C portion six - classified, no RELIDO. Unanimity broken; banner
+must not carry RELIDO across the document.
+
+(U) ==== SECTION D: MULTI-SYSTEM COMMINGLING =====================================
+
+(U) NATO classification, ATOMAL on the AEA axis, pure FGI, and JOINT
+markings each route through distinct grammar surfaces. The recanonicalize
+rules normalize legacy compound forms; the FGI/NATO transmute rule moves
+NATO into FGI position when commingled with US classification.
+
+(S//FGI NATO) NATO-origin material commingled with US classification -
+transmutes to FGI NATO position at portion level.
+
+(S//CTS//ATOMAL) NATO Cosmic Top Secret plus ATOMAL on AEA axis. ATOMAL
+routes via AEA, not as a NATO classification suffix.
+
+(S//CTS) Pure NATO Cosmic Top Secret portion (uncommingled NATO context).
+
+(JOINT TS USA GBR CAN) Three-party joint product; three constraint
+evaluations fire on the classification axis alone (joint-requires-rel-to-
+coverage, non-us-requires-dissem, joint-requires-usa).
+
+(U) ==== SECTION E: CLOSING ASSESSMENT ============================================
+
+(U) The combinatorial structure above (~39 portions across 8 category
+axes evaluated by the full registered rule set on each) represents on
+the order of several thousand machine-equivalent marking decisions, of
+which several hundred are substantive enough that a human classifier
+would re-evaluate them when any single token in any single portion
+changed. Marque records
+the full causal graph deterministically in microseconds and emits it
+through the DecisionSink instrumentation surface; this fixture is the
+canonical input for that machinery.
+
+TOP SECRET//SI/TK//FGI GBR/RD//RELIDO

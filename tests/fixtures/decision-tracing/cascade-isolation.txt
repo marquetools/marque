@@ -1,0 +1,23 @@
+SECRET//ORCON
+
+Page 1 fires DefaultFill caveated-implies-noforn.
+
+(S//ORCON) Single caveated dissem; no NOFORN.
+
+TOP SECRET//SI//RELIDO
+
+Page 2 fires DefaultFill sci-implies-relido.
+
+(TS//SI) Single SCI portion.
+
+SECRET//REL TO USA, GBR//NOFORN
+
+Page 3 fires Supersession h8-p145-overlays.
+
+(S//REL TO USA, GBR//NF) REL TO and NOFORN; supersession clears REL TO.
+
+TOP SECRET//SI-G//NOFORN
+
+Page 4 fires Closure plus DefaultFill caveated-implies-noforn.
+
+(TS//SI-G) SI-G implies ORCON cone bit; ORCON triggers default-fill.

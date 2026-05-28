@@ -211,3 +211,86 @@ The `narrate` form is the demo asset. Drives the rhetorical purpose.
 - ~~Closure-rule dispatch location~~ → Found. Post-#704 there's no per-rule loop; closure is a bitmask Kleene fixpoint with three distinct post-close stages (`close()`, `apply_default_fill`, `apply_supersession_overlays`). Plan amended to instrument all three at the `project_attrs_pipeline` boundary via before/after diff.
 - ~~PR ordering against current work~~ → Clean. Only open PR was #809 (Sentinel cache-control header suggestion, unrelated). No conflicts with `dispatch_rules_for_marking` or the capco rewrite loop.
 - ~~`bit_to_row_name` lookup~~ → Implemented as a `pub(crate)` static reverse-lookup in `crates/capco/src/scheme/closure_table.rs`.
+
+## Layering observation (post-merge, 2026-05-28)
+
+Building the demo fixtures in PR #810's follow-up surfaced a property of
+the instrumentation that wasn't called out in the original plan and
+that is easy to read as a wiring gap. Documenting it here so future
+readers don't re-derive the answer.
+
+**The instrumentation has three emission layers, and they cover
+non-overlapping work:**
+
+1. **Rule layer (per portion).** Every registered `Rule` fires once per
+   portion. Rules that mutate emit `Mutated` events with
+   `DecisionSource::RuleCheck(<predicate_id>)`. This is where the bulk
+   of per-portion closure-style behavior is captured: e.g.
+   `relido-implied-by-closure` adds RELIDO to a portion whose SCI/dissem
+   state would imply it under closure semantics. Per-portion projection
+   (`CapcoScheme::project(Scope::Portion, ...)`) is identity by design
+   (`CapcoScheme::project`) — the pipeline does not run at
+   portion scope, so there is nothing to instrument there.
+2. **Scheme layer (per page-join).**
+   `CapcoScheme::project_attrs_pipeline_with_sink` runs `close →
+   apply_default_fill → apply_supersession_overlays → page-rewrites`
+   exactly once on the joined page accumulator. It emits
+   `DecisionSource::Closure` / `DefaultFill` / `Supersession` by
+   diffing the `FactBitmask` between stages, and it emits
+   `DecisionSource::PageRewrite` Scheduled/Applied pairs from the
+   page-rewrite fan-out (in `project_attrs_pipeline_with_sink`).
+3. **Engine bridge / finalization layer.** The constraint bridge
+   (`apply_constraint_bridge_for_marking`) emits
+   `DecisionSource::Constraint(label)` when a `MarkingScheme::Constraint`
+   matches. The banner-rollup paths
+   (`handle_page_break_candidate` and `lint_with_options_internal_with_cache`) emit
+   `DecisionSource::BannerRollup`.
+
+**Why the scheme-layer *bitmask-diff* sources often emit nothing on
+realistic documents.** Once `join_via_lattice` has folded N portions,
+every cone bit that closure / default-fill / supersession would add is
+typically already set by *some* portion in the document. The bitmask
+delta is empty and no event fires. This is correct behavior, not a
+regression: page-level closure really does have nothing to add when
+the join already covers it. The per-portion closure-style cascade is
+fully captured at the rule layer; the scheme-layer `PageRewrite`
+fan-out still fires on dense documents because page rewrites run
+unconditionally per rewrite, iterating the scheme's `page_rewrites`
+slice in catalog/declaration order (iterating `page_rewrites` inside `project_attrs_pipeline_with_sink`).
+The engine's topological scheduler in `marque-engine::scheduler` runs
+once at `Engine::new` to detect cycles and validate axis annotations;
+it does not reorder the scheme's per-page emission loop.
+
+**Where the page-layer diff *does* emit.** Single-portion documents (or
+documents engineered so each form-feed-separated page joins to an
+accumulator that genuinely lacks a cone bit) reliably fire those
+sources. The `tests/fixtures/decision-tracing/cascade-isolation.txt`
+fixture pins one diff source per page across four pages:
+
+| Page | Portion | Source |
+|------|---------|--------|
+| 1 | `(S//ORCON)` | `DefaultFill("...caveated-implies-noforn")` |
+| 2 | `(TS//SI)` | `DefaultFill("...sci-implies-relido")` |
+| 3 | `(S//REL TO USA, GBR//NF)` | `Supersession("...h8-p145-overlays")` |
+| 4 | `(TS//SI-G)` | `Closure(<row>)` + `DefaultFill("...caveated-implies-noforn")` |
+
+The realistic-document headline number (`cascade-demo.txt`, ~1,200
+decisions on a single-page 39-portion synthetic intel assessment) is
+dominated by `RuleCheck`-source `Evaluated` events (one per
+registered rule per portion plus banner-level dispatch) plus the
+scheme-layer `PageRewrite` chain from the `(C//UCNI)` portion's
+five-step NOFORN-promotion cascade
+(`doe-ucni-promotes-noforn-when-classified` →
+`doe-ucni-evicted-by-classified` → `noforn-clears-rel-to` →
+`noforn-clears-fdr-family` → `noforn-clears-display-only-to`,
+each emitted as a Scheduled/Applied pair).
+
+See `tests/fixtures/decision-tracing/README.md` for the full per-
+fixture decomposition and the recommended `marque trace` invocations.
+
+**Implications carried forward:** if a future PR adds a per-portion
+projection pipeline (e.g., for partial-doc previews where individual
+portion roll-ups are interesting), it MUST be wired through
+`project_with_sink` with its own diff emission so this layering
+invariant continues to hold. The current `Scope::Portion → identity`
+branch in `project_with_sink` is the explicit hook point — keep it.
