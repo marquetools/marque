@@ -516,7 +516,7 @@ impl Engine {
         // feature-ON / default-`NoopSink` hot path; the branch is a
         // single `bool` read that predicts taken, so the cost collapses
         // to the no-feature path (`scripts/bench-check.sh`
-        // `decision_tracing_overhead`'s 2% gate).
+        // `check_decision_tracing_overhead`'s absolute SC-001 ceiling).
         if !self.tracing_active {
             return;
         }

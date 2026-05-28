@@ -195,6 +195,10 @@ impl Engine {
         // end-of-document banner roll-up boundary. Paired with
         // the per-PageBreak emission in `handle_page_break_candidate`
         // so every page boundary (PageBreak or EOD) is observed.
+        // Low frequency (one per document), so this relies on
+        // `Engine::emit`'s `tracing_active` early-return rather than a
+        // call-site guard — unlike the per-rule×candidate blocks in
+        // `lint_helpers.rs`, which gate at the call site.
         #[cfg(feature = "decision-tracing")]
         {
             if !page_portions.is_empty() {

@@ -67,9 +67,12 @@
 //! ## Bench config
 //!
 //! Sample size and measurement time mirror `deadline_overhead.rs`
-//! exactly (sample_size=500, measurement_time=10s) — those were tuned
-//! to bring the noise floor on WSL2-class CI hardware below the 2%
-//! ratio gate, and this bench needs the same headroom to be comparable.
+//! exactly (sample_size=500, measurement_time=10s) — that config keeps
+//! the per-arm confidence interval tight and the measurement comparable
+//! to the sibling latency benches. The gate is absolute (each arm vs the
+//! 16 ms ceiling), so it does not depend on cross-run noise the way the
+//! retired 2% ratio did, but a narrow CI still makes the upper-CI bound
+//! the parser reads a stable number.
 //!
 //! Reference baseline: x86_64 ≥ 3.0 GHz single-thread, warm cache,
 //! `--release` build, no tracing subscriber.

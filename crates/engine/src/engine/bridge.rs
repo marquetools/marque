@@ -45,6 +45,10 @@ pub(super) fn apply_constraint_bridge_for_marking(
         // table. `constraint_label` is the catalog-row stable
         // identifier and IS the predicate id (see
         // `Engine::bridge_constraint_diagnostic` doc-comment).
+        // Low frequency (only fires per emitted violation), so this
+        // relies on `Engine::emit`'s `tracing_active` early-return
+        // rather than a call-site guard — unlike the per-rule×candidate
+        // blocks in `lint_helpers.rs`, which gate at the call site.
         #[cfg(feature = "decision-tracing")]
         {
             let label: &'static str = v.constraint_label;

@@ -37,7 +37,10 @@ pub(super) fn handle_page_break_candidate(
     // Phase C decision-tracing — `Evaluated` event at the page
     // boundary marking the banner roll-up dispatch entry. One
     // event per page boundary (PageBreak or EOD); per-axis
-    // refinement deferred.
+    // refinement deferred. Low frequency (one per page), so this
+    // relies on `Engine::emit`'s `tracing_active` early-return rather
+    // than a call-site guard — unlike the per-rule×candidate blocks
+    // below, which gate at the call site.
     #[cfg(feature = "decision-tracing")]
     {
         if !page_portions.is_empty() {
