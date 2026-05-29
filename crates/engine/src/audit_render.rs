@@ -4,17 +4,20 @@
 
 //! Engine-side audit-record NDJSON projection (`marque-3.1`).
 //!
-//! This is the projection the **server** (`marque-server`'s `/v1/fix`)
-//! uses to serialize each [`AuditLine`] into the audit-log wire form and
-//! to compute the session-end [`crate::SessionRoot`] over those exact
-//! bytes (issue #184). The CLI (`marque/src/render.rs`) and WASM
-//! (`crates/wasm/src/types.rs`) carry their own copies of this
-//! projection; the byte-identity contract between *those two* is pinned
-//! by `crates/wasm/tests/audit_v3_0_parity.rs`. Consolidating all three
-//! onto this engine copy is tracked as a follow-up — for now the server
-//! reuses one self-consistent serializer (it emits the `audit_log` and
-//! computes the root with the same function, so a verifier re-hashing
-//! the `audit_log` strings always reproduces the published `session_root`).
+//! This is the **single source of truth** for the audit-record wire form.
+//! Every emitter routes through it: the server (`marque-server`'s
+//! `/v1/fix`) serializes each [`AuditLine`] via [`audit_line_to_ndjson`]
+//! and computes the session-end [`crate::SessionRoot`] over those exact
+//! bytes (issue #184); the CLI (`marque/src/render.rs`) wraps
+//! [`audit_line_to_json_v1_0`] in its stderr-I/O + error-frame machinery;
+//! and WASM (`crates/wasm/src/types.rs`) wraps [`audit_line_to_ndjson`] in
+//! a `RawValue` for its `fix()` response. There is no longer a CLI- or
+//! WASM-private copy of the projection to drift. The byte-identity
+//! contract between the CLI and WASM surfaces is pinned by
+//! `crates/wasm/tests/audit_v3_0_parity.rs` and
+//! `crates/wasm/tests/native_parity.rs`; the server's self-consistency
+//! (a verifier re-hashing the `audit_log` strings reproduces the published
+//! `session_root`) is pinned by `crates/server/tests/http.rs`.
 //!
 //! Per Constitution V Principle V every emitted field is a permitted
 //! identifier (closed-enum labels, token canonicals, span offsets,
