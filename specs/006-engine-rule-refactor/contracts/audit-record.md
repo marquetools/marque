@@ -404,17 +404,20 @@ Per **decision D3** in `decisions.md`, the active audit schema name
 MUST be discoverable by external consumers without parsing audit
 records.
 
-**Per-record discoverability** (already in place): every record's
-first field is `"schema": "marque-3.1"` (mandatory, FR-035 / T044).
-Streaming NDJSON consumers detect schema by reading the first record
-they see.
+**Per-record discoverability** (already in place): every record
+carries a `"schema"` field (e.g. `"schema": "marque-3.1"`, mandatory,
+FR-035 / T044). Streaming NDJSON consumers detect schema by **parsing
+the `schema` field** of the first record they see — not by field
+position (the serializers emit `"type"` before `"schema"`, and for both
+the regular records and the terminal `session_root` record; consumers
+MUST NOT rely on field order).
 
 **Per-binary discoverability**: `marque --version` MUST expose the
 active audit schema name in its output. Format choice (JSON,
 key/value lines, or human-readable) is implementer's call; the
 binding constraint is that the schema name appears such that:
 
-- A shell script can grep for `marque-3.0` in `marque --version`
+- A shell script can grep for `marque-3.1` in `marque --version`
   output and detect schema-major changes.
 - The schema name shown matches the value baked into
   `marque_engine::AUDIT_SCHEMA_VERSION` (FR-034) — single source of

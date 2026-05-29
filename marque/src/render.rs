@@ -462,11 +462,11 @@ pub fn render_human_result(
 }
 
 // ---------------------------------------------------------------------------
-// Audit record NDJSON (marque-3.0)
+// Audit record NDJSON (marque-3.1)
 //
 // The `schema` field is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`,
 // which `crates/engine/build.rs` validates against the closed accept-list
-// `["marque-3.0"]`. The audit envelope carries only the BLAKE3 digest +
+// `["marque-3.1"]`. The audit envelope carries only the BLAKE3 digest +
 // structural intent so document content never reaches the audit stream
 // (audit content-ignorance).
 //
@@ -584,8 +584,8 @@ pub struct AuditCanonicalJson<'a> {
 
 /// `Recognition` projection.
 ///
-/// `marque-3.0` shape (PR B): one scalar axis (`recognition`),
-/// optional decoder provenance (`runner_up_ratio`), and a closed
+/// `marque-3.x` shape (single-axis since PR B): one scalar axis
+/// (`recognition`), optional decoder provenance (`runner_up_ratio`), and a closed
 /// `features` list. The pre-PR-B `rule` and `region` fields were
 /// retired — strict-path emissions are pinned at `recognition = 1.0`
 /// and the decoder uses span info elsewhere.
@@ -916,7 +916,7 @@ pub fn text_correction_to_audit_json_v1_0<'a>(
 }
 
 /// Serialize a single [`AuditLine<CapcoScheme>`] to a `serde_json::Value`
-/// in the `marque-3.0` shape (dispatcher).
+/// in the `marque-3.1` shape (dispatcher).
 ///
 /// Two arms project to disjoint NDJSON record types:
 /// - [`AuditLine::AppliedFix`] → `{"type": "applied_fix", ...}`.
@@ -1014,7 +1014,7 @@ pub fn render_audit_line(
 /// Shape: `{"schema":"<AUDIT_SCHEMA_VERSION>","error":"<code>","rule":"<id>"}`
 ///
 /// where `<AUDIT_SCHEMA_VERSION>` is the build-time value of the
-/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-3.0`; see
+/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-3.1`; see
 /// `crates/engine/build.rs`). The schema string is emitted dynamically
 /// so an audit consumer can dispatch on the schema version without
 /// the renderer's docs going stale on a schema bump.
