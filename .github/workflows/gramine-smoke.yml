@@ -108,11 +108,17 @@ jobs:
           # the enclave. (A file-path argument would require `/tmp` in
           # `fs.mounts`; gramine-direct governs FS access via mounts, not
           # `sgx.allowed_files`, so stdin is the simpler, mount-free path
-          # — and it matches the `check -` invocation above.) The audit
-          # NDJSON goes to the child's stderr, which the host shell
-          # redirects to a file outside the enclave.
+          # — and it matches the `check -` invocation above.)
+          #
+          # The CLI writes its audit NDJSON to the guest's STDERR, but
+          # `gramine-direct` forwards the guest's stderr onto the HOST's
+          # stdout (fd 1) — so a bare `2>` redirect captures nothing.
+          # Capture combined output (`> file 2>&1`) so the records land
+          # in the file regardless of which host fd gramine routes the
+          # guest stream to. `--dry-run` emits no stdout content, so the
+          # capture is just the audit stream + narration.
           printf 'SECRET//REL TO GBR\n' \
-            | gramine-direct marque fix --dry-run - 2> /tmp/marque-audit.ndjson || true
+            | gramine-direct marque fix --dry-run - > /tmp/marque-audit.ndjson 2>&1 || true
           echo "--- audit stream ---"
           cat /tmp/marque-audit.ndjson
           grep -q '"type":"session_root"' /tmp/marque-audit.ndjson \
