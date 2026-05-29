@@ -157,8 +157,9 @@ pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<
 // `marque_engine::audit_line_to_json_v1_0` / `audit_line_to_ndjson`. WASM,
 // the CLI, and the server all route through that single copy, so there is
 // no WASM-private struct definition to drift from the CLI. The parity tests
-// (`crates/wasm/tests/audit_v3_0_parity.rs`, `tests/native_parity.rs`) still
-// guard the CLI-vs-WASM byte-identity at the integration boundary. What
+// (`crates/wasm/tests/audit_v3_0_parity.rs`,
+// `crates/wasm/tests/native_parity.rs`) still guard the CLI-vs-WASM
+// byte-identity at the integration boundary. What
 // stays WASM-local is the `RawValue` wrapper below, which `fix()` embeds
 // verbatim into its response.
 // ---------------------------------------------------------------------------

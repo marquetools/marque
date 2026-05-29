@@ -516,9 +516,9 @@ fn intent_kind_str(intent: &marque_scheme::ReplacementIntent<CapcoScheme>) -> &'
 // `marque_engine::audit_line_to_json_v1_0`. The CLI, WASM, and server all
 // route through that single copy, so there is no parallel struct definition
 // to drift; `crates/wasm/tests/audit_v3_0_parity.rs` and
-// `tests/native_parity.rs` continue to guard CLI-vs-WASM byte-identity at
-// the integration boundary. What stays CLI-local is the stderr-I/O +
-// error-frame machinery below.
+// `crates/wasm/tests/native_parity.rs` continue to guard CLI-vs-WASM
+// byte-identity at the integration boundary. What stays CLI-local is the
+// stderr-I/O + error-frame machinery below.
 // ---------------------------------------------------------------------------
 
 /// Serialize a single [`AuditLine<CapcoScheme>`] to a `serde_json::Value`
