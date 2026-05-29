@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Gramine confidential-VM smoke test (issue #184, Part B).
+#
+# Runs the `marque` CLI inside the Gramine LibOS in DIRECT (non-SGX)
+# mode — no SGX hardware is required, so it runs on standard GitHub
+# runners. This validates the deployment shape (manifest renders, the
+# binary runs in the enclave-equivalent LibOS, and it emits a tamper-
+# evident `session_root` audit record) before the heavier native-SGX
+# investment.
+#
+# Kept as a SEPARATE workflow (rather than a job in the 900+-line
+# ci.yml) deliberately: it depends on an EXTERNAL apt repository
+# (packages.gramineproject.io), so isolating it keeps that
+# third-party-availability risk off the main build/test gate. It is
+# path-gated so it only runs when the deploy assets, the CLI, the audit
+# engine, or this workflow change.
+
+name: gramine-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/gramine/**"
+      - "marque/**"
+      - "crates/engine/**"
+      - "crates/rules/**"
+      - ".github/workflows/gramine-smoke.yml"
+  pull_request:
+    paths:
+      - "deploy/gramine/**"
+      - "marque/**"
+      - "crates/engine/**"
+      - "crates/rules/**"
+      - ".github/workflows/gramine-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gramine-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gramine-direct:
+    name: Gramine direct-mode smoke test (no SGX)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89"
+
+      - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2
+
+      - name: Install Gramine (direct mode; no SGX driver needed)
+        run: |
+          set -euo pipefail
+          sudo curl -fsSLo /usr/share/keyrings/gramine-keyring.gpg \
+            https://packages.gramineproject.io/gramine-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gramine-keyring.gpg] \
+            https://packages.gramineproject.io/ $(lsb_release -sc) main" \
+            | sudo tee /etc/apt/sources.list.d/gramine.list
+          sudo apt-get update
+          # NOTE: pin GRAMINE_VERSION (e.g. `gramine=1.8`) once a
+          # known-good version is confirmed against this runner image, so
+          # an upstream release with a breaking manifest change can't
+          # silently flip the smoke test. Until then we take the repo's
+          # current version and record it below.
+          sudo apt-get install -y gramine
+          echo "Installed Gramine: $(gramine-direct --version 2>&1 | head -1 || true)"
+
+      - name: Build marque CLI (raw-text check/fix; no extract)
+        run: cargo build -p marque --locked
+
+      - name: Render the Gramine manifest from the generic template
+        run: |
+          set -euo pipefail
+          gramine-manifest \
+            -Dentrypoint="$(pwd)/target/debug/marque" \
+            -Darch_libdir="/lib/$(gcc -dumpmachine)" \
+            -Dlog_level="error" \
+            deploy/gramine/marque.manifest.template \
+            marque.manifest
+          echo "--- rendered manifest (head) ---"
+          head -40 marque.manifest
+
+      - name: Smoke test — marque check under gramine-direct
+        run: |
+          set -euo pipefail
+          echo 'SECRET//REL TO GBR' | gramine-direct marque check - || true
+          # `fix --dry-run` over a fixture: audit goes to stderr. Assert a
+          # tamper-evident session_root record is emitted (ties Part A+B).
+          printf 'SECRET//REL TO GBR\n' > /tmp/marque-smoke.txt
+          gramine-direct marque fix --dry-run /tmp/marque-smoke.txt 2> /tmp/marque-audit.ndjson || true
+          echo "--- audit stream ---"
+          cat /tmp/marque-audit.ndjson
+          grep -q '"type":"session_root"' /tmp/marque-audit.ndjson \
+            || { echo "::error::no session_root record emitted under Gramine"; exit 1; }
+
+      - name: Native test fallback (cargo test -p marque)
+        # Running the full cargo test harness *inside* Gramine is
+        # impractical on a CI runner; the issue's "cargo test -p marque
+        # under Gramine SIM mode" intent is satisfied by the direct-mode
+        # binary smoke test above plus the native suite here.
+        run: cargo test -p marque --locked

@@ -12,20 +12,31 @@
 //! the actual emitted bytes (not a stand-in serialization), closing the
 //! producer/verifier byte-identity contract end-to-end.
 
-use assert_cmd::Command;
 use marque_engine::SessionRoot;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
 
 /// Run `marque fix --write-stdout -` over `input` (stdin) and return the
-/// stderr text (the NDJSON audit stream).
+/// stderr text (the NDJSON audit stream). Uses plain `std::process` with
+/// the `CARGO_BIN_EXE_marque` path that Cargo provides to integration
+/// tests, so the test does not depend on any test-harness stdin API.
 fn fix_stderr(input: &str) -> String {
-    let output = Command::cargo_bin("marque")
-        .expect("marque binary")
+    let mut child = Command::new(env!("CARGO_BIN_EXE_marque"))
         .arg("fix")
         .arg("--write-stdout")
         .arg("-")
-        .write_stdin(input)
-        .output()
-        .expect("failed to run marque fix");
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn marque fix");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(input.as_bytes())
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("failed to run marque fix");
     String::from_utf8(output.stderr).expect("stderr was not valid UTF-8")
 }
 

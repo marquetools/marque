@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+#
+# Gramine manifest template for the `marque` CLI (issue #184, Part B).
+#
+# Gramine runs an unmodified Linux ELF inside an SGX enclave (or, for
+# CI/dev, in "direct" non-SGX mode), so no marque source change is
+# required — this is an execution environment, not an API. The template
+# is GENERIC: every path is a Gramine build-time variable filled by
+# `gramine-manifest`, never a hardcoded `/home/<user>` path. The CI
+# smoke test (`.github/workflows/gramine-smoke.yml`) renders it with:
+#
+#   gramine-manifest \
+#     -Dentrypoint="$(pwd)/target/debug/marque" \
+#     -Darch_libdir="/lib/$(gcc -dumpmachine)" \
+#     -Dlog_level="error" \
+#     deploy/gramine/marque.manifest.template marque.manifest
+#
+# then runs it with `gramine-direct` (SGX=0, no hardware). For a real
+# SGX deployment, sign it (`gramine-sgx-sign`) and run with `gramine-sgx`
+# — see deploy/gramine/README.md for the attestation workflow.
+
+libos.entrypoint = "{{ entrypoint }}"
+
+loader.entrypoint.uri = "file:{{ gramine.libos }}"
+loader.log_level = "{{ log_level }}"
+
+# Argument passthrough. In direct (non-SGX) mode this lets the smoke
+# test invoke `marque check <file>` / `marque fix <file>` with host
+# argv. For a production SGX enclave PIN the argv here instead (drop
+# `insecure__use_cmdline_argv`) so the measured manifest fixes the
+# command line — see README §"Hardening for production SGX".
+loader.insecure__use_cmdline_argv = true
+
+loader.env.LD_LIBRARY_PATH = "{{ gramine.runtimedir() }}:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
+
+# Classifier identity is injected via the environment, exactly as on a
+# bare host (Constitution V: identity never lives in committed config).
+# `passthrough` forwards the host value into the enclave; in a sealed
+# SGX deployment a verifier confirms the enclave measurement (MRENCLAVE)
+# and the identity is supplied by the attested launcher, not the host OS.
+loader.env.MARQUE_CLASSIFIER_ID = { passthrough = true }
+loader.env.MARQUE_CLASSIFICATION_AUTHORITY = { passthrough = true }
+loader.env.MARQUE_LOG = { passthrough = true }
+loader.env.MARQUE_AUDIT_SCHEMA = { passthrough = true }
+loader.env.MARQUE_CONFIDENCE_THRESHOLD = { passthrough = true }
+
+sys.enable_extra_runtime_domain_names = true
+
+fs.mounts = [
+  { uri = "file:{{ gramine.runtimedir() }}", path = "{{ gramine.runtimedir() }}" },
+  { uri = "file:{{ arch_libdir }}", path = "{{ arch_libdir }}" },
+  { uri = "file:/usr/{{ arch_libdir }}", path = "/usr/{{ arch_libdir }}" },
+  { uri = "file:{{ entrypoint }}", path = "{{ entrypoint }}" },
+]
+
+# --- SGX-specific settings (ignored by `gramine-direct`) ---
+
+sgx.debug = true
+
+# 512 MiB enclave: marque operates on raw byte buffers with a
+# SIMD-scanned, zero-allocation hot path, so the working set for the
+# in-scope `check` / `fix` on raw text is small. 512M leaves generous
+# headroom for the Aho-Corasick automaton, the rule set, and per-document
+# scratch without paging. Bump only if a future in-enclave workload
+# (e.g. very large single documents) demonstrates pressure.
+sgx.enclave_size = "512M"
+sgx.max_threads = 8
+
+# Measured (integrity-protected) files: the binary, the Gramine LibOS,
+# and the runtime/arch libraries. Tampering with any changes MRENCLAVE
+# and is caught at enclave launch.
+sgx.trusted_files = [
+  "file:{{ entrypoint }}",
+  "file:{{ gramine.libos }}",
+  "file:{{ gramine.runtimedir() }}/",
+  "file:{{ arch_libdir }}/",
+  "file:/usr/{{ arch_libdir }}/",
+]
+
+# Untrusted I/O surface. The document to be marked and any output path
+# live OUTSIDE the integrity boundary by design — marque consumes raw
+# bytes and the host owns the filesystem. Operators MUST scope this to
+# the specific working directory in production rather than a broad /tmp.
+# `marque-extract` (Kreuzberg, 75+ formats) is NOT in scope inside the
+# enclave (see README §Limitations); format extraction stays host-side
+# and only raw text crosses into the enclave.
+sgx.allowed_files = [
+  "file:/tmp/",
+]

@@ -130,9 +130,17 @@ pub fn merkle_root(lines: &[impl AsRef<[u8]>]) -> [u8; 32] {
 }
 
 /// Render a 32-byte digest as lowercase hex (64 chars), matching the
-/// BLAKE3 crate's `Display`/`to_hex` output.
+/// BLAKE3 crate's `Display`/`to_hex` output. Hand-rolled (rather than
+/// via `blake3::Hash::to_hex`) so the encoding is fixed by this code and
+/// cannot drift with the blake3 crate's formatting surface.
 fn to_hex(bytes: &[u8; 32]) -> String {
-    blake3::Hash::from_bytes(*bytes).to_hex().to_string()
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(64);
+    for &b in bytes {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    s
 }
 
 /// Session-end audit-chain integrity summary (`marque-3.1`).
