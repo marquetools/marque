@@ -20,6 +20,15 @@ use std::process::{Command, Stdio};
 /// stderr text (the NDJSON audit stream). Uses plain `std::process` with
 /// the `CARGO_BIN_EXE_marque` path that Cargo provides to integration
 /// tests, so the test does not depend on any test-harness stdin API.
+///
+/// Asserts the CLI exited successfully (exit 0): without this, a binary
+/// that crashed before emitting a terminal record would produce stderr
+/// with no `session_root` line, and `split_audit` would return
+/// `(vec![], None)` — silently turning a crash into a "passing" no-audit
+/// assertion. Checking the exit status makes the no-audit contract test
+/// prove what it claims. (`fix` exits 0 only when the post-fix re-lint is
+/// clean; every fixture here is clean-after-fix or fix-free, so 0 is the
+/// expected status.)
 fn fix_stderr(input: &str) -> String {
     let mut child = Command::new(env!("CARGO_BIN_EXE_marque"))
         .arg("fix")
@@ -37,7 +46,13 @@ fn fix_stderr(input: &str) -> String {
         .write_all(input.as_bytes())
         .expect("write to child stdin");
     let output = child.wait_with_output().expect("failed to run marque fix");
-    String::from_utf8(output.stderr).expect("stderr was not valid UTF-8")
+    let stderr = String::from_utf8(output.stderr).expect("stderr was not valid UTF-8");
+    assert!(
+        output.status.success(),
+        "`marque fix` must exit 0 for these fixtures; got {:?}.\nstderr:\n{stderr}",
+        output.status.code()
+    );
+    stderr
 }
 
 /// Split the audit stream into (preceding record lines, terminal

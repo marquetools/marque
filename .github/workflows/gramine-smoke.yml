@@ -49,11 +49,19 @@ env:
 jobs:
   gramine-direct:
     name: Gramine direct-mode smoke test (no SGX)
-    runs-on: ubuntu-24.04
+    # ubuntu-22.04 (jammy): the official Gramine apt repo
+    # (packages.gramineproject.io) reliably packages `jammy`; `noble`
+    # (ubuntu-24.04) is not consistently published there, so the
+    # `$(lsb_release -sc)` suite in the install step below must resolve
+    # to a codename the repo actually serves.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned to the same commit the rest of the workflows use (CodeQL
+      # "unpinned action" — security/code-scanning/73). dtolnay's `stable`
+      # tag is mutable; the hash is not.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
 
