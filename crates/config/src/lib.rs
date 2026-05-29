@@ -197,10 +197,15 @@ pub struct Config {
     /// mutation leaves the cached copy stale.
     pub corrections: HashMap<String, String>,
     pub capco: CapcoConfig,
-    /// When `true`, `Engine::fix` refuses to run unless the caller
-    /// supplies a signature (`FixOptions::signature`). Org-level audit
-    /// policy from the committed `[audit]` table in `.marque.toml`;
-    /// Marque itself never signs (carry-only). Default: `false`.
+    /// When `true`, `Engine::fix_with_options` refuses to run unless the
+    /// caller supplies a signature (`FixOptions::signature`), returning
+    /// `EngineError::SignatureRequired`. The gate is enforced on
+    /// `fix_with_options` — the path every I/O surface (server, CLI,
+    /// WASM) uses; the legacy `Engine::fix` / `fix_with_threshold` shims
+    /// call `fix_inner` directly and intentionally bypass it (they carry
+    /// no signature by construction). Org-level audit policy from the
+    /// committed `[audit]` table in `.marque.toml`; Marque itself never
+    /// signs (carry-only). Default: `false`.
     pub require_signature: bool,
     /// Fix confidence threshold. Fixes with confidence >= this value are auto-applied.
     /// Default: 0.95 per spec.

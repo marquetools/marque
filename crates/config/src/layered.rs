@@ -53,8 +53,10 @@ pub(crate) struct CapcoConfigFile {
 /// just `require_signature`; see [`Config::require_signature`].
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub(crate) struct AuditConfigFile {
-    /// When `true`, `Engine::fix` refuses to run unless the caller
-    /// supplies a signature (carry-only; the engine does not sign).
+    /// When `true`, `Engine::fix_with_options` refuses to run unless the
+    /// caller supplies a signature (carry-only; the engine does not
+    /// sign). The legacy `Engine::fix` / `fix_with_threshold` shims
+    /// bypass the gate. See [`Config::require_signature`].
     pub(crate) require_signature: Option<bool>,
 }
 

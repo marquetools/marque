@@ -40,6 +40,7 @@
 
 use std::sync::Arc;
 
+use serde::Serialize;
 use smol_str::SmolStr;
 
 /// Domain-separation tag for the integrity seal. Versioned so a future
@@ -147,7 +148,15 @@ impl SessionMetadata {
     /// the optional `classifier_id` / `classification_authority` /
     /// `signature`) so the record is byte-identical across every
     /// surface that emits it (CLI, server, WASM) — the cross-surface
-    /// parity tests depend on it. Optional identity / signature fields
+    /// parity tests depend on it, and the line is a `session_root`
+    /// Merkle leaf so its byte form must be canonical. The order is
+    /// enforced by a dedicated `#[derive(Serialize)]` struct
+    /// ([`SessionMetadataJson`]) whose field declaration order *is* the
+    /// wire order: serde emits struct fields in declaration order
+    /// regardless of any `serde_json/preserve_order` feature in the
+    /// dependency tree (a `serde_json::Map` would be a `BTreeMap` by
+    /// default — alphabetical — and would silently reorder if that
+    /// feature were ever enabled). Optional identity / signature fields
     /// are omitted when `None`.
     ///
     /// All values are serialized through `serde_json` rather than raw
@@ -155,28 +164,48 @@ impl SessionMetadata {
     /// containing a quote or backslash still yields well-formed JSON.
     #[must_use]
     pub fn to_ndjson(&self) -> String {
-        let mut map = serde_json::Map::new();
-        map.insert("type".into(), "session_metadata".into());
-        map.insert("schema".into(), self.audit_schema.into());
-        map.insert("marque_version".into(), self.marque_version.into());
-        map.insert(
-            "lattice_version".into(),
-            self.lattice_version.as_str().into(),
-        );
-        map.insert("decoder_version".into(), self.decoder_version.into());
-        map.insert("interface".into(), self.interface.as_str().into());
-        map.insert("seal".into(), self.seal().into());
-        if let Some(id) = self.classifier_id.as_deref() {
-            map.insert("classifier_id".into(), id.into());
-        }
-        if let Some(authority) = self.classification_authority.as_deref() {
-            map.insert("classification_authority".into(), authority.into());
-        }
-        if let Some(sig) = self.signature.as_deref() {
-            map.insert("signature".into(), sig.into());
-        }
-        serde_json::Value::Object(map).to_string()
+        let json = SessionMetadataJson {
+            kind: "session_metadata",
+            schema: self.audit_schema,
+            marque_version: self.marque_version,
+            lattice_version: self.lattice_version.as_str(),
+            decoder_version: self.decoder_version,
+            interface: self.interface.as_str(),
+            seal: self.seal(),
+            classifier_id: self.classifier_id.as_deref(),
+            classification_authority: self.classification_authority.as_deref(),
+            signature: self.signature.as_deref(),
+        };
+        // Infallible: every field is a string / string option, none of
+        // which can fail to serialize.
+        serde_json::to_string(&json).unwrap_or_default()
     }
+}
+
+/// Fixed-field-order wire projection of [`SessionMetadata`].
+///
+/// A `#[derive(Serialize)]` struct (not a `serde_json::Map`) so the
+/// emitted key order is the field declaration order below, independent
+/// of whether any crate in the build enables `serde_json/preserve_order`
+/// (which flips `Map` between `BTreeMap` and `IndexMap`). The byte form
+/// of this record is a `session_root` Merkle leaf and must be canonical
+/// and stable.
+#[derive(Serialize)]
+struct SessionMetadataJson<'a> {
+    #[serde(rename = "type")]
+    kind: &'a str,
+    schema: &'a str,
+    marque_version: &'a str,
+    lattice_version: &'a str,
+    decoder_version: &'a str,
+    interface: &'a str,
+    seal: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    classifier_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    classification_authority: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature: Option<&'a str>,
 }
 
 #[cfg(test)]
@@ -260,6 +289,45 @@ mod tests {
         assert!(v.get("classifier_id").is_none());
         assert!(v.get("classification_authority").is_none());
         assert!(v.get("signature").is_none());
+    }
+
+    #[test]
+    fn ndjson_field_order_is_fixed_not_alphabetical() {
+        // The line is a session_root Merkle leaf, so its byte form must
+        // be canonical. The derived-struct projection emits fields in
+        // declaration order (`type` first), NOT the alphabetical order a
+        // `serde_json::Map`/`BTreeMap` would produce (which would put
+        // `decoder_version` first). This pins the raw string prefix.
+        let mut m = sample();
+        m.classifier_id = Some(Arc::from("12345"));
+        m.signature = Some(Arc::from("SIG"));
+        let line = m.to_ndjson();
+        assert!(
+            line.starts_with(r#"{"type":"session_metadata","schema":"#),
+            "field order must start with type then schema, got: {line}"
+        );
+        // Documented order: type, schema, marque_version,
+        // lattice_version, decoder_version, interface, seal, then
+        // optional identity/signature.
+        let order = [
+            "\"type\"",
+            "\"schema\"",
+            "\"marque_version\"",
+            "\"lattice_version\"",
+            "\"decoder_version\"",
+            "\"interface\"",
+            "\"seal\"",
+            "\"classifier_id\"",
+            "\"signature\"",
+        ];
+        let mut last = 0usize;
+        for key in order {
+            let at = line
+                .find(key)
+                .unwrap_or_else(|| panic!("missing key {key} in {line}"));
+            assert!(at >= last, "key {key} out of order in {line}");
+            last = at;
+        }
     }
 
     #[test]
