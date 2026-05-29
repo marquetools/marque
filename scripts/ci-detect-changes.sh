@@ -25,7 +25,9 @@
 #           crate and the wasm-size tooling. A change to e.g.
 #           marque-server can never alter the wasm artifact, so it must
 #           not trigger the (slower) wasm build.
-#   deps  — Cargo manifests / lockfile / cargo-deny config (supply chain).
+#   deps  — Cargo manifests / lockfile / supply-chain config: cargo-deny
+#           (deny*.toml), cargo-audit (.cargo/audit.toml), cargo-vet
+#           (supply-chain/).
 #   refs  — vendored CAPCO reference PDFs (integrity checksum job).
 #   flake — the flake-watch queue file (cap-check job).
 #
@@ -100,7 +102,7 @@ emit_match() {
 
 RUST_RE='(\.rs$)|(/Cargo\.toml$)|(^Cargo\.(toml|lock)$)|(^rust-toolchain\.toml$)|(^crates/)|(^benches/)|(^tools/)|(^scripts/)|(^\.github/workflows/ci\.yml$)'
 WASM_RE='(^crates/(ism|core|rules|scheme|capco|wasm)/)|(^Cargo\.lock$)|(^rust-toolchain\.toml$)|(^tools/wasm-size-check\.sh$)|(^tools/wasm-size-baseline\.txt$)|(^\.github/workflows/ci\.yml$)'
-DEPS_RE='(/Cargo\.toml$)|(^Cargo\.(toml|lock)$)|(^deny(\.wasm-safe)?\.toml$)'
+DEPS_RE='(/Cargo\.toml$)|(^Cargo\.(toml|lock)$)|(^deny(\.wasm-safe)?\.toml$)|(^supply-chain/)|(^\.cargo/audit\.toml$)'
 REFS_RE='^crates/capco/docs/original-refs/'
 FLAKE_RE='^tools/flake-watch/issues\.md$'
 

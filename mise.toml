@@ -11,6 +11,7 @@ experimental_monorepo_root = true
 "cargo:cargo-deny" = "0.19.0"
 "cargo:cargo-nextest" = "0.9.29"
 "cargo:cargo-smart-release" = "0.21.10"
+"cargo:cargo-vet" = "0.10.0"
 "npm:@contextlint/cli" = "0.9.4"
 "npm:sort-package-json" = "3.6.1"
 actionlint = "1.7.12"
@@ -40,6 +41,14 @@ wasm-opt --enable-bulk-memory-opt --enable-bulk-memory --enable-extended-const -
 rm crates/wasm/pkg/marque_wasm_bg.wasm &&
 mv crates/wasm/pkg/marque_wasm_bg_tmp.wasm crates/wasm/pkg/marque_wasm_bg.wasm
 """ }
+
+# Supply-chain checks. `deny` covers licenses/bans/sources, `audit` owns
+# RustSec advisories, and `vet` verifies every dependency is audited or
+# exempted. `supply-chain` runs all three the way CI does.
+audit = { run = "cargo audit" }
+deny = { run = "cargo deny check bans licenses sources" }
+vet = { run = "cargo vet" }
+supply-chain = { depends = ["deny", "audit", "vet"] }
 
 [settings]
 auto_install = true

@@ -4,11 +4,12 @@
 # The [Marque License 1.0 (SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0)](./LICENSE.md) covers the project's source code and technical specs/plans.
 # deny.toml — cargo-deny configuration
 # https://embarkstudios.github.io/cargo-deny/
-
-[advisories]
-version = 2
-db-path = "~/.cargo/advisory-db"
-db-urls = ["https://github.com/rustsec/advisory-db"]
+#
+# cargo-deny owns licenses / bans / sources here. RustSec advisory
+# scanning is intentionally NOT configured: cargo-audit (see
+# `.cargo/audit.toml`) is the single advisory gate, so vulnerability
+# ignores live in exactly one place. The CI `deny` job runs
+# `cargo deny check bans licenses sources` (no `advisories`) to match.
 
 # NOTE on licenses:
 # -- this is here to save you the time of looking it up yourself --
