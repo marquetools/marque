@@ -389,7 +389,8 @@ Error | Fix`.
 There is none. Per FR-037:
 - No `marque-audit-reader` crate is scheduled.
 - Pre-cutover envelopes (`marque-mvp-2`, `marque-mvp-3`, `marque-1.0`,
-  `marque-2.0`) are unreadable by post-cutover `marque-3.0` binaries.
+  `marque-2.0`) are unreadable by post-cutover `marque-3.x` binaries
+  (the live build is `marque-3.1`).
 - This is a type-level guarantee, not a runtime concern: there are no
   pre-cutover records (no users, no deployment) at the time of cutover.
 - The window for clean-break refactor closes when external consumers
@@ -428,7 +429,7 @@ explicitly state that the audit schema's `"schema"` field is the
 discriminator external consumers should branch on, and that pre-
 cutover binaries producing `marque-mvp-*` / `marque-1.0` /
 `marque-2.0` records are not interoperable with post-cutover
-`marque-3.0` binaries.
+`marque-3.x` binaries (the live build is `marque-3.1`).
 
 This closes the discoverability gap left by FR-037's "no reader crate"
 posture: external consumers who do exist (per the no-consumers
@@ -439,13 +440,16 @@ schema changed, even though no compatibility shim is provided.
 
 ## Schema-bump policy
 
-`marque-3.0` is the active audit schema as of PR B (2026-05-28).
-Subsequent schema bumps (`marque-3.1`, `marque-3.2`, `marque-4.0`)
+`marque-3.1` is the active audit schema as of issue #184 (it added the
+terminal `session_root` record additively over the `marque-3.0` PR-B
+baseline). Subsequent schema bumps (`marque-3.2`, `marque-4.0`)
 follow semver:
 
 - **Minor bump (`marque-3.x`)**: additive — new `MessageTemplate`
   variant, new `FeatureId` variant, new `MessageArgs` field type
-  (still closed-set), additive `RuleId` predicate renames recorded
+  (still closed-set), a new terminal record type (e.g. the
+  `session_root` Merkle record added in `marque-3.1`, issue #184),
+  additive `RuleId` predicate renames recorded
   in `docs/refactor-006/legacy-rule-id-map.md`. Reader compatibility
   is forward-only; `MARQUE_AUDIT_SCHEMA` validates against the exact
   bumped value.

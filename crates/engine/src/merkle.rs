@@ -183,19 +183,27 @@ impl SessionRoot {
     /// pre-formatted by the caller (e.g. via `humantime::format_rfc3339`);
     /// it is informational and is NOT part of the Merkle input.
     ///
-    /// The line is hand-formatted rather than serde-serialized because
-    /// every field is a controlled, content-free value (a closed `type`
-    /// discriminant, the schema const, an integer count, a hex digest,
-    /// and an RFC3339 timestamp) — none can introduce a JSON-escaping
-    /// hazard, and this keeps the terminal-record shape byte-identical
-    /// across every surface that emits it.
+    /// Field order is fixed (`type`, `schema`, `record_count`, `root`,
+    /// `ts`) so the terminal-record shape is byte-identical across every
+    /// surface that emits it. Production call sites pass controlled
+    /// values (`AUDIT_SCHEMA_VERSION`, an `humantime` RFC3339 stamp), but
+    /// the string inputs are routed through `serde_json` string
+    /// serialization rather than raw interpolation, so an external caller
+    /// passing a `schema`/`ts` containing a quote or backslash still gets
+    /// well-formed JSON from a method that promises serialization.
     pub fn to_ndjson(&self, schema: &str, ts_rfc3339: &str) -> String {
+        // `serde_json::Value::String` escapes per RFC 8259; `to_string`
+        // on a string Value yields the quoted, escaped literal.
+        let schema_lit = serde_json::Value::String(schema.to_owned()).to_string();
+        let ts_lit = serde_json::Value::String(ts_rfc3339.to_owned()).to_string();
+        // `root` is a fixed `blake3:<64-hex>` shape (hex from `root_hex`),
+        // so it carries no escaping hazard and stays interpolated.
         format!(
-            "{{\"type\":\"session_root\",\"schema\":\"{schema}\",\"record_count\":{count},\"root\":\"blake3:{root}\",\"ts\":\"{ts}\"}}",
-            schema = schema,
+            "{{\"type\":\"session_root\",\"schema\":{schema_lit},\"record_count\":{count},\"root\":\"blake3:{root}\",\"ts\":{ts_lit}}}",
+            schema_lit = schema_lit,
             count = self.record_count,
             root = self.root_hex(),
-            ts = ts_rfc3339,
+            ts_lit = ts_lit,
         )
     }
 
@@ -311,5 +319,21 @@ mod tests {
         assert!(line.contains("\"root\":\"blake3:"));
         assert!(line.contains("\"ts\":\"2026-05-29T00:00:00Z\""));
         assert!(line.ends_with('}'));
+    }
+
+    #[test]
+    fn ndjson_escapes_hostile_schema_and_ts_inputs() {
+        // `to_ndjson` is public; an external caller could pass a `schema`
+        // or `ts` containing a quote/backslash. The output must stay
+        // well-formed JSON (the string inputs go through serde_json
+        // string serialization, not raw interpolation).
+        let line = SessionRoot::compute(&lines(1))
+            .to_ndjson("ev\"il\\schema", "2026-05-29T00:00:00Z\"injected");
+        let v: serde_json::Value =
+            serde_json::from_str(&line).expect("to_ndjson must emit parseable JSON");
+        assert_eq!(v["type"], "session_root");
+        assert_eq!(v["schema"], "ev\"il\\schema");
+        assert_eq!(v["ts"], "2026-05-29T00:00:00Z\"injected");
+        assert_eq!(v["record_count"], 1);
     }
 }

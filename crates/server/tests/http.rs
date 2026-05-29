@@ -122,6 +122,71 @@ async fn baseline_fix_without_override_is_ok() {
     );
 }
 
+/// Issue #184: the `/v1/fix` response must carry the tamper-evident
+/// audit surface — `audit_log` (the NDJSON record lines) and
+/// `session_root` (the BLAKE3 Merkle root over them) — and the root
+/// must recompute over the returned lines. The happy-path baseline
+/// above only asserts HTTP 200, so without this a future change could
+/// drop `audit_log`, mis-format `session_root`, or hash different bytes
+/// without a server-level failure.
+#[tokio::test]
+async fn fix_response_carries_verifiable_session_root() {
+    // `SECRET//REL TO GBR` triggers the REL-TO-missing-USA fix, so the
+    // audit log is non-empty.
+    let resp = app()
+        .oneshot(post_json("/v1/fix", r#"{"text": "SECRET//REL TO GBR\n"}"#))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    // audit_log present and non-empty for a fixing input.
+    let audit_log: Vec<String> = body["audit_log"]
+        .as_array()
+        .expect("response must carry an `audit_log` array")
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .expect("each audit_log entry is a string")
+                .to_owned()
+        })
+        .collect();
+    assert!(
+        !audit_log.is_empty(),
+        "a fixing input must produce at least one audit record"
+    );
+
+    // session_root present and shaped `blake3:<64-hex>`.
+    let session_root = body["session_root"]
+        .as_str()
+        .expect("response must carry a `session_root` string");
+    let hex = session_root
+        .strip_prefix("blake3:")
+        .expect("session_root must be `blake3:<hex>`");
+    assert_eq!(hex.len(), 64, "BLAKE3 root is 64 lowercase hex chars");
+
+    // The root must recompute over the returned audit_log lines —
+    // proving the server hashed exactly the bytes it returned.
+    let recomputed = marque_engine::SessionRoot::compute(&audit_log);
+    assert_eq!(
+        recomputed.root_hex(),
+        hex,
+        "session_root must verify against the returned audit_log"
+    );
+
+    // Mutating any returned line must break verification.
+    let mut tampered = audit_log.clone();
+    tampered[0].push(' ');
+    assert!(
+        !marque_engine::SessionRoot::verify(&tampered, &recomputed.root),
+        "a mutated audit_log line must fail verification"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Body-field rejection.
 // ---------------------------------------------------------------------------

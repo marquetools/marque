@@ -59,8 +59,12 @@ gramine-manifest \
   marque.manifest
 
 # 3. Run marque inside the Gramine LibOS (no SGX).
+#    Feed input on stdin (the `-` sentinel): gramine-direct governs
+#    filesystem visibility via the manifest's `fs.mounts` (which does NOT
+#    mount /tmp; `sgx.allowed_files` only applies under SGX), so a host
+#    file path would not be visible inside the LibOS. stdin needs no mount.
 echo 'SECRET//REL TO GBR' | gramine-direct marque check -
-gramine-direct marque fix --dry-run /tmp/doc.txt
+echo 'SECRET//REL TO GBR' | gramine-direct marque fix --dry-run -
 ```
 
 The audit stream (stderr) is byte-identical to a bare-host run, including
