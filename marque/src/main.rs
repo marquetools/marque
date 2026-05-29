@@ -998,7 +998,13 @@ fn run_fix(
             let ts = session_ts.unwrap_or_else(std::time::SystemTime::now);
             let ts_str = humantime::format_rfc3339(ts).to_string();
             let terminal = root.to_ndjson(marque_engine::AUDIT_SCHEMA_VERSION, &ts_str);
-            let write_res = {
+            // Gate the stderr write on a non-empty audit stream so the
+            // established "no fixes -> no audit output" CLI contract holds
+            // (a clean / empty document emits nothing). The empty-marker
+            // root stays a library primitive for embedders that want one.
+            let write_res = if session_record_lines.is_empty() {
+                Ok(())
+            } else {
                 let mut stderr_lock = stderr.lock();
                 writeln!(stderr_lock, "{terminal}")
             };
