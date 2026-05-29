@@ -171,26 +171,42 @@ Two cross-scheme relationships exist, not one:
 - **Co-reside (A ∥ B)** — CUI's block *and* the CAPCO CAB on the same document,
   both authoritative, neither derived from the other.
 
-**The co-residence join is exactly one shared lattice axis: releasability /
-foreign-disclosure.** The two scheme DAGs are otherwise disjoint.
+**The co-residence releasability relationship is a `Product` of the two
+schemes' dissem axes joined componentwise, plus a monotone cross-component
+closure** — *not* a single shared axis reconciled by a meet (lattice-consultant
+verdict, 2026-05-29; see Open items). The two scheme DAGs are otherwise disjoint.
 
-- Document releasability = **meet (most-restrictive)** over both schemes'
-  contributions to that axis.
-- Each regime **renders its own projection** of that meet: the classified banner
-  shows the IC-expressible floor (NOFORN / REL TO / RELIDO); the CUI block shows
-  the precise `LDC` (FEDCON / FED ONLY / NOCON / DL ONLY / DISPLAY ONLY / …).
+- Combine = **join** (least upper bound), not meet. In marque restriction
+  increases *upward*: `join` picks the more-restrictive value (`U → TS`; NOFORN
+  dominates RELIDO under `DissemSet`'s supersession overlay). The "most-restrictive
+  floor" is the join. (The releasability axes — `DissemSet`, `NonIcDissemSet` —
+  are deliberately join-only / not even per-axis lattices; a literal `meet` is
+  uncallable on them.)
+- Shape = `Product<CuiReleasability, CapcoIcDissem>` joined **componentwise**
+  (lawful for free via the `Product` constructor), with a **closure rule** that
+  injects NOFORN into the IC component when the CUI component carries a non-IC
+  control. The escrow property *forces* two retained components: the banner side
+  is lossy (NOFORN cannot reconstruct which non-IC control produced it), so a
+  single shared scalar cannot hold both values.
+- Each regime **renders its own projection** of its component (a render, not a
+  lattice op): the classified banner shows the IC-expressible floor (NOFORN /
+  REL TO / RELIDO); the CUI block shows the precise `LDC` (FEDCON / FED ONLY /
+  NOCON / DL ONLY / DISPLAY ONLY / …).
 - The same attribute can appear on **both** surfaces — the CUI block is a
   **releasability escrow** that preserves what the classified banner strips.
   This is cleaner than the IC's transmutation (SBU-NF): the precise control is
   retained instead of lost.
 
 Worked example: `CUI//FEDCON` + `C//RELIDO` → banner `CONFIDENTIAL//NOFORN` plus
-a CUI block with `LDC: FEDCON`. FEDCON is non-IC → it floors the classified
-side's foreign posture to NOFORN by the existing
+a CUI block with `LDC: FEDCON`. FEDCON is non-IC → the cross-component closure
+floors the IC component's foreign posture to NOFORN by the existing
 `CLOSURE_NOFORN_NONICCONTROLS` principle; that NOFORN supersedes the portion's
-RELIDO; FEDCON itself is escrowed verbatim in the CUI block's `LDC`. **The
-cross-scheme edge reuses dissem-lattice machinery the engine already has** —
-it is not new lattice, just one axis shared across two schemes.
+RELIDO under the IC dissem join; FEDCON itself is escrowed verbatim in the CUI
+block's `LDC`. **The cross-scheme floor reuses the closure machinery the engine
+already has** — it is the intra-CAPCO non-IC→NOFORN closure lifted across the
+scheme boundary, not new lattice. The closure is monotone (additive: injects
+NOFORN, never removes), so it preserves the Kleene-fixpoint monotonicity the
+existing closure operator relies on (#704).
 
 Two unifications fall out:
 
@@ -198,8 +214,11 @@ Two unifications fall out:
    ATTORNEY-CLIENT, …) are the LDC values plus a few. #128 and CUI commingling
    are one modeling problem — the releasability-escrow surface — whether or not
    a full CUI block is present.
-2. **The join is a lattice statement** (shared axis, meet, two projections) —
-   worth validating against the lattice consultant before implementation.
+2. **The releasability relationship is a lattice statement** — and it was
+   validated against the lattice consultant (2026-05-29): it is a `Product` of
+   the two schemes' dissem axes joined componentwise, plus a monotone
+   cross-component NOFORN closure, with each regime rendering its own projection.
+   See Open items for the full verdict.
 
 ## Unintentional commingling: `(S//CUI)`
 
@@ -280,9 +299,31 @@ honor regardless, or they are expensive to add later:
   releasability lattices reconciled at the document node, keeping the leaf
   clean. (a) — a shared `Releasability` lattice constructor in `marque-scheme` —
   is a viable "cross-lattice" abstraction but risks accreting a near-domain
-  concept. Validate the meet's laws (associativity / commutativity / idempotence
-  across two schemes' contributions) with the lattice consultant before
-  committing.
+  concept.
+  - **Lattice-consultant verdict (2026-05-29 — resolved, not pending).** The
+    reconciliation is sound but was mis-described as a meet. Two operations were
+    conflated: **(1) combine** the like-kind releasability tokens — that is a
+    **join** (marque orients restriction upward; the most-restrictive floor is
+    the LUB), and it is already lawful in-tree (`DissemSet::join` is
+    commutative / associative / idempotent; `Product` gives it componentwise for
+    free). **(2) floor** the IC side when the CUI side carries a non-IC control
+    (`FEDCON ⇒ NOFORN`) — that is **not** a meet or a join but a **cross-axis
+    closure rule**, whose correctness obligation is **monotonicity** (already
+    satisfied: it is the `CLOSURE_NOFORN_NONICCONTROLS` precedent lifted across
+    schemes), not the meet-laws originally listed. The releasability axes
+    (`DissemSet`, `NonIcDissemSet`) are deliberately join-only — the codebase
+    already refuses to model cross-axis-gated transforms as per-axis lattice ops
+    ("don't claim a trait when the laws can't hold"), so a literal `meet` is
+    uncallable. **Shape: `Product<CuiReleasability, CapcoIcDissem>` joined
+    componentwise + a monotone cross-component NOFORN closure.** The escrow
+    property forbids collapsing to one shared scalar (the banner side is lossy).
+    A one-shared-`DissemSet` alternative is rejected: it would require a single
+    `&'static` supersession table spanning both vocabularies
+    (`SupersessionSet::join`'s table-consistency precondition for commutativity /
+    associativity), a standing cross-scheme coupling hazard the `Product` shape
+    avoids. No new lattice algebra is required; `marque-scheme` stays
+    domain-neutral (Product + closure are existing leaf primitives; the
+    cross-scheme wiring lives in `marque-engine`).
 - **CUI source-gating** (NODIS/EXDIS/SBU → CUI subsumption; UCNI/DCNI homes) is
   resolved authoritatively at CUI implementation time against the governing
   unclassified policies. FOUO stays an IC token, distinct and non-convertible.
