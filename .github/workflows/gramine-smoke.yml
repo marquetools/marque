@@ -103,10 +103,16 @@ jobs:
         run: |
           set -euo pipefail
           echo 'SECRET//REL TO GBR' | gramine-direct marque check - || true
-          # `fix --dry-run` over a fixture: audit goes to stderr. Assert a
-          # tamper-evident session_root record is emitted (ties Part A+B).
-          printf 'SECRET//REL TO GBR\n' > /tmp/marque-smoke.txt
-          gramine-direct marque fix --dry-run /tmp/marque-smoke.txt 2> /tmp/marque-audit.ndjson || true
+          # `fix --dry-run` reading from STDIN (the `-` sentinel): the
+          # input is piped in, so no host file needs to be visible inside
+          # the enclave. (A file-path argument would require `/tmp` in
+          # `fs.mounts`; gramine-direct governs FS access via mounts, not
+          # `sgx.allowed_files`, so stdin is the simpler, mount-free path
+          # — and it matches the `check -` invocation above.) The audit
+          # NDJSON goes to the child's stderr, which the host shell
+          # redirects to a file outside the enclave.
+          printf 'SECRET//REL TO GBR\n' \
+            | gramine-direct marque fix --dry-run - 2> /tmp/marque-audit.ndjson || true
           echo "--- audit stream ---"
           cat /tmp/marque-audit.ndjson
           grep -q '"type":"session_root"' /tmp/marque-audit.ndjson \
