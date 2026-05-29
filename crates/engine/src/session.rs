@@ -176,9 +176,14 @@ impl SessionMetadata {
             classification_authority: self.classification_authority.as_deref(),
             signature: self.signature.as_deref(),
         };
-        // Infallible: every field is a string / string option, none of
-        // which can fail to serialize.
-        serde_json::to_string(&json).unwrap_or_default()
+        // Serialization is infallible here — every field is a `&str` /
+        // `Option<&str>` / `String`, none of which can fail. Fail loudly
+        // (`expect`) rather than `unwrap_or_default()`: a silent empty
+        // string would become an invalid/empty NDJSON record and, worse,
+        // a `session_root` Merkle leaf computed over bytes that were
+        // never a valid record. A panic surfaces any future regression
+        // (e.g. a field type that can fail to serialize) immediately.
+        serde_json::to_string(&json).expect("SessionMetadata serialization is infallible")
     }
 }
 
