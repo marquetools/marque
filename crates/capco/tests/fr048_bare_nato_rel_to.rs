@@ -195,6 +195,19 @@ fn example_c_nato_plus_us_fouo_silent() {
 // Until that migration lands, S007 fires on every bare-NATO portion
 // regardless of solely-NATO document status. Users in solely-NATO
 // contexts can silence with `[rules] S007 = "off"` in `.marque.toml`.
+//
+// The general "a portion's marking is neighbor-independent" property is
+// now pinned centrally by the behavioral canary in
+// `portion_isolation_invariant.rs`. S007 is the one documented
+// EXCEPTION to that property: its `REL TO USA, NATO` suggestion is a
+// portion *fix* whose presence is meant to depend on document context
+// (US doc → suggest; solely-NATO doc → suppress), per FR-048 and PM
+// decision #2. Today S007 fires conservatively regardless of neighbors,
+// so it stays neighbor-independent and does NOT trip that canary. When
+// the migration below lands and makes the fix document-context-
+// dependent, the migrating engineer MUST add S007 to the canary's
+// documented exception list (see its module docs) — otherwise the
+// isolation canary correctly flags the new neighbor-dependent fix.
 // =========================================================================
 
 #[test]
@@ -250,6 +263,20 @@ fn solely_nato_doc_two_portions_conservative_fire() {
     // `crates/ism/src/projected.rs` (which is the
     // single-portion-bare-NATO base case the analysis above relies
     // on). Do NOT blindly flip to a hard-coded number.
+    //
+    // The same migration ALSO interacts with the portion-isolation
+    // canary (`portion_isolation_invariant.rs`): under either snapshot
+    // semantic, S007's fix on a bare-NATO portion would become
+    // dependent on whether sibling portions make the document
+    // solely-NATO — i.e. a neighbor-dependent portion fix. That canary
+    // forbids exactly that for every other rule, so the migrating
+    // engineer MUST add `capco:portion.nato.bare-nato-requires-rel-to-
+    // usa-nato` to that test's exception list (with the FR-048 / PM
+    // decision #2 justification) in the same change that flips this
+    // assertion. The canary is deliberately a gate here: if the
+    // suppression instead belongs at document scope (per RFC #799's
+    // scope hierarchy), that is the signal to model it there rather
+    // than by a portion rule peeking sideways at siblings.
     let source = b"(//CTS)\n(//NS)";
     let diags = lint_s007(source);
     assert_eq!(
