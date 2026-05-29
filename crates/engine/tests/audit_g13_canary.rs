@@ -416,12 +416,12 @@ fn canary_passes_on_full_corpus() {
             Some(result.session_metadata.to_ndjson())
         };
 
-        let lines = session_metadata_ndjson
-            .iter()
-            .cloned()
-            .chain(result.audit_lines.iter().filter_map(|line| {
-                render_audit_line_to_json(scheme, line)
-            }));
+        let lines = session_metadata_ndjson.iter().cloned().chain(
+            result
+                .audit_lines
+                .iter()
+                .filter_map(|line| render_audit_line_to_json(scheme, line)),
+        );
         for ndjson in lines {
             total_lines_scanned += 1;
             if let Some((leaked, json_path)) = detect_content_leak(&source, &ndjson) {

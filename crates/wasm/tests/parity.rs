@@ -189,7 +189,9 @@ fn wasm_fix_applies_correction() {
     assert_eq!(meta["interface"], "W", "wasm interface code is `W`");
     assert_eq!(meta["schema"], marque_engine::AUDIT_SCHEMA_VERSION);
     assert!(
-        meta["seal"].as_str().is_some_and(|s| s.starts_with("blake3:")),
+        meta["seal"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("blake3:")),
         "session_metadata carries a blake3 integrity seal"
     );
     assert!(

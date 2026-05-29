@@ -122,7 +122,10 @@ fn per_call_identity_override_beats_config() {
             );
         }
     }
-    assert!(saw_fix, "the fixing input must produce ≥1 AppliedFix record");
+    assert!(
+        saw_fix,
+        "the fixing input must produce ≥1 AppliedFix record"
+    );
 }
 
 #[test]
@@ -183,8 +186,7 @@ fn signature_is_carried_into_metadata_ndjson() {
     let result = engine
         .fix_with_options(FIXING_INPUT, FixMode::Apply, &opts)
         .expect("fix succeeds");
-    let v: serde_json::Value =
-        serde_json::from_str(&result.session_metadata.to_ndjson()).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&result.session_metadata.to_ndjson()).unwrap();
     assert_eq!(v["signature"], "sig-token");
 }
 

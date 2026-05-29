@@ -94,17 +94,17 @@ pub fn fix_native(
             // fixes → no audit output" contract. It is the FIRST line
             // folded into the session root so the seal and identity are
             // covered by it.
-            let session_metadata: Option<Box<serde_json::value::RawValue>> =
-                if result.audit_lines.is_empty() {
-                    None
-                } else {
-                    Some(
-                        serde_json::value::RawValue::from_string(
-                            result.session_metadata.to_ndjson(),
-                        )
+            let session_metadata: Option<Box<serde_json::value::RawValue>> = if result
+                .audit_lines
+                .is_empty()
+            {
+                None
+            } else {
+                Some(
+                    serde_json::value::RawValue::from_string(result.session_metadata.to_ndjson())
                         .map_err(|e| e.to_string())?,
-                    )
-                };
+                )
+            };
 
             // issue #184 / #399: session-end Merkle root over the
             // session-metadata record (when present) followed by the
