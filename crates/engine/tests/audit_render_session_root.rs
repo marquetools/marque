@@ -16,6 +16,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock, SessionRoot, audit_line_to_ndjson};
+use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
 /// Fixed clock so the emitted audit records (and therefore the Merkle
@@ -24,8 +25,12 @@ use std::time::{Duration, UNIX_EPOCH};
 const FIXED_TS: u64 = 1_700_000_000;
 
 fn test_engine() -> Engine {
+    engine_with_config(Config::default())
+}
+
+fn engine_with_config(config: Config) -> Engine {
     Engine::with_clock(
-        Config::default(),
+        config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
@@ -123,6 +128,40 @@ fn tampering_with_the_engine_audit_log_breaks_the_root() {
     assert!(
         !SessionRoot::verify(&truncated, &root.root),
         "a deleted record must fail verification"
+    );
+}
+
+#[test]
+fn text_correction_arm_projects_and_round_trips() {
+    // A corrections-map entry drives the C001 text-correction path, so
+    // the emitted audit log exercises the `text_correction` arm of the
+    // engine-side projection (the `applied_fix`-only fixtures above never
+    // reach it). `(TS//SERCET//NF)` corrects SERCET→SECRET.
+    let mut corrections = HashMap::new();
+    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
+    let mut config = Config::default();
+    config.corrections = corrections;
+    let engine = engine_with_config(config);
+
+    let (lines, root) = audit_log_and_root(&engine, b"(TS//SERCET//NF)");
+    assert!(
+        !lines.is_empty(),
+        "corrections-map fixture should produce audit records"
+    );
+    // At least one record must be a text_correction (the C001 path).
+    let has_text_correction = lines.iter().any(|l| {
+        serde_json::from_str::<serde_json::Value>(l)
+            .ok()
+            .and_then(|v| v["type"].as_str().map(|s| s == "text_correction"))
+            .unwrap_or(false)
+    });
+    assert!(
+        has_text_correction,
+        "SERCET→SECRET correction must emit a text_correction record; got:\n{lines:#?}"
+    );
+    assert!(
+        SessionRoot::verify(&lines, &root.root),
+        "the root must verify over a text-correction audit log"
     );
 }
 

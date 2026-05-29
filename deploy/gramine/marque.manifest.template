@@ -45,8 +45,6 @@ loader.env.MARQUE_LOG = { passthrough = true }
 loader.env.MARQUE_AUDIT_SCHEMA = { passthrough = true }
 loader.env.MARQUE_CONFIDENCE_THRESHOLD = { passthrough = true }
 
-sys.enable_extra_runtime_domain_names = true
-
 fs.mounts = [
   { uri = "file:{{ gramine.runtimedir() }}", path = "{{ gramine.runtimedir() }}" },
   { uri = "file:{{ arch_libdir }}", path = "{{ arch_libdir }}" },
