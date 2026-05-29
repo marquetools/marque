@@ -109,7 +109,8 @@ function handleRequest(req, res) {
         'Content-Type': 'text/plain',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
-        'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
+        'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';",
+        'Cache-Control': 'no-store, max-age=0'
       });
       res.end(
         'WASM module not found.\n\n' +
@@ -141,7 +142,8 @@ function serveFile(res, absPath) {
       'Content-Type': 'text/plain',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
-      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
+      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';",
+      'Cache-Control': 'no-store, max-age=0'
     });
     res.end('403 Forbidden');
     return;
@@ -154,7 +156,8 @@ function serveFile(res, absPath) {
           'Content-Type': 'text/plain',
           'X-Content-Type-Options': 'nosniff',
           'X-Frame-Options': 'DENY',
-          'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
+          'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';",
+          'Cache-Control': 'no-store, max-age=0'
         });
         res.end('404 Not Found');
       } else {
@@ -162,7 +165,8 @@ function serveFile(res, absPath) {
           'Content-Type': 'text/plain',
           'X-Content-Type-Options': 'nosniff',
           'X-Frame-Options': 'DENY',
-          'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
+          'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';",
+          'Cache-Control': 'no-store, max-age=0'
         });
         res.end('500 Internal Server Error');
       }
@@ -180,7 +184,8 @@ function serveFile(res, absPath) {
       'Cross-Origin-Resource-Policy': 'same-origin',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
-      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';"
+      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; frame-ancestors 'none';",
+      'Cache-Control': 'no-store, max-age=0'
     });
     res.end(data);
   });
