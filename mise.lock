@@ -55,6 +55,10 @@ backend = "cargo:cargo-nextest"
 version = "0.21.10"
 backend = "cargo:cargo-smart-release"
 
+[[tools."cargo:cargo-vet"]]
+version = "0.10.2"
+backend = "cargo:cargo-vet"
+
 [[tools.git-cliff]]
 version = "2.12.0"
 backend = "aqua:orhun/git-cliff"

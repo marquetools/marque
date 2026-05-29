@@ -723,7 +723,7 @@ jobs:
         with:
           tool: cargo-vet
       - name: cargo vet
-        run: cargo vet
+        run: cargo vet --locked
 
   # Whitepaper §8.5 / gap register #14 — the Constitution v1.2.0
   # dependency-hygiene rule must hold independently for the WASM-safe
