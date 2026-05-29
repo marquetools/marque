@@ -127,6 +127,14 @@ smol_str = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
+# Audit-record JSON projection (`audit_render`, issue #184): `serde`
+# derive for the projection structs, `serde_json` for the audit-line
+# `Value`/`Map` serialization, and `humantime` for the RFC3339
+# `timestamp` field. The server's /v1/fix session-root surface reuses
+# this engine-side projection.
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+humantime = { workspace = true }
 # `web_time::Instant` re-exports `std::time::Instant` on native and
 # polyfills via Performance.now() on wasm32-unknown-unknown. The
 # engine's deadline check (spec 005) calls `Instant::now()` per
