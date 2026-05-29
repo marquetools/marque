@@ -70,8 +70,13 @@ mod fix;
 mod lint;
 mod types;
 
+/// Re-export of the engine's canonical audit-record projection so the
+/// byte-identity parity test (`tests/audit_v3_0_parity.rs`) can exercise
+/// the exact projection WASM `fix()` emits without reimplementing it. WASM
+/// no longer carries a private copy — this routes through the single
+/// engine source of truth (`crates/engine/src/audit_render.rs`).
 #[doc(hidden)]
-pub use types::audit_line_to_json_v1_0;
+pub use marque_engine::audit_line_to_json_v1_0;
 
 #[cfg(all(
     target_arch = "wasm32",

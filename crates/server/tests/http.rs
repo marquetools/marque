@@ -185,6 +185,57 @@ async fn fix_response_carries_verifiable_session_root() {
         !marque_engine::SessionRoot::verify(&tampered, &recomputed.root),
         "a mutated audit_log line must fail verification"
     );
+
+    // Consolidation guard (audit JSON projection): the server must emit
+    // the *canonical* engine projection
+    // (`marque_engine::audit_line_to_ndjson`), not a drifted server-
+    // private serializer. The re-hash check above would still pass for a
+    // self-consistent custom serializer (it hashes whatever it emits), so
+    // it cannot catch projection drift on its own. Pin the per-line shape
+    // directly: re-run the same fix through the engine and compare each
+    // line field-for-field. `timestamp` is the one inherently non-
+    // deterministic field — it is snapshotted from the wall clock at
+    // promotion, so two runs differ there and nowhere else — so it is
+    // normalized out on both sides before comparison.
+    let engine = Engine::new(
+        Config::default(),
+        vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+    let result = engine
+        .fix_with_options(
+            b"SECRET//REL TO GBR\n",
+            marque_engine::FixMode::Apply,
+            &marque_engine::FixOptions::default(),
+        )
+        .expect("fix succeeds on the same input the server fixed");
+    let scheme = engine.scheme();
+    let canonical: Vec<String> = result
+        .audit_lines
+        .iter()
+        .map(|line| marque_engine::audit_line_to_ndjson(scheme, line))
+        .collect();
+    assert_eq!(
+        canonical.len(),
+        audit_log.len(),
+        "server audit_log record count must match the canonical projection"
+    );
+    let strip_timestamp = |line: &str| -> serde_json::Value {
+        let mut v: serde_json::Value =
+            serde_json::from_str(line).expect("each audit_log line is valid JSON");
+        if let Some(obj) = v.as_object_mut() {
+            obj.remove("timestamp");
+        }
+        v
+    };
+    for (server_line, canonical_line) in audit_log.iter().zip(canonical.iter()) {
+        assert_eq!(
+            strip_timestamp(server_line),
+            strip_timestamp(canonical_line),
+            "server audit_log line must match the canonical engine projection (modulo timestamp)"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
