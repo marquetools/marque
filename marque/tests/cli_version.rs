@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! marque 0.3.0
-//! audit_schema: marque-3.0
+//! audit_schema: marque-3.1
 //! ```
 //!
 //! Shell scripts grep for `^audit_schema:` to detect schema-major

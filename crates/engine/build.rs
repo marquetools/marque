@@ -5,7 +5,7 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! The accept-list is a single value: `["marque-3.0"]`. Under that
+//! The accept-list is a single value: `["marque-3.1"]`. Under that
 //! schema, the `Confidence` two-axis payload was retired in favor of a
 //! single `Recognition` axis (PR B); the audit-record `"confidence"`
 //! sub-object on the wire drops the `rule` and `region` fields. The
@@ -23,8 +23,8 @@ fn main() {
     // or removing a value MUST coordinate with audit-emit paths.
     // `crates/engine/tests/audit_schema_accept_list.rs` regression-
     // pins this verbatim.
-    const ACCEPTED: &[&str] = &["marque-3.0"];
-    const DEFAULT: &str = "marque-3.0";
+    const ACCEPTED: &[&str] = &["marque-3.1"];
+    const DEFAULT: &str = "marque-3.1";
 
     let schema = std::env::var("MARQUE_AUDIT_SCHEMA").unwrap_or_else(|_| DEFAULT.to_string());
 
