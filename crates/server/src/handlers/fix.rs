@@ -60,10 +60,29 @@ pub async fn fix_handler(
             // variant becomes an explicit decision at this site.
             let applied_count =
                 result.applied_fixes().count() + result.applied_text_corrections().count();
+
+            // issue #184: serialize each audit record to its canonical
+            // NDJSON line and compute a session-end Merkle root over those
+            // exact bytes. Emitting the lines AND hashing them with the
+            // same `audit_line_to_ndjson` keeps the response self-
+            // verifiable (a caller re-hashes `audit_log` → `session_root`).
+            let scheme = state.engine.scheme();
+            let audit_log: Vec<String> = result
+                .audit_lines
+                .iter()
+                .map(|line| marque_engine::audit_line_to_ndjson(scheme, line))
+                .collect();
+            let session_root = format!(
+                "blake3:{}",
+                marque_engine::SessionRoot::compute(&audit_log).root_hex()
+            );
+
             Ok(Json(FixResponse {
                 fixed_text: fixed,
                 applied_count,
                 remaining_diagnostics: result.remaining_diagnostics.len(),
+                audit_log,
+                session_root,
             })
             .into_response())
         }
