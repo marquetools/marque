@@ -65,7 +65,9 @@ jobs:
       - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: Install release tooling
-        run: cargo install cargo-smart-release git-cliff --locked
+        run: | 
+          cargo install cargo-smart-release git-cliff --locked
+          cargo install cargo-auditable
 
       - name: Configure git
         run: |
@@ -108,10 +110,13 @@ jobs:
              marque-ism \
              marque-rules \
              marque-scheme \
-             marque marque-server \
+             marque \
+             marque-server \
+             marque-utls `
              marque-test-utils \
              marque-wasm"
           fi
+          export cargo='cargo auditable'
           cargo smart-release $FLAGS
 
       - name: Create workspace tag
@@ -185,13 +190,13 @@ jobs:
         run: |
           VERSION="${{ steps.tag.outputs.version }}"
           # SPDX — generated from existing REUSE annotations
-          pipx install "reuse==5.0.2"
+          pipx install "reuse==6.2.0"
           reuse spdx \
             --output "marque-${VERSION}.spdx" \
             --add-license-concluded \
             --creator-organization "Knitli Inc."
           # CycloneDX — full transitive dependency graph from Cargo.lock
-          cargo install cargo-cyclonedx --version 0.5.7 --locked
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
           cargo cyclonedx --format json --workspace \
             --output-file "marque-${VERSION}.cyclonedx.json"
           cargo cyclonedx --format xml --workspace \
