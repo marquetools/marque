@@ -68,6 +68,22 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "MIT OR Apache-2.0"
 
+# cargo-vet store. These files are machine-managed (`cargo vet fmt`
+# rewrites them in a canonical form and strips inline comments, so a
+# per-file SPDX header would not survive), and like `Cargo.lock` they
+# mirror third-party data (imports.lock caches other orgs' audits).
+# Annotated here rather than via inline headers for the same reason
+# the lockfile is. `supply-chain/README.md` is covered by `**/README.md`.
+[[annotations]]
+path = [
+  "supply-chain/config.toml",
+  "supply-chain/audits.toml",
+  "supply-chain/imports.lock",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "MIT OR Apache-2.0"
+
 [[annotations]]
 path = [
   ".github/prompts/speckit.*.md",

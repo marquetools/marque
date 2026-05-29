@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# cargo-audit configuration — https://github.com/rustsec/rustsec/tree/main/cargo-audit
+#
+# cargo-audit owns vulnerability scanning for this workspace. It reads
+# `Cargo.lock` and matches it against the RustSec advisory database
+# (https://github.com/rustsec/advisory-db). cargo-deny's `[advisories]`
+# check was retired in favor of this tool to keep a single place to
+# manage advisory ignores — cargo-deny (`deny.toml`) now owns only
+# `licenses`, `bans`, and `sources`. cargo-audit additionally reports
+# yanked crates (registry-index check) and can audit compiled binaries
+# built with `cargo-auditable` via `cargo audit bin`, which cargo-deny
+# cannot do.
+
+[advisories]
+# Advisory IDs to silence (e.g., "RUSTSEC-2020-0001"). Keep empty; every
+# entry MUST carry an inline comment naming the advisory, why it does not
+# apply to us, and a tracking issue, so the exception is auditable. This
+# is the single source of truth for advisory ignores now that
+# cargo-deny no longer scans advisories.
+ignore = []
+informational_warnings = ["unmaintained", "unsound", "notice"]
+
+[output]
+# Vulnerabilities always fail the run regardless of this list. `deny` adds
+# the *informational* categories that are also hard failures. The current
+# tree is clean of all three (verified at setup), so we adopt the stricter
+# posture cargo-deny could not give us: an unmaintained, unsound, or yanked
+# crate entering the graph fails CI rather than only warning. If a future
+# finding is genuinely unactionable, silence that specific advisory in
+# `[advisories] ignore` above (with a justifying comment) rather than
+# dropping a whole category here.
+deny = ["unmaintained", "unsound", "yanked"]
+format = "terminal"
+quiet = false
+show_tree = true
+
+[yanked]
+# Detect crates yanked from the registry (requires the registry index).
+enabled = true
+update_index = true
