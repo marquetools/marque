@@ -11,14 +11,15 @@
 //! The pipeline is a chain of async streams; each stage is a `Stream` impl.
 //! CLI, WASM, and server are different Source/Sink configurations wired to the same middle.
 
+pub mod audit_render;
 #[cfg(feature = "batch")]
 pub mod batch;
 pub mod clock;
 pub mod decoder;
 pub mod engine;
 pub mod errors;
-pub mod options;
 pub mod merkle;
+pub mod options;
 pub mod output;
 pub mod pipeline;
 pub mod recognizer;
@@ -46,9 +47,10 @@ pub use engine::{Engine, FixMode, InvalidThreshold, R002_RULE_ID};
 /// `Engine<S>` alongside `pub type CapcoEngine = Engine<CapcoScheme>;`
 /// without breaking any call site.
 pub type CapcoEngine = Engine;
+pub use audit_render::{audit_line_to_json_v1_0, audit_line_to_ndjson};
 pub use errors::{EngineConstructionError, EngineError};
-pub use options::{FixOptions, LintOptions};
 pub use merkle::{SessionRoot, merkle_root};
+pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
 pub use pipeline::{Sink, Source, SourceError, TextChunk};
 pub use recognizer::StrictRecognizer;

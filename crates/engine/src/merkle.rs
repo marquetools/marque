@@ -296,7 +296,10 @@ mod tests {
     fn root_hex_is_64_lowercase_hex_chars() {
         let hex = SessionRoot::compute(&lines(2)).root_hex();
         assert_eq!(hex.len(), 64);
-        assert!(hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            hex.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
     }
 
     #[test]

@@ -82,10 +82,7 @@ pub fn fix_native(
             // recompute and verify. Per-call (per-document), imposing no
             // sequentiality on callers that batch multiple fix() calls.
             let root_lines: Vec<&str> = applied.iter().map(|r| r.get()).collect();
-            let session_root = format!(
-                "blake3:{}",
-                SessionRoot::compute(&root_lines).root_hex()
-            );
+            let session_root = format!("blake3:{}", SessionRoot::compute(&root_lines).root_hex());
 
             let fix_result = FixResultJson {
                 fixed_text,

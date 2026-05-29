@@ -986,9 +986,14 @@ fn run_fix(
         // issue #184: terminal `session_root` record — a BLAKE3 Merkle root
         // over the emitted audit records (excluding itself). Emitted on both
         // apply and `--dry-run` (the audit stream is identical in both modes).
-        // The `ts` is the latest record timestamp (deterministic under a
-        // fixed clock) or wall-clock now for a zero-record session.
-        {
+        // Gated on a non-empty audit stream so the established "no fixes →
+        // no audit output" CLI contract is preserved (a clean document
+        // produces no records and therefore no terminal record). The
+        // empty-session marker root remains a verifiable library primitive
+        // (`marque_engine::SessionRoot::compute(&[])`) for embedders that
+        // want one. The `ts` is the latest record timestamp (deterministic
+        // under a fixed clock).
+        if !session_record_lines.is_empty() {
             let root = marque_engine::SessionRoot::compute(&session_record_lines);
             let ts = session_ts.unwrap_or_else(std::time::SystemTime::now);
             let ts_str = humantime::format_rfc3339(ts).to_string();

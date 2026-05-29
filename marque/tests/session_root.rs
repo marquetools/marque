@@ -42,15 +42,20 @@ fn fix_stderr(input: &str) -> String {
 
 /// Split the audit stream into (preceding record lines, terminal
 /// `session_root` line). Narration lines after the terminal record are
-/// ignored.
-fn split_audit(stderr: &str) -> (Vec<String>, String) {
+/// ignored. Returns `None` for the terminal line when no `session_root`
+/// record was emitted (a clean, zero-fix document).
+fn split_audit(stderr: &str) -> (Vec<String>, Option<String>) {
     let lines: Vec<&str> = stderr.lines().collect();
-    let idx = lines
+    match lines
         .iter()
         .position(|l| l.contains("\"type\":\"session_root\""))
-        .expect("audit stream must contain a terminal session_root record");
-    let records = lines[..idx].iter().map(|s| s.to_string()).collect();
-    (records, lines[idx].to_string())
+    {
+        Some(idx) => (
+            lines[..idx].iter().map(|s| s.to_string()).collect(),
+            Some(lines[idx].to_string()),
+        ),
+        None => (Vec::new(), None),
+    }
 }
 
 /// Extract `record_count` and the bare hex root (the `blake3:` prefix
@@ -59,10 +64,13 @@ fn parse_terminal(line: &str) -> (usize, String) {
     let v: serde_json::Value = serde_json::from_str(line).expect("terminal record is valid JSON");
     assert_eq!(v["type"], "session_root");
     assert_eq!(
-        v["schema"], marque_engine::AUDIT_SCHEMA_VERSION,
+        v["schema"],
+        marque_engine::AUDIT_SCHEMA_VERSION,
         "terminal record schema must match the per-record schema constant"
     );
-    let count = v["record_count"].as_u64().expect("record_count is an integer") as usize;
+    let count = v["record_count"]
+        .as_u64()
+        .expect("record_count is an integer") as usize;
     let root = v["root"].as_str().expect("root is a string");
     let hex = root
         .strip_prefix("blake3:")
@@ -77,6 +85,7 @@ fn session_root_recomputes_over_preceding_records() {
     // insertion), so the audit stream carries records to hash.
     let stderr = fix_stderr("SECRET//REL TO GBR\n");
     let (records, terminal) = split_audit(&stderr);
+    let terminal = terminal.expect("a fixing session must emit a session_root record");
     let (count, hex) = parse_terminal(&terminal);
 
     assert!(
@@ -104,6 +113,7 @@ fn session_root_recomputes_over_preceding_records() {
 fn mutating_a_record_invalidates_the_session_root() {
     let stderr = fix_stderr("SECRET//REL TO GBR\n");
     let (records, terminal) = split_audit(&stderr);
+    let terminal = terminal.expect("a fixing session must emit a session_root record");
     let (_, hex) = parse_terminal(&terminal);
     let published = SessionRoot::compute(&records);
     assert_eq!(published.root_hex(), hex);
@@ -118,16 +128,21 @@ fn mutating_a_record_invalidates_the_session_root() {
 }
 
 #[test]
-fn zero_fix_session_still_emits_a_verifiable_empty_root() {
-    // Plain prose with no markings yields no fixes → zero audit records,
-    // but the terminal record is still emitted with the empty-marker root.
+fn zero_fix_session_emits_no_audit_and_no_terminal_record() {
+    // Plain prose with no markings yields no fixes. The CLI preserves its
+    // established "no fixes → no audit output" contract: no per-record
+    // lines AND no terminal session_root record. (The empty-marker root
+    // remains a library primitive, covered by the engine merkle unit
+    // test `empty_session_has_well_defined_root`.)
     let stderr = fix_stderr("nothing to mark here.\n");
     let (records, terminal) = split_audit(&stderr);
-    let (count, hex) = parse_terminal(&terminal);
-
-    assert_eq!(count, 0, "a clean input produces zero audit records");
-    assert!(records.is_empty());
-    let empty = SessionRoot::compute(&records);
-    assert_eq!(empty.record_count, 0);
-    assert_eq!(empty.root_hex(), hex, "empty-session root must verify");
+    assert!(
+        records.is_empty(),
+        "a clean input produces zero audit records"
+    );
+    assert!(
+        terminal.is_none(),
+        "a zero-fix session emits no terminal session_root record (CLI \
+         contract); stderr was:\n{stderr}"
+    );
 }
