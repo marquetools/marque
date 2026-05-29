@@ -6,7 +6,7 @@ use crate::types::{
     FixResultJson, deadline_exceeded_payload, diagnostic_to_json, serialize_audit_line_v1_0,
 };
 use crate::{build_engine_config, parse_wasm_config, stamp_deadline, with_engine};
-use marque_engine::{EngineError, FixMode, FixOptions};
+use marque_engine::{EngineError, FixMode, FixOptions, SessionRoot};
 use secrecy::ExposeSecret as _;
 
 /// Fix text, returning a JSON object with `fixed_text`, `applied` audit records,
@@ -76,11 +76,23 @@ pub fn fix_native(
                 })
                 .collect::<Result<_, _>>()?;
 
+            // issue #184: session-end Merkle root over the emitted audit
+            // records. Computed over the exact `applied` bytes the caller
+            // receives (each RawValue's JSON text), so the caller can
+            // recompute and verify. Per-call (per-document), imposing no
+            // sequentiality on callers that batch multiple fix() calls.
+            let root_lines: Vec<&str> = applied.iter().map(|r| r.get()).collect();
+            let session_root = format!(
+                "blake3:{}",
+                SessionRoot::compute(&root_lines).root_hex()
+            );
+
             let fix_result = FixResultJson {
                 fixed_text,
                 applied,
                 remaining,
                 r002_fired: result.r002_fired,
+                session_root,
             };
 
             // Serialize directly into a byte buffer to avoid serde_json::to_string's
