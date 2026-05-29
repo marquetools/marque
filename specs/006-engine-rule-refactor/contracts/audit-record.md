@@ -3,12 +3,15 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Contract: Audit Record (NDJSON, schema `marque-3.0`)
+# Contract: Audit Record (NDJSON, schema `marque-3.1`)
 
-**Active schema**: `marque-3.0` (was `marque-2.0` pre-PR-B).
-**Introduced by**: PR B (recognition-axis cutover; opened 2026-05-28).
-The "active" designation takes effect when PR B merges; until then
-the live `main` branch still emits `marque-2.0`.
+**Active schema**: `marque-3.1` (was `marque-3.0`; `marque-2.0` pre-PR-B).
+**Introduced by**: issue #184 (session `session_root` Merkle record;
+additive over `marque-3.0`). The `marque-3.0` baseline below was the
+PR B recognition-axis cutover (2026-05-28); `marque-3.1` adds the
+terminal `session_root` record (a session-end BLAKE3 Merkle root over
+the preceding records) and leaves the `AppliedFix` / `TextCorrection`
+record shapes byte-identical.
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-035a, FR-037, FR-041, FR-044, FR-049
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 
@@ -25,15 +28,16 @@ Per FR-037 every pre-cutover envelope (`mvp-1` / `mvp-2` / `mvp-3` / `marque-1.0
 ## Schema identifier
 
 ```text
-"schema": "marque-3.0"
+"schema": "marque-3.1"
 ```
 
 `MARQUE_AUDIT_SCHEMA` is build-time-pinned to a single value via
 `marque-engine::AUDIT_SCHEMA_VERSION` (FR-034). One binary emits
 exactly one schema. The build-time accept-list at HEAD is
-`["marque-3.0"]` (was `["marque-2.0"]` pre-PR-B, `["marque-1.0"]`
-pre-T044); pre-cutover records are unreadable by post-cutover
-binaries (FR-037 — clean break, no `marque-audit-reader` crate
+`["marque-3.1"]` (was `["marque-3.0"]` pre-#184, `["marque-2.0"]`
+pre-PR-B, `["marque-1.0"]` pre-T044); pre-cutover records are
+unreadable by post-cutover binaries (FR-037 — clean break, no
+`marque-audit-reader` crate
 scheduled).
 
 ---
@@ -46,7 +50,7 @@ promotion (I-5).
 
 ```jsonc
 {
-  "schema": "marque-3.0",
+  "schema": "marque-3.1",
 
   "rule": {
     "scheme": "capco",
@@ -385,7 +389,8 @@ Error | Fix`.
 There is none. Per FR-037:
 - No `marque-audit-reader` crate is scheduled.
 - Pre-cutover envelopes (`marque-mvp-2`, `marque-mvp-3`, `marque-1.0`,
-  `marque-2.0`) are unreadable by post-cutover `marque-3.0` binaries.
+  `marque-2.0`) are unreadable by post-cutover `marque-3.x` binaries
+  (the live build is `marque-3.1`).
 - This is a type-level guarantee, not a runtime concern: there are no
   pre-cutover records (no users, no deployment) at the time of cutover.
 - The window for clean-break refactor closes when external consumers
@@ -400,17 +405,20 @@ Per **decision D3** in `decisions.md`, the active audit schema name
 MUST be discoverable by external consumers without parsing audit
 records.
 
-**Per-record discoverability** (already in place): every record's
-first field is `"schema": "marque-3.0"` (mandatory, FR-035 / T044).
-Streaming NDJSON consumers detect schema by reading the first record
-they see.
+**Per-record discoverability** (already in place): every record
+carries a `"schema"` field (e.g. `"schema": "marque-3.1"`, mandatory,
+FR-035 / T044). Streaming NDJSON consumers detect schema by **parsing
+the `schema` field** of the first record they see — not by field
+position (the serializers emit `"type"` before `"schema"`, and for both
+the regular records and the terminal `session_root` record; consumers
+MUST NOT rely on field order).
 
 **Per-binary discoverability**: `marque --version` MUST expose the
 active audit schema name in its output. Format choice (JSON,
 key/value lines, or human-readable) is implementer's call; the
 binding constraint is that the schema name appears such that:
 
-- A shell script can grep for `marque-3.0` in `marque --version`
+- A shell script can grep for `marque-3.1` in `marque --version`
   output and detect schema-major changes.
 - The schema name shown matches the value baked into
   `marque_engine::AUDIT_SCHEMA_VERSION` (FR-034) — single source of
@@ -421,7 +429,7 @@ explicitly state that the audit schema's `"schema"` field is the
 discriminator external consumers should branch on, and that pre-
 cutover binaries producing `marque-mvp-*` / `marque-1.0` /
 `marque-2.0` records are not interoperable with post-cutover
-`marque-3.0` binaries.
+`marque-3.x` binaries (the live build is `marque-3.1`).
 
 This closes the discoverability gap left by FR-037's "no reader crate"
 posture: external consumers who do exist (per the no-consumers
@@ -432,13 +440,16 @@ schema changed, even though no compatibility shim is provided.
 
 ## Schema-bump policy
 
-`marque-3.0` is the active audit schema as of PR B (2026-05-28).
-Subsequent schema bumps (`marque-3.1`, `marque-3.2`, `marque-4.0`)
+`marque-3.1` is the active audit schema as of issue #184 (it added the
+terminal `session_root` record additively over the `marque-3.0` PR-B
+baseline). Subsequent schema bumps (`marque-3.2`, `marque-4.0`)
 follow semver:
 
 - **Minor bump (`marque-3.x`)**: additive — new `MessageTemplate`
   variant, new `FeatureId` variant, new `MessageArgs` field type
-  (still closed-set), additive `RuleId` predicate renames recorded
+  (still closed-set), a new terminal record type (e.g. the
+  `session_root` Merkle record added in `marque-3.1`, issue #184),
+  additive `RuleId` predicate renames recorded
   in `docs/refactor-006/legacy-rule-id-map.md`. Reader compatibility
   is forward-only; `MARQUE_AUDIT_SCHEMA` validates against the exact
   bumped value.

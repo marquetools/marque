@@ -305,8 +305,9 @@ pub(in crate::decoder) fn try_rel_to_fuzzy_trigraph_candidates(
 ///   zero delta. This records that USA is the dominant trigraph in
 ///   the corpus prior without changing score or double-counting that
 ///   prior in the posterior. Reusing `BaseRateCommonMarking` (vs
-///   introducing a new variant) keeps the audit schema closed —
-///   `MARQUE_AUDIT_SCHEMA` stays at `marque-3.0`.
+///   introducing a new variant) keeps the audit schema closed — no
+///   `FeatureId` addition, so no coordinated `MARQUE_AUDIT_SCHEMA` bump
+///   is forced by this path.
 // Complements try_rel_to_fuzzy_trigraph_candidates (sibling function above) by handling
 // 1- and 2-char first entries that fall below that function's 3-char floor. The
 // partition is shape-based, not vocabulary-based.

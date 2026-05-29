@@ -150,7 +150,7 @@ pub(crate) fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<
 }
 
 // ---------------------------------------------------------------------------
-// `marque-3.0` audit-record JSON projection
+// `marque-3.1` audit-record JSON projection
 //
 // Mirrors the CLI's `marque/src/render.rs` v3.0 surface — CLI and WASM
 // emit byte-identical NDJSON. The struct shapes are duplicated verbatim
@@ -529,10 +529,10 @@ pub(crate) fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    // Single accepted schema (`marque-3.0`) so dispatch is a no-op
+    // Single accepted schema (`marque-3.1`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V3_0;
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V3_1;
     let json =
         serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
@@ -549,6 +549,11 @@ pub(crate) struct FixResultJson {
     /// single field read without parsing the NDJSON `remaining`
     /// stream.
     pub(crate) r002_fired: bool,
+    /// Session-end BLAKE3 Merkle root over the `applied` audit records
+    /// (issue #184), rendered `blake3:<hex>`. A caller can recompute the
+    /// root over the `applied` array bytes and compare. Reproducible
+    /// under a fixed clock; computed per `fix()` call (per document).
+    pub(crate) session_root: String,
 }
 
 // ---------------------------------------------------------------------------

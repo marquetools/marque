@@ -11,12 +11,14 @@
 //! The pipeline is a chain of async streams; each stage is a `Stream` impl.
 //! CLI, WASM, and server are different Source/Sink configurations wired to the same middle.
 
+pub mod audit_render;
 #[cfg(feature = "batch")]
 pub mod batch;
 pub mod clock;
 pub mod decoder;
 pub mod engine;
 pub mod errors;
+pub mod merkle;
 pub mod options;
 pub mod output;
 pub mod pipeline;
@@ -45,7 +47,9 @@ pub use engine::{Engine, FixMode, InvalidThreshold, R002_RULE_ID};
 /// `Engine<S>` alongside `pub type CapcoEngine = Engine<CapcoScheme>;`
 /// without breaking any call site.
 pub type CapcoEngine = Engine;
+pub use audit_render::{audit_line_to_json_v1_0, audit_line_to_ndjson};
 pub use errors::{EngineConstructionError, EngineError};
+pub use merkle::{SessionRoot, merkle_root};
 pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
 pub use pipeline::{Sink, Source, SourceError, TextChunk};
@@ -70,14 +74,14 @@ pub use web_time::Instant;
 ///
 /// Set at build time by `crates/engine/build.rs` (see
 /// `MARQUE_AUDIT_SCHEMA`), validated against the closed accept-list
-/// `["marque-3.0"]`. Defaults to `"marque-3.0"`. Re-exported
+/// `["marque-3.1"]`. Defaults to `"marque-3.1"`. Re-exported
 /// through this crate so CLI and WASM emitters can populate the
 /// `schema` field without each owning a separate copy of the constant.
 ///
 /// The value is fixed for the lifetime of a build — a single binary
 /// emits exactly one schema, never a mix.
 ///
-/// The current schema is `"marque-3.0"`: every audit-record `"rule"`
+/// The current schema is `"marque-3.1"`: every audit-record `"rule"`
 /// field serializes as a structured `{ scheme, predicate_id }` object,
 /// never a flat string, and the record carries a BLAKE3 digest, closed
 /// `MessageTemplate` JSON serialization, and `Canonical<S>` provenance.
@@ -85,16 +89,17 @@ pub use web_time::Instant;
 /// not interoperable with current binaries (clean break).
 pub const AUDIT_SCHEMA_VERSION: &str = env!("MARQUE_AUDIT_SCHEMA");
 
-/// `true` when this build emits `marque-3.0` audit records.
+/// `true` when this build emits `marque-3.1` audit records.
 ///
 /// Evaluated at compile time from [`AUDIT_SCHEMA_VERSION`]; folds
 /// to a constant. The accept-list is currently a single value, so
 /// the const is always `true` in any successfully-built binary;
 /// the const exists to give downstream code a stable shape-discriminant
-/// across future schema bumps (a future `marque-3.1` would land
-/// alongside an `AUDIT_SCHEMA_IS_V3_1` and a dispatch branch on
-/// each emitter).
-pub const AUDIT_SCHEMA_IS_V3_0: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-3.0");
+/// across future schema bumps. `marque-3.1` (issue #184) is additive
+/// over `marque-3.0`: it adds the terminal `session_root` record (a
+/// session-end BLAKE3 Merkle root over the preceding records) while
+/// leaving the `AppliedFix` / `TextCorrection` shapes byte-identical.
+pub const AUDIT_SCHEMA_IS_V3_1: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-3.1");
 
 const fn const_str_eq(a: &str, b: &str) -> bool {
     let a = a.as_bytes();

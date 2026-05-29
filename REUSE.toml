@@ -160,3 +160,16 @@ path = [
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
 SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
+
+# Gramine deploy assets (issue #184 Part B). The `.md` README and the
+# `.yml` workflow are already covered by the `**/README.md` and
+# `.github/workflows/**` globs above; the Gramine `.manifest.template`
+# extension is not, so it is annotated here. `aggregate` so the inline
+# SPDX header the template already carries continues to apply.
+[[annotations]]
+path = [
+  "deploy/gramine/*.template",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"
+SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"

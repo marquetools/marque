@@ -148,6 +148,15 @@ pub struct FixResponse {
     pub fixed_text: String,
     pub applied_count: usize,
     pub remaining_diagnostics: usize,
+    /// The audit-record NDJSON lines for this fix session, in emission
+    /// order (issue #184). Each element is one record's canonical JSON
+    /// object. Included so the response is self-verifiable: a caller
+    /// re-hashes these lines and compares against `session_root`.
+    pub audit_log: Vec<String>,
+    /// Session-end BLAKE3 Merkle root over `audit_log`, rendered
+    /// `blake3:<hex>` (issue #184). Computed per request (per document);
+    /// the domain-tagged empty-marker root when no records were produced.
+    pub session_root: String,
 }
 
 #[derive(Serialize)]

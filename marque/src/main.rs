@@ -133,8 +133,8 @@ const ENV_HELP: &str = "ENVIRONMENT VARIABLES:
     MARQUE_CLASSIFIER_ID             Identity stamped into audit records.
     MARQUE_CLASSIFICATION_AUTHORITY  Authority string stamped into audit records.
     MARQUE_AUDIT_SCHEMA              Build-time audit schema selector
-                                     (accept-list: \"marque-3.0\"; default
-                                     \"marque-3.0\"). Read at build time only.
+                                     (accept-list: \"marque-3.1\"; default
+                                     \"marque-3.1\"). Read at build time only.
                                      Run \"marque --version\" to discover the
                                      active schema in any binary.
     MARQUE_ALLOW_FIXED_CLOCK         Set to \"1\" to permit `--fixed-timestamp`
@@ -891,6 +891,15 @@ fn run_fix(
         // cross-record promotion order across both the marking-fix arm
         // and the text-correction arm.
         let mut audit_exit_code: Option<i32> = None;
+        // issue #184: collect each emitted record's canonical NDJSON bytes
+        // (byte-identical to what `render_audit_line` writes — both feed the
+        // same `audit_line_to_json_v1_0` value to serde_json) so a terminal
+        // `session_root` BLAKE3 Merkle record can be emitted at session
+        // close. `session_ts` tracks the latest record timestamp for the
+        // terminal `ts` field (informational; NOT part of the Merkle input,
+        // so the root stays reproducible under a fixed clock).
+        let mut session_record_lines: Vec<String> = Vec::with_capacity(result.audit_lines.len());
+        let mut session_ts: Option<std::time::SystemTime> = None;
         let scheme = engine.scheme();
         let input_label: std::sync::Arc<str> = match path.as_ref() {
             Some(p) => std::sync::Arc::<str>::from(p.display().to_string()),
@@ -929,6 +938,24 @@ fn run_fix(
                     }
                     _ => std::borrow::Cow::Borrowed(line),
                 };
+                // issue #184: capture timestamp + canonical bytes for the
+                // session-root Merkle computation before emitting the record.
+                match line {
+                    marque_rules::AuditLine::AppliedFix(f) => {
+                        session_ts = session_ts.max(Some(f.timestamp));
+                    }
+                    marque_rules::AuditLine::TextCorrection(tc) => {
+                        session_ts = session_ts.max(Some(tc.timestamp));
+                    }
+                    _ => {}
+                }
+                session_record_lines.push(
+                    serde_json::to_string(&render::audit_line_to_json_v1_0(
+                        scheme,
+                        &line_with_input,
+                    ))
+                    .unwrap_or_default(),
+                );
                 if let Err(e) =
                     render::render_audit_line(&mut stderr_lock, scheme, &line_with_input)
                 {
@@ -954,6 +981,37 @@ fn run_fix(
         if let Some(code) = audit_exit_code {
             // Audit emission failure → nonzero exit.
             return code;
+        }
+
+        // issue #184: terminal `session_root` record — a BLAKE3 Merkle root
+        // over the emitted audit records (excluding itself). Emitted on both
+        // apply and `--dry-run` (the audit stream is identical in both modes).
+        // Gated on a non-empty audit stream so the established "no fixes →
+        // no audit output" CLI contract is preserved (a clean document
+        // produces no records and therefore no terminal record). The
+        // empty-session marker root remains a verifiable library primitive
+        // (`marque_engine::SessionRoot::compute(&[])`) for embedders that
+        // want one. The `ts` is the latest record timestamp (deterministic
+        // under a fixed clock).
+        if !session_record_lines.is_empty() {
+            let root = marque_engine::SessionRoot::compute(&session_record_lines);
+            let ts = session_ts.unwrap_or_else(std::time::SystemTime::now);
+            let ts_str = humantime::format_rfc3339(ts).to_string();
+            let terminal = root.to_ndjson(marque_engine::AUDIT_SCHEMA_VERSION, &ts_str);
+            // Gate the stderr write on a non-empty audit stream so the
+            // established "no fixes -> no audit output" CLI contract holds
+            // (a clean / empty document emits nothing). The empty-marker
+            // root stays a library primitive for embedders that want one.
+            let write_res = if session_record_lines.is_empty() {
+                Ok(())
+            } else {
+                let mut stderr_lock = stderr.lock();
+                writeln!(stderr_lock, "{terminal}")
+            };
+            if let Err(e) = write_res {
+                eprintln!("error writing session-root audit record: {e}");
+                return EX_IOERR;
+            }
         }
 
         // Output routing.
