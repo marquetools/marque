@@ -33,6 +33,26 @@ fn stub_message() -> Message {
     Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
 }
 
+/// Test-fixture [`SessionMetadata`] for direct `TwoPassFixer`
+/// construction in unit tests that bypass `Engine::fix_inner` (which
+/// is where the real metadata is built). Carries the engine-wide
+/// version constants and the `Other` interface; identity / signature
+/// are `None` (these tests do not exercise the metadata wire shape —
+/// that lives in `session.rs::tests` and the audit canary).
+#[inline]
+fn test_session_metadata() -> crate::SessionMetadata {
+    crate::SessionMetadata {
+        marque_version: crate::MARQUE_VERSION,
+        audit_schema: crate::AUDIT_SCHEMA_VERSION,
+        lattice_version: smol_str::SmolStr::new(marque_capco::LATTICE_VERSION),
+        decoder_version: crate::DECODER_VERSION,
+        interface: crate::InterfaceCode::Other,
+        classifier_id: None,
+        classification_authority: None,
+        signature: None,
+    }
+}
+
 /// Filter the marking-side audit lines from a [`FixResult`] into
 /// a `Vec<&AppliedFix>` view.
 ///

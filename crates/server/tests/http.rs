@@ -216,10 +216,32 @@ async fn fix_response_carries_verifiable_session_root() {
         .iter()
         .map(|line| marque_engine::audit_line_to_ndjson(scheme, line))
         .collect();
+
+    // issue #399: the server emits the session-level `session_metadata`
+    // record as the FIRST audit_log line (and folds it into the
+    // session_root), so the per-record canonical projection lines up
+    // with `audit_log[1..]`. Assert the header is the metadata record,
+    // then compare the remaining lines field-for-field.
+    let header: serde_json::Value =
+        serde_json::from_str(&audit_log[0]).expect("audit_log[0] is valid JSON");
+    assert_eq!(
+        header["type"], "session_metadata",
+        "the first audit_log line must be the session_metadata record"
+    );
+    assert_eq!(header["schema"], marque_engine::AUDIT_SCHEMA_VERSION);
+    assert_eq!(header["interface"], "S", "server interface code is `S`");
+    assert!(
+        header["seal"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("blake3:")),
+        "session_metadata carries a blake3 integrity seal"
+    );
+
+    let per_record = &audit_log[1..];
     assert_eq!(
         canonical.len(),
-        audit_log.len(),
-        "server audit_log record count must match the canonical projection"
+        per_record.len(),
+        "server per-record audit_log count must match the canonical projection"
     );
     let strip_timestamp = |line: &str| -> serde_json::Value {
         let mut v: serde_json::Value =
@@ -229,7 +251,7 @@ async fn fix_response_carries_verifiable_session_root() {
         }
         v
     };
-    for (server_line, canonical_line) in audit_log.iter().zip(canonical.iter()) {
+    for (server_line, canonical_line) in per_record.iter().zip(canonical.iter()) {
         assert_eq!(
             strip_timestamp(server_line),
             strip_timestamp(canonical_line),

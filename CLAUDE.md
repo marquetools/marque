@@ -191,6 +191,11 @@ version = "2023.1"
 
 [corrections]
 "SERCET" = "SECRET"
+
+[audit]
+# When true, `fix` refuses to run unless the caller supplies a signature
+# (carry-only — marque does not sign). Org-level audit policy.
+require_signature = false
 ```
 
 `.marque.local.toml` (gitignored, user identity — never committed):
@@ -260,13 +265,20 @@ Planned (not yet wired in `marque-server`): `POST /v1/metadata`, `POST /v1/batch
 ## Stable API Surface
 
 The following surfaces are committed. Changing any of them requires a
-coordinated audit-schema bump — `marque-3.1` for additive changes,
+coordinated audit-schema bump — `marque-3.x` for additive changes,
 `marque-4.0` for breaking ones. The current audit schema is
-`marque-3.1` (issue #184 added the terminal `session_root` Merkle
-record additively over `marque-3.0`, which itself retired the
-two-axis `Confidence` payload and the unused `region` field in favor
-of a single `Recognition` axis; the `marque-3.0 → marque-3.1`
-additive bump is the live inflection).
+`marque-3.2` (issue #399 added the session-level `session_metadata`
+record — engine/lattice/decoder versions, a BLAKE3 integrity `seal`
+over the version set, the applying `interface` code, the resolved
+classifier identity, and an optional carry-only `signature` — emitted
+as the first line of a non-empty audit stream and folded into the
+`session_root` Merkle root; additive over `marque-3.1`). `marque-3.1`
+(issue #184) added the terminal `session_root` Merkle record additively
+over `marque-3.0`, which itself retired the two-axis `Confidence`
+payload and the unused `region` field in favor of a single
+`Recognition` axis. The `marque-3.1 → marque-3.2` additive bump is the
+live inflection. Per-record `AppliedFix` / `TextCorrection` shapes are
+byte-identical across `marque-3.0`/`3.1`/`3.2`.
 
 - **Crate dependency graph** per Constitution VII §IV — the
   canonical graph diagram in this file's `Crate Dependency Graph`
@@ -306,11 +318,23 @@ additive bump is the live inflection).
   `EngineInternal` variants.
 - **`AppliedFix<S>` audit-record envelope** — sealed
   `__engine_promote` constructor (Constitution V Principle V); the
-  `marque-3.1` JSON wire format (`MARQUE_AUDIT_SCHEMA = "marque-3.1"`);
+  `marque-3.2` JSON wire format (`MARQUE_AUDIT_SCHEMA = "marque-3.2"`);
   structured 2-tuple `"rule"` field; BLAKE3 digest field; closed
   `MessageTemplate` JSON projection; single-axis `Recognition`
   confidence sub-object (post-PR-B `recognition` / `combined` /
   `runner_up_ratio` / `features` only — no `rule`, no `region`).
+- **`SessionMetadata` record** (`marque-engine`, issue #399) — the
+  session-level `session_metadata` audit record carrying
+  `marque_version` / `lattice_version` / `decoder_version` /
+  `audit_schema`, a BLAKE3 `seal` over those four versions, the
+  `interface` code (`S`/`C`/`W`/`O`), resolved `classifier_id` /
+  `classification_authority`, and an optional carry-only `signature`.
+  Per-call identity overrides arrive via `FixOptions` (server
+  `FixRequest`, CLI `--classifier-id` / `--classification-authority` /
+  `--signature`, WASM config) and beat the engine `Config`. The
+  `require_signature` policy (committed `[audit]` table in
+  `.marque.toml`) gates `fix_with_options`; signing itself is
+  carry-only (full in-engine X.509 signing is a tracked follow-up).
 - **Audit content-ignorance invariant** — the canary
   scan at `crates/engine/tests/audit_g13_canary.rs` is the
   type-system + corpus-regression form of the invariant. Adding
@@ -358,6 +382,6 @@ MVP complete. Full lint → fix → audit pipeline for raw text with **32 regist
 
 **Build-time inputs**: ODNI XML pulled from the `ism` and `ism-ismcat` build-deps (vendored in [`marquetools/ism-data`](https://github.com/marquetools/ism-data) at snapshot `20230609.0.0`, package label `ISM-v2022-DEC`); `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored); `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). **Test inputs**: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable).
 
-**Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-3.1"]` and defaulting to `"marque-3.1"`. `marque-3.1` (issue #184) adds the terminal `session_root` BLAKE3 Merkle record additively over `marque-3.0`. The audit envelope carries a structural `proposal: FixIntent | TextCorrection` sub-object (no free-form content, keeping audit records content-ignorant), a BLAKE3 digest, a closed `MessageTemplate` JSON projection, and the single-axis `Recognition` confidence sub-object (post-PR-B). Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema.
+**Audit schema**: `MARQUE_AUDIT_SCHEMA` env var pinned at build time, validated against the closed accept-list `["marque-3.2"]` and defaulting to `"marque-3.2"`. `marque-3.2` (issue #399) adds the session-level `session_metadata` record (engine/lattice/decoder versions, a BLAKE3 integrity `seal`, the applying `interface` code, resolved classifier identity, and an optional carry-only `signature`), emitted as the first line of a non-empty audit stream and folded into the `session_root` Merkle root; additive over `marque-3.1`. `marque-3.1` (issue #184) added the terminal `session_root` BLAKE3 Merkle record additively over `marque-3.0`. The audit envelope carries a structural `proposal: FixIntent | TextCorrection` sub-object (no free-form content, keeping audit records content-ignorant), a BLAKE3 digest, a closed `MessageTemplate` JSON projection, and the single-axis `Recognition` confidence sub-object (post-PR-B). Re-exported as `marque_engine::AUDIT_SCHEMA_VERSION`. A single binary emits exactly one schema.
 
 ## Recent Changes

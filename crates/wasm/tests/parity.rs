@@ -177,6 +177,27 @@ fn wasm_fix_applies_correction() {
         fixed.contains("USA"),
         "fix under wasm32 should inject USA into REL TO list, got: {fixed}"
     );
+
+    // issue #399: a fixing input emits a session_metadata record. It
+    // carries the WASM interface code, the integrity seal, and the
+    // version set. (Byte-exact session_root coverage of the metadata
+    // line is pinned at the engine/merkle and server levels, where the
+    // raw NDJSON bytes are available; here `parsed` has lost the raw
+    // RawValue bytes, so we assert field presence/shape only.)
+    let meta = &parsed["session_metadata"];
+    assert_eq!(meta["type"], "session_metadata");
+    assert_eq!(meta["interface"], "W", "wasm interface code is `W`");
+    assert_eq!(meta["schema"], marque_engine::AUDIT_SCHEMA_VERSION);
+    assert!(
+        meta["seal"].as_str().is_some_and(|s| s.starts_with("blake3:")),
+        "session_metadata carries a blake3 integrity seal"
+    );
+    assert!(
+        parsed["session_root"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("blake3:")),
+        "fixing input still produces a session_root"
+    );
 }
 
 #[wasm_bindgen_test]

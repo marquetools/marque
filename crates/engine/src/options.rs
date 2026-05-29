@@ -47,6 +47,8 @@
 // `std::time`.
 use web_time::Instant;
 
+use crate::session::InterfaceCode;
+
 /// Per-call options for [`Engine::lint_with_options`].
 ///
 /// `deadline` is an absolute wall-clock instant after which the
@@ -117,6 +119,26 @@ pub struct FixOptions {
     /// Values outside `[0.0, 1.0]` (including NaN) produce
     /// `EngineError::InvalidThreshold`.
     pub threshold_override: Option<f32>,
+    /// Which interface is applying the fix. Stamped into the
+    /// session-level audit metadata ([`crate::SessionMetadata`]).
+    /// Defaults to [`InterfaceCode::Other`].
+    pub interface: InterfaceCode,
+    /// Per-call classifier-identity override. When `Some`, it replaces
+    /// the engine `Config`'s `classifier_id` for this call only (the
+    /// server / CLI / WASM surfaces forward a per-request identity
+    /// here). When `None`, the engine falls back to the configured
+    /// value.
+    pub classifier_id: Option<String>,
+    /// Per-call classification-authority override; same fallback
+    /// semantics as [`Self::classifier_id`]. Surfaced into the
+    /// session-level audit metadata.
+    pub classification_authority: Option<String>,
+    /// Optional caller-supplied detached signature (carry-only —
+    /// Marque does not sign in-tree). Stamped into the session-level
+    /// audit metadata. When `Config::require_signature` is set, a
+    /// `None` here makes `fix` return
+    /// `EngineError::SignatureRequired`.
+    pub signature: Option<String>,
 }
 
 #[cfg(test)]

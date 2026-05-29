@@ -63,6 +63,17 @@ pub use dispatcher::StrictOrDecoderRecognizer;
 pub use recognizer::DecoderRecognizer;
 pub use shape::is_nontrivial_marking;
 
+/// Version of the probabilistic decoder — its scoring approach, prior
+/// tables, and candidate-generation grammar.
+///
+/// Surfaced into audit-record session metadata
+/// ([`crate::SessionMetadata`]) so a decoder-recognized fix can be
+/// traced to the exact decoder revision that produced it. Bump on any
+/// change to the scoring model, the candidate bound (`K_MAX_CANDIDATES`),
+/// the margin thresholds, or the recovery grammar that would alter the
+/// decoder's posteriors for fixed input.
+pub const DECODER_VERSION: &str = "decoder-1";
+
 #[cfg(feature = "decoder-harness")]
 pub use candidates::diagnostic_canonical_attempts;
 

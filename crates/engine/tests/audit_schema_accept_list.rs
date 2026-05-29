@@ -5,32 +5,35 @@
 //! Regression pin on the audit-schema accept-list and the active
 //! schema constant.
 //!
-//! The accept-list is a single value: `["marque-3.1"]`. Under that
+//! The accept-list is a single value: `["marque-3.2"]`. Under that
 //! schema, `RuleId` is a `(scheme, predicate_id)` 2-tuple and the
 //! audit-record `"rule"` JSON field is structured accordingly; older
 //! record shapes are not interoperable with current binaries (clean
 //! break). The audit envelope carries a BLAKE3 digest, closed
 //! `MessageTemplate` JSON serialization, and `Canonical<S>` provenance,
 //! which structurally closes the audit content-ignorance channel.
+//! `marque-3.2` (issue #399) is additive over `marque-3.1`: it adds the
+//! session-level `session_metadata` record while leaving the per-record
+//! `applied_fix` / `text_correction` shapes byte-identical.
 //!
 //! These tests pin both surfaces:
 //!
 //!   1. The active const exports the expected schema version and
-//!      the `AUDIT_SCHEMA_IS_V3_1` discriminant is `true`.
+//!      the `AUDIT_SCHEMA_IS_V3_2` discriminant is `true`.
 //!   2. The build script's `ACCEPTED` literal matches the expected
 //!      shape — adding or removing a value must coordinate with
 //!      audit-emit paths, and a silent drift would weaken the
 //!      single-schema-per-build invariant.
 
 #[test]
-fn audit_schema_version_is_v3_1_by_default() {
-    assert_eq!(marque_engine::AUDIT_SCHEMA_VERSION, "marque-3.1");
+fn audit_schema_version_is_v3_2_by_default() {
+    assert_eq!(marque_engine::AUDIT_SCHEMA_VERSION, "marque-3.2");
 }
 
 #[test]
 #[allow(clippy::assertions_on_constants)] // Drift-gate: the const value IS the contract; the assert verifies the build.rs codepath produced the expected true.
-fn audit_schema_is_v3_1_const_matches_version() {
-    assert!(marque_engine::AUDIT_SCHEMA_IS_V3_1);
+fn audit_schema_is_v3_2_const_matches_version() {
+    assert!(marque_engine::AUDIT_SCHEMA_IS_V3_2);
 }
 
 #[test]
@@ -41,13 +44,13 @@ fn build_rs_accept_list_pinned() {
     // coordinated test update.
     let build_rs = include_str!("../build.rs");
     assert!(
-        build_rs.contains(r#"const ACCEPTED: &[&str] = &["marque-3.1"];"#),
-        "accept-list drifted from `[\"marque-3.1\"]`; \
+        build_rs.contains(r#"const ACCEPTED: &[&str] = &["marque-3.2"];"#),
+        "accept-list drifted from `[\"marque-3.2\"]`; \
          coordinate with audit-emit paths before editing build.rs",
     );
     assert!(
-        build_rs.contains(r#"const DEFAULT: &str = "marque-3.1";"#),
-        "DEFAULT drifted from `\"marque-3.1\"`; coordinate with \
+        build_rs.contains(r#"const DEFAULT: &str = "marque-3.2";"#),
+        "DEFAULT drifted from `\"marque-3.2\"`; coordinate with \
          audit-emit paths before editing build.rs",
     );
 }

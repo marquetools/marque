@@ -5,11 +5,15 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! The accept-list is a single value: `["marque-3.1"]`. Under that
-//! schema, the `Confidence` two-axis payload was retired in favor of a
-//! single `Recognition` axis (PR B); the audit-record `"confidence"`
-//! sub-object on the wire drops the `rule` and `region` fields. The
-//! 2-tuple `RuleId` shape (introduced at `marque-2.0`) is unchanged.
+//! The accept-list is a single value: `["marque-3.2"]`. `marque-3.2`
+//! (issue #399) is purely additive over `marque-3.1`: it introduces a
+//! session-level `session_metadata` record (engine/lattice/decoder
+//! versions, an integrity `seal`, the applying interface, classifier
+//! identity, and an optional carry-only signature) emitted as the
+//! first line of a non-empty audit stream. The per-record
+//! `AppliedFix` / `text_correction` shapes are byte-identical to
+//! `marque-3.1`. As under earlier schemas, the `Recognition`
+//! confidence sub-object and the 2-tuple `RuleId` shape are unchanged.
 //! Older record shapes are not interoperable with current binaries
 //! (clean break — there is no audit-reader crate). A single build
 //! emits exactly one schema version.
@@ -23,8 +27,8 @@ fn main() {
     // or removing a value MUST coordinate with audit-emit paths.
     // `crates/engine/tests/audit_schema_accept_list.rs` regression-
     // pins this verbatim.
-    const ACCEPTED: &[&str] = &["marque-3.1"];
-    const DEFAULT: &str = "marque-3.1";
+    const ACCEPTED: &[&str] = &["marque-3.2"];
+    const DEFAULT: &str = "marque-3.2";
 
     let schema = std::env::var("MARQUE_AUDIT_SCHEMA").unwrap_or_else(|_| DEFAULT.to_string());
 

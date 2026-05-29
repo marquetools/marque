@@ -110,6 +110,19 @@ pub enum BatchError {
         /// fix-application phase.
         partial_lint: LintResult,
     },
+    /// The engine's `require_signature` policy is set, but `BatchEngine`
+    /// supplies no per-document signature (issue #399). Batch fixing is
+    /// bulk, non-interactive processing — there is no per-call channel
+    /// to attach a classifier signature — so under a `require_signature`
+    /// deployment every document fails this gate. A future full-signing
+    /// design (the #399 follow-up) can thread per-document signatures
+    /// through `BatchOptions`; until then this variant reports the
+    /// policy refusal explicitly rather than silently dropping work.
+    ///
+    /// `is_panic()` / `is_cancelled()` / `is_shutdown()` /
+    /// `is_deadline_exceeded()` all return `false` — it is a
+    /// configuration/policy condition, not a runtime failure.
+    SignatureRequired,
 }
 
 impl BatchError {
@@ -122,6 +135,7 @@ impl BatchError {
             Self::TaskFailed(e) => e.is_panic(),
             Self::ShutdownInProgress => false,
             Self::DocumentDeadlineExceeded { .. } => false,
+            Self::SignatureRequired => false,
         }
     }
 
@@ -136,6 +150,7 @@ impl BatchError {
             Self::TaskFailed(e) => e.is_cancelled(),
             Self::ShutdownInProgress => false,
             Self::DocumentDeadlineExceeded { .. } => false,
+            Self::SignatureRequired => false,
         }
     }
 
@@ -185,6 +200,9 @@ impl std::fmt::Display for BatchError {
                 "document deadline exceeded after {}/{} candidates",
                 partial_lint.candidates_processed, partial_lint.candidates_total
             ),
+            Self::SignatureRequired => f.write_str(
+                "fix requires a signature (require_signature is set) but BatchEngine supplies none",
+            ),
         }
     }
 }
@@ -199,6 +217,7 @@ impl std::error::Error for BatchError {
             // condition (the deadline elapsed) with no underlying
             // failure to chain.
             Self::DocumentDeadlineExceeded { .. } => None,
+            Self::SignatureRequired => None,
         }
     }
 }
@@ -516,6 +535,14 @@ impl BatchEngine {
                             "BatchEngine does not set FixOptions::threshold_override; \
                              InvalidThreshold cannot fire"
                         ),
+                        // `BatchEngine` supplies no per-document
+                        // signature, so under a `require_signature`
+                        // deployment every document trips the gate. Map
+                        // it to the dedicated BatchError variant rather
+                        // than dropping the document silently.
+                        Ok(Err(EngineError::SignatureRequired)) => {
+                            Err(BatchError::SignatureRequired)
+                        }
                         // `EngineError` is `#[non_exhaustive]` for crate
                         // outsiders, but inside `marque-engine` we see all
                         // variants — adding a future variant will produce

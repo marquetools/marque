@@ -36,6 +36,8 @@ pub(crate) struct ConfigFile {
     pub(crate) capco: CapcoConfigFile,
     #[serde(default)]
     confidence_threshold: Option<f32>,
+    #[serde(default)]
+    audit: AuditConfigFile,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -43,6 +45,17 @@ pub(crate) struct CapcoConfigFile {
     pub(crate) version: Option<String>,
     /// UTC offset string for floating times. Accepted: `"Z"`, `"+HH:MM"`, `"-HH:MM"`.
     pub(crate) default_timezone: Option<String>,
+}
+
+/// Committed `[audit]` policy table from `.marque.toml`.
+///
+/// Org-level audit policy — committed (not user identity). Currently
+/// just `require_signature`; see [`Config::require_signature`].
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub(crate) struct AuditConfigFile {
+    /// When `true`, `Engine::fix` refuses to run unless the caller
+    /// supplies a signature (carry-only; the engine does not sign).
+    pub(crate) require_signature: Option<bool>,
 }
 
 /// Load and merge configuration from standard locations.
@@ -178,6 +191,9 @@ pub(crate) fn merge_project_into(config: &mut Config, file: ConfigFile) -> Resul
     }
     if let Some(threshold) = file.confidence_threshold {
         config.set_confidence_threshold(threshold)?;
+    }
+    if let Some(require) = file.audit.require_signature {
+        config.require_signature = require;
     }
     Ok(())
 }

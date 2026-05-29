@@ -165,6 +165,10 @@ impl MarkingScheme for CapcoScheme {
         crate::SCHEMA_VERSION
     }
 
+    fn lattice_version(&self) -> &str {
+        crate::LATTICE_VERSION
+    }
+
     fn categories(&self) -> &[Category] {
         &self.categories
     }

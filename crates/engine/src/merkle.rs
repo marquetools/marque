@@ -312,9 +312,9 @@ mod tests {
 
     #[test]
     fn ndjson_shape_is_content_free_and_well_formed() {
-        let line = SessionRoot::compute(&lines(3)).to_ndjson("marque-3.1", "2026-05-29T00:00:00Z");
+        let line = SessionRoot::compute(&lines(3)).to_ndjson("marque-3.2", "2026-05-29T00:00:00Z");
         assert!(line.starts_with("{\"type\":\"session_root\","));
-        assert!(line.contains("\"schema\":\"marque-3.1\""));
+        assert!(line.contains("\"schema\":\"marque-3.2\""));
         assert!(line.contains("\"record_count\":3"));
         assert!(line.contains("\"root\":\"blake3:"));
         assert!(line.contains("\"ts\":\"2026-05-29T00:00:00Z\""));

@@ -155,12 +155,17 @@ impl Clock for WasmClock {
 // ---------------------------------------------------------------------------
 
 /// Partial config accepted from JS callers — a closed accept-list of
-/// four fields (`classifier_id`, `confidence_threshold`, `corrections`,
-/// `deadline_ms`). Constitution III preservation: unknown JSON fields
-/// are silently ignored; field-level type mismatches are loud errors.
+/// six fields (`classifier_id`, `classification_authority`,
+/// `confidence_threshold`, `corrections`, `deadline_ms`, `signature`).
+/// Constitution III preservation: unknown JSON fields are silently
+/// ignored; field-level type mismatches are loud errors.
 #[derive(Default)]
 struct WasmConfig {
     classifier_id: Option<String>,
+    /// Classification authority (issue #399) — parity with the CLI /
+    /// server identity surface. Surfaced into the session-level audit
+    /// metadata.
+    classification_authority: Option<String>,
     confidence_threshold: Option<f32>,
     corrections: Option<HashMap<String, String>>,
     /// Per-call wall-clock budget in milliseconds.
@@ -170,6 +175,10 @@ struct WasmConfig {
     /// rules and the Constitution III analysis at the top of this
     /// file for why a runtime budget cap is permitted in WASM.
     deadline_ms: Option<f64>,
+    /// Caller-supplied detached signature (issue #399, carry-only).
+    /// Stamped into the session-level audit metadata. Required when the
+    /// engine config sets `require_signature`.
+    signature: Option<String>,
 }
 
 /// Parse the JS-side `config_json` into a [`WasmConfig`], a per-call
@@ -202,6 +211,28 @@ fn wasm_config_from_value(value: Value) -> Result<WasmConfig, String> {
         Some(other) => {
             return Err(format!(
                 "classifier_id must be a string; got {}",
+                value_type_name(other)
+            ));
+        }
+    };
+
+    let classification_authority = match obj.get("classification_authority") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(other) => {
+            return Err(format!(
+                "classification_authority must be a string; got {}",
+                value_type_name(other)
+            ));
+        }
+    };
+
+    let signature = match obj.get("signature") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(other) => {
+            return Err(format!(
+                "signature must be a string; got {}",
                 value_type_name(other)
             ));
         }
@@ -265,9 +296,11 @@ fn wasm_config_from_value(value: Value) -> Result<WasmConfig, String> {
 
     Ok(WasmConfig {
         classifier_id,
+        classification_authority,
         confidence_threshold,
         corrections,
         deadline_ms,
+        signature,
     })
 }
 
@@ -288,6 +321,7 @@ fn value_type_name(v: &Value) -> &'static str {
 fn build_engine_config(wasm_cfg: WasmConfig) -> Result<Config, String> {
     let mut config = Config::default();
     config.user.classifier_id = wasm_cfg.classifier_id;
+    config.user.classification_authority = wasm_cfg.classification_authority;
     if let Some(threshold) = wasm_cfg.confidence_threshold {
         config
             .set_confidence_threshold(threshold)
@@ -302,13 +336,26 @@ fn build_engine_config(wasm_cfg: WasmConfig) -> Result<Config, String> {
 /// Build the engine cache key for a parsed [`WasmConfig`].
 fn build_cache_key(cfg: &WasmConfig) -> Result<Option<String>, String> {
     let corrections_present = cfg.corrections.as_ref().is_some_and(|c| !c.is_empty());
-    if cfg.classifier_id.is_none() && cfg.confidence_threshold.is_none() && !corrections_present {
+    // `signature` is NOT part of the cache key — it is a per-call
+    // `FixOptions` field (not engine config), so it never affects which
+    // cached engine is reused.
+    if cfg.classifier_id.is_none()
+        && cfg.classification_authority.is_none()
+        && cfg.confidence_threshold.is_none()
+        && !corrections_present
+    {
         return Ok(None);
     }
 
     let mut map = serde_json::Map::new();
     if let Some(id) = cfg.classifier_id.as_deref() {
         map.insert("classifier_id".to_owned(), Value::String(id.to_owned()));
+    }
+    if let Some(authority) = cfg.classification_authority.as_deref() {
+        map.insert(
+            "classification_authority".to_owned(),
+            Value::String(authority.to_owned()),
+        );
     }
     if let Some(threshold) = cfg.confidence_threshold {
         let formatted = serde_json::to_string(&threshold).map_err(|e| e.to_string())?;

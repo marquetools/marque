@@ -403,6 +403,7 @@ impl<'engine> TwoPassFixer<'engine> {
             audit_lines: all_audit_lines,
             remaining_diagnostics,
             r002_fired: false,
+            session_metadata: self.session_metadata.clone(),
         })
     }
 
@@ -411,9 +412,13 @@ impl<'engine> TwoPassFixer<'engine> {
     /// as pass-0"); this method exists to keep the pipeline shape
     /// visible at the `run()` call site.
     fn run_pass0_c001(&self, lint: &LintResult) -> Pass0Result {
-        let (effective_source, dropped_diags, audit_lines) =
-            self.engine
-                .apply_text_corrections(self.source, lint, self.threshold, self.mode);
+        let (effective_source, dropped_diags, audit_lines) = self.engine.apply_text_corrections(
+            self.source,
+            lint,
+            self.threshold,
+            self.mode,
+            self.classifier_id.clone(),
+        );
         Pass0Result {
             effective_source: Zeroizing::new(effective_source),
             audit_lines,

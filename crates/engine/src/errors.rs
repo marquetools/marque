@@ -269,6 +269,13 @@ pub enum EngineError {
     /// signature unchanged while internally routing through
     /// `fix_with_options`.
     InvalidThreshold(InvalidThreshold),
+    /// `fix_with_options` refused to run because
+    /// `Config::require_signature` is set but the call supplied no
+    /// signature (`FixOptions::signature` was `None`). The engine does
+    /// not sign in-tree (carry-only); a high-integrity deployment
+    /// configures `require_signature` and the caller must attach a
+    /// signature. No fix is applied and no audit record is emitted.
+    SignatureRequired,
 }
 
 impl std::fmt::Display for EngineError {
@@ -280,6 +287,10 @@ impl std::fmt::Display for EngineError {
                 partial_lint.candidates_processed, partial_lint.candidates_total
             ),
             Self::InvalidThreshold(it) => it.fmt(f),
+            Self::SignatureRequired => write!(
+                f,
+                "fix requires a signature (require_signature is set) but none was supplied"
+            ),
         }
     }
 }
@@ -292,6 +303,9 @@ impl std::error::Error for EngineError {
             // no underlying failure to chain.
             Self::DeadlineExceeded { .. } => None,
             Self::InvalidThreshold(it) => Some(it),
+            // `SignatureRequired` is a policy gate, not a wrapped
+            // failure — nothing to chain.
+            Self::SignatureRequired => None,
         }
     }
 }

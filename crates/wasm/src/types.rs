@@ -172,10 +172,10 @@ pub(crate) fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    // Single accepted schema (`marque-3.1`) so dispatch is a no-op
+    // Single accepted schema (`marque-3.2`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V3_1;
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V3_2;
     let json = marque_engine::audit_line_to_ndjson(scheme, line);
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
 }
@@ -191,10 +191,21 @@ pub(crate) struct FixResultJson {
     /// single field read without parsing the NDJSON `remaining`
     /// stream.
     pub(crate) r002_fired: bool,
-    /// Session-end BLAKE3 Merkle root over the `applied` audit records
-    /// (issue #184), rendered `blake3:<hex>`. A caller can recompute the
-    /// root over the `applied` array bytes and compare. Reproducible
-    /// under a fixed clock; computed per `fix()` call (per document).
+    /// Session-level audit metadata record (issue #399): engine /
+    /// lattice / decoder versions, integrity seal, interface (`"W"`),
+    /// resolved classifier identity, and optional carry-only signature.
+    /// `None` when the fix produced no audit records (preserving the
+    /// "no fixes → no audit output" contract). When present it is the
+    /// FIRST line folded into `session_root`, so the seal and identity
+    /// are tamper-evident under the root. Byte-identical to the CLI /
+    /// server `session_metadata` record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) session_metadata: Option<Box<serde_json::value::RawValue>>,
+    /// Session-end BLAKE3 Merkle root over `session_metadata` (when
+    /// present) followed by the `applied` audit records (issue #184 /
+    /// #399), rendered `blake3:<hex>`. A caller can recompute the root
+    /// over those bytes in order and compare. Reproducible under a
+    /// fixed clock; computed per `fix()` call (per document).
     pub(crate) session_root: String,
 }
 

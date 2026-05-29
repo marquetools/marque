@@ -18,7 +18,7 @@ mod trace;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use marque_capco::capco_rules;
-use marque_engine::{Engine, EngineError, FixOptions, LintOptions};
+use marque_engine::{Engine, EngineError, FixOptions, InterfaceCode, LintOptions};
 use secrecy::ExposeSecret as _;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -256,6 +256,25 @@ struct CommonOptions {
     /// returns no FixResult and exits EX_TEMPFAIL (75).
     #[arg(long, value_name = "DURATION")]
     deadline: Option<String>,
+
+    /// Classifier identity stamped into the audit record for this run.
+    /// Overrides `MARQUE_CLASSIFIER_ID` / `.marque.local.toml`. Issue
+    /// #399 — surfaced in the session-level audit metadata and in each
+    /// applied-fix record.
+    #[arg(long, value_name = "ID")]
+    classifier_id: Option<String>,
+
+    /// Classification authority stamped into the session-level audit
+    /// metadata. Overrides `.marque.local.toml`.
+    #[arg(long, value_name = "AUTHORITY")]
+    classification_authority: Option<String>,
+
+    /// Caller-supplied detached signature (carry-only; marque does not
+    /// sign). Stamped into the session-level audit metadata. Required
+    /// when the project config sets `require_signature` — otherwise
+    /// `fix` exits with a data error.
+    #[arg(long, value_name = "SIGNATURE")]
+    signature: Option<String>,
 
     /// Output format. Defaults to `human` for TTY, `json` otherwise.
     #[arg(long, value_enum)]
@@ -803,6 +822,13 @@ fn run_fix(
             Ok(d) => d,
             Err(code) => return code,
         };
+        // issue #399: per-run identity / signature + interface code.
+        // The flags override the resolved config identity; the engine
+        // resolves `None` back to the config value.
+        fix_opts.interface = InterfaceCode::Cli;
+        fix_opts.classifier_id = common.classifier_id.clone();
+        fix_opts.classification_authority = common.classification_authority.clone();
+        fix_opts.signature = common.signature.clone();
         let result = match engine.fix_with_options(source, engine_mode, &fix_opts) {
             Ok(r) => r,
             Err(EngineError::InvalidThreshold(it)) => {
@@ -874,6 +900,16 @@ fn run_fix(
                 }
                 return EX_TEMPFAIL;
             }
+            // issue #399: project config sets `require_signature` but no
+            // `--signature` was supplied. No fix is applied; surface an
+            // actionable message and exit with a data error.
+            Err(EngineError::SignatureRequired) => {
+                eprintln!(
+                    "error: this project requires a signature (require_signature is set in \
+                     .marque.toml); re-run with --signature <SIGNATURE>"
+                );
+                return EX_DATAERR;
+            }
             // `EngineError` is `#[non_exhaustive]` so the compiler
             // requires a wildcard. A future variant lands here as a
             // generic data error rather than silently mapping to one
@@ -907,7 +943,30 @@ fn run_fix(
         };
         {
             let mut stderr_lock = stderr.lock();
+            // issue #399: emit the session-level metadata record FIRST
+            // (versions / seal / interface / identity / signature) so
+            // the terminal `session_root` Merkle root covers it and any
+            // tampering with the seal or identity is detectable. Gated
+            // on a non-empty audit stream to preserve the established
+            // "no fixes -> no audit output" CLI contract. Pushed to
+            // `session_record_lines` (no trailing newline) ahead of the
+            // per-record lines so it is the first Merkle leaf.
+            if !result.audit_lines.is_empty() {
+                let meta_line = result.session_metadata.to_ndjson();
+                if let Err(e) = writeln!(stderr_lock, "{meta_line}") {
+                    audit_exit_code = Some(if e.kind() == std::io::ErrorKind::Other {
+                        EX_DATAERR
+                    } else {
+                        EX_IOERR
+                    });
+                } else {
+                    session_record_lines.push(meta_line);
+                }
+            }
             for line in &result.audit_lines {
+                if audit_exit_code.is_some() {
+                    break;
+                }
                 // Set the caller-supplied input identifier on the
                 // audit record. The engine leaves `input` as None;
                 // the CLI fills it in at the boundary per the

@@ -16,7 +16,7 @@ use axum::{
     http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Json, Response},
 };
-use marque_engine::{EngineError, FixMode, FixOptions};
+use marque_engine::{EngineError, FixMode, FixOptions, InterfaceCode};
 use secrecy::ExposeSecret as _;
 
 pub async fn fix_handler(
@@ -43,6 +43,13 @@ pub async fn fix_handler(
     let mut fix_opts = FixOptions::default();
     fix_opts.threshold_override = req.confidence_threshold;
     fix_opts.deadline = Some(stamp_request_deadline(deadline_duration)?);
+    // Per-request identity / signature (issue #399). The server
+    // declares its interface so the session-level audit metadata
+    // records which surface applied the fix.
+    fix_opts.interface = InterfaceCode::Server;
+    fix_opts.classifier_id = req.classifier_id.clone();
+    fix_opts.classification_authority = req.classification_authority.clone();
+    fix_opts.signature = req.signature.clone();
 
     match state
         .engine
@@ -61,17 +68,26 @@ pub async fn fix_handler(
             let applied_count =
                 result.applied_fixes().count() + result.applied_text_corrections().count();
 
-            // issue #184: serialize each audit record to its canonical
-            // NDJSON line and compute a session-end Merkle root over those
-            // exact bytes. Emitting the lines AND hashing them with the
-            // same `audit_line_to_ndjson` keeps the response self-
-            // verifiable (a caller re-hashes `audit_log` → `session_root`).
+            // issue #184 / #399: serialize each audit record to its
+            // canonical NDJSON line and compute a session-end Merkle
+            // root over those exact bytes. The session-level
+            // `session_metadata` record (versions / seal / interface /
+            // identity / signature) is the FIRST line when the stream
+            // is non-empty, so the seal and identity are covered by the
+            // root (tampering breaks it). Emitting the lines AND hashing
+            // them keeps the response self-verifiable (a caller
+            // re-hashes `audit_log` → `session_root`).
             let scheme = state.engine.scheme();
-            let audit_log: Vec<String> = result
-                .audit_lines
-                .iter()
-                .map(|line| marque_engine::audit_line_to_ndjson(scheme, line))
-                .collect();
+            let mut audit_log: Vec<String> = Vec::with_capacity(result.audit_lines.len() + 1);
+            if !result.audit_lines.is_empty() {
+                audit_log.push(result.session_metadata.to_ndjson());
+            }
+            audit_log.extend(
+                result
+                    .audit_lines
+                    .iter()
+                    .map(|line| marque_engine::audit_line_to_ndjson(scheme, line)),
+            );
             let session_root = format!(
                 "blake3:{}",
                 marque_engine::SessionRoot::compute(&audit_log).root_hex()
@@ -112,6 +128,12 @@ pub async fn fix_handler(
             Ok((StatusCode::GATEWAY_TIMEOUT, Json(body)).into_response())
         }
         Err(EngineError::InvalidThreshold(_)) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        // issue #399: the deployment requires a signature
+        // (`require_signature`) but the request carried none. This is
+        // a client-side omission given operator policy, so surface it
+        // as 403 Forbidden rather than a 4xx that implies malformed
+        // input or a 5xx that implies a server fault.
+        Err(EngineError::SignatureRequired) => Err(StatusCode::FORBIDDEN),
         // `EngineError` is `#[non_exhaustive]`. A future variant
         // is a server-side condition by default — it represents an
         // engine-internal failure mode that the current handler can't
