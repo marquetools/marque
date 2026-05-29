@@ -330,6 +330,24 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
+    fn signature_required_display_and_source() {
+        // issue #399: the require_signature policy gate surfaces as
+        // EngineError::SignatureRequired. Pin its Display string (the
+        // CLI/server surface it to operators) and that it chains no
+        // inner error (it is a policy condition, not a wrapped failure).
+        let err = EngineError::SignatureRequired;
+        let msg = err.to_string();
+        assert!(
+            msg.contains("require_signature") && msg.contains("signature"),
+            "Display should name the policy and the missing signature, got: {msg}"
+        );
+        assert!(
+            std::error::Error::source(&err).is_none(),
+            "SignatureRequired is a policy gate with no inner cause"
+        );
+    }
+
+    #[test]
     fn unannotated_custom_axes_exit_code_is_unavailable() {
         let err = EngineConstructionError::UnannotatedCustomAxes { rewrite: "bad" };
         assert_eq!(

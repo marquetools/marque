@@ -572,6 +572,25 @@ mod tests {
     }
 
     #[test]
+    fn signature_required_is_a_policy_condition_not_a_runtime_failure() {
+        // issue #399: BatchEngine carries no per-document signature, so
+        // under a require_signature deployment each document maps to
+        // this variant. It is a configuration/policy condition — none
+        // of the runtime-failure classifiers should claim it.
+        let e = BatchError::SignatureRequired;
+        assert!(!e.is_panic());
+        assert!(!e.is_cancelled());
+        assert!(!e.is_shutdown());
+        assert!(!e.is_deadline_exceeded());
+        let s = e.to_string();
+        assert!(
+            s.contains("signature"),
+            "Display should mention the missing signature, got: {s}"
+        );
+        assert!(std::error::Error::source(&e).is_none());
+    }
+
+    #[test]
     fn shutdown_error_display_names_the_state() {
         let e = BatchError::ShutdownInProgress;
         let s = e.to_string();
