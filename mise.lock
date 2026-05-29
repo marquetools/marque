@@ -43,6 +43,14 @@ provenance = "github-attestations"
 version = "0.22.1"
 backend = "cargo:cargo-audit"
 
+[[tools."cargo:cargo-auditable"]]
+version = "0.7.4"
+backend = "cargo:cargo-auditable"
+
+[[tools."cargo:cargo-crev"]]
+version = "0.27.1"
+backend = "cargo:cargo-crev"
+
 [[tools."cargo:cargo-deny"]]
 version = "0.19.0"
 backend = "cargo:cargo-deny"
