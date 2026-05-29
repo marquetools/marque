@@ -25,6 +25,45 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
+[policy.marque]
+audit-as-crates-io = false
+
+[policy.marque-capco]
+audit-as-crates-io = false
+
+[policy.marque-config]
+audit-as-crates-io = false
+
+[policy.marque-core]
+audit-as-crates-io = false
+
+[policy.marque-engine]
+audit-as-crates-io = false
+
+[policy.marque-extract]
+audit-as-crates-io = false
+
+[policy.marque-ism]
+audit-as-crates-io = false
+
+[policy.marque-rules]
+audit-as-crates-io = false
+
+[policy.marque-scheme]
+audit-as-crates-io = false
+
+[policy.marque-server]
+audit-as-crates-io = false
+
+[policy.marque-test-utils]
+audit-as-crates-io = false
+
+[policy.marque-utils]
+audit-as-crates-io = false
+
+[policy.marque-wasm]
+audit-as-crates-io = false
+
 [[exemptions.aho-corasick]]
 version = "1.1.4"
 criteria = "safe-to-deploy"
