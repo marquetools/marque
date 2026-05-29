@@ -6,7 +6,7 @@ use crate::types::{
     FixResultJson, deadline_exceeded_payload, diagnostic_to_json, serialize_audit_line_v1_0,
 };
 use crate::{build_engine_config, parse_wasm_config, stamp_deadline, with_engine};
-use marque_engine::{EngineError, FixMode, FixOptions, SessionRoot};
+use marque_engine::{EngineError, FixMode, FixOptions, InterfaceCode, SessionRoot};
 use secrecy::ExposeSecret as _;
 
 /// Fix text, returning a JSON object with `fixed_text`, `applied` audit records,
@@ -31,6 +31,11 @@ pub fn fix_native(
 ) -> Result<String, String> {
     let (wasm_cfg, deadline_duration, cache_key) = parse_wasm_config(&config_json)?;
     let deadline = stamp_deadline(deadline_duration)?;
+    // Capture the carry-only signature before `wasm_cfg` is moved into
+    // the engine-config builder (the classifier identity rides on the
+    // cached engine's config; the signature is a per-call FixOptions
+    // field and never affects the engine cache key).
+    let signature = wasm_cfg.signature.clone();
     with_engine(
         &cache_key,
         move || build_engine_config(wasm_cfg),
@@ -38,6 +43,13 @@ pub fn fix_native(
             let mut fix_opts = FixOptions::default();
             fix_opts.threshold_override = Some(threshold);
             fix_opts.deadline = deadline;
+            // issue #399: declare the WASM interface + carry the
+            // signature. Identity (classifier_id /
+            // classification_authority) rides on the engine config, so
+            // it is left as the FixOptions fallback (`None`) and the
+            // engine resolves it from config.
+            fix_opts.interface = InterfaceCode::Wasm;
+            fix_opts.signature = signature;
             let result = match engine.fix_with_options(text.as_bytes(), FixMode::Apply, &fix_opts) {
                 Ok(r) => r,
                 Err(EngineError::DeadlineExceeded { partial_lint }) => {
@@ -76,12 +88,36 @@ pub fn fix_native(
                 })
                 .collect::<Result<_, _>>()?;
 
-            // issue #184: session-end Merkle root over the emitted audit
-            // records. Computed over the exact `applied` bytes the caller
-            // receives (each RawValue's JSON text), so the caller can
-            // recompute and verify. Per-call (per-document), imposing no
-            // sequentiality on callers that batch multiple fix() calls.
-            let root_lines: Vec<&str> = applied.iter().map(|r| r.get()).collect();
+            // issue #399: the session-level metadata record (versions /
+            // seal / interface / identity / signature). Emitted only
+            // when the fix produced audit records, preserving the "no
+            // fixes → no audit output" contract. It is the FIRST line
+            // folded into the session root so the seal and identity are
+            // covered by it.
+            let session_metadata: Option<Box<serde_json::value::RawValue>> = if result
+                .audit_lines
+                .is_empty()
+            {
+                None
+            } else {
+                Some(
+                    serde_json::value::RawValue::from_string(result.session_metadata.to_ndjson())
+                        .map_err(|e| e.to_string())?,
+                )
+            };
+
+            // issue #184 / #399: session-end Merkle root over the
+            // session-metadata record (when present) followed by the
+            // emitted audit records, in that order. Computed over the
+            // exact bytes the caller receives (each RawValue's JSON
+            // text), so the caller can recompute and verify. Per-call
+            // (per-document), imposing no sequentiality on callers that
+            // batch multiple fix() calls.
+            let mut root_lines: Vec<&str> = Vec::with_capacity(applied.len() + 1);
+            if let Some(meta) = session_metadata.as_ref() {
+                root_lines.push(meta.get());
+            }
+            root_lines.extend(applied.iter().map(|r| r.get()));
             let session_root = format!("blake3:{}", SessionRoot::compute(&root_lines).root_hex());
 
             let fix_result = FixResultJson {
@@ -89,6 +125,7 @@ pub fn fix_native(
                 applied,
                 remaining,
                 r002_fired: result.r002_fired,
+                session_metadata,
                 session_root,
             };
 

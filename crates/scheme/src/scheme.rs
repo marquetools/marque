@@ -155,6 +155,21 @@ pub trait MarkingScheme {
     /// logs.
     fn schema_version(&self) -> &str;
 
+    /// Version of the scheme's lattice algebra — the meet/join
+    /// semantics and the category set — distinct from
+    /// [`Self::schema_version`] (which tracks the upstream CVE package
+    /// label). Surfaced into the audit-record session metadata so a
+    /// fix can be traced to the exact lattice revision that produced
+    /// it.
+    ///
+    /// Defaults to [`Self::schema_version`] for schemes whose lattice
+    /// tracks the schema 1:1; CAPCO overrides it because its lattice
+    /// surface (`SciSet` / `SarSet` / `FgiSet`, the §3.3a meet, the
+    /// `Lattice` split) evolves independently of the ODNI CVE package.
+    fn lattice_version(&self) -> &str {
+        self.schema_version()
+    }
+
     /// All categories in the scheme, in arbitrary order. Sort by
     /// `ordering_rank` for render order.
     fn categories(&self) -> &[Category];

@@ -269,6 +269,13 @@ pub enum EngineError {
     /// signature unchanged while internally routing through
     /// `fix_with_options`.
     InvalidThreshold(InvalidThreshold),
+    /// `fix_with_options` refused to run because
+    /// `Config::require_signature` is set but the call supplied no
+    /// signature (`FixOptions::signature` was `None`). The engine does
+    /// not sign in-tree (carry-only); a high-integrity deployment
+    /// configures `require_signature` and the caller must attach a
+    /// signature. No fix is applied and no audit record is emitted.
+    SignatureRequired,
 }
 
 impl std::fmt::Display for EngineError {
@@ -280,6 +287,10 @@ impl std::fmt::Display for EngineError {
                 partial_lint.candidates_processed, partial_lint.candidates_total
             ),
             Self::InvalidThreshold(it) => it.fmt(f),
+            Self::SignatureRequired => write!(
+                f,
+                "fix requires a signature (require_signature is set) but none was supplied"
+            ),
         }
     }
 }
@@ -292,6 +303,9 @@ impl std::error::Error for EngineError {
             // no underlying failure to chain.
             Self::DeadlineExceeded { .. } => None,
             Self::InvalidThreshold(it) => Some(it),
+            // `SignatureRequired` is a policy gate, not a wrapped
+            // failure — nothing to chain.
+            Self::SignatureRequired => None,
         }
     }
 }
@@ -314,6 +328,24 @@ mod tests {
     // ConflictingRuleOverride, and RewriteCycle; the unannotated-custom case
     // is exercised here.
     // -----------------------------------------------------------------------
+
+    #[test]
+    fn signature_required_display_and_source() {
+        // issue #399: the require_signature policy gate surfaces as
+        // EngineError::SignatureRequired. Pin its Display string (the
+        // CLI/server surface it to operators) and that it chains no
+        // inner error (it is a policy condition, not a wrapped failure).
+        let err = EngineError::SignatureRequired;
+        let msg = err.to_string();
+        assert!(
+            msg.contains("require_signature") && msg.contains("signature"),
+            "Display should name the policy and the missing signature, got: {msg}"
+        );
+        assert!(
+            std::error::Error::source(&err).is_none(),
+            "SignatureRequired is a policy gate with no inner cause"
+        );
+    }
 
     #[test]
     fn unannotated_custom_axes_exit_code_is_unavailable() {

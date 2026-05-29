@@ -92,3 +92,15 @@ pub fn capco_rules() -> impl RuleSet<CapcoScheme> {
 
 /// ISM schema version this crate was compiled against (from marque-ism).
 pub const SCHEMA_VERSION: &str = marque_ism::generated::values::SCHEMA_VERSION;
+
+/// Version of CAPCO's lattice algebra — the meet/join semantics and the
+/// category set (`SciSet` / `SarSet` / `FgiSet`, the §3.3a equal-depth
+/// meet, NOFORN supersession, the `Lattice` split from #456 / PR #502).
+///
+/// Tracked independently of [`SCHEMA_VERSION`]: the ODNI CVE package
+/// label can move without changing the lattice semantics, and the
+/// lattice can evolve (a new axis, a changed meet) against a fixed CVE
+/// package. Surfaced into audit-record session metadata via
+/// `MarkingScheme::lattice_version`. Bump on any change to the lattice
+/// laws or the category set.
+pub const LATTICE_VERSION: &str = "capco-lattice-1";

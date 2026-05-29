@@ -3,15 +3,23 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Contract: Audit Record (NDJSON, schema `marque-3.1`)
+# Contract: Audit Record (NDJSON, schema `marque-3.2`)
 
-**Active schema**: `marque-3.1` (was `marque-3.0`; `marque-2.0` pre-PR-B).
-**Introduced by**: issue #184 (session `session_root` Merkle record;
-additive over `marque-3.0`). The `marque-3.0` baseline below was the
-PR B recognition-axis cutover (2026-05-28); `marque-3.1` adds the
-terminal `session_root` record (a session-end BLAKE3 Merkle root over
-the preceding records) and leaves the `AppliedFix` / `TextCorrection`
-record shapes byte-identical.
+**Active schema**: `marque-3.2` (was `marque-3.1`; `marque-3.0` pre-#184).
+**Introduced by**: issue #399 (session `session_metadata` record;
+additive over `marque-3.1`). `marque-3.2` adds a session-level
+`session_metadata` record — engine / lattice / decoder versions, the
+active audit schema, a BLAKE3 integrity `seal` over the version set,
+the applying `interface` code (`S`/`C`/`W`/`O`), the resolved classifier
+identity (`classifier_id`, `classification_authority`), and an optional
+carry-only `signature` — emitted as the **first** line of a non-empty
+audit stream and folded into the `session_root` Merkle root (so the
+seal and identity are tamper-evident under the root). The per-record
+`AppliedFix` / `TextCorrection` shapes are byte-identical to
+`marque-3.1`. The earlier issue #184 bump (`marque-3.0` → `marque-3.1`)
+added the terminal `session_root` record (a session-end BLAKE3 Merkle
+root over the preceding records); the `marque-3.0` baseline below was
+the PR B recognition-axis cutover (2026-05-28).
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-035a, FR-037, FR-041, FR-044, FR-049
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 
@@ -28,17 +36,16 @@ Per FR-037 every pre-cutover envelope (`mvp-1` / `mvp-2` / `mvp-3` / `marque-1.0
 ## Schema identifier
 
 ```text
-"schema": "marque-3.1"
+"schema": "marque-3.2"
 ```
 
 `MARQUE_AUDIT_SCHEMA` is build-time-pinned to a single value via
 `marque-engine::AUDIT_SCHEMA_VERSION` (FR-034). One binary emits
 exactly one schema. The build-time accept-list at HEAD is
-`["marque-3.1"]` (was `["marque-3.0"]` pre-#184, `["marque-2.0"]`
-pre-PR-B, `["marque-1.0"]` pre-T044); pre-cutover records are
-unreadable by post-cutover binaries (FR-037 — clean break, no
-`marque-audit-reader` crate
-scheduled).
+`["marque-3.2"]` (was `["marque-3.1"]` pre-#399, `["marque-3.0"]`
+pre-#184, `["marque-2.0"]` pre-PR-B, `["marque-1.0"]` pre-T044);
+pre-cutover records are unreadable by post-cutover binaries (FR-037 —
+clean break, no `marque-audit-reader` crate scheduled).
 
 ---
 
@@ -399,6 +406,65 @@ There is none. Per FR-037:
   minor bumps stay forward-readable; the next breaking bump
   (`marque-4.0`) would again clean-break.
 
+## Session metadata record (`session_metadata`, issue #399)
+
+`marque-3.2` adds a session-level `session_metadata` record, emitted as
+the **first** line of a non-empty audit stream (ahead of the per-record
+`applied_fix` / `text_correction` lines and the terminal `session_root`
+record). It records the facts that are constant for a whole fix session
+rather than per-record:
+
+```jsonc
+{
+  "type": "session_metadata",
+  "schema": "marque-3.2",
+  "marque_version": "0.2.1",            // engine crate CARGO_PKG_VERSION
+  "lattice_version": "capco-lattice-1", // MarkingScheme::lattice_version
+  "decoder_version": "decoder-1",       // marque_engine::DECODER_VERSION
+  "interface": "C",                     // "S" server | "C" CLI | "W" WASM | "O" other
+  "seal": "blake3:…",                   // BLAKE3 over the four version strings
+  "classifier_id": "12345",             // optional; omitted when unset
+  "classification_authority": "EO 13526", // optional; omitted when unset
+  "signature": "…"                      // optional carry-only signature; omitted when unset
+}
+```
+
+- **Versioning.** `marque_version` / `lattice_version` /
+  `decoder_version` / `schema` let any applied fix be traced to the
+  exact engine, lattice, decoder, and audit-schema revision that
+  produced it.
+- **`seal`.** `blake3:<hex>` over a domain-tagged, NUL-delimited
+  concatenation of the four version strings (Marque, lattice, decoder,
+  audit schema). The interface and identity are **not** part of the
+  seal — they are bound into the audit chain via the `session_root`
+  Merkle root, which covers this record because it is the first line.
+- **`interface`.** Single-character code identifying which surface
+  applied the fix.
+- **Classifier identity.** Resolved per call — a per-request /
+  per-invocation override (server `FixRequest`, CLI `--classifier-id` /
+  `--classification-authority`, WASM config) beats the engine `Config`.
+  Optional fields are omitted when unset.
+- **`signature`.** Carry-only: Marque does not sign in-tree (full
+  in-engine X.509 signing is tracked as a follow-up to #399). When the
+  engine is configured with `require_signature` (committed `[audit]`
+  table in `.marque.toml`), `Engine::fix_with_options` refuses to run
+  unless a signature is supplied — the server returns `403`, the CLI
+  exits with a data error, and `BatchEngine` yields
+  `BatchError::SignatureRequired`.
+
+Content-ignorance (Constitution V Principle V) holds: every field is a
+permitted identifier type (build-time version constants, a closed
+interface code, a `blake3:`-prefixed seal, the engine-controlled
+classifier identity, and a caller-supplied signature token); no
+document content reaches the record. The `audit_g13_canary` corpus
+sweep renders and scans it alongside the per-record lines.
+
+A clean document (no fixes) produces no audit records, hence no
+`session_metadata` record — preserving the "no fixes → no audit output"
+contract.
+
+---
+
 ## Schema discoverability (D3)
 
 Per **decision D3** in `decisions.md`, the active audit schema name
@@ -440,15 +506,17 @@ schema changed, even though no compatibility shim is provided.
 
 ## Schema-bump policy
 
-`marque-3.1` is the active audit schema as of issue #184 (it added the
-terminal `session_root` record additively over the `marque-3.0` PR-B
-baseline). Subsequent schema bumps (`marque-3.2`, `marque-4.0`)
-follow semver:
+`marque-3.2` is the active audit schema as of issue #399 (it added the
+session-level `session_metadata` record additively over the
+`marque-3.1` baseline, which itself added the terminal `session_root`
+record over `marque-3.0`). Subsequent schema bumps (`marque-3.3`,
+`marque-4.0`) follow semver:
 
 - **Minor bump (`marque-3.x`)**: additive — new `MessageTemplate`
   variant, new `FeatureId` variant, new `MessageArgs` field type
-  (still closed-set), a new terminal record type (e.g. the
-  `session_root` Merkle record added in `marque-3.1`, issue #184),
+  (still closed-set), a new session-level / terminal record type (e.g.
+  the `session_root` Merkle record added in `marque-3.1`, issue #184,
+  or the `session_metadata` record added in `marque-3.2`, issue #399),
   additive `RuleId` predicate renames recorded
   in `docs/refactor-006/legacy-rule-id-map.md`. Reader compatibility
   is forward-only; `MARQUE_AUDIT_SCHEMA` validates against the exact

@@ -12,6 +12,8 @@ fn assemble_r002_result_carries_pass0_then_pass1_applied_plus_r002_diag() {
         mode: FixMode::Apply,
         threshold: 0.95,
         deadline: None,
+        classifier_id: None,
+        session_metadata: super::test_session_metadata(),
     };
 
     let pass0_audit_lines = vec![synth_audit_line("C001", 0, 6)];
@@ -77,6 +79,8 @@ fn assemble_r002_result_dryrun_returns_original_source() {
         mode: FixMode::DryRun,
         threshold: 0.95,
         deadline: None,
+        classifier_id: None,
+        session_metadata: super::test_session_metadata(),
     };
 
     let pass1 = Pass1Result {
@@ -110,6 +114,8 @@ fn assemble_r002_result_carries_through_pass0_dropped_diagnostics() {
         mode: FixMode::Apply,
         threshold: 0.95,
         deadline: None,
+        classifier_id: None,
+        session_metadata: super::test_session_metadata(),
     };
 
     let dropped = vec![Diagnostic::<CapcoScheme>::new(
@@ -157,6 +163,8 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         mode: FixMode::Apply,
         threshold: 0.95,
         deadline: None,
+        classifier_id: None,
+        session_metadata: super::test_session_metadata(),
     };
 
     let intent = FixIntent::<CapcoScheme> {

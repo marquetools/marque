@@ -4,9 +4,11 @@ use std::time::Duration;
 fn default_wasm_config() -> WasmConfig {
     WasmConfig {
         classifier_id: None,
+        classification_authority: None,
         confidence_threshold: None,
         corrections: None,
         deadline_ms: None,
+        signature: None,
     }
 }
 
@@ -101,6 +103,28 @@ fn build_cache_key_is_some_for_classifier_id() {
         ..default_wasm_config()
     };
     assert!(build_cache_key(&cfg).unwrap().is_some());
+}
+
+#[test]
+fn build_cache_key_is_some_for_classification_authority() {
+    // issue #399: classification_authority rides on engine config, so
+    // it participates in the cache key like classifier_id.
+    let cfg = WasmConfig {
+        classification_authority: Some("EO 13526".to_owned()),
+        ..default_wasm_config()
+    };
+    assert!(build_cache_key(&cfg).unwrap().is_some());
+}
+
+#[test]
+fn build_cache_key_is_none_for_signature_only() {
+    // issue #399: signature is a per-call FixOptions field, NOT engine
+    // config — it must never affect which cached engine is reused.
+    let cfg = WasmConfig {
+        signature: Some("SIG".to_owned()),
+        ..default_wasm_config()
+    };
+    assert_eq!(build_cache_key(&cfg).unwrap(), None);
 }
 
 #[test]

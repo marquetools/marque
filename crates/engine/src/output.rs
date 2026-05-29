@@ -9,6 +9,8 @@ use marque_rules::Diagnostic;
 use marque_rules::audit::{AppliedFix, AppliedTextCorrection, AuditLine};
 use secrecy::SecretSlice;
 
+use crate::session::SessionMetadata;
+
 /// Result of a lint pass — diagnostics without source modification.
 ///
 /// `#[non_exhaustive]` ensures future lint-time observations (per-rule
@@ -194,6 +196,14 @@ pub struct FixResult {
     /// signal would suggest collapsing to a `partial_state:
     /// PartialState` enum.
     pub r002_fired: bool,
+    /// Session-level audit metadata (`marque-3.2`, issue #399):
+    /// engine/lattice/decoder versions, an integrity seal, the applying
+    /// interface, the resolved classifier identity, and an optional
+    /// carry-only signature. Surfaces emit
+    /// [`SessionMetadata::to_ndjson`] as the first line of a non-empty
+    /// audit stream and fold it into the [`crate::SessionRoot`] Merkle
+    /// computation, so it is tamper-evident under the session root.
+    pub session_metadata: SessionMetadata,
 }
 
 impl FixResult {

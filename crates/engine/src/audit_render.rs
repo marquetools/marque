@@ -2,7 +2,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Engine-side audit-record NDJSON projection (`marque-3.1`).
+//! Engine-side audit-record NDJSON projection (`marque-3.2`).
+//!
+//! The per-record `applied_fix` / `text_correction` projections below
+//! are byte-identical to `marque-3.1` — `marque-3.2` (issue #399) is
+//! additive and introduces only the session-level `session_metadata`
+//! record, which each surface emits via
+//! [`crate::SessionMetadata::to_ndjson`] (not through this module).
 //!
 //! This is the **single source of truth** for the audit-record wire form.
 //! Every emitter routes through it: the server (`marque-server`'s

@@ -39,7 +39,7 @@
 //! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_capco::CapcoScheme;
-use marque_engine::{AUDIT_SCHEMA_IS_V3_1, AUDIT_SCHEMA_VERSION, LintResult};
+use marque_engine::{AUDIT_SCHEMA_IS_V3_2, AUDIT_SCHEMA_VERSION, LintResult};
 use marque_rules::audit::AuditLine;
 use marque_rules::{Diagnostic, RuleId};
 use serde::Serialize;
@@ -560,10 +560,10 @@ pub fn render_audit_line(
     scheme: &CapcoScheme,
     line: &AuditLine<CapcoScheme>,
 ) -> std::io::Result<()> {
-    // Single accepted schema (`marque-3.1`) so dispatch is a no-op
+    // Single accepted schema (`marque-3.2`) so dispatch is a no-op
     // today; the const lookup is kept so a future schema bump can
     // land via the same dispatch shape without restructuring callers.
-    let _ = AUDIT_SCHEMA_IS_V3_1;
+    let _ = AUDIT_SCHEMA_IS_V3_2;
     // The `Display` impl renders the canonical wire-string form
     // `"<scheme>:<predicate_id>"`, which is what the error-frame
     // fallback channel surfaces to humans.

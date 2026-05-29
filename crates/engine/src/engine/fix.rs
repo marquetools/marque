@@ -14,18 +14,30 @@ impl Engine {
     /// or an HTTP request field), use [`Engine::fix_with_threshold`] or
     /// [`Engine::fix_with_options`].
     ///
-    /// Back-compat shim over [`Engine::fix_with_options`] — `fix(src, mode)`
-    /// is equivalent to `fix_with_options(src, mode, &FixOptions::default())`
-    /// (no deadline, no threshold override). Both invariants make the
-    /// `expect` here unreachable: the default options carry no deadline so
-    /// `EngineError::DeadlineExceeded` cannot fire, and the config
-    /// threshold is pre-validated at load time so
+    /// Back-compat shim — `fix(src, mode)` runs the fix pipeline with
+    /// default options (no deadline, config threshold, `Other`
+    /// interface, no identity override, no signature).
+    ///
+    /// Calls [`Engine::fix_inner`] directly rather than
+    /// [`Engine::fix_with_options`], so it does **not** enforce the
+    /// `require_signature` policy gate (which lives on the
+    /// surface-facing `fix_with_options` path used by the server, CLI,
+    /// and WASM). `fix()` carries no signature by construction, so a
+    /// deployment under `require_signature` must drive fixes through
+    /// `fix_with_options`. Bypassing the gate here keeps this
+    /// convenience entry point (and the test suite that leans on it)
+    /// total and panic-free. The `expect` is sound: default options
+    /// carry no deadline so `EngineError::DeadlineExceeded` cannot
+    /// fire, and the config threshold is pre-validated at load time so
     /// `EngineError::InvalidThreshold` cannot fire.
     pub fn fix(&self, source: &[u8], mode: FixMode) -> FixResult {
-        self.fix_with_options(source, mode, &FixOptions::default())
-            .expect(
-                "fix() default options cannot fail: no deadline + pre-validated config threshold",
-            )
+        self.fix_inner(
+            source,
+            mode,
+            self.config.confidence_threshold(),
+            &FixOptions::default(),
+        )
+        .expect("fix() default options cannot fail: no deadline + pre-validated config threshold")
     }
 
     /// Lint and apply fixes using an optional per-call confidence threshold.
@@ -37,26 +49,50 @@ impl Engine {
     /// This signature is preserved for back-compat. New callers should
     /// prefer [`Engine::fix_with_options`], which carries the deadline
     /// surface alongside the threshold override.
+    ///
+    /// Like [`Engine::fix`], this validates the threshold inline and
+    /// calls [`Engine::fix_inner`] directly, so it does **not** enforce
+    /// the `require_signature` gate (it has no signature parameter to
+    /// satisfy it). The two `unreachable!` arms below are sound because
+    /// `fix_inner` neither re-validates the (already-validated)
+    /// threshold nor sets a deadline, and the gate is not on this path.
     pub fn fix_with_threshold(
         &self,
         source: &[u8],
         mode: FixMode,
         threshold_override: Option<f32>,
     ) -> Result<FixResult, InvalidThreshold> {
+        let threshold = match threshold_override {
+            Some(value) => {
+                if !(0.0..=1.0).contains(&value) || value.is_nan() {
+                    return Err(InvalidThreshold(value));
+                }
+                value
+            }
+            None => self.config.confidence_threshold(),
+        };
         let opts = FixOptions {
             threshold_override,
             ..Default::default()
         };
-        match self.fix_with_options(source, mode, &opts) {
+        match self.fix_inner(source, mode, threshold, &opts) {
             Ok(result) => Ok(result),
-            Err(EngineError::InvalidThreshold(it)) => Err(it),
-            // No caller can reach this arm: `fix_with_threshold`'s
-            // public signature does not accept a deadline, so the
-            // `FixOptions` we built above has `deadline: None`. A
-            // future signature change that introduces one would have
-            // to remove this `unreachable!` deliberately.
+            // Threshold was pre-validated above; `fix_inner` does not
+            // re-check it, so this arm cannot fire.
+            Err(EngineError::InvalidThreshold(_)) => {
+                unreachable!("fix_with_threshold pre-validates the threshold before fix_inner")
+            }
+            // `fix_with_threshold`'s public signature does not accept a
+            // deadline, so the `FixOptions` we built has `deadline:
+            // None` and the per-candidate deadline check never trips.
             Err(EngineError::DeadlineExceeded { .. }) => {
                 unreachable!("fix_with_threshold cannot set a deadline through its signature")
+            }
+            // The `require_signature` gate lives on `fix_with_options`;
+            // `fix_inner` does not enforce it, so this legacy shim never
+            // produces it.
+            Err(EngineError::SignatureRequired) => {
+                unreachable!("fix_with_threshold bypasses the require_signature gate via fix_inner")
             }
         }
     }
@@ -83,6 +119,16 @@ impl Engine {
         mode: FixMode,
         opts: &FixOptions,
     ) -> Result<FixResult, EngineError> {
+        // Signature gate (issue #399). In a high-integrity deployment
+        // the operator sets `require_signature` in `.marque.toml`; the
+        // engine then refuses to apply fixes unless the caller attaches
+        // a (carry-only) signature. Checked before any work runs and
+        // before the threshold validation so the policy refusal is the
+        // first thing a caller sees.
+        if self.config.require_signature && opts.signature.is_none() {
+            return Err(EngineError::SignatureRequired);
+        }
+
         let threshold = match opts.threshold_override {
             Some(value) => {
                 if !(0.0..=1.0).contains(&value) || value.is_nan() {
@@ -93,7 +139,7 @@ impl Engine {
             None => self.config.confidence_threshold(),
         };
 
-        self.fix_inner(source, mode, threshold, opts.deadline)
+        self.fix_inner(source, mode, threshold, opts)
     }
 
     fn fix_inner(
@@ -101,8 +147,39 @@ impl Engine {
         source: &[u8],
         mode: FixMode,
         threshold: f32,
-        deadline: Option<Instant>,
+        opts: &FixOptions,
     ) -> Result<FixResult, EngineError> {
+        // Resolve the per-call classifier identity: a `FixOptions`
+        // override (forwarded from a server request / CLI flag / WASM
+        // config) beats the engine `Config`. Resolved once here so the
+        // per-record `AppliedFix.classifier_id` and the session-level
+        // metadata record agree.
+        let classifier_id: Option<Arc<str>> = opts
+            .classifier_id
+            .as_deref()
+            .or(self.config.user.classifier_id.as_deref())
+            .map(Arc::from);
+        let classification_authority: Option<Arc<str>> = opts
+            .classification_authority
+            .as_deref()
+            .or(self.config.user.classification_authority.as_deref())
+            .map(Arc::from);
+        let signature: Option<Arc<str>> = opts.signature.as_deref().map(Arc::from);
+
+        // Session-level audit metadata (issue #399): versions + seal +
+        // interface + identity + carry-only signature. Built once per
+        // fix call and attached to every `FixResult` construction site.
+        let session_metadata = crate::SessionMetadata {
+            marque_version: crate::MARQUE_VERSION,
+            audit_schema: crate::AUDIT_SCHEMA_VERSION,
+            lattice_version: smol_str::SmolStr::new(self.scheme.lattice_version()),
+            decoder_version: crate::DECODER_VERSION,
+            interface: opts.interface,
+            classifier_id: classifier_id.clone(),
+            classification_authority,
+            signature,
+        };
+
         // Trampoline: every stage of the pipeline lives on
         // `TwoPassFixer`; this method binds the public surface
         // (`fix_with_options` -> `fix_inner`) to that struct.
@@ -111,7 +188,9 @@ impl Engine {
             source,
             mode,
             threshold,
-            deadline,
+            deadline: opts.deadline,
+            classifier_id,
+            session_metadata,
         }
         .run()
     }
@@ -127,6 +206,7 @@ impl Engine {
         lint: &LintResult,
         threshold: f32,
         mode: FixMode,
+        classifier_id: Option<Arc<str>>,
     ) -> (
         Vec<u8>,
         Vec<Diagnostic<CapcoScheme>>,
@@ -207,8 +287,10 @@ impl Engine {
             .cloned()
             .collect();
 
-        let classifier_id: Option<Arc<str>> =
-            self.config.user.classifier_id.as_deref().map(Arc::from);
+        // Resolved per-call identity is threaded in from the
+        // `TwoPassFixer` (FixOptions override beats Config) so the
+        // text-correction audit records carry the same classifier as
+        // the marking-side records and the session metadata.
         let dry_run = mode == FixMode::DryRun;
         let now = self.clock.now();
 
@@ -266,6 +348,13 @@ pub(super) struct TwoPassFixer<'engine> {
     pub(super) mode: FixMode,
     pub(super) threshold: f32,
     pub(super) deadline: Option<Instant>,
+    /// Resolved classifier identity for this fix call (`FixOptions`
+    /// override beats `Config`). Snapshotted into every promoted
+    /// `AppliedFix` / `AppliedTextCorrection`.
+    pub(super) classifier_id: Option<Arc<str>>,
+    /// Session-level audit metadata (issue #399), cloned into every
+    /// `FixResult` this fixer produces.
+    pub(super) session_metadata: crate::SessionMetadata,
 }
 
 /// Promoted-fix tuple returned by [`TwoPassFixer::apply_kept_fixes`].
@@ -422,13 +511,9 @@ impl<'engine> TwoPassFixer<'engine> {
         kept_fixes: Vec<SynthesizedFix>,
         lint: &LintResult,
     ) -> Result<AppliedTuple, EngineError> {
-        let classifier_id: Option<std::sync::Arc<str>> = self
-            .engine
-            .config
-            .user
-            .classifier_id
-            .as_deref()
-            .map(std::sync::Arc::from);
+        // Resolved per-call identity (FixOptions override beats Config);
+        // see `Engine::fix_inner`.
+        let classifier_id: Option<std::sync::Arc<str>> = self.classifier_id.clone();
         let dry_run = self.mode == FixMode::DryRun;
         let now = self.engine.clock.now();
 
@@ -638,6 +723,7 @@ impl<'engine> TwoPassFixer<'engine> {
             audit_lines: all_audit_lines,
             remaining_diagnostics,
             r002_fired: true,
+            session_metadata: self.session_metadata.clone(),
         }
     }
 }

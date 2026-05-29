@@ -132,6 +132,23 @@ pub struct FixRequest {
     /// value is validated against `[0.0, 1.0]` and a 422 is returned on
     /// invalid input.
     pub confidence_threshold: Option<f32>,
+    /// Optional per-request classifier identity (issue #399). When
+    /// present, it overrides the server's configured `classifier_id`
+    /// for this fix and is stamped into the session-level audit
+    /// metadata record (and per-record `classifier_id`).
+    #[serde(default)]
+    pub classifier_id: Option<String>,
+    /// Optional per-request classification authority. Override
+    /// semantics identical to `classifier_id`; surfaced in the
+    /// session-level audit metadata.
+    #[serde(default)]
+    pub classification_authority: Option<String>,
+    /// Optional caller-supplied detached signature (carry-only; the
+    /// server does not sign). Stamped into the session-level audit
+    /// metadata. Required when the engine is configured with
+    /// `require_signature` — otherwise the fix is refused with 403.
+    #[serde(default)]
+    pub signature: Option<String>,
     /// T3 guard: see `LintRequest::_corpus_override`.
     #[serde(default, rename = "corpus_override")]
     _corpus_override: PresenceMarker,

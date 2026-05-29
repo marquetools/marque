@@ -115,6 +115,18 @@ const PERMITTED_STRING_KEYS: &[&str] = &[
     "bytes_digest",
     "original_digest",
     "id",
+    // issue #399 session_metadata record keys. All are permitted
+    // identifier types: build-time version constants, a closed
+    // interface code, a `blake3:`-prefixed seal (also prefix-tested),
+    // the engine-controlled classifier identity, and a caller-supplied
+    // signature token. None carries document content.
+    "marque_version",
+    "lattice_version",
+    "decoder_version",
+    "interface",
+    "seal",
+    "classification_authority",
+    "signature",
 ];
 
 /// Lower-cased list of JSON keys whose string values carry corpus-
@@ -393,10 +405,24 @@ fn canary_passes_on_full_corpus() {
     for path in &fixtures {
         let source = load_fixture(path);
         let result = engine.fix(&source, FixMode::Apply);
-        for line in &result.audit_lines {
-            let Some(ndjson) = render_audit_line_to_json(scheme, line) else {
-                continue;
-            };
+
+        // issue #399: the session-level `session_metadata` record is
+        // part of the emitted audit stream (the first line on every
+        // surface). Sweep it for content leaks alongside the per-record
+        // lines — it must also be content-ignorant.
+        let session_metadata_ndjson = if result.audit_lines.is_empty() {
+            None
+        } else {
+            Some(result.session_metadata.to_ndjson())
+        };
+
+        let lines = session_metadata_ndjson.iter().cloned().chain(
+            result
+                .audit_lines
+                .iter()
+                .filter_map(|line| render_audit_line_to_json(scheme, line)),
+        );
+        for ndjson in lines {
             total_lines_scanned += 1;
             if let Some((leaked, json_path)) = detect_content_leak(&source, &ndjson) {
                 panic!(
