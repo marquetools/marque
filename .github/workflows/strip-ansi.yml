@@ -32,7 +32,7 @@ jobs:
           since_last_remote_commit: true
       - name: Scan for ANSI/Unicode threats in files
         id: scan-files
-        uses: marquetools/.github/actions/strip-ansi@a573a9da154ca03d98deab2cee704728a58d8589
+        uses: marquetools/.github/actions/strip-ansi@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f
         with:
           files: ${{ steps.changed-files.outputs.all_changed_files }}
           github-token: ${{ secrets.GITHUB_TOKEN || github.token }}
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 5
-      - uses: marquetools/.github/actions/strip-ansi@a573a9da154ca03d98deab2cee704728a58d8589
+      - uses: marquetools/.github/actions/strip-ansi@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f
         id: issue-scan
         name: Scan for ANSI/Unicode in Issue Comments
         with:
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 5
-      - uses: marquetools/.github/actions/strip-ansi@a573a9da154ca03d98deab2cee704728a58d8589
+      - uses: marquetools/.github/actions/strip-ansi@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f
         name: Scan for ANSI/Unicode in PR Review Comments
         id: pr-scan
         with:
