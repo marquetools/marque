@@ -28,7 +28,7 @@ Tech Stack / `deny.toml`).
 **Target Platform**: native + WASM. The WASM-safe set (`marque-ism`, `marque-core`,
 `marque-rules`, `marque-scheme`, `marque-capco`) MUST stay WASM-safe (Constitution III).
 **Project Type**: Rust workspace (compiler/library + CLI + server + WASM).
-**Performance Goals**: interactive p95 ≤ 16 ms; linear fix throughput. Single-scheme no-regression gated by SC-008a (incl. the new #420 absence-scan bench); the multi-scheme O(schemes) hot-path multiplier budgeted separately by SC-008b (`multi_scheme_latency` bench).
+**Performance Goals**: interactive p95 ≤ 2 ms (strict/decoder resolution, 10 KB; the 16 ms figure is retired); #420 absence detection p95 ≤ 1 ms target / 2 ms max, independent; linear fix throughput. Single-scheme no-regression gated by SC-008a (incl. the new #420 absence-scan bench); the multi-scheme O(schemes) hot-path multiplier gated by SC-008b at number-of-schemes × the single-scheme 2 ms ceiling (two schemes → 4 ms p95; `multi_scheme_latency` bench).
 **Constraints**: zero-copy streaming core; audit content-ignorance (G13); acyclic crate graph.
 **Scale/Scope**: a phased program across all WASM-safe crates + engine + integration surfaces;
 ~9 phases (0, A–H) plus two deferred groups.
@@ -39,14 +39,14 @@ Tech Stack / `deny.toml`).
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Performance | PASS (gated) | New document-scope pass reuses the cached topological order (scheduler) and the existing per-page accumulator pattern; SC-008a enforces no single-scheme p95/throughput regression (incl. a dedicated bench for the new #420 whole-document absence scan). SC-008b budgets the multi-scheme O(schemes) hot-path multiplier with its own `multi_scheme_latency` bench — the single-scheme 16 ms gate is NOT assumed to hold unchanged under co-residence. |
+| I. Performance | PASS (gated) | New document-scope pass reuses the cached topological order (scheduler) and the existing per-page accumulator pattern; SC-008a enforces single-scheme strict/decoder resolution p95 ≤ 2 ms (10 KB; absolute ceiling) with no throughput regression. The #420 whole-document absence scan is budgeted independently of resolution: p95 ≤ 1 ms target / 2 ms absolute max (own bench). SC-008b sets the multi-scheme ceiling at number-of-schemes × the single-scheme 2 ms ceiling (two schemes → 4 ms p95) as the CI gate, measured by the `multi_scheme_latency` bench — the single-scheme ceiling is NOT assumed to hold unchanged under co-residence. |
 | II. Zero-copy / lifecycle wipe | PASS | Artifact nodes hold `Span` offsets, not content copies; any new owned content buffer wipes on drop (`secrecy`/`zeroize`). Reversibility pre-state stores canonicals/digests, not free-form text. |
 | III. Format-agnostic / WASM | PASS | All new types in the WASM-safe set are I/O-free. `InputAdapter` is a trait in `marque-scheme`; concrete schema-reading adapters live in non-WASM crates. WASM runtime-config restriction honored: no new recognizer codepath loadable at runtime, **and the WASM build pins `InputSource::DocumentContent`** — `StructuredField`/`SchemaDocument` raise recognizer posteriors and so are withheld from the WASM runtime opt-in (FR-031 WASM stance), exposed only to trusted CLI/server callers. |
-| IV. Two-layer rule arch | PASS | Node detection/derivation declared as data (`Constraint`/`PageRewrite`-style catalog + derivation edges); §C.4/§C.5 strings are Layer-2 rules citing the manual. |
+| IV. Two-layer rule arch | PASS | Node detection/derivation declared as data (`Constraint`/`PageRewrite`-style catalog + derivation edges); §E.4/§E.5 strings are Layer-2 rules citing the manual. |
 | V. Audit-first | PASS | Derivations recorded via the content-ignorant `DecisionSink` cascade; reversibility pre-state uses only audit-permitted terms (token canonicals, category IDs, spans, BLAKE3). `__engine_promote` stays engine-only. |
 | VI. Dataflow pipeline | PASS | Document-scope is a new roll-up layer above page roll-up, not a collapsed function; reset-before-parse invariant extended to document boundaries; rules/recognizers stay `Send + Sync`, no global mutable state. |
 | VII. Crate discipline | PASS | `marque-scheme` stays the leaf (no `marque-ism` dep); cross-scheme reconciliation lands in `marque-engine` (model b). New CUI grammar (later) sits **alongside** `marque-ism` as a peer. |
-| VIII. Source fidelity | PASS | §C.4/§C.5/§H.7/§H.8 citations verified against `crates/capco/docs/CAPCO-2016.md`; CUI claims flagged source-pending. |
+| VIII. Source fidelity | PASS | §E.4 p33 / §E.5 p33 (AEA/NATO commingling Declassify-On strings) and §H.8 (REL TO p150 / RELIDO p154 / NOFORN p145) verified against `crates/capco/docs/CAPCO-2016.md`; the earlier §C.4/§C.5 and §H.7 citations were misattributions, now corrected; CUI claims flagged source-pending. |
 
 **Gate decision**: PASS. One sequencing rule from Principle IV is load-bearing: *a
 scheme-adoption PR MUST NOT edit the engine crates*. Therefore the domain-neutral infrastructure
@@ -89,7 +89,7 @@ crates/
 │                #   #[non_exhaustive] + Grammar escape (T2).
 ├── ism/         # Phase D: CAB node off CanonicalAttrs; DocumentContext shape; declassify-on node.
 ├── core/        # Phase D/G: parse_cab → artifact-node producer; absence-detect recognizers (#420).
-├── capco/       # Phase D/E/G: CapcoScheme artifact/edge declarations; §C.4/§C.5 rules; co-residence.
+├── capco/       # Phase D/E/G: CapcoScheme artifact/edge declarations; §E.4/§E.5 rules; co-residence.
 ├── engine/      # Phase B/C/E/F: Engine<S>, MultiGrammarEngine, DocumentContext accumulator,
 │                #   derivation scheduler extension, EngineConfig mode fields, reconciliation (model b).
 ├── config/      # Phase F: severity_cap, fix_zones, deployment, grammar_schema (#641 T4-1).
@@ -141,8 +141,8 @@ graph TD
 | **C** | Document-scope derivation layer: `DocumentContext`, derivation DAG (extend scheduler), absence-as-state, cascade-recorded derivations, reverse validation, "classified up to" front marking | #799 | scheme, engine | 0, A |
 | **D** | CAB decoupling: CAB off `CanonicalAttrs` → `DocumentArtifact`; CAB normalizer/serializer (forward-evaluable); original-vs-derivative as two inbound edges; declassify-on node w/ multiple provenances | #799, memo CAB specifics | ism, core, capco, engine | C |
 | **E** | CUI co-residence: two-scope reconciliation, `Product`+monotone NOFORN closure, relocate-not-evict, `(S//CUI)` conflict, #128 ≡ LDC value set | #641 co-reside, #128 | engine, capco | B, C |
-| **F** | Mode taxonomy: `severity_cap`, `fix_zones`/`target_zones`, `DeploymentContext`, `as_of` wiring, `ArchivalIntent`, `GrammarEra` | #645 (M4/M5 dep #206) | config, scheme, engine | C |
-| **G** | Concrete artifact rules: §C.4/§C.5 canned `Declassify On` strings; missing portion-mark/banner detection | #266, #420 | core, capco | D, E |
+| **F** | Mode taxonomy: `severity_cap`, `fix_zones`/`target_zones`, `DeploymentContext`, `as_of` wiring, `ArchivalIntent`, `GrammarEra` | #645 (M4/M5 dep #337 — era-aware `Deprecation::valid_from`/`valid_until` in rule context) | config, scheme, engine | C |
+| **G** | Concrete artifact rules: §E.4/§E.5 canned `Declassify On` strings; missing portion-mark/banner detection | #266, #420 | core, capco | D, E |
 | **H** | Per-grammar corpus/tooling: directory namespace, `analyze.py` profile, per-grammar priors, harness | #640 | tools, tests, capco build | B |
 | **Deferred** | #823 ICD-206 source-list generation (gated on A + C reserved edge); #824 reversible-applied-fixes realization (audit-schema bump; uses 0's pre-state fields + F's mode gating) | #823, #824 | — | A, C / 0, F |
 
@@ -166,9 +166,9 @@ graph TD
 
 No Constitution violations requiring justification. Two structural risks, both gated:
 1. **Single-scheme latency** — adding a document-scope pass, the derivation-DAG evaluation, and
-   the new #420 whole-document absence scan without regressing the 16 ms p95. Mitigated by reusing
+   the new #420 whole-document absence scan without regressing the 2 ms p95. Mitigated by reusing
    the cached topological scheduler order and the per-page accumulator pattern; gated by SC-008a
-   (with a dedicated #420 absence-scan bench).
+   (with a dedicated #420 absence-scan bench, itself budgeted independently at p95 ≤ 1 ms target / 2 ms max).
 2. **Multi-scheme latency** — co-residence runs N scheme engines + reconciliation on the hot path,
    an O(schemes) multiplier the single-scheme gate does not measure. Not waved away as "no
    regression": SC-008b establishes a separate `multi_scheme_latency` budget as the gate.

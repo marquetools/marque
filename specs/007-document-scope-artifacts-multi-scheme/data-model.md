@@ -33,7 +33,7 @@ pub enum ArtifactKind {
 pub enum ArtifactState<P> {
     Present(P),                 // present, canonical, required
     PresentNonCanonical(P),     // parsed but diverges from canonical form
-    PresentNotRequired(P),      // present but superfluous (e.g. §C.5 string in a pure-NATO doc)
+    PresentNotRequired(P),      // present but superfluous (e.g. §E.5 string in a pure-NATO doc)
     AbsentButRequired,          // an inbound requirement edge demands it
     AbsentNotRequired,
 }
@@ -75,7 +75,7 @@ pub enum DerivationRelation {
     Rollup,            // banner derived from portions
     Requirement,       // X present ⇒ Y required (notice-iff-token)
     SourceDerived,     // bundle → document (#823, reserved)
-    CannedString,      // §C.4/§C.5 mandated literal
+    CannedString,      // §E.4/§E.5 mandated literal
     Passthrough,
 }
 
@@ -91,7 +91,7 @@ pub enum ValueDerivation {
     Authored,                 // OCA-authored (original CAB)
     DerivedMaxOverSources,    // #823 (reserved)
     MethodologyDriven,        // HUMINT → 50X1-HUM
-    CannedPolicyString,       // §C.4/§C.5
+    CannedPolicyString,       // §E.4/§E.5
     RolledUp,                 // from portions
 }
 ```
@@ -236,16 +236,35 @@ and `FeatureId` gain `#[non_exhaustive]` + `Grammar { grammar_id: &'static str, 
   `JointSet`) — a naive re-union would lose RELIDO-unanimity and NOFORN-supersession across the
   page→doc fold.
 - The declassify-on node has multiple inbound edges (structural field, derived-max #823 reserved,
-  §C.4/§C.5 canned, historical trailing-banner). Its value is `Product<DeclassInstruction,
-  CannedAnnotationSet>` (lattice-consultant verdict LV2, research D12; cite `security-lattice.md`
-  §8): `DeclassInstruction` is the date-or-exemption axis — `MaxDate` (date chain) extended with
-  the exemption codes as a **flat antichain adjoined above all dates** ("bounded join-semilattice
-  with adjoined antichain top"; NOT `OrdMax<DeclassEvent>`, which would falsely total-order
-  incomparable exemption codes); `CannedAnnotationSet` is a `FlatSet` union of the §C.4/§C.5
-  scope-qualifier strings (which are not exemption codes). A line legitimately carries both a date
-  and an "N/A to RD portions" string at once. `ProjectedMarking.declassify_on` (the existing
-  `MaxDate` rollup) seeds the date side of `DeclassInstruction`; the exemption-antichain join is
-  the #266-deferred extension the lattice catalog flags (bridge §2.8).
+  §E.4/§E.5 canned, historical trailing-banner). All edges feed the ONE `DeclassInstruction` slot:
+  the "Declassify On" line is **single-valued** (CAPCO-2016 §E.3 p32, "Only a single value must be
+  used on the 'Declassify On' line"; §E.4/§E.5 p33 say the commingling N/A string REPLACES any
+  date/event). Its value is therefore `OrdMax<DeclassInstruction>` — a single-valued **chain**
+  (totally ordered set; join = max), where `DeclassInstruction` is ONE enum spanning the full §E.3
+  precedence hierarchy with a hand-written **TOTAL** `Ord` keyed lexicographically on
+  `(tier 1–9, resolved-protection-date via IsmDate::end_cmp, lowest exemption number)`. Bottom =
+  `Unset`/absent (join identity); top = the single `Commingled` tier-1 point ("N/A … see source
+  list", no date) which "takes precedence over all" (§E.3 p32) — so it implements
+  `BoundedJoinSemilattice` (lawful here: a closed finite hierarchy with a genuine maximum, unlike
+  the open `SciSet`/`SarSet` which have no top). The §E.3 precedence, most-restrictive /
+  longest-protection FIRST: (1) N/A-commingling [no date]; (2) 50X1-HUM / 50X2-WMD [lowest number
+  on tie]; (3) 50X1–50X9 with date/event [furthest date, then lowest number]; (4) 25X1, EO 12951;
+  (5) 25X1–25X9 with date/event; (6) 25X1–25X9 without date [compute 50yr-from-source]; (7) specific
+  date ≤25yr; (8) event <10yr; (9) calculated 25yr fallback. The AEA-only / NATO-only / combined
+  choice AMONG the §E.4/§E.5 N/A strings is a **RENDER concern** keyed on the document's
+  AEA-present / NATO-present flags (the planned T070 presence flags), NOT a sub-lattice inside
+  `DeclassInstruction` — tier 1 is the SINGLE `Commingled` lattice point; which exact string renders
+  is downstream, which keeps the order total and `OrdMax` valid. This **generalizes** the existing
+  date-only `crates/capco/src/lattice/declassify_on.rs` (`Option<IsmDate>` `max_by(end_cmp)`) to the
+  full 9-tier carrier; `ProjectedMarking.declassify_on` (the existing date rollup) seeds the date
+  tiers of `DeclassInstruction`. **Rejected models** (do not reintroduce): `Product<DeclassInstruction,
+  CannedAnnotationSet>` (the earlier draft) and `Product<MaxDate, FlatSet<ExemptionCode>>` (an audit
+  suggestion) — both are category errors. `Product::join` joins factors independently, making the
+  ILLEGAL "date + canned coexist" state representable, and `FlatSet` models accumulating incomparable
+  atoms, but §E.3 exemptions COMPETE in one total order and §E.4 says the canned string REPLACES the
+  date. There is ONE slot, ONE total order; there is NO separate `CannedAnnotationSet`/`FlatSet` axis.
+  The exemption-tier join is the #266-deferred extension the lattice catalog flags (research D12/LV2,
+  corrected 2026-05-30).
 *Satisfies*: FR-001, FR-003, SC-001; #799 CAB specifics, #266 seed. **WASM.**
 
 ---
@@ -273,9 +292,9 @@ node states; they do not invent content (D4 → flag-only).
 - `CapcoScheme::ArtifactPayload = Cab` (+ declassify/notice payloads); declarative artifact/edge
   catalog (original-CAB vs derivative-CAB as two inbound edges into one node, research D1/CAB
   specifics).
-- §C.4/§C.5 canned `Declassify On` rules (Phase G, #266) — declarative `DerivationRelation::CannedString`
+- §E.4/§E.5 canned `Declassify On` rules (Phase G, #266) — declarative `DerivationRelation::CannedString`
   edges firing on page-level AEA / NATO presence flags; high-confidence fix proposing the literal
-  mandated string. Citations: CAPCO-2016 §C.4 p33 (verified), §C.5 p33 (verified).
+  mandated string. Citations: CAPCO-2016 §E.4 p33 (AEA, verified), §E.5 p33 (NATO, verified).
 - Co-residence reconciliation hooks for the future `marque-cui` peer (the engine owns the
   two-scheme knowledge; capco exposes the IC-side projection).
 - #128 caveat layer ≡ CUI `LDC` value set (source-pending vocabulary).
@@ -321,7 +340,8 @@ node states; they do not invent content (D4 → flag-only).
   `fast_path_severities` (`effective = override.unwrap_or(default).min(cap)`); `fix_zones` gates
   fix promotion before `__engine_promote`; `DeploymentContext` defaults profile;
   `as_of` wired engine→recognizer→`RuleContext`; `ArchivalIntent`, `GrammarEra`
-  (`MarkingScheme::era_at`, `vocabulary_at`). M4/M5 depend on #206 `as_of` wiring.
+  (`MarkingScheme::era_at`, `vocabulary_at`). M4/M5 depend on #337 (historical-as-valid evaluation
+  mode: consume `Deprecation::valid_from`/`valid_until` in rule context).
 *Satisfies*: FR-020/021/022/040/041/042/043. *Issues*: #641, #799, #645. **native.**
 
 ---
@@ -347,7 +367,7 @@ node states; they do not invent content (D4 → flag-only).
 | #176 | `InputSource`, `InputContext`, `ParseContext` `#[non_exhaustive]` | A |
 | #645 | `EngineConfig` mode fields, `target_zones`, `DeploymentContext`, `ArchivalIntent`, `GrammarEra` | F |
 | #640 | (tooling/corpus, not types) | H |
-| #266 | declassify-on node, `CannedString` edge, §C.4/§C.5 rules | D, G |
+| #266 | declassify-on node, `CannedString` edge, §E.4/§E.5 rules | D, G |
 | #420 | absence-detect recognizers, `AbsentButRequired` state | G |
 | #128 | `CaveatLayer` artifact ≡ LDC value set | D, E |
 | #823 (deferred) | `Scope::Bundle`, `DerivationRelation::SourceDerived`, `ValueDerivation::DerivedMaxOverSources` (reserved) | 0 (seam), later |

@@ -402,7 +402,7 @@ pub(super) type AppliedTuple = (
 ///
 /// Trade-off: one additional `len`-byte allocation and memcpy per
 /// fix call (~1µs on 10KB inputs). The interactive-latency ceiling
-/// (16ms p95 on 10KB) remains comfortable.
+/// (2ms p95 on 10KB) remains comfortable.
 ///
 /// Constitution Principle II — the single Zeroizing → SecretSlice
 /// transition for the public `FixResult.source` field. Engine-only

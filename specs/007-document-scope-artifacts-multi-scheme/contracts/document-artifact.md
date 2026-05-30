@@ -16,7 +16,7 @@ pub enum ArtifactKind { AuthorityBlock, DeclassifyInstruction, Notice, CaveatLay
 pub enum ArtifactState<P> {
     Present(P),               // present, canonical, required
     PresentNonCanonical(P),   // present, parsed, diverges from canonical
-    PresentNotRequired(P),    // present but superfluous (e.g. §C.5 string in a pure-NATO doc)
+    PresentNotRequired(P),    // present but superfluous (e.g. §E.5 string in a pure-NATO doc)
     AbsentButRequired,
     AbsentNotRequired,
 }

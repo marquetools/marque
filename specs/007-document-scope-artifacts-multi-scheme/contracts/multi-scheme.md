@@ -93,7 +93,7 @@ Releasability = Product<CuiReleasability, CapcoIcDissem>  joined COMPONENTWISE
 `SciSet`/`SarSet`. The additive monotone NOFORN closure converges without a top. No lattice-trait
 surface change.
 
-**Worked example** (memo; IC-side authority CAPCO-2016 §H.7/§H.8; CUI-side source-pending):
+**Worked example** (memo; IC-side authority CAPCO-2016 §H.8 — Dissemination Control Markings, RELIDO p154 / NOFORN p145 / REL TO p150; CUI-side source-pending):
 `CUI//FEDCON` + `C//RELIDO` → banner `CONFIDENTIAL//NOFORN` + CUI block `LDC: FEDCON`. **Validated
 in Phase E against a synthetic `StubScheme`** (an invented non-IC control), NOT a real CUI grammar
 — the test asserts the `Product`+closure *mechanism*, never the unverified FEDCON⇒NOFORN mapping

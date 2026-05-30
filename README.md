@@ -120,7 +120,7 @@ compartment + sub-compartment validation per §A.6. CLI and WASM produce
 byte-identical NDJSON diagnostics. Configurable
 severity overrides, corrections map, and confidence thresholds. Batch
 processing via `BatchEngine` with concurrency control. Criterion benchmarks
-validate p95 ≤16ms on 10KB inputs.
+validate p95 ≤2ms on 10KB inputs.
 
 Not yet built: `marque-extract` (extraction from a wide range of media), the
 `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth

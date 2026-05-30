@@ -24,9 +24,11 @@ markings. Keeping them fused makes both impossible to express cleanly.
 
 ## D2 — Absence is a node state, not a separate rule family
 
-**Decision**: An artifact node carries one of `Present(parsed) | AbsentButRequired |
-AbsentNotRequired | PresentNonCanonical`. The differing detection signatures (present-parse vs.
-absence-detect vs. fuzzy-decode) live inside each node's recognizer; the graph stays uniform.
+**Decision**: An artifact node carries one of `Present(parsed) | PresentNonCanonical |
+PresentNotRequired | AbsentButRequired | AbsentNotRequired`. The fifth state
+(`PresentNotRequired`) completes the presence × requirement product (cross-ref D12/LV1). The
+differing detection signatures (present-parse vs. absence-detect vs. fuzzy-decode) live inside
+each node's recognizer; the graph stays uniform.
 
 **Rationale (memo "The derivation DAG")**: A separate "missing-X" rule family would re-implement
 the dependency logic per artifact. A node-state enum lets one derivation graph drive both
@@ -64,7 +66,7 @@ fix-vs-flag for every artifact uniformly, replacing per-rule judgment calls.
 **Decision**: Keep **recognition provenance** (adapter property: "how sure am I this span *is*
 this node?" — structure-read certain, prose ambiguous; licenses fix-assertiveness; this is #176's
 `InputSource`) separate from **value derivation** (DAG-node property: "how was this node's *value*
-computed?" — max-over-source-dates, methodology, canned §C.4/§C.5 string, OCA-authored; drives the
+computed?" — max-over-source-dates, methodology, canned §E.4/§E.5 string, OCA-authored; drives the
 derivation record and emit-if-absent).
 
 **Rationale (memo "Two provenance axes")**: A node can be `derived` regardless of how its inputs
@@ -94,9 +96,10 @@ shows the IC-expressible floor; the CUI block shows the precise `LDC`). The sing
 **Worked example (memo)**: `CUI//FEDCON` + `C//RELIDO` → banner `CONFIDENTIAL//NOFORN` + CUI block
 `LDC: FEDCON`. FEDCON is non-IC → cross-component closure floors the IC foreign posture to NOFORN;
 that NOFORN supersedes the portion's RELIDO under the IC dissem join; FEDCON is escrowed verbatim
-in the CUI block. Authority for the IC-side mechanics: CAPCO-2016 §H.8 (RELIDO/NOFORN supersession)
-and §H.7 (REL TO / NATO worked examples). **The CUI-side mapping (which controls are "non-IC",
-the LDC value ordering) is source-pending** until the CUI grammar's governing policy is held.
+in the CUI block. Authority for the IC-side mechanics: CAPCO-2016 §H.8 (Dissemination Control
+Markings — REL TO p150, RELIDO p154, NOFORN p145, supersession). **The CUI-side mapping (which
+controls are "non-IC", the LDC value ordering) is source-pending** until the CUI grammar's
+governing policy is held.
 
 **Boundedness (LV4, 2026-05-30 re-consult)**: `Product<CuiReleasability, CapcoIcDissem>`
 implements `JoinSemilattice` only — plus `BoundedJoinSemilattice` iff both factors have a
@@ -190,7 +193,7 @@ The #641 audit found CAPCO coupling at four severity tiers. This feature maps th
 |------|-------|-------|
 | T1 (architecture blockers) | T1-1/T1-2 `Rule::check`/`RuleContext` generification; T1-3 `Engine<S>`; T1-4 constraint→rule-id delegation; T1-5/T1-6 scan/parse strategy; T1-7 `CoherenceRule` (the `Translate` half of T1-7 is **cut → #829**); T1-8 `InputAdapter` | B (T1-1..6), A (T1-8), E (T1-7) |
 | T2 (structural friction) | `LintResult`/`FixResult`, `Sink`, `MessageTemplate`/`FeatureId` `#[non_exhaustive]`+`Grammar`, defaults move, decoder citation | B |
-| T3 (naming coupling) | `Zone::Cab`→`Custom`/`StructuralBlock`, `classification_floor`→`rank_floor`, `OwnerProducerKind`/`FormSet`/`FormKind`/`EmissionForm` renames, `render_portion`/`render_banner`→`render_item`/`render_summary`, `is_fdr_dissem`→`IcMarkingVocabulary` sub-trait | B |
+| T3 (naming coupling) | `Zone::Cab`→`Custom`, `classification_floor`→`rank_floor`, `OwnerProducerKind`/`FormSet`/`FormKind`/`EmissionForm` renames, `render_portion`/`render_banner`→`render_item`/`render_summary`, `is_fdr_dissem`→`IcMarkingVocabulary` sub-trait | B |
 | T4 (entry/config) | `Config.grammar_schema`, CLI/server/WASM grammar registration, health schema version, citation helper relocation | B/F |
 
 **Note (rewrite-freely posture)**: marque is pre-users, so T3 renames are **straight breaking
@@ -229,29 +232,51 @@ existing constructors (`OrdMax`/`MaxDate`, `FlatSet`, `IntersectSet`, `Supersess
   inbound Requirement edge fires); lawful, no surface. **Verdict: (c) not a lattice problem —
   and the fifth state is the right fix.**
 
-- **LV2 — the declassify-on multi-edge resolution is a `Product` of two axes, neither of them a
-  single "most-conservative" chain.** A date and a §C.4 canned string do not compete for one slot:
-  per CAPCO-2016 §C.4 p33 a `Declassify On` line carries *both* a date (for dated NSI portions)
-  *and* "N/A to [RD/FRD/TFNI] portions. See source list…". The value space is
-  `DeclassifyOn = Product<DeclassInstruction, CannedAnnotationSet>`:
-  - **`DeclassInstruction`** — the date-or-exemption axis. Per `security-lattice.md` §8 (and
-    bridge §2.8) this is **not** a total order: dates form a chain, but exemption codes (`25X1`,
-    `50X1-HUM`, …) are a **flat antichain adjoined *above* all dates** — the algebraic name is
-    "bounded join-semilattice with adjoined antichain top." It is `MaxDate` (the existing date
-    chain) extended with the exemption antichain, NOT `OrdMax<DeclassEvent>` (which would falsely
-    impose a total order on mutually-incomparable exemption codes). The bridge flags this exact
-    exemption-side extension as the deferred **#266** work — i.e. *this* feature is where it lands;
-    007 may model the canned-annotation axis fully (FR-050) while the exemption-antichain join is
-    staged with the rest of #266.
-  - **`CannedAnnotationSet`** — the §C.4/§C.5 scope-qualifier strings ("N/A to … portions"),
-    a `FlatSet` union. These are *not* exemption codes (they qualify *which portions* the line's
-    instruction applies to); they belong on their own axis.
+- **LV2 — the `Declassify On` value is a single-valued chain `OrdMax<DeclassInstruction>`, not a
+  `Product`.** CAPCO-2016 §E.3 p32 is explicit: "Only a single value must be used on the
+  'Declassify On' line." §E.4/§E.5 p33 say the commingling N/A string *replaces* any date or
+  event — there is **one slot**, filled by **one total order**. The value space is therefore the
+  chain `OrdMax<DeclassInstruction>`, where `DeclassInstruction` is a *single* enum spanning the
+  full §E.3 precedence hierarchy with a hand-written **TOTAL** `Ord` keyed lexicographically on
+  `(tier 1–9, resolved-protection-date via IsmDate::end_cmp, lowest exemption number)`:
+  - **bottom = `Unset`/absent** (the join identity);
+  - **top = the single `Commingled` tier-1 point** ("N/A … see source list", no date), which
+    "takes precedence over all" (§E.3 p32) — so the carrier implements `BoundedJoinSemilattice`
+    (lawful here: a *closed finite* hierarchy with a genuine maximum, unlike the open
+    `SciSet`/`SarSet` which have no top).
 
-  The earlier draft made two errors the catalog corrects: it modeled the date axis as a total
-  `OrdMax` chain (exemptions are an antichain, not chain-ordered) and it lumped exemption codes
-  into the annotation set (they belong to `DeclassInstruction`). The corrected `Product` makes the
-  componentwise join lawful for free (pure-lattice §11). **Verdict: (b) redesign toward the known
-  Product-of-(MaxDate-with-antichain-top)-and-FlatSet pattern; cite `security-lattice.md` §8.**
+  §E.3 precedence runs most-restrictive / longest-protection first: (1) N/A-commingling [no date];
+  (2) 50X1-HUM / 50X2-WMD [lowest number on tie]; (3) 50X1–50X9 with date/event [furthest date,
+  then lowest number]; (4) 25X1, EO 12951; (5) 25X1–25X9 with date/event; (6) 25X1–25X9 without
+  date [compute 50yr-from-source]; (7) specific date ≤25yr; (8) event <10yr; (9) calculated 25yr
+  fallback.
+
+  **The AEA-only / NATO-only / combined choice among the §E.4/§E.5 N/A strings is a RENDER
+  concern**, keyed on the document's AEA-present / NATO-present flags (the planned T070 presence
+  flags), NOT a sub-lattice inside `DeclassInstruction`. Tier 1 is the single `Commingled` lattice
+  point; which exact canned string renders is downstream. This keeps the order total and `OrdMax`
+  valid. The construction generalizes the existing date-only
+  `crates/capco/src/lattice/declassify_on.rs` (`Option<IsmDate>` with `max_by(end_cmp)`) to the
+  full 9-tier carrier.
+
+  **Both earlier `Product` models are REJECTED as category errors:** (a)
+  `Product<DeclassInstruction, CannedAnnotationSet>` (this draft's earlier text) and (b)
+  `Product<MaxDate, FlatSet<ExemptionCode>>` (an audit suggestion). `Product::join` joins factors
+  independently, which makes the *illegal* "a date and a canned string coexist" state
+  representable; and `FlatSet` models accumulating incomparable atoms, but §E.3 exemptions
+  **compete** in one total order while §E.4 says the canned string **replaces** the date. There is
+  one slot, one total order — there is no separate `CannedAnnotationSet`/`FlatSet` axis. The
+  earlier "a date and a canned string don't compete for one slot" claim is factually wrong and is
+  removed.
+
+  **Verdict: (a) exact match to `OrdMax` over a chain — a chain is automatically a distributive
+  lattice; cite the marque-lattice-consultant re-consult (2026-05-30) and §E.3 p32 / §E.4 §E.5
+  p33.** Test obligation: the structural "no join/meet impl exists" test does NOT catch a non-total
+  or order-dependent `Ord`, so the implementer MUST prove `Ord` totality / antisymmetry /
+  transitivity across all 9 tiers, prove `OrdMax` join idempotence / commutativity / associativity
+  plus bottom-identity and top-absorption, and pin §E.3 worked-precedence oracle fixtures (e.g.
+  `50X1-HUM ⊔ 25X-dated == 50X1-HUM`; `Commingled ⊔ anything == Commingled`), each citing its §E.3
+  source.
 
 - **LV3 — page→document rollup is lawful by associativity/commutativity/idempotence.**
   `DocumentContext` applies the same join ops as `PageContext` one level up: folding page-level
@@ -294,8 +319,8 @@ remain are kept only where they buy genuine future-proofing for the *audit/stabl
 
 - `docs/plans/2026-05-29-document-scope-artifacts-and-multi-scheme.md` (design memo).
 - Issues #799, #641, #643, #645, #640, #266, #420, #128, #176, #823, #824.
-- `crates/capco/docs/CAPCO-2016.md` — §C.4 p33 (RD/FRD/TFNI canned string, verified line 683),
-  §C.5 p33 (NATO canned string, verified line 687), §H.7/§H.8 (releasability worked examples).
+- `crates/capco/docs/CAPCO-2016.md` — §E.4 p33 (RD/FRD/TFNI canned string), §E.5 p33 (NATO canned
+  string), §H.8 (Dissemination Control Markings — releasability).
 - marque-lattice-consultant skill references: `pure-lattice.md` §11/§18, `security-lattice.md`
   §6/§7, `marque-applied.md` §4.7/§IntersectSet/§SupersessionSet (2026-05-30 consultation).
 - Current code seams: `crates/ism/src/projected.rs`, `crates/scheme/src/scope.rs`,

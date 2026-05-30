@@ -177,7 +177,7 @@ to `Suggest` and no fix auto-applies, while per-rule overrides still win.
 ### User Story 6 - Concrete document-artifact rules (Priority: P3)
 
 A reviewer processes a document commingling NSI with AEA (RD/FRD/TFNI) or NATO portions; the
-CAB `Declassify On` line MUST carry the §C.4/§C.5 canned string. Separately, a reviewer needs
+CAB `Declassify On` line MUST carry the §E.4/§E.5 canned string. Separately, a reviewer needs
 missing portion-marks and banners detected (#420). Both are concrete validators built on the
 node-state + derivation model.
 
@@ -185,15 +185,15 @@ node-state + derivation model.
 depend on the CAB node (Story 1) and the derivation layer (Story 2).
 
 **Independent Test**: Feed a document with an RD portion and a date-bearing `Declassify On`;
-assert the canned-string rule fires and proposes the §C.4 string at high confidence.
+assert the canned-string rule fires and proposes the §E.4 string at high confidence.
 
 **Acceptance Scenarios**:
 1. **Given** any RD/FRD/TFNI portion, **When** linted, **Then** the `Declassify On` node is
    required to contain "N/A to [RD/FRD/TFNI, as appropriate] portions. See source list for NSI
-   portions." (CAPCO-2016 §C.4 p33); a date/event triggers a fix proposal.
+   portions." (CAPCO-2016 §E.4 p33); a date/event triggers a fix proposal.
 2. **Given** any NATO portion in a US-classified document, **When** linted, **Then** the
    `Declassify On` node is required to contain "N/A to NATO portions. See source list for NSI
-   portions." (§C.5 p33).
+   portions." (§E.5 p33).
 3. **Given** a paragraph with no portion mark in an otherwise-marked document, **When** linted,
    **Then** a missing-portion-mark diagnostic fires (and is suppressed for an entirely-`(U)`
    document per #420).
@@ -203,11 +203,11 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
 ### Edge Cases
 
 - `(S//CUI)` (unintentional commingling): category error, relocate-not-evict, no auto-fix.
-- Both AEA and NATO portions present: both §C.4 and §C.5 canned annotations apply (combined form
-  per CAPCO-2016 §C.4 p33: "N/A to [RD/FRD/TFNI...] [and NATO, if appropriate] portions...").
+- Both AEA and NATO portions present: both §E.4 and §E.5 canned annotations apply (combined form
+  per CAPCO-2016 §E.4 p33: "N/A to [RD/FRD/TFNI, as appropriate] [and NATO, if appropriate] portions. See source list for NSI portions.").
 - Single-page commingled document: NSI source list may appear at bottom, separate from CAB
-  (§C.4 p33) — flag for the implementer, out of scope for basic detection.
-- Pure-NATO document (no US CAB): §C.5 does not apply (no US CAB exists). A §C.5 string that
+  (§E.4 p33) — flag for the implementer, out of scope for basic detection.
+- Pure-NATO document (no US CAB): §E.5 does not apply (no US CAB exists). A §E.5 string that
   *is* present in such a document is reported as `PresentNotRequired`, not `Present` (FR-002).
 - Entirely-`(U)` document: portion marks not required (#420).
 - Malformed page-break candidate: `DocumentContext`/`PageContext` reset must occur BEFORE parse
@@ -232,8 +232,8 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
   *presence* (absent / present-canonical / present-non-canonical) × *requirement*
   (required / not-required) — with the absent×{required,not-required} and
   present×{required,not-required} cells enumerated. `PresentNotRequired` is the
-  present-but-superfluous cell (e.g. a §C.5 NATO `Declassify On` string in a pure-NATO
-  document where §C.5 does not apply); it keeps "present-but-should-not-be" a node state
+  present-but-superfluous cell (e.g. a §E.5 NATO `Declassify On` string in a pure-NATO
+  document where §E.5 does not apply); it keeps "present-but-should-not-be" a node state
   rather than an out-of-band rule, preserving the absence-is-a-state uniformity (research
   D2). `ArtifactState` is a status enum, NOT a lattice — one recognizer produces one
   state; states of the same node are never joined (lattice-consultant verdict, research
@@ -318,8 +318,8 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
   era-aware processing.
 
 **Concrete rules (US6)**
-- **FR-050**: Presence of any RD/FRD/TFNI portion MUST require the §C.4 canned `Declassify On`
-  string; presence of NATO portions in a US-classified document MUST require the §C.5 string;
+- **FR-050**: Presence of any RD/FRD/TFNI portion MUST require the §E.4 canned `Declassify On`
+  string; presence of NATO portions in a US-classified document MUST require the §E.5 string;
   both apply when both are present. Fixes are high-confidence (literal mandated strings).
 - **FR-051**: Missing portion-marks and banners MUST be detected (#420), with the
   entirely-`(U)` document exemption.
@@ -347,10 +347,13 @@ See `data-model.md` for the full type catalog. Summary:
 - **DocumentContext** — document-scope aggregate (analogue of `PageContext`); rolls page-level
   joins up to document scope, reusing the observational-state lattice types (`DissemSet`,
   `JointSet`) so unanimity/supersession survive the fold (research D12 / LV3).
-- **DeclassifyOn value** — `Product<DeclassInstruction, CannedAnnotationSet>`: a date-or-exemption
-  axis (`MaxDate` date chain + exemption codes as a flat antichain above all dates) and a
-  canned-string annotation axis (`FlatSet` of §C.4/§C.5 scope-qualifiers), joined componentwise —
-  NOT a single most-conservative chain (research D12 / LV2; `security-lattice.md` §8).
+- **DeclassifyOn value** — `OrdMax<DeclassInstruction>`: a SINGLE-VALUED chain (§E.3 p32 "Only a
+  single value"; §E.4/§E.5 the canned N/A string REPLACES any date). `DeclassInstruction` is one
+  enum with a hand-written total `Ord` over the §E.3 9-tier hierarchy (tier, furthest protection
+  date, lowest exemption number); bottom = Unset, top = the single `Commingled` tier-1 point. The
+  AEA/NATO/combined string choice is a render concern keyed on AEA-present/NATO-present flags, not a
+  sub-lattice (research D12/LV2, corrected 2026-05-30). Rejects the earlier `Product`-of-two-axes
+  model.
 - **RecognitionProvenance** / **ValueDerivation** — the two orthogonal provenance axes.
 - **InputAdapter / StructuredDocument / DocumentLayer / RepairKind / InputSource** — the input
   boundary.
@@ -384,17 +387,19 @@ These operationalize the memo's "what the refactor must honor now" list.
   (`crates/engine/tests/audit_g13_canary.rs`) still passes. (FR-060)
 - **SC-007**: At least one absent-node-with-inbound-edge case is filled (fix) and one
   absent-node-without-edge case is flag-only, in the same harness. (FR-013)
-- **SC-008a** *(single-scheme, no-regression)*: Interactive-latency p95 ≤ 16 ms and linear fix
-  throughput gates still pass for single-scheme CAPCO processing — no regression from the new
-  document-scope pass, the derivation-DAG evaluation, or the #420 absence pass (Constitution I).
-  A dedicated benchmark covers the #420 whole-document absence scan, since detecting *missing*
+- **SC-008a** *(single-scheme, no-regression)*: Interactive-latency p95 ≤ 2 ms (the retired 16 ms
+  placeholder) and linear fix throughput gates still pass for single-scheme CAPCO processing — no
+  regression from the new document-scope pass, the derivation-DAG evaluation, or the #420 absence
+  pass (Constitution I). A dedicated benchmark covers the #420 whole-document absence scan, with its
+  own p95 ≤ 1 ms target / 2 ms absolute max, independent of resolution, since detecting *missing*
   marks is new O(blocks) work not present today.
 - **SC-008b** *(multi-scheme, budgeted)*: Co-residence runs N scheme engines plus the
   reconciliation pass on the hot path. A new `multi_scheme_latency` benchmark establishes the
-  two-scheme p95 budget (the single-scheme 16 ms gate is NOT assumed to hold unchanged under
-  the O(schemes) multiplier); the budget is recorded as the gate, and regressions against it
-  fail CI. (Constitution I; the multiplier is measured, not assumed.)
-- **SC-009**: §C.4/§C.5 canned-string rules fire on AEA/NATO commingling with citations
+  two-scheme p95 budget (the single-scheme 2 ms gate is NOT assumed to hold unchanged under the
+  O(schemes) multiplier; SC-008b commits an ABSOLUTE two-scheme p95 ceiling of 4 ms (= 2 × the 2 ms
+  single-scheme ceiling) as the CI gate (not a self-ratifying "measured budget")), and regressions
+  against it fail CI. (Constitution I; the multiplier is measured, not assumed.)
+- **SC-009**: §E.4/§E.5 canned-string rules fire on AEA/NATO commingling with citations
   verified against `crates/capco/docs/CAPCO-2016.md`. (FR-050)
 - **SC-010** *(input boundary, US4)*: The same `(YS)` value fed as `InputSource::StructuredField`
   recovers assertively (cap 0.95) while as a lone `DocumentContent` it stays a low-confidence

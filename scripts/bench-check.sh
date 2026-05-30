@@ -18,7 +18,7 @@
 # threshold in `benches/baseline.json`.
 #
 # Five gates are checked:
-#   - `lint_10kb`                         (SC-001, target 16ms upper CI)
+#   - `lint_10kb`                         (SC-001, target 2ms upper CI)
 #   - `decoder_10kb_one_mangled_region`   (SC-002, target 18ms upper CI)
 #   - `lint_scaling`                      (SC-005, R² >= 0.9 across size sweep)
 #   - `fix_throughput`                    (fix-apply linearity, R² >= 0.9 across size sweep)
@@ -300,7 +300,7 @@ else:
     #     (`reference_machine.profile`); a cross-hardware baseline
     #     (e.g. WSL2 capture loaded on `ubuntu-latest`) would turn
     #     this into runner-noise flake.
-    #   - absolute gate: `target_p99_us` (the SC-001 16ms ceiling
+    #   - absolute gate: `target_p99_us` (the SC-001 2ms ceiling
     #     applied to p99 specifically). Hardware-independent — always
     #     enforced when present.
     #
@@ -416,7 +416,7 @@ PY
         echo "bench-check[$bench_name]: measured p99 = ${current_p99} µs (drift gate skipped: ${p99_threshold_label}; absolute target ${target_p99} µs)"
     fi
 
-    # Absolute p99 ceiling (SC-001 16ms applied at the tail). Always
+    # Absolute p99 ceiling (SC-001 2ms applied at the tail). Always
     # enforced when target_p99_us is configured, regardless of drift-
     # gate state — this is the constitutional invariant.
     if [[ "$current_p99" -gt "$target_p99" ]]; then
@@ -701,7 +701,7 @@ PY
 # `decision_tracing_overhead` bench ONCE with `--features
 # decision-tracing` (no per-bench filter, so both functions in the
 # binary run in the same invocation) and asserts that BOTH arms clear
-# the SC-001 16ms interactive ceiling (`target_upper_ci_us`):
+# the SC-001 2ms interactive ceiling (`target_upper_ci_us`):
 #
 #   - `decision_tracing_overhead_baseline` — engine carrying its default
 #     `NoopSink` (`tracing_active=false`). After the short-circuit fix,
@@ -727,7 +727,7 @@ PY
 # the measurement is single-binary and noise-stable. A GHA-calibrated
 # +10% regression baseline for `_baseline` is a follow-up (same
 # `scripts/capture-baselines.sh` procedure as the `lint_10kb` p99 drift
-# gate); until then the 16ms ceiling is load-bearing.
+# gate); until then the 2ms ceiling is load-bearing.
 check_decision_tracing_overhead() {
     local target_us
     target_us=$(python3 -c "

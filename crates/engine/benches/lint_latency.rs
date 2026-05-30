@@ -6,7 +6,7 @@
 //!
 //! - **strict-path**: `lint_10kb` — `Engine::lint` on a 10KB
 //!   representative input with [`StrictRecognizer`] explicitly
-//!   installed. Target p95 <= 16ms (the interactive-latency gate).
+//!   installed. Target p95 <= 2ms (the interactive-latency gate).
 //!   Pinning the strict recognizer directly (rather than relying on the
 //!   engine default, which is the strict-then-decoder dispatcher) keeps
 //!   this measuring a pure strict-path number even if the dispatcher's
@@ -111,7 +111,7 @@ fn lint_latency_benchmark(c: &mut Criterion) {
 // noise of this number.
 //
 // Baseline-tracked (`lint_single_page` in `benches/baseline.json`) as an
-// advisory reference point with the SC-001 16ms absolute ceiling. It is NOT
+// advisory reference point with the SC-001 2ms absolute ceiling. It is NOT
 // wired into `scripts/bench-check.sh`, so it carries no +10% regression gate
 // and cannot flake CI — it exists to record a representative captured number.
 //
