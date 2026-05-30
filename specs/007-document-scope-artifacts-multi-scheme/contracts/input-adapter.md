@@ -77,11 +77,25 @@ pub enum RepairKind {
 
 The engine selects a branch by `InputContext::source`:
 
-| `InputSource` | Scanner | Recognizer | Parser | Adapter |
-|---------------|---------|------------|--------|---------|
-| `DocumentContent` | ✅ | ✅ | ✅ | — (existing pipeline, unchanged) |
-| `StructuredField` | ❌ | ✅ (high conf) | ✅ | `adapt` → recognizer with `StructuredField` |
-| `SchemaDocument` | ❌ | ❌ | ❌ | `adapt_document` → `StructuredDocument` directly |
+| `InputSource` | Scanner | Recognizer | Parser | `InputAdapter` used? |
+|---------------|---------|------------|--------|----------------------|
+| `DocumentContent` | ✅ | ✅ | ✅ | No — existing text pipeline, unchanged |
+| `StructuredField` | ❌ | ✅ (high conf) | ✅ | No — recognizer path, scanner skipped |
+| `SchemaDocument` | ❌ | ❌ | ❌ | Yes — `adapt`/`adapt_document` owns the whole direct-to-canonical path |
+
+**The two structured branches are distinct and do not mix** (resolving the apparent
+contradiction with `adapt`'s `-> S::Canonical` signature):
+
+- **`StructuredField`** still contains *text* the caller asserts is a marking-shaped field (e.g.
+  the literal `"(YS)"` from a form input). It needs **recognition** — so it runs the
+  recognizer + parser directly (scanner skipped), with `InputSource::StructuredField` on the
+  `ParseContext` raising confidence. It does **not** call `InputAdapter::adapt`.
+- **`SchemaDocument`** is already structurally typed (an ISM XML attribute *is* the
+  classification). `InputAdapter::adapt`/`adapt_document` reads it field-by-field and **returns
+  `S::Canonical` directly** — no recognizer, no parser. The adapter owns the entire path.
+
+So `InputAdapter` is the **`SchemaDocument`** mechanism only; `StructuredField` is a recognizer
+calibration, not an adapter. `InputSource` selects between them.
 
 **What does NOT change**: the raw-text (`DocumentContent`) pipeline — `Scanner`, `Parser`,
 `Recognizer` are unmodified; existing CAPCO rules receive `S::Canonical` regardless of how it was

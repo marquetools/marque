@@ -34,12 +34,14 @@ pub enum ArtifactState<P> {
 }
 
 /// A scope-tagged, typed document-scope node carrying its state, its
-/// value-derivation, and its inbound edges. `S::ArtifactPayload` is a new
-/// associated type on MarkingScheme (see below).
-pub struct DocumentArtifact<S: MarkingScheme + ?Sized> {
+/// value-derivation, and its inbound edges. `ArtifactPayload` lives on the
+/// `SchemeArtifacts: MarkingScheme` extension trait (NOT on `MarkingScheme`
+/// itself) so the frozen `MarkingScheme` surface stays unbroken — see
+/// contracts/document-artifact.md for the additive-vs-breaking staging.
+pub struct DocumentArtifact<S: SchemeArtifacts + ?Sized> {
     pub kind: ArtifactKind,
     pub scope: Scope,                       // Document or Bundle
-    pub state: ArtifactState<S::ArtifactPayload>,
+    pub state: ArtifactState<S::ArtifactPayload>,   // ArtifactPayload from SchemeArtifacts
     pub derivation: ValueDerivation,        // how the value was computed
     pub inbound: Box<[DerivationEdge]>,      // declared edges into this node
     pub span: Option<Span>,                 // present-node source location; None when absent

@@ -30,15 +30,34 @@ pub struct DocumentArtifact<S: MarkingScheme + ?Sized> {
 in `marque-scheme` (`crates/scheme/src/span.rs`) and re-exported by `marque-ism`, so the leaf
 crate already owns the type — no `Loc` associated type or `ByteRange` workaround is needed.
 
-**New `MarkingScheme` members (additive)**:
+**New `MarkingScheme` members — mixed additive / breaking; stage to keep the frozen surface
+intact.** Adding a **required associated type** to a public trait is a *breaking* change for every
+downstream implementor (associated-type defaults are not stable Rust), and `MarkingScheme` is a
+frozen stable-API surface (CLAUDE.md). The defaulted *methods* are additive; the associated type
+is not. Preferred staging — put the payload behind an **extension trait** so `MarkingScheme`
+itself stays unbroken:
+
 ```rust
+// MarkingScheme itself gains only defaulted methods (additive):
 trait MarkingScheme {
-    type ArtifactPayload;                                  // scheme's parsed artifact value
-    fn document_artifacts(&self) -> &[ArtifactDecl];        // declared artifact catalog
-    fn derivation_edges(&self) -> &[DerivationEdge] { &[] } // declared inbound edges (default none)
+    fn document_artifacts(&self) -> &[ArtifactDecl] { &[] }   // default: no artifacts
+    fn derivation_edges(&self) -> &[DerivationEdge] { &[] }    // default: no edges
     // existing: categories/constraints/templates/parse/project/render_*/page_rewrites/closure_rules
 }
+
+// The artifact payload type lives on an opt-in extension trait — non-breaking for schemes
+// that don't model document artifacts (a future minimal scheme, test stubs):
+trait SchemeArtifacts: MarkingScheme {
+    type ArtifactPayload;                                  // scheme's parsed artifact value
+}
 ```
+
+**Alternative** (acceptable, but breaking): fold `type ArtifactPayload` directly onto
+`MarkingScheme` *inside the Phase-B breaking window* — Phase B already breaks the trait surface
+(`Rule<S>`/`Engine<S>` generification), and the only in-tree implementors are `CapcoScheme` plus
+test stubs (no external implementor exists — CUI is not yet a crate). The phase/versioning note
+in plan.md and the data-model entry MUST reflect whichever path is chosen; do not label the
+associated-type addition "additive."
 
 ## Derivation edges & scheduling (`marque-scheme` + `marque-engine`, Phase 0/C)
 

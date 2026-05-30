@@ -322,8 +322,11 @@ These operationalize the memo's "what the refactor must honor now" list.
   discarded — verified by a `(S//CUI)` no-silent-loss test. (FR-023/024)
 - **SC-005**: The declassify-on/derived-from node exposes a reserved bundle-scope inbound edge
   and `Scope::Bundle` exists, with no source-metadata adapter required to compile. (FR-061)
-- **SC-006**: Every `ReplacementIntent`/`TextCorrection` variant carries enough pre-state to
-  invert, verified by a round-trip test for token-level fixes; the G13 content-ignorance canary
+- **SC-006**: Every `ReplacementIntent`/`TextCorrection` variant has a reserved place to carry
+  its inverse, verified by a round-trip test for the token-level fixes whose pre-state is
+  populated (`FactAdd`/`FactRemove` always; `Recanonicalize`/`Relocate` when `prior` is
+  `Some(_)`). A `Recanonicalize { prior: None }` is explicitly out of round-trip scope until the
+  #824 migration populates it. The G13 content-ignorance canary
   (`crates/engine/tests/audit_g13_canary.rs`) still passes. (FR-060)
 - **SC-007**: At least one absent-node-with-inbound-edge case is filled (fix) and one
   absent-node-without-edge case is flag-only, in the same harness. (FR-013)

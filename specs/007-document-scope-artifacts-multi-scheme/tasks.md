@@ -28,17 +28,23 @@ WASM-safe crates: `crates/{scheme,ism,core,rules,capco}`. Engine: `crates/engine
   research D5). Tests: independence (a node `DerivedMaxOverSources` × `DocumentContent`).
 - [ ] T004 [0] Add `DerivationEdge`, `DerivationRelation`, `FiringPredicate`, `EdgeId` to
   `crates/scheme/src/` (depends T001 for `Scope`). Tests: edge declares `reads`/`writes`.
-- [ ] T005 [0] Add `DocumentArtifact<S>` + new `MarkingScheme` members `type ArtifactPayload`,
-  `document_artifacts()`, `derivation_edges()` (default empty) in `crates/scheme/src/scheme.rs`.
-  Source location uses `marque_scheme::Span` directly (defined in `crates/scheme/src/span.rs`;
-  no `Loc`/`ByteRange` workaround needed). Tests: a stub scheme declares one artifact.
+- [ ] T005 [0] Add `DocumentArtifact<S>` + the `SchemeArtifacts: MarkingScheme` **extension
+  trait** carrying `type ArtifactPayload`, plus **defaulted** `document_artifacts()` /
+  `derivation_edges()` methods on `MarkingScheme` itself (`crates/scheme/src/scheme.rs`). The
+  extension trait keeps Phase 0 purely additive — `MarkingScheme`'s frozen surface gains only
+  defaulted methods; the required associated type lives on the opt-in `SchemeArtifacts` (see
+  contracts/document-artifact.md for the additive-vs-breaking staging). Source location uses
+  `marque_scheme::Span` directly (defined in `crates/scheme/src/span.rs`; no `Loc`/`ByteRange`
+  workaround needed). Tests: a stub scheme declares one artifact; a scheme that does NOT impl
+  `SchemeArtifacts` still compiles.
 - [ ] T006 [P] [0] `marque-scheme`: add reserved reversibility pre-state — `Recanonicalize { prior }`
   field + `Relocate { .. }` variant + `RecanonPriorState<S>`/`RelocatePriorState<S>` to
   `crates/scheme/src/fix_intent.rs` (where `ReplacementIntent`/`FactRef` already live — kept in
   scheme, not rules, to avoid a scheme↔rules cycle; content-ignorant fields only). Tests:
   token-level round-trip invert; G13 surface unchanged. *(#824 rough-in)*
-- [ ] T007 [0] Update `CapcoScheme` to satisfy the new `MarkingScheme` members with empty/default
-  catalogs (no behavior change yet). Tests: existing capco suite still green.
+- [ ] T007 [0] Impl `SchemeArtifacts` for `CapcoScheme` (with a placeholder `ArtifactPayload`)
+  and leave the defaulted `document_artifacts()`/`derivation_edges()` empty for now (no behavior
+  change yet). Tests: existing capco suite still green.
 - [ ] T008 [0] Doc + registration-pin update note: confirm no rule-count change (the 32-rule pin
   in `crates/capco/tests/post_3b_registration_pin.rs` is untouched by Phase 0).
 

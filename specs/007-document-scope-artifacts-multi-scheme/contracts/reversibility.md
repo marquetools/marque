@@ -29,6 +29,21 @@ pub struct RecanonPriorState<S: MarkingScheme + ?Sized> { pub prior_tokens: Box<
 pub struct RelocatePriorState<S: MarkingScheme + ?Sized> { pub token: FactRef<S>, pub origin_span: Span, pub digest: [u8; 32] }
 ```
 
+**`Recanonicalize.prior` is `Option<_>` in Phase 0 on purpose, and that bounds what SC-006
+claims.** `Recanonicalize` already exists in-tree without pre-state; making the field
+non-optional would break every existing construction site at once, so Phase 0 lands it as
+`Option` (additive — existing sites pass `None`). A `prior: None` record is therefore **not**
+reversible from the log. Two consequences, both explicit:
+
+- **SC-006 is scoped to intents whose pre-state is populated** — it verifies the round-trip for
+  `FactAdd`/`FactRemove` (always self-inverting) and for `Recanonicalize`/`Relocate` whose
+  `prior` is `Some(_)`. It does **not** claim every historical `Recanonicalize` is reversible.
+- **#824 realization owns the tightening**: a dedicated migration task updates every
+  `Recanonicalize` construction site to populate `prior`, after which #824 MAY make the field
+  mandatory (or keep `Option` and have the reversal pass treat `None` as "not rewindable, fall
+  back to the caller's retained original" — the same boundary as free-form text corrections,
+  below). That decision lands with #824, not here.
+
 ## Two reversal classes (research D9 — informs realization, not landed here)
 
 1. **Token-level fixes** (`NF → NOFORN`, `Recanonicalize`, `Relocate`) — **self-reversible from
