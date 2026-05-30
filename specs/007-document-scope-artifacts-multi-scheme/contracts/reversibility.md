@@ -1,0 +1,59 @@
+# Contract: Reversibility Pre-State (#824 — rough-in only)
+
+**Realization is DEFERRED (#824).** This feature lands only the **reserved fields** in Phase 0 so
+that the later reversal pass + audit-schema bump is *additive*, not breaking. The contract below
+fixes the shape of those reserved fields.
+
+## Reserved fix-intent pre-state (`marque-rules`, Phase 0)
+
+```rust
+pub enum ReplacementIntent<S: MarkingScheme + ?Sized> {
+    // Self-inverting today: the removed/added facts ARE the inverse.
+    FactAdd    { token: FactRef<S>, scope: Scope },
+    FactRemove { facts: SmallVec<[FactRef<S>; 2]>, scope: Scope },
+
+    // NEW reserved field — Recanonicalize was not invertible (it didn't store prior form).
+    Recanonicalize { scope: RecanonScope, prior: Option<RecanonPriorState> },
+
+    // NEW variant (relocate-not-evict, research D8) — carries pre-state to invert the move.
+    Relocate { from: Scope, to: Scope, token: FactRef<S>, prior: RelocatePriorState },
+}
+
+// Pre-state in audit-permitted terms ONLY (Constitution V / G13): token canonicals, category IDs,
+// span offsets, BLAKE3 digests. NO free-form content.
+pub struct RecanonPriorState { pub prior_tokens: Box<[FactRef<S>]>, pub prior_span: ByteRange, pub digest: [u8; 32] }
+pub struct RelocatePriorState { pub token: FactRef<S>, pub origin_span: ByteRange, pub digest: [u8; 32] }
+```
+
+## Two reversal classes (research D9 — informs realization, not landed here)
+
+1. **Token-level fixes** (`NF → NOFORN`, `Recanonicalize`, `Relocate`) — **self-reversible from
+   the audit log alone**; canonical tokens are on the G13 allow-list and are stored.
+2. **Free-form text corrections** (`SERCET → SECRET`, the corrections map) — the pre-text is
+   free-form content and **cannot** enter the audit record (content-ignorance). Reversible only
+   against the **caller's retained original buffer** (Constitution II: Marque wipes the buffers it
+   owns on drop; the original is the caller's to hold).
+
+## Derivations vs. substitutions (research D9)
+
+- Inverting a **substitution** is a token swap (#824, this contract).
+- Inverting a **derivation** (source-derived `Declassify On`, #823) is a **recomputation**
+  recorded via the `DecisionSink` cascade, not a stored token pair. Two mechanisms.
+
+## Mode-gated apply (#645 M3 — lands with Phase F, gates #824 realization)
+
+Reversibility turns "never auto-apply a contested resolution" into a *deployment-mode* decision:
+- **Interactive editing** — MAY apply-and-rewind; pre-state recorded, nothing lost.
+- **Network-boundary / egress audit** — still blocks (or requires confirmation): a rewind in the
+  ledger does not un-transmit a document that already left with a wrong marking. The harm at
+  egress is not in the log.
+
+The disposition is recorded with full pre-state regardless of mode; whether it auto-applies is
+policy.
+
+## Schema impact (deferred)
+
+Realization is an additive bump in the `marque-3.x` line; coordinate the `MARQUE_AUDIT_SCHEMA`
+accept-list per the Stable API Surface section of `CLAUDE.md`. No new free-form surface — the G13
+canary (`crates/engine/tests/audit_g13_canary.rs`) MUST still pass. **SC-006** verifies the Phase-0
+reserved fields round-trip for token-level fixes and that the canary holds.
