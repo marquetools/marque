@@ -180,7 +180,7 @@ fn fix_10kb_two_pass(c: &mut Criterion) {
 ///
 /// Advisory marketing/reference bench (paired with `lint_single_page` in
 /// `lint_latency.rs`). Baseline-tracked as `fix_single_page` in
-/// `benches/baseline.json` with the SC-001 16ms absolute ceiling, but NOT
+/// `benches/baseline.json` with the SC-001 2ms absolute ceiling, but NOT
 /// wired into `scripts/bench-check.sh` — no +10% regression gate, cannot
 /// flake CI.
 fn fix_single_page(c: &mut Criterion) {

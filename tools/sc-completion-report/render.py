@@ -90,7 +90,7 @@ The discipline:
 
 `status` values are deliberately *not* sycophantic. A perf bench that
 drifts past the +10% drift gate but stays two decimal orders under the
-constitutional 16ms ceiling is honestly `regressed`, not `verified`,
+constitutional 2ms ceiling is honestly `regressed`, not `verified`,
 even though the load-bearing assertion still holds.
 
 ## Summary
