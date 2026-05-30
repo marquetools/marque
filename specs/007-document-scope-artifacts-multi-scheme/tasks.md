@@ -17,18 +17,21 @@ WASM-safe crates: `crates/{scheme,ism,core,rules,capco}`. Engine: `crates/engine
 
 ## Phase 0 — Domain-neutral scaffolding (BLOCKING foundation) 🎯
 
-*Mostly new additive type surface in the WASM-safe leaf crates; testable in isolation. Gates
-everything. One exception: the T006 `ReplacementIntent` edit (new `prior` field + `Relocate`
-variant) is **source-breaking** for in-tree match/construction sites — bundle it with the Phase-B
-breaking window, and add `#[non_exhaustive]` to `ReplacementIntent` while there. The brand-new
-types (`ArtifactState`, `DocumentArtifact`, `DerivationEdge`, the `SchemeArtifacts` ext trait,
-`Scope::Bundle`) are genuinely additive.*
+*New type surface in the WASM-safe leaf crates; testable in isolation. Gates everything. Per the
+rewrite-freely posture (research D13), Phase 0 is the start of a single Phase-0/B breaking window:
+the T006 `ReplacementIntent` edit (new `prior` field + `Relocate` variant) is source-breaking and
+lands as a plain breaking change with all in-tree match/construction sites updated in the same
+change — not deferred, not shimmed. No deprecation aliases anywhere in this feature; only the
+audit-record schema and the lattice trait surface stay stable.*
 
 - [ ] T001 [P] [0] Add `Scope::Bundle` variant to `crates/scheme/src/scope.rs`; update all
   exhaustive matchers; doc the additive-minor-version rationale (research D11). Test: exhaustive
   match compiles; `From/TryFrom<RecanonScope>` unaffected.
 - [ ] T002 [P] [0] Add `ArtifactKind`, `ArtifactState<P>` enums to `crates/scheme/src/` (new
-  `artifact.rs` module). Tests: state transitions, `AbsentButRequired` vs `AbsentNotRequired`.
+  `artifact.rs` module). `ArtifactState` has **five** states — the presence × requirement product
+  incl. `PresentNotRequired` (research D12/LV1); it is a status enum, not a lattice. Tests:
+  `AbsentButRequired` vs `AbsentNotRequired` vs `PresentNotRequired`; assert no join/meet impl
+  exists for `ArtifactState`.
 - [ ] T003 [P] [0] Add `RecognitionProvenance` and `ValueDerivation` enums (two orthogonal axes,
   research D5). Tests: independence (a node `DerivedMaxOverSources` × `DocumentContent`).
 - [ ] T004 [0] Add `DerivationEdge`, `DerivationRelation`, `FiringPredicate`, `EdgeId` to
@@ -70,8 +73,11 @@ green; no engine edits yet.
   `DocumentContent` branch unchanged. Tests: routing table (3 rows).
 - [ ] T014 [A] Decoder lone-case confidence reads `InputSource` per the #176 matrix
   (`StructuredField`→0.95, `DocumentContent` lone→~0.50). Tests: 2×2 matrix (field/content ×
-  in-context/lone).
-- [ ] T015 [P] [A] Entry-point opt-in: CLI `--input-source`, server per-request, WASM parameter.
+  in-context/lone) — this is SC-010 (with T012 `SchemaDocument` bypass + T015 WASM pin).
+- [ ] T015 [P] [A] Entry-point opt-in for **trusted callers only**: CLI `--input-source`, server
+  per-request. **WASM pins `InputSource::DocumentContent` and exposes NO `InputSource` parameter**
+  (FR-031 WASM stance / Constitution III — `StructuredField` raises recognizer posteriors). Tests:
+  WASM build rejects/omits the parameter; CLI+server accept it.
 
 **Checkpoint**: structured-field assertive recovery works; raw-text path byte-identical to before.
 
@@ -95,16 +101,22 @@ green; no engine edits yet.
 - [ ] T025 [P] [B] T2-3/T2-4: `MessageTemplate`/`FeatureId` `#[non_exhaustive]` + `Grammar {
   grammar_id, variant }` escape (`crates/rules/src/{message,confidence}.rs`). **Audit-schema note**:
   confirm additive-only; coordinate per CLAUDE.md Stable API surface.
-- [ ] T026 [B] T3 renames (additive-with-deprecation): `Zone::Cab`→`Custom`/`#[non_exhaustive]`,
-  `classification_floor`→`rank_floor`, `OwnerProducerKind`/`FormSet`/`FormKind`/`EmissionForm`
-  renames, `render_portion/banner`→`render_item/summary` (deprecated shims), `is_fdr_dissem`→
-  `IcMarkingVocabulary` sub-trait. Tests: shims forward; CAPCO still renders byte-identically.
+- [ ] T026 [B] T3 renames (straight breaking renames — no shims, no aliases; research D13):
+  `Zone::Cab`→`Custom`/`#[non_exhaustive]`, `classification_floor`→`rank_floor`,
+  `OwnerProducerKind`/`FormSet`/`FormKind`/`EmissionForm` renames,
+  `render_portion/banner`→`render_item/summary`, `is_fdr_dissem`→`IcMarkingVocabulary` sub-trait.
+  All callers updated in this change. Tests: CAPCO still renders byte-identically post-rename.
 - [ ] T027 [P] [B] T4-1: `Config.grammar_schema` generic; `scheme.validate_schema_version`
   (`crates/config/src/lib.rs`). T4-2/T4-3/T4-4: CLI/server/WASM grammar registration helpers;
   health schema version via `engine.grammar_schema_version()`.
-- [ ] T028 [B] `MultiGrammarEngine` skeleton wrapping `Vec<Engine<_>>` + translator registry
-  (no coherence rules yet — that's Phase E). Tests: two grammars register; single-scheme rules run
-  independently.
+- [ ] T028 [B] Object-safe `ErasedEngine` trait + blanket `impl<S: MarkingScheme> ErasedEngine
+  for Engine<S>` (`crates/engine/src/`). `MarkingScheme` is NOT object-safe (associated types), so
+  this shim is the load-bearing co-residence design — erase `lint`/`resolve`/`claims` to `&[u8]` +
+  grammar-erased `Diagnostic` (contracts/multi-scheme.md, C2). Tests: two distinct concrete `S`
+  coexist behind `Box<dyn ErasedEngine>`; grammar tag round-trips on each diagnostic.
+- [ ] T029 [B] `MultiGrammarEngine` skeleton holding `Vec<Box<dyn ErasedEngine>>` (no coherence
+  rules yet — that's Phase E; **no translator registry** — `Translate` is cut, research D7).
+  Tests: two grammars register; single-scheme rules run independently.
 
 **Checkpoint**: a second (stub) grammar registers and lints without editing CAPCO rule bodies.
 
@@ -112,11 +124,16 @@ green; no engine edits yet.
 
 ## Phase C — Document-scope derivation layer (#799) — gates on 0, A
 
-- [ ] T030 [C] `DocumentContext` shape in `marque-ism` (analogue of `PageContext`). Tests: document
-  rollup (max class across pages).
+- [ ] T030 [C] `DocumentContext` shape in `marque-ism` (analogue of `PageContext`). Page→document
+  rollup reuses the observational-state lattice types (`DissemSet` w/ `relido_observed_unanimous`,
+  `JointSet`), NOT a naive re-union (research D12/LV3). Tests: document rollup (max class across
+  pages); RELIDO-unanimity and NOFORN-supersession survive the page→doc fold.
 - [ ] T031 [C] Engine `DocumentContext` accumulator above the per-page accumulator
-  (`crates/engine/src/engine/page_context.rs` pattern); reset-before-parse at document boundaries.
-  Tests: reset invariant (malformed boundary cannot block reset).
+  (`crates/engine/src/engine/page_context.rs` pattern). A document boundary is the **input
+  boundary** (one call = one document); `DocumentContext` is built fresh per input and resets its
+  page accumulators before parsing each page-break candidate — there is no in-buffer
+  document-delimiter (contracts/document-artifact.md). Tests: page-reset invariant (malformed
+  page-break cannot block reset); fresh `DocumentContext` per input.
 - [ ] T032 [C] Extend `crates/engine/src/scheduler.rs` to schedule `DerivationEdge`s in the same
   Kahn pass as `PageRewrite`s; cycles rejected at `Engine::new`. Tests: cycle → `RewriteCycle`;
   writers-before-readers order.
@@ -128,7 +145,7 @@ green; no engine edits yet.
   (`DecisionEvent::triggered_by`). Tests: cascade chain reconstructs; G13 canary green.
 - [ ] T036 [C] Reverse validation + "classified up to" `FrontMarking` node via `DiffInput` at
   `Scope::Document`. Tests: front-marking vs all-pages divergence reported (the #799 motivating
-  `(TS//SI-G//OC/RELIDO)` case now fires).
+  `(TS//SI-G//OC/RELIDO)` case now fires) — this is the reverse-validation half of SC-012.
 
 **Checkpoint**: the two #799 motivating unwired-edge cases produce diagnostics; derivations audited.
 
@@ -144,33 +161,51 @@ green; no engine edits yet.
   state instead of a `MarkingType::Cab`-tagged `CanonicalAttrs`. Tests: well-formed CAB → `Present`;
   malformed declassify → `PresentNonCanonical`.
 - [ ] T043 [D] Declassify-on node with multiple inbound edges (structural / derived-max[reserved] /
-  canned / historical); seed from `ProjectedMarking.declassify_on` `MaxDate` rollup. Tests:
-  multi-edge node resolves to most-conservative.
+  canned / historical). Value is `Product<DeclassInstruction, CannedAnnotationSet>` (research
+  D12/LV2; `security-lattice.md` §8): `DeclassInstruction` = `MaxDate` date chain + exemption codes
+  as a flat antichain above all dates (NOT `OrdMax<DeclassEvent>` — exemption codes are
+  incomparable); `CannedAnnotationSet` = `FlatSet` of §C.4/§C.5 scope-qualifier strings. Seed the
+  date side from `ProjectedMarking.declassify_on`; the exemption-antichain join is the
+  #266-deferred extension. Tests: a line carrying *both* a date and a §C.4 canned string resolves
+  to both components present; date axis takes the max, two distinct exemption codes stay
+  incomparable (no false total-order collapse), annotation axis unions.
 - [ ] T044 [D] CAB normalizer/serializer — forward-evaluable (build a `Declassify On` line from
   structured state, not just parse it). Tests: round-trip parse→serialize.
-- [ ] T045 [D] Verify SC-001 (no CAB fields on pivot type) + SC-008 (latency/throughput gates).
+- [ ] T045 [D] Verify SC-001 (type-level test: no CAB fields on pivot type + CAB→`DocumentArtifact`
+  node test) + SC-008a (single-scheme latency/throughput gates, no regression).
 
 **Checkpoint**: CAB is a node; `ProjectedMarking` has no CAB-only fields; benches green.
 
 ---
 
-## Phase E — CUI co-residence (#641 co-reside, #128) — gates on B, C *(CUI specifics source-pending)*
+## Phase E — CUI co-residence (#641 co-reside, #128) — gates on B, C *(validated vs synthetic `StubScheme`; real CUI source-pending)*
 
-- [ ] T050 [E] Add `Translate`/`CoherenceRule`/`CoherenceContext`/`CoherenceDiagnostic`/
-  `TranslationProposal` trait surface to `marque-scheme` (#641 T1-7). Tests: stub translator.
+- [ ] T049 [E] Define the synthetic test-only `StubScheme` (an invented non-IC control, no claimed
+  NARA/ISOO/CAPCO authority) used to exercise co-residence (FR-026). It is a test fixture, NOT a
+  shipped grammar; it asserts no real CUI semantic. Tests: registers alongside `CapcoScheme`.
+- [ ] T050 [E] Add `CoherenceRule`/`CoherenceContext`/`CoherenceDiagnostic` trait surface to
+  `marque-scheme` (#641 T1-7). **`Translate`/`TranslationProposal` are cut** (research D7 — no
+  in-scope consumer). Tests: stub coherence rule over two canonicals.
 - [ ] T051 [E] Portion-scope ownership routing (research D8): before junk-recovery, offer rejected
   tokens to co-active schemes. Tests: no-silent-loss (SC-004).
 - [ ] T052 [E] `(S//CUI)` cross-grammar conflict: error, no auto-fix, relocate suggestion
   (human-confirmed). Uses the `Relocate` reserved variant from T006. Tests: high recognition
   confidence / low resolution confidence (research D8).
 - [ ] T053 [E] Document-scope releasability reconciliation in `marque-engine`:
-  `Product<CuiReleasability, CapcoIcDissem>` componentwise join + monotone NOFORN closure
-  (research D6). Each regime renders its own projection. Tests: the `CUI//FEDCON`+`C//RELIDO`
-  worked example (banner `CONFIDENTIAL//NOFORN` + escrow `LDC: FEDCON`). **CUI side stubbed/
-  source-pending.**
+  `Product<StubReleasability, CapcoIcDissem>` componentwise join + monotone NOFORN closure
+  (research D6). The `Product` implements `JoinSemilattice` only (+ `BoundedJoinSemilattice` via
+  factor bottoms), **never `BoundedLattice`** — the non-IC factor is agency-extensible/open, no
+  top (research D6/D12/LV4). Each regime renders its own projection. Tests: a `StubScheme`
+  non-IC-control portion + `C//RELIDO` → banner floors to `CONFIDENTIAL//NOFORN`, the non-IC
+  control is escrowed on its own projection, RELIDO superseded. **Asserts the `Product`+closure
+  mechanism only — no real FEDCON⇒NOFORN mapping (FR-026, Constitution VIII).**
+- [ ] T056 [E] `multi_scheme_latency` benchmark: establish the two-scheme p95 budget on the hot
+  path (SC-008b). The single-scheme 16 ms gate is NOT assumed to hold under the O(schemes)
+  multiplier; record the measured budget as the CI gate.
 - [ ] T054 [E] `CaveatLayer` artifact ≡ #128 second-banner-line caveats (vocabulary source-pending).
-  Tests: caveat layer rendered on its own line, distinct from dissem block.
-- [ ] T055 [E] `MultiGrammarEngine` runs coherence rules over joint output (completes T028). Tests:
+  Tests: caveat layer rendered on its own line, distinct from dissem block — the caveat-layer half
+  of SC-012 (FR-052).
+- [ ] T055 [E] `MultiGrammarEngine` runs coherence rules over joint output (completes T029). Tests:
   coherence diagnostic carries both grammars' representations.
 
 **Checkpoint**: two schemes co-resident; releasability escrow demonstrated; no silent token loss.
@@ -181,6 +216,7 @@ green; no engine edits yet.
 
 - [ ] T060 [P] [F] M1: `[engine] severity_cap`; apply in `fast_path_severities`
   (`effective = override.unwrap_or(default).min(cap)`). Tests: caps Fix→Suggest; per-rule wins.
+  (T060 + T061 + T064 together verify SC-011: cap, zone-gating, and `ValidateForEra` suppression.)
 - [ ] T061 [P] [F] M2: `Rule::target_zones` + `[engine] fix_zones`; gate fix promotion before
   `__engine_promote`. Tests: body-only fix promotion; diagnostics still emit for all zones.
 - [ ] T062 [F] M3: `DeploymentContext` (interactive/batch/boundary/archival) defaults profile,
@@ -209,7 +245,9 @@ green; no engine edits yet.
 - [ ] T073 [P] [G] #420: absence-detect recognizers for missing portion-marks/banners
   (`crates/core`); nested-bullet handling; entirely-`(U)` exemption. Populate `AbsentButRequired`;
   flag-only (D4). Tests: missing-mark fires; all-`(U)` document does not.
-- [ ] T074 [G] Verify SC-009 (canned-string citations re-checked against the manual).
+- [ ] T074 [G] Verify SC-009 (canned-string citations re-checked against the manual). Add a
+  dedicated `absence_scan` benchmark and verify SC-008a holds with the #420 whole-document scan
+  active (detecting *missing* marks is new O(blocks) work not present today).
 
 **Checkpoint**: end-to-end document-artifact rules prove the node-state + derivation model.
 

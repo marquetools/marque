@@ -9,6 +9,35 @@
     "chat.tools.terminal.autoApprove": {
         ".specify/scripts/bash/": true,
         ".specify/scripts/powershell/": true
-    }
+    },
+    "workbench.externalBrowser": "chrome",
+    "astro.content-intellisense": true,
+    "astro.updateImportsOnFileMove.enabled": true,
+    "better-comments.highlightPlainText": true,
+    "dependi.vulnerability.ghsa.enabled": true,
+    "git.allowForcePush": true,
+    "git.autoStash": true,
+    "git.blame.editorDecoration.enabled": true,
+    "git.blame.ignoreWhitespace": false,
+    "git.enableCommitSigning": true,
+    "git.enableSmartCommit": true,
+    "git.fetchOnPull": true,
+    "git.pruneOnFetch": true,
+    "git.pullBeforeCheckout": true,
+    "git.pullTags": true,
+    "git.supportCancellation": true,
+    "git.useCommitInputAsStashMessage": true,
+    "github.copilot.chat.agent.autoFix": true,
+    "github.copilot.chat.claudeAgent.allowDangerouslySkipPermissions": true,
+    "github.copilot.chat.rateLimitAutoSwitchToAuto": true,
+    "githubIssues.alwaysPromptForNewIssueRepo": false,
+    "githubPullRequests.defaultDeletionMethod.selectWorktree": true,
+    "githubPullRequests.deleteBranchAfterMerge": true,
+    "githubPullRequests.experimental.useQuickChat": true,
+    "githubPullRequests.experimental.notificationsMarkPullRequests": "markAsDone",
+    "githubPullRequests.quickDiff": true,
+    "githubPullRequests.showPullRequestNumberInTree": true,
+    "githubPullRequests.terminalLinksHandler": "github",
+    "js/ts.inlayHints.enumMemberValues.enabled": true
 }
 

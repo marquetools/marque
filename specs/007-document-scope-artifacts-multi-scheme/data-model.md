@@ -24,11 +24,16 @@ pub enum ArtifactKind {
     FrontMarking,        // document "classified up to" overall (#799)
 }
 
-/// The four-state node model. `P` is the scheme's parsed artifact payload.
-/// Absence is a state, not a separate rule family (research D2).
+/// The five-state node model — the product of two orthogonal axes:
+///   presence  (absent / present-canonical / present-non-canonical)
+///   requirement (required / not-required)
+/// Absence is a state, not a separate rule family (research D2). This is a
+/// STATUS ENUM, not a lattice — one recognizer yields one state; states of the
+/// same node are never joined (lattice-consultant verdict LV1, research D12).
 pub enum ArtifactState<P> {
-    Present(P),
+    Present(P),                 // present, canonical, required
     PresentNonCanonical(P),     // parsed but diverges from canonical form
+    PresentNotRequired(P),      // present but superfluous (e.g. §C.5 string in a pure-NATO doc)
     AbsentButRequired,          // an inbound requirement edge demands it
     AbsentNotRequired,
 }
@@ -152,28 +157,30 @@ Also add `#[non_exhaustive]` to `ParseContext` (#176 staging step 1).
 *Satisfies*: FR-030, FR-031, FR-032 (US4). *Issues*: #643, #641 T1-8, #176. **WASM** (trait surface;
 concrete schema-reading adapters are native).
 
-### Phase B — T3 naming de-coupling (additive-with-deprecation where feasible)
+### Phase B — T3 naming de-coupling (straight breaking renames — pre-users, research D13)
+
+No deprecation shims or retained aliases — marque is pre-users, so these are plain breaking
+renames in the single Phase-0/B breaking window. All-callers updated in the same change.
 
 | Current (CAPCO-coupled) | New (domain-neutral) | File |
 |---|---|---|
-| `Zone::Cab` | `Zone::Custom(&'static str)` + `#[non_exhaustive]` (short-term alias `StructuralBlock`) | `recognizer.rs` |
+| `Zone::Cab` | `Zone::Custom(&'static str)` + `#[non_exhaustive]` | `recognizer.rs` |
 | `ParseContext::classification_floor` | `rank_floor` (scheme-defined ordering) | `recognizer.rs` |
 | `OwnerProducerKind::Nato`/`::Fgi` | `InternationalBody`/`ForeignGovernment` + `Custom(&'static str)` + `#[non_exhaustive]` | `vocabulary.rs` |
 | `FormSet::{portion,banner}` | `{short_form,long_form,abbreviated_form}` | `vocabulary.rs` |
 | `FormKind::IsmDescriptionTitle` | `StandardDescriptionTitle` | `vocabulary.rs` |
 | `Vocabulary::is_fdr_dissem()` | move to `IcMarkingVocabulary` sub-trait | `vocabulary.rs` |
 | `EmissionForm::{Portion,BannerTitle,BannerAbbreviation}` | `{ShortForm,LongForm,AbbreviatedForm}` | `render_context.rs` |
-| `MarkingScheme::{render_portion,render_banner,project_banner}` | `{render_item,render_summary,project_summary}` (deprecated shims) | `scheme.rs` |
-*Satisfies*: FR-025; #641 T3. **WASM.**
+| `MarkingScheme::{render_portion,render_banner,project_banner}` | `{render_item,render_summary,project_summary}` (renamed in place) | `scheme.rs` |
+*Satisfies*: FR-025; #641 T3. **WASM.** (`#[non_exhaustive]` retained only where it future-proofs
+an enum against later variant additions, not as source-compat ceremony.)
 
 ### Phase E — multi-scheme co-residence surface
 
+`Translate<A, B>` is **cut from this feature** (research D7 note; YAGNI — no in-scope consumer;
+tracked as **#829**, blocker for ISM→DoD XML). Co-residence needs only coherence checking:
+
 ```rust
-pub trait Translate<A: MarkingScheme, B: MarkingScheme>: Send + Sync {
-    fn translate(&self, from: &A::Canonical) -> Option<TranslationProposal<B>>;
-    fn coherence_check(&self, a: &A::Canonical, b: &B::Canonical, ctx: &CoherenceContext)
-        -> Vec<CoherenceDiagnostic>;
-}
 pub trait CoherenceRule<A: MarkingScheme, B: MarkingScheme>: Send + Sync {
     fn check_coherence(&self, a: &A::Canonical, b: &B::Canonical, ctx: &CoherenceContext)
         -> Vec<CoherenceDiagnostic>;
@@ -181,9 +188,13 @@ pub trait CoherenceRule<A: MarkingScheme, B: MarkingScheme>: Send + Sync {
 ```
 The releasability `Product<CuiReleasability, CapcoIcDissem>` + monotone NOFORN closure is **not** a
 new leaf type — it composes the existing `Product` constructor (`builtins.rs`) with a closure rule;
-the cross-scheme wiring lives in `marque-engine` (model b, research D6/D7).
+the cross-scheme wiring lives in `marque-engine` (model b, research D6/D7). The `Product`
+implements `JoinSemilattice` only (+ `BoundedJoinSemilattice` via the two factors' bottoms); it
+does **not** implement `BoundedLattice` — `CuiReleasability` is agency-extensible/open, no top
+(LV4, research D6/D12). No lattice-trait change.
 *Satisfies*: FR-021, FR-022, FR-025 (US3). *Issues*: #641 T1-7. **WASM** (trait surface).
-**Source-pending**: `CuiReleasability` shape, LDC ordering, non-IC-control set.
+**Source-pending**: `CuiReleasability` shape, LDC ordering, non-IC-control set; validated against
+a synthetic `StubScheme`, not a real CUI grammar (FR-026).
 
 ---
 
@@ -219,10 +230,22 @@ and `FeatureId` gain `#[non_exhaustive]` + `Grammar { grammar_id: &'static str, 
 - Delete the "page aggregate, not a CAB" null-out in `ProjectedMarking::from_canonical`
   (`crates/ism/src/projected.rs`) — there is nothing to null once the fields are gone.
 - Introduce the `DocumentContext` shape (analogue of `PageContext`) holding the artifact nodes and
-  the document-scope rollup (max classification across pages, etc.).
+  the document-scope rollup (max classification across pages, etc.). The page→document rollup is
+  the same join ops one level up, lawful by associativity/commutativity (LV3, research D12), but
+  MUST reuse the observational-state lattice types (`DissemSet` with `relido_observed_unanimous`,
+  `JointSet`) — a naive re-union would lose RELIDO-unanimity and NOFORN-supersession across the
+  page→doc fold.
 - The declassify-on node has multiple inbound edges (structural field, derived-max #823 reserved,
-  §C.4/§C.5 canned, historical trailing-banner). `ProjectedMarking.declassify_on` (a `MaxDate`
-  rollup) is the seed.
+  §C.4/§C.5 canned, historical trailing-banner). Its value is `Product<DeclassInstruction,
+  CannedAnnotationSet>` (lattice-consultant verdict LV2, research D12; cite `security-lattice.md`
+  §8): `DeclassInstruction` is the date-or-exemption axis — `MaxDate` (date chain) extended with
+  the exemption codes as a **flat antichain adjoined above all dates** ("bounded join-semilattice
+  with adjoined antichain top"; NOT `OrdMax<DeclassEvent>`, which would falsely total-order
+  incomparable exemption codes); `CannedAnnotationSet` is a `FlatSet` union of the §C.4/§C.5
+  scope-qualifier strings (which are not exemption codes). A line legitimately carries both a date
+  and an "N/A to RD portions" string at once. `ProjectedMarking.declassify_on` (the existing
+  `MaxDate` rollup) seeds the date side of `DeclassInstruction`; the exemption-antichain join is
+  the #266-deferred extension the lattice catalog flags (bridge §2.8).
 *Satisfies*: FR-001, FR-003, SC-001; #799 CAB specifics, #266 seed. **WASM.**
 
 ---
@@ -266,8 +289,13 @@ node states; they do not invent content (D4 → flag-only).
 
 - `Engine<S>` actually uses `S` (eliminate the `drop(scheme)` construction bridge in `engine.rs`,
   #641 T1-3). `LintResult`/`FixResult` carry grammar-erased or generic diagnostics (T2-1).
-- `MultiGrammarEngine` wrapping multiple `Engine<S>` instances + a translator registry; runs
-  single-grammar rules independently then coherence rules over the joint result (T1-7).
+- `MultiGrammarEngine` holding multiple schemes behind an **object-safe `ErasedEngine` shim**
+  (because `MarkingScheme` has associated types and is NOT object-safe — `Vec<Engine<S>>` over
+  heterogeneous `S` does not compile). The shim erases `parse`/`project`/`render`/`check` to
+  operate over `&[u8]` and a grammar-erased `Diagnostic`; the concrete `S` re-emerges only inside
+  each shim impl. Runs each grammar's single-scheme rules independently, then `CoherenceRule`s
+  over the joint result + the document-scope releasability reconciliation (model b). See
+  `contracts/multi-scheme.md` for the `ErasedScheme`/`ErasedEngine` surface (T1-7).
 - `bridge_constraint_diagnostic` delegates to `scheme.constraint_rule_id(label)` (T1-4).
 - `ScanStrategy`/`ParseStrategy` injection points (T1-5/T1-6).
 
@@ -314,7 +342,7 @@ node states; they do not invent content (D4 → flag-only).
 | Issue | Primary types | Phase |
 |-------|---------------|-------|
 | #799 | `DocumentArtifact`, `ArtifactState`, `DerivationEdge`, `DocumentContext`, scheduler ext. | 0, C |
-| #641 | `Rule<S>`, `RuleContext<S>`, `Engine<S>`, `MultiGrammarEngine`, T3 renames, `Translate`/`CoherenceRule` | B, E |
+| #641 | `Rule<S>`, `RuleContext<S>`, `Engine<S>`, `MultiGrammarEngine`, `ErasedScheme`/`ErasedEngine`, T3 renames, `CoherenceRule` | B, E |
 | #643 | `InputAdapter`, `StructuredDocument`, `DocumentLayer`, `RepairKind` | A |
 | #176 | `InputSource`, `InputContext`, `ParseContext` `#[non_exhaustive]` | A |
 | #645 | `EngineConfig` mode fields, `target_zones`, `DeploymentContext`, `ArchivalIntent`, `GrammarEra` | F |

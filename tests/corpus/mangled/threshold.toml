@@ -36,7 +36,6 @@ set_at = ""
 # PR that set the threshold (PR 3c populates with the merge SHA / PR number).
 set_by_pr = ""
 
-
 [thresholds]
 # Floor for the canonical mangled corpus (or mangled-closed-vocab/ after re-curation).
 # Default 0.85 per SC-010.
@@ -53,7 +52,6 @@ mangled_accuracy_floor = 0.85
 # on a sentinel value here.
 mangled_open_vocab_floor = 0.0
 
-
 [corpus]
 # Path glob (relative to workspace root) for the corpus the closed-vocab
 # floor applies to. Default points at the planned consolidated location;
@@ -64,7 +62,6 @@ closed_vocab_path = "tests/corpus/mangled/**/*.txt"
 # statuses. bench-check.sh MUST gate reads on the `status` field
 # (TOML has no `null`).
 open_vocab_path = ""
-
 
 [bench-check]
 # How tools/bench-check.sh interprets this file:

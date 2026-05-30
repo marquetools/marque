@@ -45,7 +45,6 @@ tempfile = { workspace = true }
 # inherits `default-features = false` from the workspace pin and
 # excludes the whole toml chain.
 default = ["toml-loader"]
-toml-loader = ["dep:toml"]
 # Gate the corpus-override parsing codepath. Parsing lives in
 # `crates/config/src/corpus_override.rs`; the feature gate
 # here mirrors the gate in `marque-capco` and `marque-engine` so the
@@ -53,6 +52,7 @@ toml-loader = ["dep:toml"]
 # compiles out the parser entirely. CLI-only, rejected by
 # `marque-server` at the handler layer.
 corpus-override = []
+toml-loader = ["dep:toml"]
 
 [lints]
 workspace = true

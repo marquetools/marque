@@ -35,11 +35,13 @@ claims.** Be precise about what `Option` buys: adding the `prior` field to the e
 `ReplacementIntent` — every construction, `match`, `Debug`, and `Clone` site must be updated to
 pass/handle the new shape, regardless of `Option`. `Option` only defers *populating the value*
 (existing sites pass `prior: None`); it does **not** make the change source-compatible. These
-`ReplacementIntent` edits therefore land in the same breaking window as the Phase-B trait
-generification, not as a free additive add. (`ReplacementIntent` SHOULD also gain
-`#[non_exhaustive]` so future variant additions don't re-break external matchers.) A
-`prior: None` record is moreover **not** reversible from the log. Two consequences, both
-explicit:
+`ReplacementIntent` edits therefore land in the **single Phase-0/B breaking window** (research
+D13) — marque is pre-users, so this is a plain breaking edit with all in-tree sites updated in the
+same change, not an additive add and not a deprecation-shimmed transition. (No external matcher
+exists — `ReplacementIntent` is scheme-generic and not yet implemented outside the workspace — so
+`#[non_exhaustive]` is not needed for source-compat here; it may be added only if it
+future-proofs a genuinely audit/stable enum, which this is not.) A `prior: None` record is
+moreover **not** reversible from the log. Two consequences, both explicit:
 
 - **SC-006 is scoped to intents whose pre-state is populated** — it verifies the round-trip for
   `FactAdd`/`FactRemove` (always self-inverting) and for `Recanonicalize`/`Relocate` whose

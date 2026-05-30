@@ -32,13 +32,13 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-insta = { workspace = true }
 # BLAKE3 defense-in-depth pin verification at test time.
 # `build_input_pin_test.rs` re-hashes `docs/CAPCO-2016.md` and
 # compares to `build_inputs::CAPCO_2016_MD_BLAKE3`. Protects against
 # `--offline` runs or cached `OUT_DIR` skipping the build.rs digest
 # recheck.
 blake3 = { workspace = true }
+insta = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
 # path-only (no version) so `cargo publish` strips these dev-deps from the
@@ -62,10 +62,6 @@ serde_json = { workspace = true }
 static_assertions = { workspace = true }
 
 [build-dependencies]
-# Decoder priors are baked in at compile time from
-# `corpus/priors.json`. `serde_json` is a build-dep only — no runtime
-# JSON parsing on the decoder hot path (Constitution II).
-serde_json = { workspace = true }
 # BLAKE3 verification of `docs/CAPCO-2016.md` at compile time per
 # Constitution VIII / Authoritative Source Fidelity.
 # Build-only on the build.rs side; the runtime hash check at
@@ -73,6 +69,10 @@ serde_json = { workspace = true }
 # entry below so both surfaces resolve their dependency
 # independently.
 blake3 = { workspace = true }
+# Decoder priors are baked in at compile time from
+# `corpus/priors.json`. `serde_json` is a build-dep only — no runtime
+# JSON parsing on the decoder hot path (Constitution II).
+serde_json = { workspace = true }
 
 [features]
 # Feature gates.
@@ -100,7 +100,6 @@ corpus-override = []
 # binary; CI invokes it with `cargo test -p marque-capco --features
 # count-allocs --test vocabulary_zero_alloc`.
 count-allocs = []
-decoder-harness = []
 # `decision-tracing`: enables capco-side `DecisionSink` emission inside
 # `MarkingScheme::project_with_sink` / `closure_with_sink` overrides
 # and the `bit_to_row_name` reverse lookup in `closure_table`. Off by
@@ -109,6 +108,7 @@ decoder-harness = []
 # (SC-001 16 ms p95): OFF-mode is byte-identical to a build without
 # the feature.
 decision-tracing = ["marque-scheme/decision-tracing"]
+decoder-harness = []
 
 [lints]
 workspace = true

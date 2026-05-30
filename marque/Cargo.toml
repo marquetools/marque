@@ -83,13 +83,13 @@ default = ["decision-tracing"]
 # integration tests, not from the CLI binary itself.
 corpus-harness = ["marque-engine/corpus-harness"]
 corpus-override = ["marque-engine/corpus-override"]
-decoder-harness = ["marque-engine/decoder-harness"]
 # Threads a `DecisionSink` through the engine and lights up the
 # `marque trace` subcommand. Proxies to `marque-engine/decision-tracing`
 # (which itself proxies to `marque-scheme/decision-tracing` +
 # `marque-capco/decision-tracing`) and pulls `marque-scheme/serde` so
 # the CLI can serialize `DecisionEvent` / `DecisionReport` to NDJSON.
 decision-tracing = ["marque-engine/decision-tracing", "marque-scheme/serde"]
+decoder-harness = ["marque-engine/decoder-harness"]
 
 [lints]
 workspace = true

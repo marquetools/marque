@@ -98,6 +98,22 @@ in the CUI block. Authority for the IC-side mechanics: CAPCO-2016 §H.8 (RELIDO/
 and §H.7 (REL TO / NATO worked examples). **The CUI-side mapping (which controls are "non-IC",
 the LDC value ordering) is source-pending** until the CUI grammar's governing policy is held.
 
+**Boundedness (LV4, 2026-05-30 re-consult)**: `Product<CuiReleasability, CapcoIcDissem>`
+implements `JoinSemilattice` only — plus `BoundedJoinSemilattice` iff both factors have a
+bottom (they do: the empty release-set bottom, `SciSet::empty` precedent). It MUST NOT implement
+`BoundedLattice`/`BoundedMeetSemilattice`: a `Product` has a top iff *both* factors do, and
+`CuiReleasability`'s LDC set is agency-extensible/open (no lawful finite top), exactly as
+`SciSet`/`SarSet` are (CLAUDE.md SCI-canonical-storage note). The monotone NOFORN closure is
+additive and finite-height (injects NOFORN once, never removes) so it reaches a Kleene fixpoint
+without requiring a complete lattice or a top — `CLOSURE_NOFORN_NONICCONTROLS` already runs on a
+no-top open set. **No lattice-trait-surface change**: the existing
+`JoinSemilattice`/`MeetSemilattice` split (PR #502) and `Product` constructor cover this.
+
+**Phase-E landing (FR-026)**: this construction is validated in Phase E against a **synthetic
+test-only `StubScheme`** (an invented non-IC control), NOT a real CUI grammar. The worked
+example's CUI side stays source-pending; encoding an unverified FEDCON⇒NOFORN fixture in a
+passing test would violate Constitution VIII.
+
 **Open question for the user (carried)**: `CuiReleasability`'s internal lattice shape (LDC value
 ordering) is source-pending — flagged in `data-model.md`, not fixed now.
 
@@ -110,6 +126,14 @@ ordering) is source-pending — flagged in `data-model.md`, not fixed now.
 leaf. The engine is the only crate allowed to know two schemes (Constitution VII). `Product` +
 closure are already leaf primitives, so model (b) needs no new leaf algebra.
 
+**`Translate` is cut from this feature.** Model (b) reconciles two per-scheme lattices at the
+document node via `Product`+closure — it never translates one scheme's canonical into the other's.
+A `Translate<A, B>` trait therefore has no consumer in co-residence; its only real uses
+(cross-system marking translation and ISM→DoD XML round-trips) are deferred. Shipping it now would
+be speculative surface (YAGNI; project policy on pre-users rewrite-freely). Co-residence keeps only
+`CoherenceRule`. `Translate` lands with the deferred cross-system path, **tracked as #829**
+(blocker for ISM→DoD XML: `InputAdapter::adapt → canonical → Translate → Codec::encode`).
+
 ## D8 — Relocate, don't evict
 
 **Decision**: A misplaced token with a home at another scope/surface is relocated, not evicted;
@@ -121,6 +145,13 @@ junk-recovery consumes it.
 ("classification evicts FOUO") is wrong for CUI because CUI has a document-scope home (the block);
 eviction would lose it. Without the portion-scope ownership check, CAPCO's existing banner/portion
 junk-recovery would swallow `CUI` as trailing junk — silent marking loss.
+
+**Contention precedence (FR-023)**: when ≥2 schemes are co-active and a token is rejected by the
+owning scheme, the engine routes by acceptance count, not by registration order: exactly-one
+acceptor → route there; two-or-more acceptors → cross-grammar conflict (the mutually-exclusive
+case); zero acceptors → junk-recovery at unchanged `DocumentContent` confidence. Registration
+order MUST NOT tie-break — a registration-order tie-break makes resolution non-deterministic
+across callers (CLI/server/WASM register schemes in different orders). Ties surface as conflicts.
 
 **`(S//CUI)` resolution flow**: strict fails under both grammars → decoder surfaces token set
 `{S, CUI}` → engine recognizes mutually-exclusive grammars → emits a portion-scope cross-grammar
@@ -157,14 +188,19 @@ The #641 audit found CAPCO coupling at four severity tiers. This feature maps th
 
 | Tier | Items | Phase |
 |------|-------|-------|
-| T1 (architecture blockers) | T1-1/T1-2 `Rule::check`/`RuleContext` generification; T1-3 `Engine<S>`; T1-4 constraint→rule-id delegation; T1-5/T1-6 scan/parse strategy; T1-7 `Translate`/`CoherenceRule`; T1-8 `InputAdapter` | B (T1-1..6), A (T1-8), E (T1-7) |
+| T1 (architecture blockers) | T1-1/T1-2 `Rule::check`/`RuleContext` generification; T1-3 `Engine<S>`; T1-4 constraint→rule-id delegation; T1-5/T1-6 scan/parse strategy; T1-7 `CoherenceRule` (the `Translate` half of T1-7 is **cut → #829**); T1-8 `InputAdapter` | B (T1-1..6), A (T1-8), E (T1-7) |
 | T2 (structural friction) | `LintResult`/`FixResult`, `Sink`, `MessageTemplate`/`FeatureId` `#[non_exhaustive]`+`Grammar`, defaults move, decoder citation | B |
 | T3 (naming coupling) | `Zone::Cab`→`Custom`/`StructuralBlock`, `classification_floor`→`rank_floor`, `OwnerProducerKind`/`FormSet`/`FormKind`/`EmissionForm` renames, `render_portion`/`render_banner`→`render_item`/`render_summary`, `is_fdr_dissem`→`IcMarkingVocabulary` sub-trait | B |
 | T4 (entry/config) | `Config.grammar_schema`, CLI/server/WASM grammar registration, health schema version, citation helper relocation | B/F |
 
-**Note**: T3 renames are additive-with-deprecation where possible to avoid a flag-day break; the
-stable-API surface (CLAUDE.md) requires a coordinated audit-schema consideration for any audit-side
-change, which the renames here avoid (they are recognizer/render-side, not audit-record-side).
+**Note (rewrite-freely posture)**: marque is pre-users, so T3 renames are **straight breaking
+renames** — no deprecation shims, no retained aliases (project policy: rewrite freely). The two
+surfaces that stay stable regardless are (1) the **audit-record schema** (`MARQUE_AUDIT_SCHEMA`,
+a committed stable surface per CLAUDE.md — any audit-side change is a coordinated additive bump),
+and (2) the **lattice trait surface** (`JoinSemilattice`/`MeetSemilattice`/`Bounded*`/`Product`
+et al. — kept stable by user direction; this feature introduces no lattice-trait change, see
+D12). The T3 renames are recognizer/render-side, touch neither stable surface, and so land as
+plain breaking edits in the single Phase-0/B breaking window (D13).
 
 ## D11 — `Scope::Bundle` is an additive enum variant (not `#[non_exhaustive]`)
 
@@ -175,6 +211,84 @@ variant set is fixed by the design doc; scheme authors don't introduce new scope
 scheme needing a new scope adds the variant via a minor-version bump." `RecanonScope` already has
 `Document`. Adding `Bundle` is exactly the anticipated minor-version additive variant; exhaustive
 matchers see it at compile time. This reserves the #823 bundle→document derivation edge.
+
+## D12 — Lattice verdicts on the new constructions *(lattice-consultant re-consult, 2026-05-30)*
+
+Re-ran the marque-lattice-consultant framework against the constructions this feature adds.
+**Headline: no lattice-trait-surface change is required** — every construction is covered by the
+existing constructors (`OrdMax`/`MaxDate`, `FlatSet`, `IntersectSet`, `SupersessionSet`,
+`Product`, the `JoinSemilattice`/`MeetSemilattice` split). Four verdicts:
+
+- **LV1 — `ArtifactState` is a status enum, not a lattice.** It is the product of two orthogonal
+  axes — *presence* (absent / present-canonical / present-non-canonical) × *requirement*
+  (required / not-required). A node has exactly one state, produced by one recognizer + the
+  requirement check; states of the same node are never joined, so there is no meet/join to
+  define. The fifth state `PresentNotRequired` fills the present×not-required cell that the
+  four-state model omitted — adding it *completes* the product rather than introducing a new
+  algebra. The requirement axis itself is a trivial 2-element boolean join (required iff *any*
+  inbound Requirement edge fires); lawful, no surface. **Verdict: (c) not a lattice problem —
+  and the fifth state is the right fix.**
+
+- **LV2 — the declassify-on multi-edge resolution is a `Product` of two axes, neither of them a
+  single "most-conservative" chain.** A date and a §C.4 canned string do not compete for one slot:
+  per CAPCO-2016 §C.4 p33 a `Declassify On` line carries *both* a date (for dated NSI portions)
+  *and* "N/A to [RD/FRD/TFNI] portions. See source list…". The value space is
+  `DeclassifyOn = Product<DeclassInstruction, CannedAnnotationSet>`:
+  - **`DeclassInstruction`** — the date-or-exemption axis. Per `security-lattice.md` §8 (and
+    bridge §2.8) this is **not** a total order: dates form a chain, but exemption codes (`25X1`,
+    `50X1-HUM`, …) are a **flat antichain adjoined *above* all dates** — the algebraic name is
+    "bounded join-semilattice with adjoined antichain top." It is `MaxDate` (the existing date
+    chain) extended with the exemption antichain, NOT `OrdMax<DeclassEvent>` (which would falsely
+    impose a total order on mutually-incomparable exemption codes). The bridge flags this exact
+    exemption-side extension as the deferred **#266** work — i.e. *this* feature is where it lands;
+    007 may model the canned-annotation axis fully (FR-050) while the exemption-antichain join is
+    staged with the rest of #266.
+  - **`CannedAnnotationSet`** — the §C.4/§C.5 scope-qualifier strings ("N/A to … portions"),
+    a `FlatSet` union. These are *not* exemption codes (they qualify *which portions* the line's
+    instruction applies to); they belong on their own axis.
+
+  The earlier draft made two errors the catalog corrects: it modeled the date axis as a total
+  `OrdMax` chain (exemptions are an antichain, not chain-ordered) and it lumped exemption codes
+  into the annotation set (they belong to `DeclassInstruction`). The corrected `Product` makes the
+  componentwise join lawful for free (pure-lattice §11). **Verdict: (b) redesign toward the known
+  Product-of-(MaxDate-with-antichain-top)-and-FlatSet pattern; cite `security-lattice.md` §8.**
+
+- **LV3 — page→document rollup is lawful by associativity/commutativity/idempotence.**
+  `DocumentContext` applies the same join ops as `PageContext` one level up: folding page-level
+  joins into a document-level join is just a semilattice fold over a larger index set, so
+  page-processing order and grouping do not matter. **Constraint to honor**: the document rollup
+  MUST reuse the observational-state lattice types (`DissemSet` with `relido_observed_unanimous`,
+  `JointSet`) rather than a naive re-union — otherwise RELIDO-unanimity (memory
+  `relido-unanimity-banner-rollup`) and NOFORN-supersession would not survive the page→doc fold.
+  **Verdict: (a) exact match, with the observational-types constraint flagged for the
+  implementer.**
+
+- **LV4 — releasability `Product` stays `JoinSemilattice`-only, never `BoundedLattice`.** See
+  D6 "Boundedness" — `CuiReleasability` is agency-extensible/open (no top), so the `Product` has
+  no top; the additive monotone NOFORN closure converges without one. Mirrors `SciSet`/`SarSet`.
+  **Verdict: (a) lawful, with the no-`BoundedLattice` constraint stated.**
+
+## D13 — Rewrite-freely posture; single Phase-0/B breaking window
+
+**Decision**: marque is pre-users (project policy), so this feature does **not** use
+deprecation shims, retained aliases, or "reserve-the-seam-now-so-the-later-bump-is-additive"
+ceremony at the *source* level. Source-breaking changes (the `ReplacementIntent` edit + new
+`Relocate` variant, the T3 renames, the `Rule<S>`/`Engine<S>` generification, removing CAB
+fields from `CanonicalAttrs`) land as plain breaking edits in **one breaking window spanning
+Phase 0 and Phase B**. Phase 0 is still the blocking foundation for ordering purposes; it simply
+*is* a breaking window rather than pretending to be purely additive.
+
+**Two exceptions stay stable**: (1) the **audit-record schema** — still a committed stable
+surface (CLAUDE.md); #824 realization remains an additive `marque-3.x` bump, and the reserved
+pre-state fields exist because the *audit* surface (not the source surface) must evolve
+additively. (2) the **lattice trait surface** — kept stable by user direction; D12 confirms no
+change is needed.
+
+**Rationale**: aligns with the project's recorded stance (no deprecation phasing pre-users) and
+removes the self-contradiction in the earlier draft, where the "additive" Phase-0 nonetheless
+contained a source-breaking `ReplacementIntent` edit. The `#[non_exhaustive]` attributes that
+remain are kept only where they buy genuine future-proofing for the *audit/stable* surfaces
+(`MessageTemplate`/`FeatureId`), not as source-compat ceremony.
 
 ## Sources consulted
 

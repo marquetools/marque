@@ -19,8 +19,14 @@ pub enum InputSource {
 1. First add `#[non_exhaustive]` to `ParseContext` (`crates/scheme/src/recognizer.rs`) so future
    field additions are non-breaking.
 2. Add `input_source` (or carry via `InputContext`, below).
-3. Engine entry points gain the opt-in: CLI `--input-source structured-field`, server per-request,
-   WASM explicit parameter.
+3. Engine entry points gain the opt-in for **trusted callers only**: CLI `--input-source
+   structured-field` and server per-request. The **WASM build pins
+   `InputSource::DocumentContent`** and exposes no `InputSource` parameter — `StructuredField`
+   raises the recognizer's lone-case posterior and licenses assertive fixes, so accepting it from
+   a WASM caller behind postMessage would be caller-provided posterior modulation on an
+   uninspected trust boundary, which Constitution III forbids the WASM target from accepting at
+   runtime (FR-031 WASM stance). The `InputSource` *enum* still compiles into the WASM-safe set
+   (it is data, not a recognizer codepath); only the runtime opt-in is withheld from WASM.
 4. The decoder's lone-case heuristic confidence reads `InputSource` per the #176 matrix:
 
 | `InputSource` | marking-shape context | heuristic confidence |
@@ -105,7 +111,9 @@ produced.
 
 - `Codec` (`crates/scheme/src/codec.rs`) is the *emit* side; `InputAdapter` is the *recognition*
   side. Both needed for ISM XML → DoD XML round-trips.
-- `Translate` (see `multi-scheme.md`) composes after `adapt`: adapter → canonical → translate →
-  codec.
+- `Translate` (**cut from this feature**, research D7; tracked as **#829**) would compose after
+  `adapt` — adapter → canonical → translate → codec — and is the **blocker for ISM→DoD XML
+  round-trips**. Not part of 007's surface; noted here only to mark where it slots in when #829
+  lands.
 - **#823 (deferred)**: the source-metadata `InputAdapter` (a `SchemaDocument`/bundle adapter) is
   the input path that feeds the reserved bundle-scope derivation edge.

@@ -10,9 +10,13 @@ code (`crates/scheme/src/{scope,recognizer,decision,page_rewrite}.rs`, `crates/i
 #[non_exhaustive]
 pub enum ArtifactKind { AuthorityBlock, DeclassifyInstruction, Notice, CaveatLayer, FrontMarking }
 
+// Status enum (NOT a lattice — states of one node are never joined; LV1, research D12).
+// The state set = presence (absent / present-canonical / present-non-canonical)
+//               × requirement (required / not-required).
 pub enum ArtifactState<P> {
-    Present(P),
-    PresentNonCanonical(P),
+    Present(P),               // present, canonical, required
+    PresentNonCanonical(P),   // present, parsed, diverges from canonical
+    PresentNotRequired(P),    // present but superfluous (e.g. §C.5 string in a pure-NATO doc)
     AbsentButRequired,
     AbsentNotRequired,
 }
@@ -86,9 +90,19 @@ are *declared in the topology* and skipped at firing time — never removed from
   unioned controls, max-date declassify seed).
 - Built incrementally during `lint`, threaded to document-scope rules via `RuleContext`
   (analogous to the existing `Arc<PageContext>` plumbing).
-- **Reset invariant** (extends Constitution VI): the engine resets the `DocumentContext`
-  accumulator at scanner-emitted document boundaries BEFORE attempting to parse the boundary
-  candidate, mirroring the existing `PageContext` reset-before-parse guarantee.
+- **Reset invariant** (extends Constitution VI): a *document* boundary is the **input boundary**
+  — one `lint`/`fix` call = one document = one batch `id`. The scanner emits only
+  `MarkingType::PageBreak` (form-feed / `\n\n\n+`); there is **no** in-buffer document-delimiter
+  candidate, and a concatenated multi-document buffer is a caller error, not a supported input.
+  So `DocumentContext` is constructed fresh per input; *within* that input it resets its
+  page-level accumulators at page boundaries BEFORE parsing the boundary candidate, mirroring the
+  existing `PageContext` reset-before-parse guarantee. (Earlier drafts said "scanner-emitted
+  document boundaries" — corrected: page boundaries are scanner-emitted, document boundaries are
+  input-emitted.)
+- **Rollup laws** (LV3, research D12): page→document rollup is the same join ops one level up,
+  lawful by associativity/commutativity/idempotence. It MUST reuse the observational-state
+  lattice types (`DissemSet` with `relido_observed_unanimous`, `JointSet`) — a naive re-union
+  would drop RELIDO-unanimity and NOFORN-supersession across the fold.
 
 ## Resolution / fix decoupling & fixability (Phase C)
 

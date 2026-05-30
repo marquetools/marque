@@ -6,8 +6,9 @@
 ## Summary
 
 Decouple document-scoped artifacts (CAB, `Declassify On`, notices, caveats) from the marking
-pivot type and model them as typed nodes in a static derivation DAG with a four-state node model
-(`Present | AbsentButRequired | AbsentNotRequired | PresentNonCanonical`); add a document-scope
+pivot type and model them as typed nodes in a static derivation DAG with a five-state node model
+(`Present | PresentNonCanonical | PresentNotRequired | AbsentButRequired | AbsentNotRequired`);
+add a document-scope
 aggregate (`DocumentContext`) analogous to `PageContext`; and land the domain-neutral
 infrastructure for two grammars to co-reside on one document (scheme-set container, two-scope
 cross-scheme reconciliation, `Product`+monotone-closure releasability per the lattice-consultant
@@ -27,7 +28,7 @@ Tech Stack / `deny.toml`).
 **Target Platform**: native + WASM. The WASM-safe set (`marque-ism`, `marque-core`,
 `marque-rules`, `marque-scheme`, `marque-capco`) MUST stay WASM-safe (Constitution III).
 **Project Type**: Rust workspace (compiler/library + CLI + server + WASM).
-**Performance Goals**: interactive p95 ≤ 16 ms; linear fix throughput. Both gated by SC-008 (no regression from the new document-scope pass).
+**Performance Goals**: interactive p95 ≤ 16 ms; linear fix throughput. Single-scheme no-regression gated by SC-008a (incl. the new #420 absence-scan bench); the multi-scheme O(schemes) hot-path multiplier budgeted separately by SC-008b (`multi_scheme_latency` bench).
 **Constraints**: zero-copy streaming core; audit content-ignorance (G13); acyclic crate graph.
 **Scale/Scope**: a phased program across all WASM-safe crates + engine + integration surfaces;
 ~9 phases (0, A–H) plus two deferred groups.
@@ -38,9 +39,9 @@ Tech Stack / `deny.toml`).
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Performance | PASS (gated) | New document-scope pass reuses the cached topological order (scheduler) and the existing per-page accumulator pattern; SC-008 enforces no p95/throughput regression. |
+| I. Performance | PASS (gated) | New document-scope pass reuses the cached topological order (scheduler) and the existing per-page accumulator pattern; SC-008a enforces no single-scheme p95/throughput regression (incl. a dedicated bench for the new #420 whole-document absence scan). SC-008b budgets the multi-scheme O(schemes) hot-path multiplier with its own `multi_scheme_latency` bench — the single-scheme 16 ms gate is NOT assumed to hold unchanged under co-residence. |
 | II. Zero-copy / lifecycle wipe | PASS | Artifact nodes hold `Span` offsets, not content copies; any new owned content buffer wipes on drop (`secrecy`/`zeroize`). Reversibility pre-state stores canonicals/digests, not free-form text. |
-| III. Format-agnostic / WASM | PASS | All new types in the WASM-safe set are I/O-free. `InputAdapter` is a trait in `marque-scheme`; concrete schema-reading adapters live in non-WASM crates. WASM runtime-config restriction honored: no new recognizer codepath loadable at runtime. |
+| III. Format-agnostic / WASM | PASS | All new types in the WASM-safe set are I/O-free. `InputAdapter` is a trait in `marque-scheme`; concrete schema-reading adapters live in non-WASM crates. WASM runtime-config restriction honored: no new recognizer codepath loadable at runtime, **and the WASM build pins `InputSource::DocumentContent`** — `StructuredField`/`SchemaDocument` raise recognizer posteriors and so are withheld from the WASM runtime opt-in (FR-031 WASM stance), exposed only to trusted CLI/server callers. |
 | IV. Two-layer rule arch | PASS | Node detection/derivation declared as data (`Constraint`/`PageRewrite`-style catalog + derivation edges); §C.4/§C.5 strings are Layer-2 rules citing the manual. |
 | V. Audit-first | PASS | Derivations recorded via the content-ignorant `DecisionSink` cascade; reversibility pre-state uses only audit-permitted terms (token canonicals, category IDs, spans, BLAKE3). `__engine_promote` stays engine-only. |
 | VI. Dataflow pipeline | PASS | Document-scope is a new roll-up layer above page roll-up, not a collapsed function; reset-before-parse invariant extended to document boundaries; rules/recognizers stay `Send + Sync`, no global mutable state. |
@@ -50,7 +51,12 @@ Tech Stack / `deny.toml`).
 **Gate decision**: PASS. One sequencing rule from Principle IV is load-bearing: *a
 scheme-adoption PR MUST NOT edit the engine crates*. Therefore the domain-neutral infrastructure
 (Phases 0/A/B/C/D/F) lands **before** any scheme adoption (CUI), and the CUI co-residence work
-(Phase E) is gated on those engine seams existing. No Complexity-Tracking violations.
+(Phase E) is gated on those engine seams existing. Phase E lands against a **synthetic
+`StubScheme`** (FR-026), not a real CUI grammar, so it asserts no source-pending CUI semantics
+(Constitution VIII) and adopts no real scheme into the engine. **Breaking-change posture**:
+marque is pre-users, so source-breaking edits land freely in a single Phase-0/B breaking window
+(research D13) — no deprecation shims; only the audit-record schema and the lattice trait surface
+stay stable. No Complexity-Tracking violations.
 
 ## Project Structure
 
@@ -65,7 +71,7 @@ specs/007-document-scope-artifacts-multi-scheme/
 ├── contracts/
 │   ├── document-artifact.md   # node trait + state machine + DocumentContext
 │   ├── input-adapter.md       # InputAdapter / StructuredDocument / RepairKind / InputSource
-│   ├── multi-scheme.md        # scheme-set container / Translate / CoherenceRule
+│   ├── multi-scheme.md        # scheme-set container / ErasedScheme / CoherenceRule (Translate cut → #829)
 │   └── reversibility.md       # fix-intent inverse-record surface (#824 rough-in)
 └── tasks.md             # Dependency-ordered tasks grouped by phase
 ```
@@ -76,7 +82,7 @@ specs/007-document-scope-artifacts-multi-scheme/
 crates/
 ├── scheme/      # Phase 0/A/B(T3)/E primitives: ArtifactState, DocumentArtifact, DerivationEdge,
 │                #   Scope::Bundle, InputSource/InputContext/InputAdapter, RecognitionProvenance,
-│                #   ValueDerivation, Translate/CoherenceRule, T3 renames, AND the fix-intent
+│                #   ValueDerivation, CoherenceRule (Translate cut → #829), T3 renames, AND the fix-intent
 │                #   pre-state fields (#824) — ReplacementIntent lives in scheme/src/fix_intent.rs.
 │                #   LEAF — no marque-ism dep.
 ├── rules/       # Phase B: Rule<S> generification (T1-1/T1-2), MessageTemplate/FeatureId
@@ -142,11 +148,14 @@ graph TD
 
 ### Phase detail pointers
 
-- **Phase 0** is the blocking foundation and the only phase that *must* land before everything
-  else; it is mostly new additive type-surface in the WASM-safe leaf crates, testable in
-  isolation. The one source-breaking piece is the `ReplacementIntent` edit (new `prior` field +
-  `Relocate` variant) — sequenced into the Phase-B breaking window, with `#[non_exhaustive]` added
-  to `ReplacementIntent` to keep future variant additions non-breaking for external matchers.
+- **Phase 0** is the blocking foundation that must land before everything else. Most of it is new
+  type-surface in the WASM-safe leaf crates, testable in isolation; the one source-breaking piece
+  is the `ReplacementIntent` edit (new `prior` field + `Relocate` variant). Per the rewrite-freely
+  posture (research D13), Phase 0 simply **is** the start of a single Phase-0/B breaking window —
+  the `ReplacementIntent` edit lands as a plain breaking change with all in-tree sites updated, not
+  deferred and not shimmed. (Earlier drafts called Phase 0 "additive" while it contained this
+  breaking edit — that contradiction is removed.) `ErasedScheme`/`ErasedEngine` object-safety (the
+  load-bearing co-residence design, see `contracts/multi-scheme.md`) is a Phase-B prerequisite.
 - **Phases A and B fan out** from 0 and can proceed in parallel (different crates/seams).
 - **Phase C → D** (derivation layer must exist before CAB becomes a node consuming it) and
   **B,C → E** (co-residence needs both the generic engine and the document-scope layer).
@@ -155,6 +164,11 @@ graph TD
 
 ## Complexity Tracking
 
-No Constitution violations requiring justification. The one structural risk — adding a
-document-scope pass without regressing latency — is mitigated by reusing the cached topological
-scheduler order and the existing per-page accumulator pattern, and is gated by SC-008.
+No Constitution violations requiring justification. Two structural risks, both gated:
+1. **Single-scheme latency** — adding a document-scope pass, the derivation-DAG evaluation, and
+   the new #420 whole-document absence scan without regressing the 16 ms p95. Mitigated by reusing
+   the cached topological scheduler order and the per-page accumulator pattern; gated by SC-008a
+   (with a dedicated #420 absence-scan bench).
+2. **Multi-scheme latency** — co-residence runs N scheme engines + reconciliation on the hot path,
+   an O(schemes) multiplier the single-scheme gate does not measure. Not waved away as "no
+   regression": SC-008b establishes a separate `multi_scheme_latency` budget as the gate.

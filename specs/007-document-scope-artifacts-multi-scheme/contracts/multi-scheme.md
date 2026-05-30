@@ -15,26 +15,49 @@ trait Rule<S: MarkingScheme> {
 struct Engine<S: MarkingScheme> { /* rule_sets, scheme: S, scheduler order, ... */ }
 ```
 
-## Cross-scheme translation & coherence (Phase E, #641 T1-7)
+## Object-safe scheme erasure (Phase B prerequisite — C2)
+
+`MarkingScheme` has associated types (`Marking`, `Canonical`, `Fact`, `ArtifactPayload`, …) and is
+therefore **not object-safe** — `Vec<Box<dyn MarkingScheme>>` / `Vec<Engine<S>>` over
+heterogeneous `S` does not compile. Co-residence requires heterogeneous schemes in one container,
+so an **object-safe shim** is the load-bearing design (this is the actual hard problem of
+multi-scheme, called out as a Phase-B-blocking design, not an implementation detail):
 
 ```rust
-pub trait Translate<A: MarkingScheme, B: MarkingScheme>: Send + Sync {
-    fn translate(&self, from: &A::Canonical) -> Option<TranslationProposal<B>>;
-    fn coherence_check(&self, a: &A::Canonical, b: &B::Canonical, ctx: &CoherenceContext)
-        -> Vec<CoherenceDiagnostic>;
+// Object-safe façade over a concrete Engine<S>. Erases every associated type to bytes / a
+// grammar-erased Diagnostic. The concrete S re-emerges only inside each impl.
+pub trait ErasedEngine: Send + Sync {
+    fn grammar_id(&self) -> &'static str;
+    fn lint_erased(&self, input: &[u8], ctx: &InputContext<'_>) -> ErasedLintResult;
+    fn resolve_erased(&self, input: &[u8], ctx: &InputContext<'_>) -> ErasedResolved;
+    fn claims(&self, candidate: &[u8]) -> Claim;   // D8 ownership routing (Accepts / Rejects)
 }
+// Blanket impl for every Engine<S>: impl<S: MarkingScheme> ErasedEngine for Engine<S> { … }
+
+pub struct MultiGrammarEngine {
+    engines: Vec<Box<dyn ErasedEngine>>,           // heterogeneous schemes, object-safe
+    coherence: CoherenceRegistry,                  // CoherenceRule<A,B> pairs, type-erased at the edge
+}
+//  - runs each grammar's single-scheme rules independently (lint_erased),
+//  - routes a candidate to the grammar that claims() it (D8 ownership routing),
+//  - then runs coherence rules over the joint result + document-scope releasability (model b).
+```
+
+`ErasedLintResult`/`ErasedResolved` carry a grammar-erased (tagged) `Diagnostic` for multi-scheme
+`LintResult`/`FixResult` (T2-1/T2-2). The grammar tag re-associates a diagnostic with its scheme
+for rendering.
+
+`Translate<A, B>` is **NOT in this contract** — cut from the feature (research D7; tracked as
+**#829**, blocker for ISM→DoD XML). Model (b)
+reconciles two per-scheme lattices via `Product`+closure and never translates one canonical into
+the other's, so co-residence needs only `CoherenceRule`:
+
+```rust
 pub trait CoherenceRule<A: MarkingScheme, B: MarkingScheme>: Send + Sync {
     fn check_coherence(&self, a: &A::Canonical, b: &B::Canonical, ctx: &CoherenceContext)
         -> Vec<CoherenceDiagnostic>;
 }
-
-pub struct MultiGrammarEngine { /* Vec<Engine<_>> erased, translator registry */ }
-//  - runs each grammar's single-scheme rules independently,
-//  - then runs coherence rules over the joint result,
-//  - routes a candidate to the grammar that claims it (D8 ownership routing).
 ```
-
-`Diagnostic` is grammar-erased (or tagged) for multi-scheme `LintResult`/`FixResult` (T2-1/T2-2).
 
 ## Two-scope reconciliation (Phase E)
 
@@ -64,8 +87,17 @@ Releasability = Product<CuiReleasability, CapcoIcDissem>  joined COMPONENTWISE
   (Banner side is lossy ⇒ a single shared scalar is forbidden; Product forces two retained components.)
 ```
 
+**Lattice shape (LV4, research D6/D12)**: the `Product` implements `JoinSemilattice` only — plus
+`BoundedJoinSemilattice` via the two factors' bottoms. It MUST NOT implement `BoundedLattice`:
+`CuiReleasability`'s LDC set is agency-extensible/open (no lawful finite top), exactly as
+`SciSet`/`SarSet`. The additive monotone NOFORN closure converges without a top. No lattice-trait
+surface change.
+
 **Worked example** (memo; IC-side authority CAPCO-2016 §H.7/§H.8; CUI-side source-pending):
-`CUI//FEDCON` + `C//RELIDO` → banner `CONFIDENTIAL//NOFORN` + CUI block `LDC: FEDCON`.
+`CUI//FEDCON` + `C//RELIDO` → banner `CONFIDENTIAL//NOFORN` + CUI block `LDC: FEDCON`. **Validated
+in Phase E against a synthetic `StubScheme`** (an invented non-IC control), NOT a real CUI grammar
+— the test asserts the `Product`+closure *mechanism*, never the unverified FEDCON⇒NOFORN mapping
+(FR-026; encoding it would violate Constitution VIII).
 
 ## #128 unification
 
@@ -76,8 +108,10 @@ caveat vocabulary is **source-pending**.
 
 ## Constitution VII guard
 
-`marque-scheme` gains only `Translate`/`CoherenceRule` trait surfaces + the existing `Product`
-constructor — no domain vocabulary, no `marque-ism` dependency. `CuiReleasability` and the
-FEDCON⇒NOFORN closure are declared in the domain crates / engine, not the leaf. A future
-`marque-cui` crate sits **alongside** `marque-ism` as a peer foundation (Constitution VII), not
-below it.
+`marque-scheme` gains only the `CoherenceRule` trait surface + the existing `Product`
+constructor — no domain vocabulary, no `marque-ism` dependency, and **no new lattice-trait
+surface** (the releasability `Product` uses the existing `JoinSemilattice`/`Product` machinery;
+LV4). The `ErasedScheme`/`ErasedEngine` shim and `MultiGrammarEngine` live in `marque-engine`
+(model b), not the leaf. `CuiReleasability` and the FEDCON⇒NOFORN closure are declared in the
+domain crates / engine, not the leaf. A future `marque-cui` crate sits **alongside** `marque-ism`
+as a peer foundation (Constitution VII), not below it.

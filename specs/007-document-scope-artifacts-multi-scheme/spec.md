@@ -207,10 +207,17 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
   per CAPCO-2016 §C.4 p33: "N/A to [RD/FRD/TFNI...] [and NATO, if appropriate] portions...").
 - Single-page commingled document: NSI source list may appear at bottom, separate from CAB
   (§C.4 p33) — flag for the implementer, out of scope for basic detection.
-- Pure-NATO document (no US CAB): §C.5 does not apply (no US CAB exists).
+- Pure-NATO document (no US CAB): §C.5 does not apply (no US CAB exists). A §C.5 string that
+  *is* present in such a document is reported as `PresentNotRequired`, not `Present` (FR-002).
 - Entirely-`(U)` document: portion marks not required (#420).
 - Malformed page-break candidate: `DocumentContext`/`PageContext` reset must occur BEFORE parse
   (existing invariant, preserved).
+- Document boundary in a multi-document buffer: a *document* boundary is the **input boundary**
+  (one `lint`/`fix` call = one document = one `id` in batch), NOT a scanner-emitted candidate.
+  The scanner emits `MarkingType::PageBreak` only; `DocumentContext` is constructed fresh per
+  input and resets only at the page boundaries within that input. There is no in-buffer
+  document-delimiter heuristic (a concatenated multi-document buffer is a caller error, not a
+  supported input). See `contracts/document-artifact.md`.
 
 ## Requirements *(mandatory)*
 
@@ -219,8 +226,18 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
 **Document-artifact model (US1)**
 - **FR-001**: Document-scoped artifacts MUST be modeled as typed nodes distinct from the
   marking pivot type; CAB MUST be decoupled from `CanonicalAttrs`/`ProjectedMarking`.
-- **FR-002**: Each artifact node MUST carry one of four states: `Present(parsed)`,
-  `AbsentButRequired`, `AbsentNotRequired`, `PresentNonCanonical`.
+- **FR-002**: Each artifact node MUST carry one of five states: `Present(parsed)`,
+  `PresentNonCanonical(parsed)`, `AbsentButRequired`, `AbsentNotRequired`,
+  `PresentNotRequired(parsed)`. The state set is the product of two orthogonal axes —
+  *presence* (absent / present-canonical / present-non-canonical) × *requirement*
+  (required / not-required) — with the absent×{required,not-required} and
+  present×{required,not-required} cells enumerated. `PresentNotRequired` is the
+  present-but-superfluous cell (e.g. a §C.5 NATO `Declassify On` string in a pure-NATO
+  document where §C.5 does not apply); it keeps "present-but-should-not-be" a node state
+  rather than an out-of-band rule, preserving the absence-is-a-state uniformity (research
+  D2). `ArtifactState` is a status enum, NOT a lattice — one recognizer produces one
+  state; states of the same node are never joined (lattice-consultant verdict, research
+  D12).
 - **FR-003**: A document-scope aggregate (`DocumentContext`) MUST exist as the analogue of
   `PageContext`, holding artifact nodes; it MUST reset at scanner page/document boundaries
   consistent with the existing `PageContext` reset invariant.
@@ -246,14 +263,32 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
   routing AND document-scope releasability.
 - **FR-022**: The releasability relationship MUST be modeled as a componentwise join over a
   `Product` of the two schemes' dissem axes plus a monotone cross-component NOFORN closure
-  (lattice-consultant verdict, see `research.md`); each regime renders its own projection.
+  (lattice-consultant verdict, see `research.md` D6); each regime renders its own projection.
+  The `Product` MUST implement `JoinSemilattice` only (plus `BoundedJoinSemilattice` when both
+  factors have a bottom) and MUST NOT implement `BoundedLattice` — `CuiReleasability`'s LDC set
+  is agency-extensible/open (no lawful finite top), exactly as `SciSet`/`SarSet` already are
+  (research D6 amendment). No new lattice-trait surface is introduced.
 - **FR-023**: A token a scheme rejects MUST be offered to co-active schemes before junk-recovery
   consumes it (no silent marking loss); misplaced tokens with a home elsewhere MUST be
-  relocated, not evicted.
+  relocated, not evicted. **Contention precedence** when more than one scheme is co-active:
+  (a) if exactly one co-active scheme **accepts** the rejected token, it is routed there;
+  (b) if **two or more** schemes accept it in the same portion, that is the mutually-exclusive
+  cross-grammar case → portion-scope conflict (FR-024), never a silent pick; (c) if **no**
+  scheme accepts it, it falls to junk-recovery with the unchanged `DocumentContent` confidence.
+  Scheme registration order MUST NOT be a tie-breaker (it would make resolution
+  registration-order-dependent and non-deterministic across callers); ties are always surfaced
+  as conflicts, not resolved by precedence.
 - **FR-024**: `(S//CUI)` MUST produce a portion-scope cross-grammar conflict with no auto-fix;
   the relocate suggestion is human-confirmed.
 - **FR-025**: `marque-scheme` MUST remain domain-neutral (Constitution VII); cross-scheme
   reconciliation lives in `marque-engine` (model b).
+- **FR-026**: Phase E (co-residence) MUST land against a **synthetic test-only second scheme**
+  (`StubScheme`, an invented non-IC control with no claimed NARA/ISOO/CAPCO authority), NOT a
+  real CUI grammar. Co-residence acceptance MUST exercise the `Product`+closure *mechanism* and
+  the relocate-not-evict *flow* without asserting any real CUI semantic (the FEDCON⇒NOFORN
+  mapping and LDC ordering remain source-pending until the `marque-cui` crate holds its
+  governing policy). Encoding an unverified CUI mapping in a passing test fixture is a
+  Constitution VIII violation; the synthetic scheme is how Phase E ships without committing one.
 
 **Input boundary (US4)**
 - **FR-030**: An `InputAdapter` trait MUST exist in `marque-scheme` producing canonical form (or
@@ -261,6 +296,13 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
   inputs.
 - **FR-031**: `InputSource` (#176) MUST be promoted to `marque-scheme` and carried via
   `InputContext`; recognition provenance MUST license fix-assertiveness per the #176 matrix.
+  **WASM stance (Constitution III)**: `InputSource` raises the recognizer's lone-case posterior
+  and licenses assertive fixes, so a WASM caller supplying `StructuredField` from behind
+  postMessage would be caller-provided posterior modulation on an uninspected trust boundary —
+  precisely what Constitution III forbids the WASM target from accepting at runtime. Therefore
+  the WASM build MUST pin `InputSource::DocumentContent` (compiled-in default; the
+  `--input-source`/per-request opt-in exists for CLI and server only, where the caller is a
+  trusted operator). The WASM API MUST NOT expose an `InputSource` parameter.
 - **FR-032**: Corrections MUST carry a `RepairKind` (text-span vs. schema-attribute vs.
   structured-emit) so schema inputs are corrected type-safely.
 
@@ -299,25 +341,37 @@ assert the canned-string rule fires and proposes the §C.4 string at high confid
 See `data-model.md` for the full type catalog. Summary:
 - **DocumentArtifact** — a scope-tagged, typed node with an `ArtifactState`; the CAB,
   declassify-on, notice, and caveat-layer are instances.
-- **ArtifactState** — `Present | AbsentButRequired | AbsentNotRequired | PresentNonCanonical`.
+- **ArtifactState** — `Present | PresentNonCanonical | AbsentButRequired | AbsentNotRequired |
+  PresentNotRequired` (presence × requirement product; status enum, not a lattice).
 - **DerivationEdge** — an inbound relation (rollup, requirement, source-derivation) into a node.
-- **DocumentContext** — document-scope aggregate (analogue of `PageContext`).
+- **DocumentContext** — document-scope aggregate (analogue of `PageContext`); rolls page-level
+  joins up to document scope, reusing the observational-state lattice types (`DissemSet`,
+  `JointSet`) so unanimity/supersession survive the fold (research D12 / LV3).
+- **DeclassifyOn value** — `Product<DeclassInstruction, CannedAnnotationSet>`: a date-or-exemption
+  axis (`MaxDate` date chain + exemption codes as a flat antichain above all dates) and a
+  canned-string annotation axis (`FlatSet` of §C.4/§C.5 scope-qualifiers), joined componentwise —
+  NOT a single most-conservative chain (research D12 / LV2; `security-lattice.md` §8).
 - **RecognitionProvenance** / **ValueDerivation** — the two orthogonal provenance axes.
 - **InputAdapter / StructuredDocument / DocumentLayer / RepairKind / InputSource** — the input
   boundary.
-- **Scheme-set container / Translate / CoherenceRule** — multi-scheme co-residence.
+- **Scheme-set container / ErasedScheme / CoherenceRule** — multi-scheme co-residence.
+  (`Translate` is **cut from this feature** — it has no in-scope consumer; the deferred
+  cross-system path adds it later. See `contracts/multi-scheme.md`.)
 
 ## Success Criteria *(mandatory)*
 
 These operationalize the memo's "what the refactor must honor now" list.
 
-- **SC-001**: A CAB no longer occupies any field on `CanonicalAttrs`/`ProjectedMarking`; the
-  "page aggregate, not a CAB" null-out comment is gone, replaced by a distinct node type.
-  (Verified by absence of CAB fields on the pivot type + a node-type test.)
+- **SC-001**: A CAB no longer occupies any field on `CanonicalAttrs`/`ProjectedMarking`,
+  verified by a type-level test asserting the pivot type has no CAB fields plus a node-type test
+  asserting the CAB parses to a `DocumentArtifact`. (The "page aggregate, not a CAB" null-out
+  comment and the fields it described are removed as a consequence, not as the criterion.)
 - **SC-002**: A document container holds scheme-tagged layers whose schemes may differ; a test
   registers two schemes and routes portions to each. (FR-020)
 - **SC-003**: Cross-scheme reconciliation is demonstrably present at **both** scopes
-  (portion-ownership routing test + document-releasability join test). (FR-021/022)
+  (portion-ownership routing test + document-releasability join test), using the synthetic
+  `StubScheme` (FR-026) — the join test asserts the `Product`+closure *mechanism* (a non-IC
+  control floors the IC component to NOFORN), NOT any real CUI mapping. (FR-021/022/026)
 - **SC-004**: A misplaced token with a home elsewhere is relocated (or flagged), never silently
   discarded — verified by a `(S//CUI)` no-silent-loss test. (FR-023/024)
 - **SC-005**: The declassify-on/derived-from node exposes a reserved bundle-scope inbound edge
@@ -330,10 +384,32 @@ These operationalize the memo's "what the refactor must honor now" list.
   (`crates/engine/tests/audit_g13_canary.rs`) still passes. (FR-060)
 - **SC-007**: At least one absent-node-with-inbound-edge case is filled (fix) and one
   absent-node-without-edge case is flag-only, in the same harness. (FR-013)
-- **SC-008**: Interactive-latency p95 ≤ 16 ms and linear fix throughput gates still pass
-  (Constitution I; no regression from the new document-scope pass).
+- **SC-008a** *(single-scheme, no-regression)*: Interactive-latency p95 ≤ 16 ms and linear fix
+  throughput gates still pass for single-scheme CAPCO processing — no regression from the new
+  document-scope pass, the derivation-DAG evaluation, or the #420 absence pass (Constitution I).
+  A dedicated benchmark covers the #420 whole-document absence scan, since detecting *missing*
+  marks is new O(blocks) work not present today.
+- **SC-008b** *(multi-scheme, budgeted)*: Co-residence runs N scheme engines plus the
+  reconciliation pass on the hot path. A new `multi_scheme_latency` benchmark establishes the
+  two-scheme p95 budget (the single-scheme 16 ms gate is NOT assumed to hold unchanged under
+  the O(schemes) multiplier); the budget is recorded as the gate, and regressions against it
+  fail CI. (Constitution I; the multiplier is measured, not assumed.)
 - **SC-009**: §C.4/§C.5 canned-string rules fire on AEA/NATO commingling with citations
   verified against `crates/capco/docs/CAPCO-2016.md`. (FR-050)
+- **SC-010** *(input boundary, US4)*: The same `(YS)` value fed as `InputSource::StructuredField`
+  recovers assertively (cap 0.95) while as a lone `DocumentContent` it stays a low-confidence
+  suggestion (~0.50), per the #176 matrix; a `SchemaDocument` input bypasses scanner+recognizer
+  and produces canonical form field-by-field; the WASM build rejects any non-`DocumentContent`
+  `InputSource` (FR-031 WASM stance). (FR-030/031/032)
+- **SC-011** *(mode taxonomy, US5)*: With `[engine] severity_cap = "suggest"` no `Fix`-default
+  rule auto-applies while per-rule `[rules]` overrides still win; with `fix_zones = ["body"]`
+  banner/CAB-zone fixes are not promoted though diagnostics still emit for all zones; with
+  `deployment = "archival"` + `as_of` + `ArchivalIntent::ValidateForEra` rules postdating `as_of`
+  are suppressed and no rewrites apply. (FR-040/041/042/043)
+- **SC-012** *(reverse validation + caveat layer, US2/US6)*: A document "classified up to" front
+  marking validated in reverse against all pages' markings reports divergence (FR-015); a #128
+  second-banner-line caveat is recognized on its own line as the same releasability-escrow
+  surface as the CUI `LDC` value set (FR-052), distinct from the dissem block.
 
 ## Out of Scope / Deferred
 
@@ -345,6 +421,11 @@ These operationalize the memo's "what the refactor must honor now" list.
   and the reversal pass land later.
 - Full CUI grammar (`marque-cui` crate), its vocabulary, LDC ordering, and the
   FEDCON⇒NOFORN-specific mapping — source-pending; this feature lands only the domain-neutral
-  co-residence infrastructure.
+  co-residence infrastructure, exercised by a synthetic `StubScheme` (FR-026).
+- The `Translate<A, B>` cross-scheme translation trait — **cut from this feature** (YAGNI),
+  tracked in **#829** as a blocker for ISM→DoD XML round-trips. D1/D6 reject translate-then-join
+  for releasability, and `Translate`'s only real consumers (cross-system marking translation,
+  ISM→DoD XML round-trips) are deferred. Co-residence uses `CoherenceRule` only. `Translate` lands
+  with the deferred cross-system path (#829).
 - `marque-extract` Kreuzberg backend (licensing-gated, unrelated).
 - Server auth/logging middleware.
