@@ -17,7 +17,12 @@ WASM-safe crates: `crates/{scheme,ism,core,rules,capco}`. Engine: `crates/engine
 
 ## Phase 0 — Domain-neutral scaffolding (BLOCKING foundation) 🎯
 
-*Pure additive type surface in the WASM-safe leaf crates; testable in isolation. Gates everything.*
+*Mostly new additive type surface in the WASM-safe leaf crates; testable in isolation. Gates
+everything. One exception: the T006 `ReplacementIntent` edit (new `prior` field + `Relocate`
+variant) is **source-breaking** for in-tree match/construction sites — bundle it with the Phase-B
+breaking window, and add `#[non_exhaustive]` to `ReplacementIntent` while there. The brand-new
+types (`ArtifactState`, `DocumentArtifact`, `DerivationEdge`, the `SchemeArtifacts` ext trait,
+`Scope::Bundle`) are genuinely additive.*
 
 - [ ] T001 [P] [0] Add `Scope::Bundle` variant to `crates/scheme/src/scope.rs`; update all
   exhaustive matchers; doc the additive-minor-version rationale (research D11). Test: exhaustive

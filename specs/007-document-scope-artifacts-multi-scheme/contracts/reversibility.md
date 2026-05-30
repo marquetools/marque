@@ -30,10 +30,16 @@ pub struct RelocatePriorState<S: MarkingScheme + ?Sized> { pub token: FactRef<S>
 ```
 
 **`Recanonicalize.prior` is `Option<_>` in Phase 0 on purpose, and that bounds what SC-006
-claims.** `Recanonicalize` already exists in-tree without pre-state; making the field
-non-optional would break every existing construction site at once, so Phase 0 lands it as
-`Option` (additive — existing sites pass `None`). A `prior: None` record is therefore **not**
-reversible from the log. Two consequences, both explicit:
+claims.** Be precise about what `Option` buys: adding the `prior` field to the existing
+`Recanonicalize` variant (and adding the `Relocate` variant) is a **source-breaking** change to
+`ReplacementIntent` — every construction, `match`, `Debug`, and `Clone` site must be updated to
+pass/handle the new shape, regardless of `Option`. `Option` only defers *populating the value*
+(existing sites pass `prior: None`); it does **not** make the change source-compatible. These
+`ReplacementIntent` edits therefore land in the same breaking window as the Phase-B trait
+generification, not as a free additive add. (`ReplacementIntent` SHOULD also gain
+`#[non_exhaustive]` so future variant additions don't re-break external matchers.) A
+`prior: None` record is moreover **not** reversible from the log. Two consequences, both
+explicit:
 
 - **SC-006 is scoped to intents whose pre-state is populated** — it verifies the round-trip for
   `FactAdd`/`FactRemove` (always self-inverting) and for `Recanonicalize`/`Relocate` whose

@@ -17,12 +17,13 @@ pub enum ArtifactState<P> {
     AbsentNotRequired,
 }
 
-pub struct DocumentArtifact<S: MarkingScheme + ?Sized> {
+pub struct DocumentArtifact<S: SchemeArtifacts + ?Sized> {
     pub kind: ArtifactKind,
     pub scope: Scope,                              // Document | Bundle
-    pub state: ArtifactState<S::ArtifactPayload>,  // new associated type on MarkingScheme
+    pub state: ArtifactState<S::ArtifactPayload>,  // ArtifactPayload from the SchemeArtifacts ext trait
     pub derivation: ValueDerivation,
     pub inbound: Box<[DerivationEdge]>,
+    pub span: Option<marque_scheme::Span>,          // present-node source location; None when absent
 }
 ```
 

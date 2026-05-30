@@ -143,7 +143,10 @@ graph TD
 ### Phase detail pointers
 
 - **Phase 0** is the blocking foundation and the only phase that *must* land before everything
-  else; it is pure additive type-surface in the WASM-safe leaf crates, testable in isolation.
+  else; it is mostly new additive type-surface in the WASM-safe leaf crates, testable in
+  isolation. The one source-breaking piece is the `ReplacementIntent` edit (new `prior` field +
+  `Relocate` variant) — sequenced into the Phase-B breaking window, with `#[non_exhaustive]` added
+  to `ReplacementIntent` to keep future variant additions non-breaking for external matchers.
 - **Phases A and B fan out** from 0 and can proceed in parallel (different crates/seams).
 - **Phase C → D** (derivation layer must exist before CAB becomes a node consuming it) and
   **B,C → E** (co-residence needs both the generic engine and the document-scope layer).
