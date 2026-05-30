@@ -47,10 +47,9 @@ pub struct DocumentArtifact<S: MarkingScheme + ?Sized> {
 ```
 *Satisfies*: FR-001, FR-002 (US1). *Issues*: #799, #420, #128. **WASM.**
 
-> `Span` lives in `marque-ism`, which `marque-scheme` cannot import. Either (a) keep
-> `DocumentArtifact` generic over a `Loc` associated type the scheme supplies, or (b) move the
-> span offset pair into a tiny scheme-local `ByteRange`. **Decision deferred to implementation**;
-> default to (a) to preserve the leaf boundary. Flag in contracts/document-artifact.md.
+> `Span` is **defined in `marque-scheme`** (`crates/scheme/src/span.rs`) and re-exported by
+> `marque-ism`, so `DocumentArtifact` uses `marque_scheme::Span` directly with no leaf-boundary
+> issue and no `Loc`/`ByteRange` workaround.
 
 ### Phase 0 — derivation edges & provenance axes
 
@@ -100,6 +99,28 @@ Additive minor-version variant; `Scope` is intentionally not `#[non_exhaustive]`
 Reserves the #823 bundle→document edge. `RecanonScope` MAY gain `Bundle` later if needed.
 *Satisfies*: FR-061, SC-005. **WASM.**
 
+### Phase 0 — fix-intent reversibility pre-state (#824 rough-in)
+
+`ReplacementIntent`/`FactRef`/`RecanonScope` live in `marque-scheme`
+(`crates/scheme/src/fix_intent.rs`) — kept here, not in `marque-rules`, to avoid a scheme↔rules
+dependency cycle.
+
+```rust
+pub enum ReplacementIntent<S: MarkingScheme + ?Sized> {
+    FactAdd { token: FactRef<S>, scope: Scope /*, inverse implicit: remove token */ },
+    FactRemove { facts: SmallVec<[FactRef<S>; 2]>, scope: Scope /* inverse implicit: re-add */ },
+    Recanonicalize { scope: RecanonScope, prior: Option<RecanonPriorState<S>> },   // NEW reserved field
+    Relocate { from: Scope, to: Scope, token: FactRef<S>, prior: RelocatePriorState<S> }, // NEW variant (D8)
+}
+pub struct RecanonPriorState<S: MarkingScheme + ?Sized> { prior_tokens: Box<[FactRef<S>]>, prior_span: Span, digest: [u8; 32] }
+pub struct RelocatePriorState<S: MarkingScheme + ?Sized> { token: FactRef<S>, origin_span: Span, digest: [u8; 32] }
+```
+`RecanonPriorState`/`RelocatePriorState` carry only audit-permitted terms (token canonicals,
+category IDs, `Span` offsets, BLAKE3 digests) — content-ignorant. Realization (the reversal pass +
+`marque-3.x` audit-schema bump) is **deferred (#824)**; Phase 0 only lands the reserved fields so
+the later bump is additive.
+*Satisfies*: FR-060, SC-006. **WASM.**
+
 ### Phase A — input boundary
 
 ```rust
@@ -113,16 +134,16 @@ pub struct InputContext<'a> {
     _phantom: PhantomData<&'a ()>,
 }
 
-pub trait InputAdapter: Send + Sync {
+pub trait InputAdapter<S: MarkingScheme>: Send + Sync {
     type Input; type Error: std::error::Error + Send + Sync + 'static;
-    fn adapt(&self, input: &Self::Input) -> Result</*S::Canonical*/_, Self::Error>;
+    fn adapt(&self, input: &Self::Input) -> Result<S::Canonical, Self::Error>;
     fn adapt_document(&self, input: &Self::Input)
-        -> Result<StructuredDocument</*S*/>, Self::Error> { /* default: single layer */ }
+        -> Result<StructuredDocument<S>, Self::Error> { /* default: single layer */ }
     fn input_source(&self) -> InputSource;
 }
 
-pub struct StructuredDocument<S> { pub layers: Vec<DocumentLayer<S>> }
-pub struct DocumentLayer<S> { pub canonical: /*S::Canonical*/_, pub repair_kind: RepairKind, pub label: &'static str }
+pub struct StructuredDocument<S: MarkingScheme> { pub layers: Vec<DocumentLayer<S>> }
+pub struct DocumentLayer<S: MarkingScheme> { pub canonical: S::Canonical, pub repair_kind: RepairKind, pub label: &'static str }
 pub enum RepairKind { TextSpan, SchemaAttribute { field_path: &'static str }, StructuredEmit }
 ```
 Also add `#[non_exhaustive]` to `ParseContext` (#176 staging step 1).
@@ -180,21 +201,9 @@ Remove `pub use marque_ism::{DocumentPosition, MarkingType, Zone};` re-exports. 
 and `FeatureId` gain `#[non_exhaustive]` + `Grammar { grammar_id: &'static str, variant: u32 }`.
 *Satisfies*: FR-020; #641 T1-1/T1-2/T2-3/T2-4. **WASM.**
 
-### Phase 0 — fix-intent reversibility pre-state (#824 rough-in)
-
-```rust
-pub enum ReplacementIntent<S: MarkingScheme + ?Sized> {
-    FactAdd { token: FactRef<S>, scope: Scope /*, inverse implicit: remove token */ },
-    FactRemove { facts: SmallVec<[FactRef<S>; 2]>, scope: Scope /* inverse implicit: re-add */ },
-    Recanonicalize { scope: RecanonScope, prior: Option<RecanonPriorState> },   // NEW reserved field
-    Relocate { from: Scope, to: Scope, token: FactRef<S>, prior: RelocatePriorState }, // NEW variant (D8)
-}
-```
-`RecanonPriorState`/`RelocatePriorState` carry only audit-permitted terms (token canonicals,
-category IDs, span offsets, BLAKE3 digests) — content-ignorant. Realization (the reversal pass +
-`marque-3.x` audit-schema bump) is **deferred (#824)**; Phase 0 only lands the reserved fields so
-the later bump is additive.
-*Satisfies*: FR-060, SC-006. **WASM.**
+> The fix-intent reversibility pre-state (#824 rough-in) is **not** in `marque-rules` —
+> `ReplacementIntent`/`FactRef` are defined in `marque-scheme` (`crates/scheme/src/fix_intent.rs`,
+> to avoid a scheme↔rules cycle). See that subsection under `marque-scheme` above.
 
 ---
 
@@ -220,7 +229,7 @@ the later bump is additive.
 
 ### Phase D — `parse_cab` becomes an artifact-node producer
 
-`parse_cab` (`crates/core/src/parser.rs:186`) stops emitting a `CanonicalAttrs` tagged
+`parse_cab` (in `crates/core/src/parser.rs`) stops emitting a `CanonicalAttrs` tagged
 `MarkingType::Cab` and instead produces the `Cab` artifact payload + node state.
 
 ### Phase G — absence-detect recognizers (#420)
@@ -253,7 +262,7 @@ node states; they do not invent content (D4 → flag-only).
 
 ### Phase B — generification & scheme-set
 
-- `Engine<S>` actually uses `S` (eliminate the `drop(scheme)` bridge at `engine.rs` ~520–567,
+- `Engine<S>` actually uses `S` (eliminate the `drop(scheme)` construction bridge in `engine.rs`,
   #641 T1-3). `LintResult`/`FixResult` carry grammar-erased or generic diagnostics (T2-1).
 - `MultiGrammarEngine` wrapping multiple `Engine<S>` instances + a translator registry; runs
   single-grammar rules independently then coherence rules over the joint result (T1-7).

@@ -27,7 +27,7 @@ Tech Stack / `deny.toml`).
 **Target Platform**: native + WASM. The WASM-safe set (`marque-ism`, `marque-core`,
 `marque-rules`, `marque-scheme`, `marque-capco`) MUST stay WASM-safe (Constitution III).
 **Project Type**: Rust workspace (compiler/library + CLI + server + WASM).
-**Performance Goals**: interactive p95 ≤ 16 ms (SC-001 harness); linear fix throughput (SC-005).
+**Performance Goals**: interactive p95 ≤ 16 ms; linear fix throughput. Both gated by SC-008 (no regression from the new document-scope pass).
 **Constraints**: zero-copy streaming core; audit content-ignorance (G13); acyclic crate graph.
 **Scale/Scope**: a phased program across all WASM-safe crates + engine + integration surfaces;
 ~9 phases (0, A–H) plus two deferred groups.
@@ -76,9 +76,11 @@ specs/007-document-scope-artifacts-multi-scheme/
 crates/
 ├── scheme/      # Phase 0/A/B(T3)/E primitives: ArtifactState, DocumentArtifact, DerivationEdge,
 │                #   Scope::Bundle, InputSource/InputContext/InputAdapter, RecognitionProvenance,
-│                #   ValueDerivation, Translate/CoherenceRule, T3 renames. LEAF — no marque-ism dep.
+│                #   ValueDerivation, Translate/CoherenceRule, T3 renames, AND the fix-intent
+│                #   pre-state fields (#824) — ReplacementIntent lives in scheme/src/fix_intent.rs.
+│                #   LEAF — no marque-ism dep.
 ├── rules/       # Phase B: Rule<S> generification (T1-1/T1-2), MessageTemplate/FeatureId
-│                #   #[non_exhaustive] + Grammar escape (T2), fix-intent pre-state fields (#824).
+│                #   #[non_exhaustive] + Grammar escape (T2).
 ├── ism/         # Phase D: CAB node off CanonicalAttrs; DocumentContext shape; declassify-on node.
 ├── core/        # Phase D/G: parse_cab → artifact-node producer; absence-detect recognizers (#420).
 ├── capco/       # Phase D/E/G: CapcoScheme artifact/edge declarations; §C.4/§C.5 rules; co-residence.
@@ -127,7 +129,7 @@ graph TD
 
 | Phase | Scope | Issues | Crates | Gates on |
 |-------|-------|--------|--------|----------|
-| **0** | Domain-neutral scaffolding: `ArtifactState`, `DocumentArtifact`, `DerivationEdge`, `Scope::Bundle`, two provenance axes, fix-intent pre-state fields | memo "must honor now"; #824/#823 rough-in | scheme, rules | — |
+| **0** | Domain-neutral scaffolding: `ArtifactState`, `DocumentArtifact`, `DerivationEdge`, `Scope::Bundle`, two provenance axes, fix-intent pre-state fields | memo "must honor now"; #824/#823 rough-in | scheme | — |
 | **A** | Input boundary: `InputAdapter`, `StructuredDocument`/`DocumentLayer`/`RepairKind`, promote `InputSource` + `InputContext`, #176 confidence calibration | #643, #641 T1-8, #176 | scheme, engine | 0 |
 | **B** | Multi-scheme generification: `Rule<S>::check(&S::Canonical,…)`, `RuleContext<S>`, `Engine<S>`, scheme-set container, T2 `#[non_exhaustive]`+`Grammar` escapes, T3 renames, T4 config/entry wiring | #641 T1/T2/T3/T4 | rules, engine, config, capco, wasm, server, cli | 0 |
 | **C** | Document-scope derivation layer: `DocumentContext`, derivation DAG (extend scheduler), absence-as-state, cascade-recorded derivations, reverse validation, "classified up to" front marking | #799 | scheme, engine | 0, A |

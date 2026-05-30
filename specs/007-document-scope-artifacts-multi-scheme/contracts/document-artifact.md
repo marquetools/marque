@@ -26,10 +26,9 @@ pub struct DocumentArtifact<S: MarkingScheme + ?Sized> {
 }
 ```
 
-**Open implementation question (flagged in data-model.md)**: `DocumentArtifact` must carry a
-source location but `marque-scheme` cannot import `marque_ism::Span` (leaf boundary). Resolve by
-either a `Loc` associated type the scheme supplies, or a scheme-local `ByteRange { start, end }`.
-Default: associated `Loc` to preserve the leaf.
+**Source location**: `DocumentArtifact` carries `Option<marque_scheme::Span>`. `Span` is defined
+in `marque-scheme` (`crates/scheme/src/span.rs`) and re-exported by `marque-ism`, so the leaf
+crate already owns the type — no `Loc` associated type or `ByteRange` workaround is needed.
 
 **New `MarkingScheme` members (additive)**:
 ```rust

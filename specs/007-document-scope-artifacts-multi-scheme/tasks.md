@@ -30,12 +30,13 @@ WASM-safe crates: `crates/{scheme,ism,core,rules,capco}`. Engine: `crates/engine
   `crates/scheme/src/` (depends T001 for `Scope`). Tests: edge declares `reads`/`writes`.
 - [ ] T005 [0] Add `DocumentArtifact<S>` + new `MarkingScheme` members `type ArtifactPayload`,
   `document_artifacts()`, `derivation_edges()` (default empty) in `crates/scheme/src/scheme.rs`.
-  Resolve the `Span`-vs-leaf question (associated `Loc`, per contract). Tests: a stub scheme
-  declares one artifact.
-- [ ] T006 [P] [0] `marque-rules`: add reserved reversibility pre-state — `Recanonicalize { prior }`
-  field + `Relocate { .. }` variant + `RecanonPriorState`/`RelocatePriorState` to
-  `crates/scheme/src/fix_intent.rs` (content-ignorant fields only). Tests: token-level round-trip
-  invert; G13 surface unchanged. *(#824 rough-in)*
+  Source location uses `marque_scheme::Span` directly (defined in `crates/scheme/src/span.rs`;
+  no `Loc`/`ByteRange` workaround needed). Tests: a stub scheme declares one artifact.
+- [ ] T006 [P] [0] `marque-scheme`: add reserved reversibility pre-state — `Recanonicalize { prior }`
+  field + `Relocate { .. }` variant + `RecanonPriorState<S>`/`RelocatePriorState<S>` to
+  `crates/scheme/src/fix_intent.rs` (where `ReplacementIntent`/`FactRef` already live — kept in
+  scheme, not rules, to avoid a scheme↔rules cycle; content-ignorant fields only). Tests:
+  token-level round-trip invert; G13 surface unchanged. *(#824 rough-in)*
 - [ ] T007 [0] Update `CapcoScheme` to satisfy the new `MarkingScheme` members with empty/default
   catalogs (no behavior change yet). Tests: existing capco suite still green.
 - [ ] T008 [0] Doc + registration-pin update note: confirm no rule-count change (the 32-rule pin
@@ -71,7 +72,8 @@ green; no engine edits yet.
   `RuleContext<S>` generic; remove `pub use marque_ism::{..}` re-exports
   (`crates/rules/src/lib.rs`). Tests: a stub non-CAPCO rule compiles.
 - [ ] T021 [B] T1-3: generify `Engine<S>`; eliminate the `drop(scheme)` bridge
-  (`crates/engine/src/engine.rs` ~520–567). Tests: a custom `S` reaches `page_rewrites()`.
+  (the `drop(scheme)` construction bridge in `crates/engine/src/engine.rs`). Tests: a custom `S`
+  reaches `page_rewrites()`.
 - [ ] T022 [P] [B] T1-4: `scheme.constraint_rule_id(label) -> RuleId`; `bridge_constraint_diagnostic`
   delegates. Tests: two label namespaces map distinctly.
 - [ ] T023 [P] [B] T1-5/T1-6: `ScanStrategy`/`ParseStrategy` injection points
@@ -127,7 +129,7 @@ green; no engine edits yet.
   original-CAB vs derivative-CAB as two inbound edges into one node.
 - [ ] T041 [D] Remove CAB-only fields from `CanonicalAttrs` as marking fields; delete the "page
   aggregate, not a CAB" null-out in `crates/ism/src/projected.rs`. Update all readers.
-- [ ] T042 [D] `parse_cab` (`crates/core/src/parser.rs:186`) produces the `Cab` artifact node +
+- [ ] T042 [D] `parse_cab` (in `crates/core/src/parser.rs`) produces the `Cab` artifact node +
   state instead of a `MarkingType::Cab`-tagged `CanonicalAttrs`. Tests: well-formed CAB → `Present`;
   malformed declassify → `PresentNonCanonical`.
 - [ ] T043 [D] Declassify-on node with multiple inbound edges (structural / derived-max[reserved] /

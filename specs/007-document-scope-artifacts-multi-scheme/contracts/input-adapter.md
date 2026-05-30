@@ -46,23 +46,23 @@ pub struct InputContext<'a> {
 ## `InputAdapter` (Phase A, #643)
 
 ```rust
-pub trait InputAdapter: Send + Sync {
+pub trait InputAdapter<S: MarkingScheme>: Send + Sync {
     type Input;
     type Error: std::error::Error + Send + Sync + 'static;
 
     /// Scenario B (structured field) / C (schema document): direct to canonical.
-    fn adapt(&self, input: &Self::Input) -> Result</*S::Canonical*/_, Self::Error>;
+    fn adapt(&self, input: &Self::Input) -> Result<S::Canonical, Self::Error>;
 
     /// Scenario D (hybrid): multi-layer document. Default: single layer via `adapt`.
     fn adapt_document(&self, input: &Self::Input)
-        -> Result<StructuredDocument</*S*/>, Self::Error> { /* default delegates to adapt */ }
+        -> Result<StructuredDocument<S>, Self::Error> { /* default delegates to adapt */ }
 
     fn input_source(&self) -> InputSource;
 }
 
-pub struct StructuredDocument<S> { pub layers: Vec<DocumentLayer<S>> }
-pub struct DocumentLayer<S> {
-    pub canonical: /*S::Canonical*/_,
+pub struct StructuredDocument<S: MarkingScheme> { pub layers: Vec<DocumentLayer<S>> }
+pub struct DocumentLayer<S: MarkingScheme> {
+    pub canonical: S::Canonical,
     pub repair_kind: RepairKind,
     pub label: &'static str,             // "metadata" | "body" | ...
 }

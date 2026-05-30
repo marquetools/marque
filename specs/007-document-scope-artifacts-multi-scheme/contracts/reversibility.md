@@ -4,7 +4,11 @@
 that the later reversal pass + audit-schema bump is *additive*, not breaking. The contract below
 fixes the shape of those reserved fields.
 
-## Reserved fix-intent pre-state (`marque-rules`, Phase 0)
+## Reserved fix-intent pre-state (`marque-scheme`, Phase 0)
+
+`ReplacementIntent`/`FactRef`/`RecanonScope` are defined in `marque-scheme`
+(`crates/scheme/src/fix_intent.rs`), kept there rather than in `marque-rules` to avoid a
+scheme↔rules dependency cycle. The reserved fields below land in that module.
 
 ```rust
 pub enum ReplacementIntent<S: MarkingScheme + ?Sized> {
@@ -13,16 +17,16 @@ pub enum ReplacementIntent<S: MarkingScheme + ?Sized> {
     FactRemove { facts: SmallVec<[FactRef<S>; 2]>, scope: Scope },
 
     // NEW reserved field — Recanonicalize was not invertible (it didn't store prior form).
-    Recanonicalize { scope: RecanonScope, prior: Option<RecanonPriorState> },
+    Recanonicalize { scope: RecanonScope, prior: Option<RecanonPriorState<S>> },
 
     // NEW variant (relocate-not-evict, research D8) — carries pre-state to invert the move.
-    Relocate { from: Scope, to: Scope, token: FactRef<S>, prior: RelocatePriorState },
+    Relocate { from: Scope, to: Scope, token: FactRef<S>, prior: RelocatePriorState<S> },
 }
 
 // Pre-state in audit-permitted terms ONLY (Constitution V / G13): token canonicals, category IDs,
-// span offsets, BLAKE3 digests. NO free-form content.
-pub struct RecanonPriorState { pub prior_tokens: Box<[FactRef<S>]>, pub prior_span: ByteRange, pub digest: [u8; 32] }
-pub struct RelocatePriorState { pub token: FactRef<S>, pub origin_span: ByteRange, pub digest: [u8; 32] }
+// `Span` offsets (marque_scheme::Span), BLAKE3 digests. NO free-form content.
+pub struct RecanonPriorState<S: MarkingScheme + ?Sized> { pub prior_tokens: Box<[FactRef<S>]>, pub prior_span: Span, pub digest: [u8; 32] }
+pub struct RelocatePriorState<S: MarkingScheme + ?Sized> { pub token: FactRef<S>, pub origin_span: Span, pub digest: [u8; 32] }
 ```
 
 ## Two reversal classes (research D9 — informs realization, not landed here)
