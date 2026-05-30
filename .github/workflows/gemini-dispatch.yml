@@ -122,7 +122,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'review' }}
-    uses: "marquetools/.github/.github/workflows/gemini-review.yml@81b62031d8b00bc6fa8941a3b6d7d6aab359104e"
+    uses: "marquetools/.github/.github/workflows/gemini-review.yml@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f"
     permissions:
       contents: "read"
       id-token: "write"
@@ -138,7 +138,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'triage' }}
-    uses: "marquetools/.github/.github/workflows/gemini-triage.yml@81b62031d8b00bc6fa8941a3b6d7d6aab359104e"
+    uses: "marquetools/.github/.github/workflows/gemini-triage.yml@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f"
     permissions:
       contents: "read"
       id-token: "write"
@@ -154,7 +154,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'invoke' }}
-    uses: "marquetools/.github/.github/workflows/gemini-invoke.yml@81b62031d8b00bc6fa8941a3b6d7d6aab359104e"
+    uses: "marquetools/.github/.github/workflows/gemini-invoke.yml@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f"
     permissions:
       contents: "read"
       id-token: "write"
@@ -170,7 +170,7 @@ jobs:
     needs: "dispatch"
     if: |-
       ${{ needs.dispatch.outputs.command == 'approve' }}
-    uses: "marquetools/.github/.github/workflows/gemini-plan-execute.yml@81b62031d8b00bc6fa8941a3b6d7d6aab359104e"
+    uses: "marquetools/.github/.github/workflows/gemini-plan-execute.yml@01fb1e3bcfc600e2fbb1ff4fe603f78a34c18d9f"
     permissions:
       contents: "write"
       id-token: "write"
