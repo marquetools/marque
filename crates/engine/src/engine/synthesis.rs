@@ -263,7 +263,7 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// up each candidate's recognized marking in the `parsed_markings`
 /// cache populated by the lint phase, applies the group's intent batch
 /// via [`CapcoScheme::apply_intent`], and renders the resulting marking
-/// via [`CapcoScheme::render_portion`] or [`CapcoScheme::render_banner`].
+/// via [`CapcoScheme::render_item`] or [`CapcoScheme::render_summary`].
 /// The candidate's portion-vs-banner scope is inferred from the
 /// candidate bytes themselves: a portion is wrapped in `()`, a banner
 /// is not.
@@ -405,7 +405,7 @@ pub(super) fn synthesize_fixes(
 
         // Render the modified marking, preserving any leading /
         // trailing ASCII whitespace from the candidate slice.
-        // `render_banner` emits no surrounding whitespace; without
+        // `render_summary` emits no surrounding whitespace; without
         // this preservation step the splice would strip indentation /
         // trailing spaces from any banner line.
         let leading_ws_len = bytes.iter().take_while(|b| b.is_ascii_whitespace()).count();
@@ -432,9 +432,9 @@ pub(super) fn synthesize_fixes(
         // bytes — a portion is wrapped in `()` per CAPCO-2016 §A.6.
         let is_portion = trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')');
         let core: String = if is_portion {
-            format!("({})", scheme.render_portion(&modified))
+            format!("({})", scheme.render_item(&modified))
         } else {
-            scheme.render_banner(&modified)
+            scheme.render_summary(&modified)
         };
         let scope = if is_portion {
             Scope::Portion

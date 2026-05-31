@@ -83,7 +83,7 @@ use marque_ism::marking_forms::MARKING_FORMS;
 /// concise title; ODNI's `<Description>` adds a regulatory citation
 /// or definition. The CAPCO transcription is correct per §G.1, but
 /// the ODNI surface form is admissible on input via the
-/// `FormKind::IsmDescriptionTitle` recognize-only channel when
+/// `FormKind::StandardDescriptionTitle` recognize-only channel when
 /// `recognized_aliases` is populated:
 /// - `FISA` (ODNI adds the "Foreign Intelligence Surveillance Act
 ///   ... unconsenting individuals ..." citation).
@@ -120,7 +120,7 @@ fn description_title_divergence_count_matches_pin() {
         // exactly one of the two for every active row; matching
         // either side picks up the row's ODNI counterpart.
         let entry =
-            lookup_token_metadata(row.portion).or_else(|| lookup_token_metadata(row.banner));
+            lookup_token_metadata(row.short_form).or_else(|| lookup_token_metadata(row.banner));
 
         let Some(entry) = entry else {
             // CAPCO row with no ODNI counterpart — common for §G.1
@@ -194,7 +194,7 @@ fn description_title_field_populated_for_every_divergence() {
         let Some(ism_title) = row.description_title else {
             continue;
         };
-        let entry = lookup_token_metadata(row.portion)
+        let entry = lookup_token_metadata(row.short_form)
             .or_else(|| lookup_token_metadata(row.banner))
             .unwrap_or_else(|| {
                 panic!(
@@ -202,7 +202,7 @@ fn description_title_field_populated_for_every_divergence() {
                      neither portion={:?} nor banner={:?} in TOKEN_METADATA — \
                      unreachable via the runtime divergence walk above. \
                      Remove the description_title or fix the row keys.",
-                    row.portion, row.banner,
+                    row.short_form, row.banner,
                 )
             });
         let odni_desc = entry.description.trim();

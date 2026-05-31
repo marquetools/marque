@@ -287,7 +287,7 @@ byte-identical across `marque-3.0`/`3.1`/`3.2`.
   foundation; it does NOT modify the engine convergence node.
 - **`MarkingScheme` trait** in `marque-scheme` — `Marking`
   associated type bound (`JoinSemilattice`); `parse` / `project` /
-  `render_portion` / `render_banner` / `render_canonical` /
+  `render_item` / `render_summary` / `render_canonical` /
   `categories` / `constraints` / `closure_rules` / `templates`
   surface; `Scope` enum; `CategoryShape` / `Constraint` /
   `PageRewrite` / `ClosureRule` types.

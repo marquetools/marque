@@ -886,6 +886,13 @@ fn decoder_path_record_shape() {
                 | FeatureId::LinePositionPenalty
                 | FeatureId::BulletAnchorBonus
                 | FeatureId::LowercaseSurroundingContext => {}
+                // `FeatureId` is `#[non_exhaustive]` (T025): the
+                // multi-scheme `Grammar { .. }` escape and any future
+                // additive variant land here. The test exercises the
+                // field type, not the closed CAPCO set — the closed-set
+                // pin lives in `recognition.rs::feature_id_as_str_matches_audit_contract`.
+                FeatureId::Grammar { .. } => {}
+                _ => {}
             }
             assert!(
                 feature.delta.is_finite(),

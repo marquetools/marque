@@ -134,12 +134,12 @@ fn round_trip_idempotent() {
         let first = match kind {
             Kind::Portion => {
                 let attrs = parse_portion(&scheme, &text);
-                let inner = scheme.render_portion(&CapcoMarking::from(attrs));
+                let inner = scheme.render_item(&CapcoMarking::from(attrs));
                 format!("({inner})")
             }
             Kind::Banner => {
                 let attrs = parse_banner(&scheme, &text);
-                scheme.render_banner(&CapcoMarking::from(attrs))
+                scheme.render_summary(&CapcoMarking::from(attrs))
             }
             Kind::Other => continue,
         };
@@ -147,12 +147,12 @@ fn round_trip_idempotent() {
         let second = match kind {
             Kind::Portion => {
                 let attrs = parse_portion(&scheme, &first);
-                let inner = scheme.render_portion(&CapcoMarking::from(attrs));
+                let inner = scheme.render_item(&CapcoMarking::from(attrs));
                 format!("({inner})")
             }
             Kind::Banner => {
                 let attrs = parse_banner(&scheme, &first);
-                scheme.render_banner(&CapcoMarking::from(attrs))
+                scheme.render_summary(&CapcoMarking::from(attrs))
             }
             Kind::Other => unreachable!(),
         };
@@ -304,8 +304,8 @@ fn lattice_equal_renders_byte_identical() {
         let attrs_a = parse_banner(&scheme, pair.a);
         let attrs_b = parse_banner(&scheme, pair.b);
 
-        let render_a = scheme.render_banner(&CapcoMarking::from(attrs_a));
-        let render_b = scheme.render_banner(&CapcoMarking::from(attrs_b));
+        let render_a = scheme.render_summary(&CapcoMarking::from(attrs_a));
+        let render_b = scheme.render_summary(&CapcoMarking::from(attrs_b));
 
         assert_eq!(
             render_a, pair.canonical,

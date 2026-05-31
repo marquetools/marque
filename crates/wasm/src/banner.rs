@@ -37,9 +37,9 @@ pub(crate) fn current_year() -> u32 {
 ///
 /// Scans the text for portion markings only, parses each, accumulates the
 /// per-portion `CanonicalAttrs`, and returns the canonical banner via
-/// `scheme.render_banner(scheme.project(Scope::Page, ...))`. Does NOT run
+/// `scheme.render_summary(scheme.project(Scope::Page, ...))`. Does NOT run
 /// the rules engine — this is purely: scanner → parser → scheme.project →
-/// render_banner.
+/// render_summary.
 ///
 /// Returns `"UNCLASSIFIED"` if no portions are found or none parse.
 ///
@@ -79,7 +79,7 @@ pub fn compute_banner_native(text: &str) -> Result<String, String> {
     }
 
     let projected = scheme.project(marque_scheme::Scope::Page, &markings);
-    Ok(scheme.render_banner(&projected))
+    Ok(scheme.render_summary(&projected))
 }
 
 // ---------------------------------------------------------------------------

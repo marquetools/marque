@@ -275,7 +275,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 /// `synthesize_intent_only_fixes` calls `CapcoScheme::apply_intent`
 /// to remove EXDIS from the marking's `non_ic_dissem` axis, then
 /// re-renders the portion via `MarkingScheme::render_canonical`
-/// (delegated to `render_portion`). The synthesized `FixProposal.span`
+/// (delegated to `render_item`). The synthesized `FixProposal.span`
 /// covers the full candidate, so the within-category `/` byte is
 /// replaced as part of the re-rendered portion — no parser change
 /// required.

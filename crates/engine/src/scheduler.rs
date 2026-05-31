@@ -493,10 +493,10 @@ mod tests {
         fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
             StubMarking
         }
-        fn render_portion(&self, _: &Self::Marking) -> String {
+        fn render_item(&self, _: &Self::Marking) -> String {
             String::new()
         }
-        fn render_banner(&self, _: &Self::Marking) -> String {
+        fn render_summary(&self, _: &Self::Marking) -> String {
             String::new()
         }
         fn render_canonical(

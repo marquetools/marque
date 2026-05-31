@@ -491,7 +491,7 @@ proptest! {
         // restricted to letters that cannot appear in the stub
         // scheme's render output.
         //
-        // The stub `render_banner` emits `"bits=0x{:02x}"`. To prevent
+        // The stub `render_summary` emits `"bits=0x{:02x}"`. To prevent
         // chance collisions where a random doc_content substring
         // matches part of the constant render prefix (`bits`) or the
         // hex digits (a-f / A-F), exclude every letter in
@@ -514,7 +514,7 @@ proptest! {
         let scheme = ClosureStubScheme;
         let m = BitMarking::with(bits);
         let closed = scheme.closure(m);
-        let rendered = scheme.render_banner(&closed);
+        let rendered = scheme.render_summary(&closed);
 
         // The rendered output should be "bits=0x{:02x}" — it must NOT
         // contain any substring from doc_content (which simulates

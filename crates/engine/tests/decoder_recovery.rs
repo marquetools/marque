@@ -189,7 +189,7 @@ fn unclassified_candidate_rejected_below_secret_floor() {
     let rx = DecoderRecognizer::new();
     // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1).
     let mut floored = deep_cx();
-    floored.classification_floor = Some(Classification::Secret as u8);
+    floored.rank_floor = Some(Classification::Secret as u8);
     match rx.recognize(b"UNCLASSIFIED", 0, &*TEST_SCHEME, &floored) {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
@@ -210,7 +210,7 @@ fn floor_at_equal_level_accepts_candidate() {
     let rx = DecoderRecognizer::new();
     // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1).
     let mut floored = deep_cx();
-    floored.classification_floor = Some(Classification::Secret as u8);
+    floored.rank_floor = Some(Classification::Secret as u8);
     match rx.recognize(b"SECRET", 0, &*TEST_SCHEME, &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -228,7 +228,7 @@ fn floor_below_candidate_accepts_higher_level() {
     let rx = DecoderRecognizer::new();
     // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1).
     let mut floored = deep_cx();
-    floored.classification_floor = Some(Classification::Confidential as u8);
+    floored.rank_floor = Some(Classification::Confidential as u8);
     match rx.recognize(b"TOP SECRET", 0, &*TEST_SCHEME, &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
@@ -239,7 +239,7 @@ fn floor_below_candidate_accepts_higher_level() {
 
 #[test]
 fn no_floor_accepts_any_classification() {
-    // With `classification_floor: None` the floor is inactive —
+    // With `rank_floor: None` the floor is inactive —
     // any classification passes through. Issue #258: pre-#258 this
     // used portion forms (`(U)`, `(C)`, `(S)`, `(TS)`); the banner
     // forms are more discriminative against the prose null

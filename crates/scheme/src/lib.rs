@@ -162,6 +162,6 @@ pub use severity::Severity;
 pub use span::Span;
 pub use template::{CategoryRule, Presence, Template, TokenForm, Wrapping};
 pub use vocabulary::{
-    Authority, Deprecation, FormKind, FormSet, OwnerProducer, OwnerProducerKind, PointOfContact,
-    TokenMetadataFull, Vocabulary,
+    Authority, Deprecation, FormKind, FormSet, IcMarkingVocabulary, OwnerProducer,
+    OwnerProducerKind, PointOfContact, TokenMetadataFull, Vocabulary,
 };

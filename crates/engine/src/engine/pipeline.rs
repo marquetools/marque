@@ -146,7 +146,7 @@ impl Engine {
         let mut page_marking_arc: Option<Arc<marque_ism::ProjectedMarking>> = None;
         let mut page_join_acc: marque_ism::CanonicalAttrs = marque_ism::CanonicalAttrs::default();
         let mut page_banner_span: Option<Span> = None;
-        let mut classification_floor: Option<u8> = None;
+        let mut rank_floor: Option<u8> = None;
         let mut render_scratch = String::new();
 
         for candidate in &candidates {
@@ -176,7 +176,7 @@ impl Engine {
                 &mut page_marking_arc,
                 &mut page_join_acc,
                 &mut page_banner_span,
-                &mut classification_floor,
+                &mut rank_floor,
                 &mut render_scratch,
             ) {
                 Ok(true) => continue,
@@ -202,7 +202,7 @@ impl Engine {
                 candidate,
                 &mut diagnostics,
                 &mut recognized_marking_count,
-                &mut classification_floor,
+                &mut rank_floor,
                 input_source,
             ) else {
                 continue;

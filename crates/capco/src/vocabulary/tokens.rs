@@ -307,7 +307,7 @@ fn build_form_set(canonical: &'static str) -> FormSet {
 
     let row: Option<&'static MarkingForm> = MARKING_FORMS
         .iter()
-        .find(|f| f.portion == canonical || f.banner == canonical);
+        .find(|f| f.short_form == canonical || f.banner == canonical);
     let recognized_aliases = recognized_aliases_for_canonical(canonical);
 
     match row {
@@ -318,7 +318,7 @@ fn build_form_set(canonical: &'static str) -> FormSet {
                 None
             };
             FormSet {
-                portion: f.portion,
+                portion: f.short_form,
                 banner_title: f.title,
                 banner_abbreviation,
                 recognized_aliases,

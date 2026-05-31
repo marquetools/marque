@@ -559,10 +559,10 @@ mod tests {
         fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
             TestMarking
         }
-        fn render_portion(&self, _m: &Self::Marking) -> String {
+        fn render_item(&self, _m: &Self::Marking) -> String {
             String::new()
         }
-        fn render_banner(&self, _m: &Self::Marking) -> String {
+        fn render_summary(&self, _m: &Self::Marking) -> String {
             String::new()
         }
         fn render_canonical(

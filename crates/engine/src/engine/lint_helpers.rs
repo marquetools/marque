@@ -25,7 +25,7 @@ pub(super) fn handle_page_break_candidate(
     page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
     page_join_acc: &mut marque_ism::CanonicalAttrs,
     page_banner_span: &mut Option<Span>,
-    classification_floor: &mut Option<u8>,
+    rank_floor: &mut Option<u8>,
     render_scratch: &mut String,
 ) -> Result<bool, ()> {
     use marque_ism::MarkingType;
@@ -103,7 +103,7 @@ pub(super) fn handle_page_break_candidate(
     *page_portions_arc = None;
     *page_banner_span = None;
     *page_marking_arc = None;
-    *classification_floor = None;
+    *rank_floor = None;
     render_scratch.clear();
     Ok(true)
 }
@@ -114,7 +114,7 @@ pub(super) fn recognize_marking_candidate(
     candidate: &marque_ism::MarkingCandidate,
     diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
     recognized_marking_count: &mut usize,
-    classification_floor: &mut Option<u8>,
+    rank_floor: &mut Option<u8>,
     input_source: marque_scheme::InputSource,
 ) -> Option<RecognizedCandidate> {
     let span_start = candidate.span.start.min(source.len());
@@ -140,7 +140,7 @@ pub(super) fn recognize_marking_candidate(
     // a record literal across the crate boundary.
     let mut parse_cx = ParseContext::default();
     parse_cx.strict_evidence = false;
-    parse_cx.classification_floor = *classification_floor;
+    parse_cx.rank_floor = *rank_floor;
     parse_cx.preceded_by_whitespace = preceded_by_whitespace;
     parse_cx.line_offset = Some(line_offset);
     parse_cx.line_prefix = Some(line_prefix);
@@ -175,7 +175,7 @@ pub(super) fn recognize_marking_candidate(
             .as_ref()
             .map(|c| c.effective_level() as u8)
     {
-        *classification_floor = Some(match *classification_floor {
+        *rank_floor = Some(match *rank_floor {
             Some(prev) => prev.max(level),
             None => level,
         });

@@ -476,7 +476,7 @@ fn decoder_recovers_reordered_banner() {
 }
 
 #[test]
-fn decoder_honors_classification_floor_fr011() {
+fn decoder_honors_rank_floor_fr011() {
     let rx = DecoderRecognizer::new();
     // Input is "(U)" which canonicalizes to an UNCLASSIFIED
     // portion. With a Secret floor, the candidate must be
@@ -484,7 +484,7 @@ fn decoder_honors_classification_floor_fr011() {
     let cx = {
         let mut cx = ParseContext::default();
         cx.strict_evidence = false;
-        cx.classification_floor = Some(Classification::Secret as u8);
+        cx.rank_floor = Some(Classification::Secret as u8);
         cx.preceded_by_whitespace = true;
         cx
     };
@@ -502,13 +502,13 @@ fn decoder_honors_classification_floor_fr011() {
 }
 
 #[test]
-fn decoder_classification_floor_allows_equal_or_above() {
+fn decoder_rank_floor_allows_equal_or_above() {
     let rx = DecoderRecognizer::new();
     // (S//NF) with Confidential floor — SECRET exceeds floor.
     let cx = {
         let mut cx = ParseContext::default();
         cx.strict_evidence = false;
-        cx.classification_floor = Some(Classification::Confidential as u8);
+        cx.rank_floor = Some(Classification::Confidential as u8);
         cx.preceded_by_whitespace = true;
         cx
     };

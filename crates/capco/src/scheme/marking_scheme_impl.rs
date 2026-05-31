@@ -478,6 +478,10 @@ impl MarkingScheme for CapcoScheme {
         &self.page_rewrites
     }
 
+    fn scheme_id(&self) -> &'static str {
+        "capco"
+    }
+
     /// Substantive `render_canonical` body driven by the per-axis
     /// dispatch table [`RENDER_TABLE`].
     ///
@@ -496,9 +500,9 @@ impl MarkingScheme for CapcoScheme {
     /// # Byte-identity invariant
     ///
     /// `scheme.render_canonical(m, Scope::Portion, &mut s)` and
-    /// `scheme.render_portion(m)` MUST produce byte-identical output
-    /// for any input the existing `render_portion` override handled
-    /// (and similarly for `Page` / `render_banner`). The
+    /// `scheme.render_item(m)` MUST produce byte-identical output
+    /// for any input the existing `render_item` override handled
+    /// (and similarly for `Page` / `render_summary`). The
     /// `render_canonical_default_chain.rs` integration tests pin this
     /// property.
     fn render_canonical(
@@ -577,13 +581,13 @@ impl MarkingScheme for CapcoScheme {
         Ok(())
     }
 
-    fn render_portion(&self, m: &Self::Marking) -> String {
+    fn render_item(&self, m: &Self::Marking) -> String {
         // Override retained for the byte-identity gate
         // (`render_canonical_default_chain.rs`). `render_canonical` is
         // the substantive renderer; this override delegates to it
         // through the trait-default String round-trip. Removing the
         // override is a follow-up once the engine call sites move off
-        // `render_portion` to `render_canonical`.
+        // `render_item` to `render_canonical`.
         //
         // `Write for String` is infallible, so a `String` write target
         // never produces `fmt::Error`. The only way the discarded
@@ -593,7 +597,7 @@ impl MarkingScheme for CapcoScheme {
         // this. Debug-assert in development; in release, the contract
         // violation produces an empty / partial `String` rather than
         // a panic (matching the trait-default behavior in
-        // `MarkingScheme::render_portion`).
+        // `MarkingScheme::render_item`).
         //
         // Construct an `Auto + MarqueMvp3` RenderContext; a future
         // change will land the §G.1 Table 4 dispatch body.
@@ -612,8 +616,8 @@ impl MarkingScheme for CapcoScheme {
         s
     }
 
-    fn render_banner(&self, m: &Self::Marking) -> String {
-        // See `render_portion`. Override retained for byte-identity
+    fn render_summary(&self, m: &Self::Marking) -> String {
+        // See `render_item`. Override retained for byte-identity
         // gate; the substantive body is `render_canonical`. Same
         // contract-violation invariant: `Write for String` is
         // infallible, so `Err` here would be a conforming-impl bug
