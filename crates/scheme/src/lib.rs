@@ -62,6 +62,16 @@
 //!   (`NoopSink` / `CountingSink` / `RecordingSink`) for counting and
 //!   tracing the marking decisions an engine run makes. Off by default;
 //!   engine threading is gated on the `decision-tracing` feature.
+//! - [`artifact`] — document-scoped artifact node model: `ArtifactKind`,
+//!   the five-state `ArtifactState<P>` (status enum, not a lattice), and
+//!   `DocumentArtifact<S>` parameterized by the scheme's
+//!   `SchemeArtifacts::ArtifactPayload`.
+//! - [`provenance`] — the two orthogonal provenance axes:
+//!   `RecognitionProvenance` (adapter axis) and `ValueDerivation`
+//!   (DAG-node axis).
+//! - [`derivation`] — `DerivationEdge` (inbound derivation relations with
+//!   `reads` / `writes` dataflow + a `FiringPredicate`), mirroring
+//!   `PageRewrite`'s shape for the Phase C topological scheduler.
 //!
 //! ## Status
 //!
@@ -75,6 +85,7 @@
 //! `std::*` only).
 
 pub mod ambiguity;
+pub mod artifact;
 pub mod builtins;
 pub mod canonical;
 pub mod category;
@@ -83,11 +94,13 @@ pub mod closure;
 pub mod codec;
 pub mod constraint;
 pub mod decision;
+pub mod derivation;
 pub mod fact_bitmask;
 pub mod fix_intent;
 pub mod lattice;
 pub mod page_rewrite;
 pub mod projection;
+pub mod provenance;
 pub mod recognizer;
 pub mod render_context;
 pub mod scheme;
@@ -98,6 +111,7 @@ pub mod template;
 pub mod vocabulary;
 
 pub use ambiguity::{Candidate, EvidenceFeature, Parsed};
+pub use artifact::{ArtifactKind, ArtifactState, DocumentArtifact};
 pub use builtins::{
     FlatSet, IntersectSet, MaxDate, ModeSet, OptionalSingleton, OrdMax, OrdMin, Product,
     SupersessionSet,
@@ -117,6 +131,7 @@ pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef}
 pub use decision::report::{CascadeChain, DecisionReport};
 pub use decision::sinks::{CountingSink, NoopSink, RecordingSink};
 pub use decision::{DecisionEvent, DecisionKind, DecisionSink, DecisionSite, DecisionSource};
+pub use derivation::{DerivationEdge, DerivationRelation, EdgeId, FiringPredicate};
 pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{
@@ -127,9 +142,10 @@ pub use page_rewrite::{
     CategoryAction, CategoryPredicate, PageRewrite, PageRewriteAxisError, RewriteId,
 };
 pub use projection::{Projection, categories_in_render_order};
+pub use provenance::{RecognitionProvenance, ValueDerivation};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
 pub use render_context::{EmissionForm, RenderContext, SchemaVersionId};
-pub use scheme::{ApplyIntentError, MarkingScheme};
+pub use scheme::{ApplyIntentError, MarkingScheme, SchemeArtifacts};
 pub use scope::{DiffInput, DiffRelation, Scope};
 pub use severity::Severity;
 pub use span::Span;
