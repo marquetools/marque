@@ -94,7 +94,11 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
         SCI_CUSTOM_CONTROL_INFO_AUTHORITIES
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let sys_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
@@ -206,7 +210,11 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         HCS_BARE_AT_CONFIDENTIAL_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
 
         // Class-specific gate: only fires at CONFIDENTIAL.
@@ -305,7 +313,11 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         HCS_BARE_SUGGEST_SUB_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
 
         // Class-specific gate: only fires at SECRET / TOP SECRET.
@@ -426,7 +438,11 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         RSV_BARE_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{SciControlBare, SciControlSystem};
 
         // Find bare RSV (Published Rsv system with no compartments).

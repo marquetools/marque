@@ -140,7 +140,11 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         DECLASSIFY_MISPLACED_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Fire on banner AND portion. CAB candidates are the correct
         // location for declass info and must be skipped. PageBreak is
@@ -232,7 +236,11 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         X_SHORTHAND_DATE_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         for token in attrs.token_spans.iter() {
             if token.kind != TokenKind::Unknown {
@@ -469,7 +477,11 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         UNKNOWN_TOKEN_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Precompute whether a first SAR block parsed successfully. The
         // repeated-SAR suppression path below must only fire when E030's
         // own token-shape preconditions are met; otherwise a malformed
@@ -618,7 +630,11 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         CORRECTIONS_MAP_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Engine guarantees corrections is Some only when the map is non-empty
         // (engine.rs: corrections_arc is None when config.corrections.is_empty()).
         let Some(corrections) = ctx.corrections.as_ref() else {

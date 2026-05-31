@@ -623,7 +623,7 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            ctx: &RuleContext,
+            ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             // Emit a Recanonicalize FixIntent at the marking's
             // portion span. CapcoScheme will recanonicalize the

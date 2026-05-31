@@ -714,6 +714,7 @@ mod tests {
         type OpenVocabRef = core::convert::Infallible;
         type Parsed<'src> = ();
         type Canonical = StubCanonical;
+        type Projected = ();
 
         fn name(&self) -> &str {
             "stub"

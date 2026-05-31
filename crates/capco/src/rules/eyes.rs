@@ -89,7 +89,11 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
         for token in attrs.token_spans.iter() {
             if token.kind != TokenKind::DissemControl {

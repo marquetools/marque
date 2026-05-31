@@ -250,7 +250,11 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
 
         if attrs.rel_to.is_empty() {

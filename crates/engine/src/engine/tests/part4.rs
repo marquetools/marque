@@ -27,7 +27,7 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            ctx: &RuleContext,
+            ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {

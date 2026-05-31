@@ -267,7 +267,7 @@ pub(super) fn dispatch_page_finalization(
     // (which observes the slice the rule actually reads via
     // `ctx.page_portions`). `Arc::clone` is a refcount bump, no
     // slice data is copied.
-    let ctx = RuleContext::new(MarkingType::PageFinalization, boundary_span)
+    let ctx = RuleContext::<CapcoScheme>::new(MarkingType::PageFinalization, boundary_span)
         .with_page_portions(Some(page_portions_arc.clone()))
         .with_page_marking(Some(page_mark_arc))
         // Issue #663: thread the closing page's most-recent banner span

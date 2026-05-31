@@ -75,6 +75,7 @@ impl MarkingScheme for StubScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "StubScheme"
@@ -139,6 +140,6 @@ assert_impl_all!(RuleId: Send, Sync, Copy);
 // compile time.
 fn _rule_context_is_send_sync<'a>()
 where
-    RuleContext<'a>: Send + Sync,
+    RuleContext<'a, StubScheme>: Send + Sync,
 {
 }

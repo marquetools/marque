@@ -134,7 +134,11 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         NODIS_EXDIS_CLEARS_BANNER_REL_TO_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         // Banner-only (and CAB, since CABs can carry REL TO). Portion
@@ -313,7 +317,11 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         NODIS_SUPERSEDES_EXDIS_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         if ctx.marking_type != MarkingType::Portion {

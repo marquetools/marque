@@ -271,6 +271,7 @@ fn project_with_sink_default_delegates_and_emits_nothing() {
         type OpenVocabRef = core::convert::Infallible;
         type Parsed<'src> = ();
         type Canonical = ();
+        type Projected = ();
 
         fn name(&self) -> &str {
             "minimal"
