@@ -262,7 +262,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 
             // 3d. Drop candidates below the page's strict
             //     classification floor.
-            if let Some(floor) = cx.classification_floor
+            if let Some(floor) = cx.rank_floor
                 && !meets_classification_floor(&marking, floor)
             {
                 continue;

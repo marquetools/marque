@@ -130,7 +130,7 @@ pub struct ParseContext {
     /// `None` when the engine has not established a strict floor for
     /// the current region (e.g., isolated single-region recognition,
     /// or the page has no strict-path portion seen yet).
-    pub classification_floor: Option<u8>,
+    pub rank_floor: Option<u8>,
     /// Reference date for temporal membership queries.
     ///
     /// When set, rules that evaluate time-limited memberships (e.g.,
@@ -377,7 +377,7 @@ impl Default for ParseContext {
             strict_evidence: true,
             zone: None,
             position: None,
-            classification_floor: None,
+            rank_floor: None,
             as_of: None,
             preceded_by_whitespace: true,
             line_offset: None,
