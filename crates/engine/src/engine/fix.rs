@@ -2,7 +2,14 @@ use super::fix_impl::Pass1Result;
 use super::synthesis::{span_is_within_marking, splice_fixes_forward};
 use super::*;
 
-impl Engine<CapcoScheme> {
+// The fix path threads `&Engine` into the concrete `TwoPassFixer<'engine>`
+// helper struct (`fix.rs` / `fix_impl.rs`), which holds `engine:
+// &'engine Engine` at the default recognizer. Keeping this block pinned to
+// `R = EngineRecognizer` avoids threading `R` through the entire two-pass
+// fixer subsystem; the fix path re-lints through the engine's own
+// (`R`-generic) pipeline methods, which a concrete `EngineRecognizer`
+// satisfies.
+impl Engine<CapcoScheme, EngineRecognizer> {
     /// Lint and apply fixes. Returns fixed source and audit log.
     ///
     /// Fix application order is `(span.end DESC, span.start DESC,
@@ -344,7 +351,7 @@ impl Engine<CapcoScheme> {
 }
 
 pub(super) struct TwoPassFixer<'engine> {
-    pub(super) engine: &'engine Engine,
+    pub(super) engine: &'engine Engine<CapcoScheme, EngineRecognizer>,
     pub(super) source: &'engine [u8],
     pub(super) mode: FixMode,
     pub(super) threshold: f32,

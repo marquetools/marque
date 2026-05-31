@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) fn apply_constraint_bridge_for_marking(
-    engine: &Engine,
+pub(super) fn apply_constraint_bridge_for_marking<R: Recognizer<CapcoScheme>>(
+    engine: &Engine<CapcoScheme, R>,
     candidate: &marque_ism::MarkingCandidate,
     attrs: &marque_ism::CanonicalAttrs,
     page_portions: &[marque_ism::CanonicalAttrs],
@@ -78,7 +78,7 @@ pub(super) fn apply_constraint_bridge_for_marking(
     ));
 }
 
-impl Engine<CapcoScheme> {
+impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     /// Translate a scheme-emitted [`ConstraintViolation`] into an
     /// engine-side [`Diagnostic`].
     ///

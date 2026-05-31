@@ -5,7 +5,7 @@ use super::lint_helpers::{
 use super::page_context::{PageFinalizationContext, dispatch_page_finalization};
 use super::*;
 
-impl Engine<CapcoScheme> {
+impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
     ///
     /// Back-compat shim over [`Engine::lint_with_options`] — calling
