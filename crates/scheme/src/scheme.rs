@@ -866,7 +866,7 @@ pub trait SchemeArtifacts: MarkingScheme {
     /// The payload an artifact node carries when present — e.g. CAPCO's
     /// parsed CAB. Schemes that model document artifacts bind this to their
     /// own structural artifact type.
-    type ArtifactPayload;
+    type ArtifactPayload: Send + Sync;
 }
 
 /// Error variants returned by [`MarkingScheme::apply_intent`].
