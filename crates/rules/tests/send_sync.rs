@@ -126,15 +126,20 @@ assert_impl_all!(Arc<dyn RuleSet<StubScheme>>: Send, Sync);
 // list.
 assert_impl_all!(RuleId: Send, Sync, Copy);
 
-// Compile-time pin on `RuleContext: Send + Sync`.
+// Compile-time pin on `RuleContext<'_, S>: Send + Sync`.
 //
-// The page-portion field type on `RuleContext` is
-// `Option<Arc<Box<[CanonicalAttrs]>>>`, which is `Send + Sync` iff
-// `CanonicalAttrs: Send + Sync` (asserted in
-// `crates/ism/tests/send_sync.rs`). This file closes the gap by
-// asserting the property on `RuleContext` itself.
+// `RuleContext` is generic over the marking scheme `S`; its
+// scheme-typed fields are `Option<Arc<Box<[S::Canonical]>>>`,
+// `Option<Arc<S::Projected>>`, and `Option<&'a S::Canonical>`. This
+// pin proves the STRUCTURAL property — that `RuleContext` itself wires
+// its fields through `Send + Sync` — using `StubScheme`, whose
+// `Canonical` and `Projected` are both `()` (trivially `Send + Sync`),
+// so the assertion isolates `RuleContext`'s own composition from any
+// concrete scheme's field types. The CAPCO concrete-field thread-safety
+// (`CanonicalAttrs`, `ProjectedMarking`) is pinned separately in
+// `crates/ism/tests/send_sync.rs`.
 //
-// `RuleContext<'a>` is lifetime-parameterized so `assert_impl_all!`
+// `RuleContext<'a, S>` is lifetime-parameterized so `assert_impl_all!`
 // (which requires `'static`) cannot be applied directly. The HRTB
 // function-bound form below proves the property for every `'a` at
 // compile time.
