@@ -78,7 +78,7 @@ pub(super) fn apply_constraint_bridge_for_marking(
     ));
 }
 
-impl Engine {
+impl Engine<CapcoScheme> {
     /// Translate a scheme-emitted [`ConstraintViolation`] into an
     /// engine-side [`Diagnostic`].
     ///

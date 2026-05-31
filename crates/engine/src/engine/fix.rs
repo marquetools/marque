@@ -2,7 +2,7 @@ use super::fix_impl::Pass1Result;
 use super::synthesis::{span_is_within_marking, splice_fixes_forward};
 use super::*;
 
-impl Engine {
+impl Engine<CapcoScheme> {
     /// Lint and apply fixes. Returns fixed source and audit log.
     ///
     /// Fix application order is `(span.end DESC, span.start DESC,

@@ -56,6 +56,8 @@ use std::time::{Duration, Instant};
 use futures::{Stream, StreamExt, stream};
 use marque_utils::concur_control::{ConcurrencyController, Options as ConcurOptions};
 
+use marque_capco::CapcoScheme;
+
 use crate::{Engine, EngineError, FixOptions, FixResult, LintOptions, LintResult};
 
 /// Error returned when a single document in a batch fails to process.
@@ -323,7 +325,7 @@ impl Default for BatchOptions {
 ///
 /// The underlying `Engine` is shared via `Arc`; cloning `BatchEngine` is cheap.
 pub struct BatchEngine {
-    engine: Arc<Engine>,
+    engine: Arc<Engine<CapcoScheme>>,
     controller: Arc<ConcurrencyController>,
     /// Buffer cap forwarded to `buffer_unordered`.
     concurrent: usize,
@@ -339,7 +341,7 @@ pub struct BatchEngine {
 }
 
 impl BatchEngine {
-    pub fn new(engine: Engine, options: BatchOptions) -> Self {
+    pub fn new(engine: Engine<CapcoScheme>, options: BatchOptions) -> Self {
         let concurrent = options.max_concurrent_docs.unwrap_or(32);
         let controller = ConcurrencyController::new(&ConcurOptions {
             max_inflight_rows: options.max_concurrent_docs,

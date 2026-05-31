@@ -3,7 +3,7 @@ use super::dispatch::{
 };
 use super::*;
 
-impl Engine {
+impl Engine<CapcoScheme> {
     /// Create a new engine with the given configuration, rule sets, and
     /// marking scheme.
     ///
@@ -68,19 +68,26 @@ impl Engine {
         // beyond what we already extracted) loses every customization
         // here. No compile-time guard — the `S: MarkingScheme` bound
         // permits any scheme because the scheduler test
-        // (`crates/engine/tests/scheduler.rs:106`) deliberately
-        // exercises that flexibility with a `StubScheme`. Every
-        // production call site today passes `CapcoScheme::new()` (the
-        // default), so the discard is currently lossless; a future
-        // refactor that makes `Engine<S>` truly generic over the
-        // scheme will close this. The `tracing::debug!` below makes
-        // the silent drop observable to a developer running with
-        // `MARQUE_LOG=marque=debug` (off by default in
-        // production).
+        // (`crates/engine/tests/scheduler.rs`) deliberately exercises
+        // that flexibility with a `StubScheme`. Every production call
+        // site today passes `CapcoScheme::new()` (the default), so the
+        // discard is currently lossless.
+        //
+        // PR-B2 of the 007 Phase B engine-generification work made the
+        // *struct* generic (`Engine<S>`), but these constructors stay
+        // pinned to `S = CapcoScheme` (their `impl` block is
+        // `impl Engine<CapcoScheme>`), so the stored `scheme` field is
+        // still `CapcoScheme::new()` and this discard remains. The
+        // discard closes in PR-B3, when the recognizer and dispatch
+        // layers generify and the constructors can store the
+        // user-supplied `S` into the now-generic field. The
+        // `tracing::debug!` below makes the silent drop observable to a
+        // developer running with `MARQUE_LOG=marque=debug` (off by
+        // default in production).
         tracing::debug!(
             target: "marque_engine::scheme_discard",
             "user-supplied scheme dropped; constraint-catalog bridge uses default \
-             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
+             CapcoScheme::new() (PR-B3 of 007 Phase B closes this)"
         );
         drop(scheme);
         Self::with_clock_prepared(config, rule_sets, clock, bridge_scheme, scheduled_rewrites)
