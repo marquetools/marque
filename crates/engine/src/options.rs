@@ -139,6 +139,18 @@ pub struct FixOptions {
     /// `None` here makes `fix` return
     /// `EngineError::SignatureRequired`.
     pub signature: Option<String>,
+    /// Recognition input-source axis (#176 / SC-010) for the fix
+    /// path's internal lint pass. Mirrors the lint-side
+    /// [`Engine::lint_with_input_context`] routing: `DocumentContent`
+    /// (the default) keeps the conservative prose-calibrated
+    /// recognition, while `StructuredField` lifts the decoder's
+    /// lone-case heuristic so a trusted caller's marking-shaped field
+    /// is recovered assertively — which is exactly where `fix`
+    /// materializes the recovery the flag promises. Trusted-caller
+    /// opt-in only (CLI `--input-source`, server `input_source`); the
+    /// WASM fix path pins [`InputSource::DocumentContent`] and exposes
+    /// no equivalent (Constitution III).
+    pub input_source: marque_scheme::InputSource,
 }
 
 #[cfg(test)]

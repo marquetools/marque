@@ -135,6 +135,7 @@ fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     let (apply_post, _, apply_audit_lines) = apply_fixer
         .apply_kept_fixes(source, kept_fixes.clone(), &dummy_lint)
@@ -160,6 +161,7 @@ fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     let (dry_run_post, _, dry_run_audit_lines) = dry_run_fixer
         .apply_kept_fixes(source, kept_fixes, &dummy_lint)
@@ -565,6 +567,7 @@ fn contributing_pass1_rule_ids_dedupes_and_sorts() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     // Three fixes: two duplicates of E006, one of C001. The helper
     // dedupes and sorts ASC. Result: [C001, E006].
@@ -589,6 +592,7 @@ fn contributing_pass1_rule_ids_caps_at_inline_capacity_4() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     // Five distinct IDs — only the first 4 (after sort) survive
     // the SmallVec inline cap.
@@ -616,6 +620,7 @@ fn contributing_pass1_rule_ids_empty_input_returns_empty() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     let out = fixer.contributing_pass1_rule_ids(&[]);
     assert!(out.is_empty());

@@ -24,9 +24,11 @@ pub(super) static TEST_SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme
 /// dispatching to the decoder after the strict recognizer returns
 /// zero candidates.
 pub(super) fn deep_cx() -> ParseContext {
-    ParseContext {
-        strict_evidence: false,
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
-    }
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1) — even
+    // in-crate, prefer `default()` + field assignment so this fixture
+    // mirrors the construction idiom external callers must use.
+    let mut cx = ParseContext::default();
+    cx.strict_evidence = false;
+    cx.preceded_by_whitespace = true;
+    cx
 }

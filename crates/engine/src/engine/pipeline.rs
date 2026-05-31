@@ -22,6 +22,65 @@ impl Engine {
         self.lint_with_options_internal(source, opts).0
     }
 
+    /// Lint, routing recognition by the input boundary's
+    /// [`InputContext::source`](marque_scheme::InputContext) (#176 /
+    /// #643, T013). Trusted callers (CLI `--input-source`, server
+    /// per-request) reach this; the WASM target never does (it pins
+    /// `DocumentContent`, Constitution III).
+    ///
+    /// Routing table:
+    ///
+    /// | `InputSource`     | branch                                            |
+    /// |-------------------|---------------------------------------------------|
+    /// | `DocumentContent` | existing raw-text pipeline, **byte-identical**    |
+    /// | `StructuredField` | same scanner/recognizer/parser path, but the      |
+    /// |                   | per-candidate `ParseContext.input_source` is set  |
+    /// |                   | to `StructuredField` so the decoder's lone-case   |
+    /// |                   | heuristic fires assertively (#176 / SC-010)       |
+    /// | `SchemaDocument`  | adapter-owned — `InputAdapter::adapt` produces     |
+    /// |                   | `S::Canonical` directly, bypassing this text       |
+    /// |                   | pipeline. The CapcoScheme engine ships no schema   |
+    /// |                   | adapter yet, so this entry treats it as the        |
+    /// |                   | conservative text path (no adapter to dispatch);   |
+    /// |                   | a schema adapter wires in via a later phase.       |
+    ///
+    /// The `DocumentContent` branch delegates verbatim to
+    /// [`Self::lint_with_options`] to guarantee byte-identity.
+    pub fn lint_with_input_context(
+        &self,
+        source: &[u8],
+        opts: &LintOptions,
+        input_cx: &marque_scheme::InputContext<'_>,
+    ) -> LintResult {
+        match input_cx.source {
+            // Byte-identical to the pre-#176 path.
+            marque_scheme::InputSource::DocumentContent => self.lint_with_options(source, opts),
+            // Same pipeline, recognition-provenance lifted to the
+            // structured-field tier so the decoder's lone-case heuristic
+            // recovers assertively (SC-010).
+            marque_scheme::InputSource::StructuredField => {
+                self.lint_with_options_internal_with_source(
+                    source,
+                    opts,
+                    None,
+                    marque_scheme::InputSource::StructuredField,
+                )
+                .0
+            }
+            // SchemaDocument is the adapter mechanism (InputAdapter::adapt
+            // → S::Canonical, no recognizer). The CapcoScheme text engine
+            // ships no schema adapter, so there is nothing to dispatch
+            // here; fall through to the conservative text path rather than
+            // fabricate canonicals. Wiring a real adapter is later-phase
+            // work (the trait surface is WASM-safe; concrete adapters are
+            // native).
+            marque_scheme::InputSource::SchemaDocument => self.lint_with_options(source, opts),
+            // `InputSource` is `#[non_exhaustive]`; a future variant lands
+            // on the conservative text path until it is wired explicitly.
+            _ => self.lint_with_options(source, opts),
+        }
+    }
+
     /// Internal lint entrypoint that returns the parsed-markings cache
     /// alongside the public `LintResult`.
     pub(super) fn lint_with_options_internal(
@@ -37,6 +96,23 @@ impl Engine {
         source: &[u8],
         opts: &LintOptions,
         pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
+    ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
+        // Existing callers (the byte-identical raw-text path) recognize
+        // as DocumentContent.
+        self.lint_with_options_internal_with_source(
+            source,
+            opts,
+            pre_pass_1_cache,
+            marque_scheme::InputSource::DocumentContent,
+        )
+    }
+
+    pub(super) fn lint_with_options_internal_with_source(
+        &self,
+        source: &[u8],
+        opts: &LintOptions,
+        pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
+        input_source: marque_scheme::InputSource,
     ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
         use marque_core::Scanner;
         use marque_ism::MarkingType;
@@ -127,6 +203,7 @@ impl Engine {
                 &mut diagnostics,
                 &mut recognized_marking_count,
                 &mut classification_floor,
+                input_source,
             ) else {
                 continue;
             };

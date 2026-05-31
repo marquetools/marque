@@ -105,7 +105,10 @@ use super::shape::is_cab_head;
 /// Authority Block) — those are keyed authority lines, not
 /// classification-leading shapes, and the heuristic would emit
 /// nonsense if applied. The check mirrors `shape::is_cab_head`.
-pub(super) fn try_classification_heuristic_fix(text: &str) -> Option<String> {
+pub(super) fn try_classification_heuristic_fix(
+    text: &str,
+    input_source: marque_scheme::InputSource,
+) -> Option<String> {
     // Skip CAB shapes — they don't have a leading classification token.
     if is_cab_head(text.as_bytes()) {
         return None;
@@ -159,19 +162,26 @@ pub(super) fn try_classification_heuristic_fix(text: &str) -> Option<String> {
     // prose. Spot-check the evidence file directly for per-trigger
     // detail.
     //
-    // Form-field input (`(YS)` typed into a portion-mark field)
-    // SHOULD heuristic-fix at high confidence — the caller knows the
-    // input is a marking attempt — but we don't yet have an input-
-    // source signal to distinguish form-field from document-content.
-    // When an input-source signal on `ParseContext` lands, this
-    // safety guard becomes conditional on
-    // `ParseContext::input_source == DocumentContent`.
-    // Trailing whitespace doesn't count as "other content" — `(YS )`
-    // is functionally equivalent to `(YS)` for the lone-case test.
-    let has_other_marking_content = after_first_token.chars().any(|c| !c.is_whitespace())
-        || after_first_seg.chars().any(|c| !c.is_whitespace());
-    if !has_other_marking_content {
-        return None;
+    // Form-field input (`(YS)` typed into a portion-mark field) SHOULD
+    // heuristic-fix at high confidence — a trusted caller asserts via
+    // [`InputSource::StructuredField`] that the input IS a marking
+    // attempt, so the lone-case false-positive concern (parenthetical
+    // refs in prose) does not apply. The guard below is therefore
+    // **conditional on [`InputSource::DocumentContent`]** (#176 / SC-010):
+    // only document-content input takes the conservative lone-case path.
+    // `StructuredField` skips the guard so a lone `(YS)` reaches the
+    // heuristic. (`SchemaDocument` never reaches the decoder — adapters
+    // own that path — so it falls in with the conservative default here
+    // harmlessly.)
+    //
+    // Trailing whitespace doesn't count as "other content" — `(YS )` is
+    // functionally equivalent to `(YS)` for the lone-case test.
+    if input_source == marque_scheme::InputSource::DocumentContent {
+        let has_other_marking_content = after_first_token.chars().any(|c| !c.is_whitespace())
+            || after_first_seg.chars().any(|c| !c.is_whitespace());
+        if !has_other_marking_content {
+            return None;
+        }
     }
 
     let replacement = match first_token.len() {
@@ -337,6 +347,13 @@ mod tests {
     use crate::decoder::DecoderRecognizer;
     use crate::decoder::test_helpers::{TEST_SCHEME, deep_cx};
 
+    // #176 / SC-010 input-source aliases for the heuristic tests. `DC`
+    // (DocumentContent) keeps the conservative lone-case guard; `SF`
+    // (StructuredField) lifts it — a trusted caller asserting the input
+    // IS a marking-shaped field.
+    const DC: marque_scheme::InputSource = marque_scheme::InputSource::DocumentContent;
+    const SF: marque_scheme::InputSource = marque_scheme::InputSource::StructuredField;
+
     #[test]
     fn heuristic_2char_ts_cluster() {
         // T-cluster + S-cluster → TS. Cover the full 6×5 = 30
@@ -429,29 +446,29 @@ mod tests {
             );
         }
         // And the wrapper helper short-circuits these.
-        assert_eq!(try_classification_heuristic_fix("(S//NF)"), None);
-        assert_eq!(try_classification_heuristic_fix("(TS//NF)"), None);
-        assert_eq!(try_classification_heuristic_fix("(C//NF)"), None);
-        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+        assert_eq!(try_classification_heuristic_fix("(S//NF)", DC), None);
+        assert_eq!(try_classification_heuristic_fix("(TS//NF)", DC), None);
+        assert_eq!(try_classification_heuristic_fix("(C//NF)", DC), None);
+        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN", DC), None);
     }
 
     #[test]
     fn heuristic_fixes_portion_form() {
         assert_eq!(
-            try_classification_heuristic_fix("(YS//NF)").as_deref(),
+            try_classification_heuristic_fix("(YS//NF)", DC).as_deref(),
             Some("(TS//NF)")
         );
         assert_eq!(
-            try_classification_heuristic_fix("(W//NF)").as_deref(),
+            try_classification_heuristic_fix("(W//NF)", DC).as_deref(),
             Some("(S//NF)")
         );
         assert_eq!(
-            try_classification_heuristic_fix("(F//NF)").as_deref(),
+            try_classification_heuristic_fix("(F//NF)", DC).as_deref(),
             Some("(C//NF)")
         );
         // Lowercase first token (inside parens).
         assert_eq!(
-            try_classification_heuristic_fix("(ys//NF)").as_deref(),
+            try_classification_heuristic_fix("(ys//NF)", DC).as_deref(),
             Some("(TS//NF)")
         );
     }
@@ -461,11 +478,11 @@ mod tests {
         // Banner shapes don't have parens but otherwise behave the
         // same — leading classification token in the first segment.
         assert_eq!(
-            try_classification_heuristic_fix("RS//NOFORN").as_deref(),
+            try_classification_heuristic_fix("RS//NOFORN", DC).as_deref(),
             Some("TS//NOFORN")
         );
         assert_eq!(
-            try_classification_heuristic_fix("X//NOFORN").as_deref(),
+            try_classification_heuristic_fix("X//NOFORN", DC).as_deref(),
             Some("S//NOFORN")
         );
     }
@@ -475,9 +492,18 @@ mod tests {
         // CAB lines don't have a leading classification token. The
         // `is_cab_head` short-circuit at the top of the helper should
         // catch every CAB-keyword prefix.
-        assert_eq!(try_classification_heuristic_fix("Classified By: foo"), None);
-        assert_eq!(try_classification_heuristic_fix("Derived From: bar"), None);
-        assert_eq!(try_classification_heuristic_fix("Declassify On: baz"), None);
+        assert_eq!(
+            try_classification_heuristic_fix("Classified By: foo", DC),
+            None
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("Derived From: bar", DC),
+            None
+        );
+        assert_eq!(
+            try_classification_heuristic_fix("Declassify On: baz", DC),
+            None
+        );
     }
 
     #[test]
@@ -489,9 +515,9 @@ mod tests {
         // `UOP` correct via dist-1 fuzzy); the 3-char heuristic is
         // intentionally narrow (only `OTP` → `TOP`) so unrelated
         // 3-char tokens like `YES` return None.
-        assert_eq!(try_classification_heuristic_fix("(YES//NF)"), None);
-        assert_eq!(try_classification_heuristic_fix("(SECT//NF)"), None);
-        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN"), None);
+        assert_eq!(try_classification_heuristic_fix("(YES//NF)", DC), None);
+        assert_eq!(try_classification_heuristic_fix("(SECT//NF)", DC), None);
+        assert_eq!(try_classification_heuristic_fix("SECRET//NOFORN", DC), None);
     }
 
     #[test]
@@ -505,7 +531,7 @@ mod tests {
             ("OTP SECRET//SI//NOFORN", "TOP SECRET//SI//NOFORN"),
         ];
         for (input, expected) in cases {
-            let result = try_classification_heuristic_fix(input);
+            let result = try_classification_heuristic_fix(input, DC);
             assert_eq!(
                 result.as_deref(),
                 Some(*expected),
@@ -546,7 +572,7 @@ mod tests {
             ("(TO//NF)", "(TOP//NF)"),
         ];
         for (input, expected) in cases {
-            let result = try_classification_heuristic_fix(input);
+            let result = try_classification_heuristic_fix(input, DC);
             assert_eq!(
                 result.as_deref(),
                 Some(*expected),
@@ -599,8 +625,8 @@ mod tests {
     #[test]
     fn heuristic_skips_unknown_first_char() {
         // First char isn't in any heuristic cluster → no fix.
-        assert_eq!(try_classification_heuristic_fix("(B//NF)"), None);
-        assert_eq!(try_classification_heuristic_fix("(QS//NF)"), None);
+        assert_eq!(try_classification_heuristic_fix("(B//NF)", DC), None);
+        assert_eq!(try_classification_heuristic_fix("(QS//NF)", DC), None);
     }
 
     #[test]
@@ -616,8 +642,10 @@ mod tests {
         // is ~3 orders of magnitude higher than the in-context rate.
         //
         // Form-field input (caller asserts the input IS a marking
-        // attempt) should still fire; tracking via #176 — when the
-        // input-source signal lands, this guard becomes conditional.
+        // attempt) DOES fire — the guard is now conditional on
+        // `InputSource::DocumentContent` (#176 / SC-010). This test pins
+        // the document-content branch; the StructuredField branch is
+        // pinned by `sc010_input_source_confidence_matrix` below.
         for lone in &[
             "(YS)",  // 2-char trigger, parens, nothing else
             "(W)",   // 1-char trigger
@@ -628,11 +656,55 @@ mod tests {
             "(YS )", // trailing whitespace only
         ] {
             assert_eq!(
-                try_classification_heuristic_fix(lone),
+                try_classification_heuristic_fix(lone, DC),
                 None,
-                "lone input {lone:?} must not fire heuristic (#133 / #176 lone-input guard)"
+                "lone DocumentContent input {lone:?} must not fire heuristic \
+                 (#133 / #176 lone-input guard)"
             );
         }
+    }
+
+    #[test]
+    fn sc010_input_source_confidence_matrix() {
+        // SC-010 (#176): the lone-case heuristic guard is conditional on
+        // the recognition-provenance axis. Pin the full 2×2 matrix —
+        // {StructuredField, DocumentContent} × {lone, in-context} — at
+        // the heuristic-fix unit boundary. The "confidence" axis here is
+        // structural: a heuristic fix produced (`Some`) is the high-
+        // confidence path the decoder later caps at
+        // HEURISTIC_RECOGNITION_CAP = 0.95 and surfaces as a fix; `None`
+        // is the suggestion-only / no-fix lone-DocumentContent path
+        // (~0.50, below the auto-apply floor — research.md #176 matrix).
+        //
+        //                  | lone (`(YS)`)        | in-context (`(YS//NF)`)
+        //   StructuredField| Some  (field 0.95)   | Some  (field 0.95)
+        //   DocumentContent| None  (lone ~0.50)   | Some  (in-context high)
+
+        // StructuredField × lone → fixes (trusted caller; guard lifted).
+        assert_eq!(
+            try_classification_heuristic_fix("(YS)", SF).as_deref(),
+            Some("(TS)"),
+            "StructuredField lone input MUST heuristic-fix (caller asserts it is a field; \
+             #176 → field confidence cap 0.95)"
+        );
+        // StructuredField × in-context → fixes (same high-confidence).
+        assert_eq!(
+            try_classification_heuristic_fix("(YS//NF)", SF).as_deref(),
+            Some("(TS//NF)"),
+            "StructuredField in-context input MUST heuristic-fix"
+        );
+        // DocumentContent × lone → NO fix (conservative; ~0.50 lone).
+        assert_eq!(
+            try_classification_heuristic_fix("(YS)", DC),
+            None,
+            "DocumentContent lone input MUST NOT heuristic-fix (lone ~0.50, suggestion-only)"
+        );
+        // DocumentContent × in-context → fixes (`//` is marking-shape signal).
+        assert_eq!(
+            try_classification_heuristic_fix("(YS//NF)", DC).as_deref(),
+            Some("(TS//NF)"),
+            "DocumentContent in-context input MUST heuristic-fix (marking-shape signal present)"
+        );
     }
 
     #[test]
@@ -649,7 +721,7 @@ mod tests {
             ("W//NF", "S//NF"),
         ];
         for (input, expected) in cases {
-            let result = try_classification_heuristic_fix(input);
+            let result = try_classification_heuristic_fix(input, DC);
             assert_eq!(
                 result.as_deref(),
                 Some(*expected),

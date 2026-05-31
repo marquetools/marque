@@ -32,11 +32,12 @@ use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
 fn deep_cx() -> ParseContext {
-    ParseContext {
-        strict_evidence: false,
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
-    }
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1), so
+    // it is built via `default()` + field assignment.
+    let mut cx = ParseContext::default();
+    cx.strict_evidence = false;
+    cx.preceded_by_whitespace = true;
+    cx
 }
 
 /// Shared scheme instance. `CapcoScheme::new()` builds non-trivial

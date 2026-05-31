@@ -280,6 +280,15 @@ struct CommonOptions {
     #[arg(long, value_enum)]
     format: Option<FormatArg>,
 
+    /// How to treat the input for recognition (#176 / T015). Trusted-
+    /// caller opt-in: `structured-field` asserts the input IS a
+    /// marking-shaped field, lifting the decoder's lone-case heuristic
+    /// guard so a lone `(YS)` recovers; `document-content` (default)
+    /// keeps the conservative prose-calibrated path. The WASM target
+    /// has no equivalent (Constitution III).
+    #[arg(long, value_enum)]
+    input_source: Option<InputSourceArg>,
+
     /// Suppress ANSI color in human format.
     #[arg(long)]
     no_color: bool,
@@ -321,6 +330,28 @@ impl From<FormatArg> for render::Format {
         match value {
             FormatArg::Human => render::Format::Human,
             FormatArg::Json => render::Format::Json,
+        }
+    }
+}
+
+/// `--input-source` value (#176 / T015). Trusted-caller opt-in for the
+/// recognition-provenance axis. `document-content` (the default) is the
+/// existing prose-calibrated path; `structured-field` asserts the input
+/// is a marking-shaped field, lifting the decoder's lone-case heuristic
+/// guard (SC-010). CLI/server-only opt-in — the WASM target pins
+/// `document-content` and exposes no equivalent (Constitution III /
+/// FR-031).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum InputSourceArg {
+    DocumentContent,
+    StructuredField,
+}
+
+impl From<InputSourceArg> for marque_engine::InputSource {
+    fn from(value: InputSourceArg) -> Self {
+        match value {
+            InputSourceArg::DocumentContent => marque_engine::InputSource::DocumentContent,
+            InputSourceArg::StructuredField => marque_engine::InputSource::StructuredField,
         }
     }
 }
@@ -624,7 +655,16 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
             Ok(d) => d,
             Err(code) => return code,
         };
-        let result = engine.lint_with_options(source, &lint_opts);
+        // #176 / T015: route by the trusted-caller input-source opt-in.
+        // Default (None) is DocumentContent — byte-identical to the
+        // pre-#176 `lint_with_options` path.
+        let input_cx = marque_engine::InputContext::new(
+            common
+                .input_source
+                .map(Into::into)
+                .unwrap_or(marque_engine::InputSource::DocumentContent),
+        );
+        let result = engine.lint_with_input_context(source, &lint_opts, &input_cx);
         // The truncation warning is operator narration on stderr, not a
         // diagnostic, so it falls under the `-q / --quiet` contract
         // (`contracts/cli.md` §"Suppress non-diagnostic stderr
@@ -829,6 +869,15 @@ fn run_fix(
         fix_opts.classifier_id = common.classifier_id.clone();
         fix_opts.classification_authority = common.classification_authority.clone();
         fix_opts.signature = common.signature.clone();
+        // #176 / SC-010: route by the trusted-caller input-source
+        // opt-in, same mapping `run_check` uses. Default (None) is
+        // DocumentContent — byte-identical to the pre-#176 fix path.
+        // `fix` is exactly where `StructuredField`'s assertive recovery
+        // materializes, so the flag must reach the engine here.
+        fix_opts.input_source = common
+            .input_source
+            .map(Into::into)
+            .unwrap_or(marque_engine::InputSource::DocumentContent);
         let result = match engine.fix_with_options(source, engine_mode, &fix_opts) {
             Ok(r) => r,
             Err(EngineError::InvalidThreshold(it)) => {

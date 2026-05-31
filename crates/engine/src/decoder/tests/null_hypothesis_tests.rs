@@ -272,10 +272,11 @@ fn decoder_applies_line_position_penalty_for_mid_line_portion() {
     // would change bytes — e.g., `(c)` → `(C)`) is handled by
     // the lowercase-context penalty pathway.
     let rx = DecoderRecognizer::new();
-    let mid_line_cx = ParseContext {
-        line_offset: Some(20),
-        line_prefix: Some(LinePrefix::from_slice(b"that's clearly prose ")),
-        ..deep_cx()
+    let mid_line_cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(20);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"that's clearly prose "));
+        cx
     };
     match rx.recognize(b"(C)", 0, &*TEST_SCHEME, &mid_line_cx) {
         Parsed::Unambiguous(m) => {
@@ -317,15 +318,17 @@ fn decoder_records_position_penalty_vs_bullet_bonus_for_bare_classification() {
     // directly on the surviving candidates, identical input bytes,
     // differing context.
     let rx = DecoderRecognizer::new();
-    let bullet_cx = ParseContext {
-        line_offset: Some(8),
-        line_prefix: Some(LinePrefix::from_slice(b"1B.a.3.")),
-        ..deep_cx()
+    let bullet_cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(8);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"1B.a.3."));
+        cx
     };
-    let prose_cx = ParseContext {
-        line_offset: Some(24),
-        line_prefix: Some(LinePrefix::from_slice(b"the early prevalence of ")),
-        ..deep_cx()
+    let prose_cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(24);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"the early prevalence of "));
+        cx
     };
     let bullet_result = rx.recognize(b"(C)", 0, &*TEST_SCHEME, &bullet_cx);
     let prose_result = rx.recognize(b"(C)", 0, &*TEST_SCHEME, &prose_cx);
@@ -382,11 +385,12 @@ fn decoder_applies_lowercase_context_penalty_in_lowercase_prose() {
     // suppresses. This is the prose-glyph case Task 10 targets —
     // mid-sentence parenthetical copyright `(c)`.
     let rx = DecoderRecognizer::new();
-    let lowercase_prose = ParseContext {
-        line_offset: Some(12),
-        line_prefix: Some(LinePrefix::from_slice(b"the work ")),
-        surrounding_is_lowercase: true,
-        ..deep_cx()
+    let lowercase_prose = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(12);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"the work "));
+        cx.surrounding_is_lowercase = true;
+        cx
     };
     match rx.recognize(b"(c)", 0, &*TEST_SCHEME, &lowercase_prose) {
         Parsed::Ambiguous { candidates } => assert!(
@@ -421,11 +425,12 @@ fn decoder_skips_lowercase_penalty_when_candidate_is_uppercase() {
     // this test fails; if the gate is correct, the candidate
     // recovers.
     let rx = DecoderRecognizer::new();
-    let cx = ParseContext {
-        line_offset: Some(0),
-        line_prefix: Some(LinePrefix::empty()),
-        surrounding_is_lowercase: true,
-        ..deep_cx()
+    let cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(0);
+        cx.line_prefix = Some(LinePrefix::empty());
+        cx.surrounding_is_lowercase = true;
+        cx
     };
     match rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) {
         Parsed::Unambiguous(m) => {
@@ -459,11 +464,12 @@ fn compute_context_features_skips_banners_and_cabs() {
     // A banner candidate at line offset 50 in lowercase prose
     // must NOT receive any context features (banners are
     // line-bound by structure; CAB rows have fielded labels).
-    let banner_cx = ParseContext {
-        line_offset: Some(50),
-        line_prefix: Some(LinePrefix::from_slice(b"prose prose prose ")),
-        surrounding_is_lowercase: true,
-        ..deep_cx()
+    let banner_cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(50);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"prose prose prose "));
+        cx.surrounding_is_lowercase = true;
+        cx
     };
     let features = compute_context_features(MarkingType::Banner, b"secret", &banner_cx);
     assert!(
@@ -483,11 +489,12 @@ fn compute_context_features_no_op_without_engine_populated_position() {
     // Direct callers (test code, WASM) that don't compute
     // `line_offset` / `line_prefix` get default-empty features —
     // identical behavior to pre-Task-9/10 decoder.
-    let cx_no_position = ParseContext {
-        line_offset: None,
-        line_prefix: None,
-        surrounding_is_lowercase: false,
-        ..deep_cx()
+    let cx_no_position = {
+        let mut cx = deep_cx();
+        cx.line_offset = None;
+        cx.line_prefix = None;
+        cx.surrounding_is_lowercase = false;
+        cx
     };
     let features = compute_context_features(MarkingType::Portion, b"(s)", &cx_no_position);
     assert!(
@@ -508,11 +515,12 @@ fn compute_context_features_lowercase_fires_independent_of_position() {
     // `compute_context_features_no_op_without_engine_populated_position`
     // — that the position fields not being populated does NOT
     // suppress the lowercase feature.
-    let cx = ParseContext {
-        line_offset: None,
-        line_prefix: None,
-        surrounding_is_lowercase: true,
-        ..deep_cx()
+    let cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = None;
+        cx.line_prefix = None;
+        cx.surrounding_is_lowercase = true;
+        cx
     };
     let features = compute_context_features(MarkingType::Portion, b"(s)", &cx);
     assert!(
@@ -535,10 +543,11 @@ fn compute_context_features_lowercase_fires_independent_of_position() {
 
 #[test]
 fn compute_context_features_emits_bullet_bonus_for_anchor_prefix() {
-    let bullet_cx = ParseContext {
-        line_offset: Some(8),
-        line_prefix: Some(LinePrefix::from_slice(b"1B.a.3.")),
-        ..deep_cx()
+    let bullet_cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(8);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"1B.a.3."));
+        cx
     };
     let features = compute_context_features(MarkingType::Portion, b"(C)", &bullet_cx);
     assert!(
@@ -557,10 +566,11 @@ fn compute_context_features_emits_bullet_bonus_for_anchor_prefix() {
 
 #[test]
 fn compute_context_features_emits_position_penalty_for_non_anchor() {
-    let prose_cx = ParseContext {
-        line_offset: Some(20),
-        line_prefix: Some(LinePrefix::from_slice(b"the early prevalence of ")),
-        ..deep_cx()
+    let prose_cx = {
+        let mut cx = deep_cx();
+        cx.line_offset = Some(20);
+        cx.line_prefix = Some(LinePrefix::from_slice(b"the early prevalence of "));
+        cx
     };
     let features = compute_context_features(MarkingType::Portion, b"(s)", &prose_cx);
     let has_position = features

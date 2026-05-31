@@ -161,9 +161,10 @@ fn decoder_suppresses_prose_glue_single_letter_portion() {
     // candidates so the engine doesn't synthesize a spurious R001
     // diagnostic.
     let rx = DecoderRecognizer::new();
-    let glued = ParseContext {
-        preceded_by_whitespace: false,
-        ..deep_cx()
+    let glued = {
+        let mut cx = deep_cx();
+        cx.preceded_by_whitespace = false;
+        cx
     };
     for input in &[b"(s)", b"(c)", b"(u)", b"(S)", b"(C)"] {
         match rx.recognize(*input, 0, &*TEST_SCHEME, &glued) {
@@ -219,9 +220,10 @@ fn decoder_prose_glue_suppresses_u_that_null_gate_would_admit() {
 
     // Glued: same input, `preceded_by_whitespace = false`. The
     // prose-glue early-return suppresses BEFORE the null gate.
-    let glued_cx = ParseContext {
-        preceded_by_whitespace: false,
-        ..deep_cx()
+    let glued_cx = {
+        let mut cx = deep_cx();
+        cx.preceded_by_whitespace = false;
+        cx
     };
     let glued = rx.recognize(b"(u)", 0, &*TEST_SCHEME, &glued_cx);
     match glued {
@@ -415,13 +417,11 @@ fn decoder_rejects_bare_restricted_via_recognizer_predicate() {
     // candidate loop (step 3c-bis). The decoder must produce
     // zero candidates regardless of preceded-by-whitespace.
     let rx = DecoderRecognizer::new();
-    for cx in &[
-        deep_cx(),
-        ParseContext {
-            preceded_by_whitespace: false,
-            ..deep_cx()
-        },
-    ] {
+    for cx in &[deep_cx(), {
+        let mut cx = deep_cx();
+        cx.preceded_by_whitespace = false;
+        cx
+    }] {
         match rx.recognize(b"(r)", 0, &*TEST_SCHEME, cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
@@ -481,11 +481,12 @@ fn decoder_honors_classification_floor_fr011() {
     // Input is "(U)" which canonicalizes to an UNCLASSIFIED
     // portion. With a Secret floor, the candidate must be
     // dropped.
-    let cx = ParseContext {
-        strict_evidence: false,
-        classification_floor: Some(Classification::Secret as u8),
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
+    let cx = {
+        let mut cx = ParseContext::default();
+        cx.strict_evidence = false;
+        cx.classification_floor = Some(Classification::Secret as u8);
+        cx.preceded_by_whitespace = true;
+        cx
     };
     match rx.recognize(b"(U)", 0, &*TEST_SCHEME, &cx) {
         Parsed::Ambiguous { candidates } => assert!(
@@ -504,11 +505,12 @@ fn decoder_honors_classification_floor_fr011() {
 fn decoder_classification_floor_allows_equal_or_above() {
     let rx = DecoderRecognizer::new();
     // (S//NF) with Confidential floor — SECRET exceeds floor.
-    let cx = ParseContext {
-        strict_evidence: false,
-        classification_floor: Some(Classification::Confidential as u8),
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
+    let cx = {
+        let mut cx = ParseContext::default();
+        cx.strict_evidence = false;
+        cx.classification_floor = Some(Classification::Confidential as u8);
+        cx.preceded_by_whitespace = true;
+        cx
     };
     match rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) {
         Parsed::Unambiguous(m) => {

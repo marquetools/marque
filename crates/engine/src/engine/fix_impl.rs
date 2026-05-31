@@ -78,10 +78,30 @@ impl<'engine> TwoPassFixer<'engine> {
             ..Default::default()
         };
 
+        // #176 / SC-010: route the fix path's internal lint passes by
+        // the caller's recognition input-source. `SchemaDocument`
+        // normalizes to the conservative text path here (no schema
+        // adapter ships for CapcoScheme yet), mirroring
+        // `Engine::lint_with_input_context`. `StructuredField` lifts the
+        // decoder's lone-case heuristic so `fix --input-source
+        // structured-field` applies the assertive recovery the flag
+        // promises.
+        let input_source = match self.input_source {
+            marque_scheme::InputSource::StructuredField => {
+                marque_scheme::InputSource::StructuredField
+            }
+            // DocumentContent + SchemaDocument + any future
+            // `#[non_exhaustive]` variant → conservative text path.
+            _ => marque_scheme::InputSource::DocumentContent,
+        };
+
         // Pass-0: lint original + apply text corrections.
-        let (lint1, parsed_markings1) = self
-            .engine
-            .lint_with_options_internal(self.source, &lint_opts);
+        let (lint1, parsed_markings1) = self.engine.lint_with_options_internal_with_source(
+            self.source,
+            &lint_opts,
+            None,
+            input_source,
+        );
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded {
                 partial_lint: lint1,
@@ -96,8 +116,12 @@ impl<'engine> TwoPassFixer<'engine> {
         // markings)` pair so synthesis can consume `parsed_markings`
         // without an explicit clone.
         let (lint, parsed_markings) = if !pass0.audit_lines.is_empty() {
-            self.engine
-                .lint_with_options_internal(&pass0.effective_source, &lint_opts)
+            self.engine.lint_with_options_internal_with_source(
+                &pass0.effective_source,
+                &lint_opts,
+                None,
+                input_source,
+            )
         } else {
             (lint1, parsed_markings1)
         };
@@ -237,10 +261,11 @@ impl<'engine> TwoPassFixer<'engine> {
                 // overlaps a pass-1-reshaped marking. The field is the
                 // architectural two-pass-reshape signal kept for future
                 // rule consumers.
-                let (relint, new_markings) = self.engine.lint_with_options_internal_with_cache(
+                let (relint, new_markings) = self.engine.lint_with_options_internal_with_source(
                     &pass1.post_buffer,
                     &lint_opts,
                     Some(&pre_pass_1_cache),
+                    input_source,
                 );
                 // R002 trigger: pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
