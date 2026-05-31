@@ -14,9 +14,11 @@ use core::fmt::Debug;
 use core::hash::Hash;
 
 use crate::ambiguity::Parsed;
+use crate::artifact::ArtifactKind;
 use crate::category::{Category, CategoryId, TokenId};
 use crate::closure::{ClosureRule, ClosureRuleMetadata};
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
+use crate::derivation::DerivationEdge;
 use crate::fix_intent::FactRef;
 use crate::page_rewrite::PageRewrite;
 use crate::render_context::RenderContext;
@@ -453,6 +455,35 @@ pub trait MarkingScheme {
         &[]
     }
 
+    /// The document-scoped artifact kinds this scheme models (CABs,
+    /// declassify instructions, notices, caveat layers, front markings).
+    ///
+    /// This is a declarative inventory surface, parallel to
+    /// [`Self::categories`] / [`Self::page_rewrites`]: tooling and the
+    /// engine can read which artifact kinds a scheme recognizes without
+    /// executing scheme code.
+    ///
+    /// Default: empty slice (no document artifacts declared). Returning
+    /// the empty slice is behavior-neutral — a scheme that does not model
+    /// document artifacts is unchanged.
+    fn document_artifacts(&self) -> &[ArtifactKind] {
+        &[]
+    }
+
+    /// The inbound derivation edges this scheme declares for its
+    /// document-scoped artifacts.
+    ///
+    /// Mirrors [`Self::page_rewrites`]'s `reads` / `writes` shape so the
+    /// engine's Kahn scheduler (Phase C) can order derivation edges and
+    /// page rewrites in one topological pass. The edge topology is static
+    /// (validated at `Engine::new`); per-edge firing is conditional via
+    /// each edge's [`crate::FiringPredicate`].
+    ///
+    /// Default: empty slice (no derivation edges declared).
+    fn derivation_edges(&self) -> &[DerivationEdge] {
+        &[]
+    }
+
     /// Declared closure rules for this scheme.
     ///
     /// Closure rules implement implicit-fact propagation. They
@@ -806,6 +837,36 @@ pub trait MarkingScheme {
             Err(_) => String::new(),
         }
     }
+}
+
+/// Opt-in extension trait for schemes that model document-scoped
+/// artifacts.
+///
+/// The `ArtifactPayload` associated type — what a
+/// [`DocumentArtifact`](crate::artifact::DocumentArtifact) node carries
+/// when present — lives here rather than on [`MarkingScheme`] so the frozen
+/// `MarkingScheme` surface gains only *defaulted* methods
+/// ([`MarkingScheme::document_artifacts`] /
+/// [`MarkingScheme::derivation_edges`]) and no new *required* associated
+/// type. A scheme that does not model document artifacts simply does not
+/// implement `SchemeArtifacts`, and still compiles unchanged — the critical
+/// additive-staging property of this phase.
+///
+/// Schemes that DO model document artifacts implement this trait and bind
+/// `ArtifactPayload` to their parsed-artifact type (CAPCO will eventually
+/// bind it to a parsed-CAB structural type; in this phase it binds `()` as
+/// a placeholder).
+///
+/// # Constitution V Principle V (audit content-ignorance)
+///
+/// `ArtifactPayload` is scheme-chosen, but schemes MUST keep it
+/// content-ignorant for any audit-adjacent use — a parsed, structural
+/// representation of the artifact, never raw document bytes.
+pub trait SchemeArtifacts: MarkingScheme {
+    /// The payload an artifact node carries when present — e.g. CAPCO's
+    /// parsed CAB. Schemes that model document artifacts bind this to their
+    /// own structural artifact type.
+    type ArtifactPayload;
 }
 
 /// Error variants returned by [`MarkingScheme::apply_intent`].

@@ -65,9 +65,11 @@ pub struct DocumentArtifact<S: SchemeArtifacts + ?Sized> {
 /// topology; firing is conditional (research D3).
 pub struct DerivationEdge {
     pub id: EdgeId,                         // &'static-label, like RewriteId
+    pub citation: Citation,                 // authoritative-source citation, like PageRewrite
     pub relation: DerivationRelation,
-    pub reads: Box<[CategoryId]>,           // feeds the scheduler (writers-before-readers)
-    pub writes: Box<[CategoryId]>,
+    pub reads: &'static [CategoryId],       // feeds the scheduler (writers-before-readers);
+    pub writes: &'static [CategoryId],      //   &'static (not Box) to mirror PageRewrite +
+                                            //   allow const edge tables (Phase 0a as-built)
     pub firing: FiringPredicate,            // always-declared; predicate gates firing (incl. mode)
 }
 

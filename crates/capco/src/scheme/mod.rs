@@ -52,6 +52,9 @@ use marque_scheme::{
 
 pub(crate) mod actions;
 pub(crate) mod adapter;
+// Feature 007 Phase 0a: `impl SchemeArtifacts for CapcoScheme` (opt-in
+// document-scoped artifact surface; placeholder `()` payload until Phase D).
+pub(crate) mod artifacts;
 pub(crate) mod class_floor;
 pub(crate) mod closure;
 pub(crate) mod default_fill;

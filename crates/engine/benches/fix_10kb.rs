@@ -26,7 +26,9 @@
 //!
 //! # Gating
 //!
-//! - **Absolute (interactive-latency gate)**: p95 ≤ 16 ms on 10 KB inputs.
+//! - **Absolute (interactive-latency gate)**: p95 ≤ 2 ms on 10 KB inputs
+//!   (constitution 1.7.0; the prior 16 ms figure was a retired
+//!   pre-measurement placeholder).
 //! - **Delta**: p99 ≤ baseline.p99 × 1.05 against the prior baseline.
 //!   `scripts/bench-check.sh` enforces the delta.
 

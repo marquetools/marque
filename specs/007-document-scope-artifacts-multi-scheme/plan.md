@@ -156,6 +156,26 @@ graph TD
   deferred and not shimmed. (Earlier drafts called Phase 0 "additive" while it contained this
   breaking edit — that contradiction is removed.) `ErasedScheme`/`ErasedEngine` object-safety (the
   load-bearing co-residence design, see `contracts/multi-scheme.md`) is a Phase-B prerequisite.
+
+  **Delivery split (0a / 0b).** For reviewability, Phase 0 ships as two stacked PRs (owner
+  decision, 2026-05-30). This is a *PR-packaging* split, not a scope change — both land inside the
+  one Phase-0/B breaking window:
+  - **Phase 0a (additive only)** — `ArtifactKind`, the five-state `ArtifactState<P>`,
+    `DocumentArtifact<S>` + the `SchemeArtifacts` extension trait + the two *defaulted*
+    `MarkingScheme` inventory methods (`document_artifacts()` / `derivation_edges()`),
+    `RecognitionProvenance` / `ValueDerivation`, `DerivationEdge` / `DerivationRelation` /
+    `FiringPredicate` / `EdgeId`, and the `CapcoScheme: SchemeArtifacts` placeholder
+    (`ArtifactPayload = ()`). Tasks T002–T005, T007; the executed-wasm gate T009c. No existing
+    type, variant, or signature is edited — the frozen `MarkingScheme` surface gains only
+    defaulted methods, so every existing scheme impl compiles unchanged.
+  - **Phase 0b (breaking)** — `Scope::Bundle` (+ every exhaustive `match Scope` / `RecanonScope`
+    site updated) and the `ReplacementIntent` `prior` field + `Relocate` variant +
+    `RecanonPriorState` / `RelocatePriorState` (T001, T006), plus the tests that depend on them
+    (T009 SC-006 round-trip, T009b SC-005 bundle-edge compile gate). These are the source-breaking
+    edits; they land second so the additive foundation is reviewable in isolation first.
+
+  The `0a` / `0b` labels appear in source comments (`DocumentArtifact::scope`, the `capco` artifacts
+  module) and refer to exactly this split.
 - **Phases A and B fan out** from 0 and can proceed in parallel (different crates/seams).
 - **Phase C → D** (derivation layer must exist before CAB becomes a node consuming it) and
   **B,C → E** (co-residence needs both the generic engine and the document-scope layer).
