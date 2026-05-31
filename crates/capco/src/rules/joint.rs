@@ -224,6 +224,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
+                prior: None,
             },
             confidence: Recognition::strict(),
             feature_ids: Default::default(),

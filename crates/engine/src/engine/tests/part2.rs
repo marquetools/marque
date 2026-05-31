@@ -238,6 +238,7 @@ fn parsed_markings_cache_persists_across_page_breaks() {
                 FixIntent {
                     replacement: ReplacementIntent::Recanonicalize {
                         scope: RecanonScope::Portion,
+                        prior: None,
                     },
                     confidence: Recognition::strict(),
                     feature_ids: SmallVec::new(),

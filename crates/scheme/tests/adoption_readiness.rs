@@ -248,7 +248,8 @@ impl MarkingScheme for StubScheme {
         // above. `Scope::Diff` rejects per the trait contract.
         match ctx.scope {
             Scope::Portion => out.write_str(&self.render_portion(m)),
-            Scope::Page | Scope::Document => out.write_str(&self.render_banner(m)),
+            // Bundle ≡ Document for single-doc inputs; multi-doc mosaic is #823
+            Scope::Page | Scope::Document | Scope::Bundle => out.write_str(&self.render_banner(m)),
             Scope::Diff => Err(core::fmt::Error),
         }
     }

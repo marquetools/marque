@@ -11,6 +11,9 @@
 //! - `Page` — per-page banner roll-up (the CAPCO "expected banner").
 //! - `Document` — document-level roll-up (identical to `Page` on
 //!   single-page documents; may diverge for multi-page).
+//! - `Bundle` — document-set roll-up (the scope above `Document`).
+//!   Reserved seam for #823; the engine never passes it to
+//!   `project` / `render` yet.
 //! - `Diff` — marker variant; diff rules consume a [`DiffInput`] on a
 //!   separate entry point. Kept here for enum completeness so code
 //!   walking `Scope` variants sees the full surface.
@@ -26,9 +29,9 @@ use crate::ambiguity::Parsed;
 ///
 /// The enum is `#[non_exhaustive]`-free because the variant set is
 /// fixed by the design doc: scheme authors don't introduce new scopes.
-/// If a future scheme needs a scope not represented here, the variant
-/// is added to the enum via a minor-version bump — callers who match
-/// exhaustively will see the addition.
+/// If a future scheme needs a scope not represented here, adding the
+/// variant is a source-breaking change — every exhaustive match over
+/// `Scope` is updated in the same change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scope {
     /// Individual portion marking. Identity under projection.
@@ -39,6 +42,18 @@ pub enum Scope {
     /// Document-level rollup. Usually agrees with `Page` on
     /// single-page documents.
     Document,
+    /// Document-set rollup — a bundle of documents (e.g. an email
+    /// thread, a compiled package). The scope above `Document`.
+    ///
+    /// Reserved seam for #823 (source-list / ICD-206 generation);
+    /// 007 supports only single-document inputs, so `Bundle` is never
+    /// passed to `project` / `render` by the engine yet — it exists so
+    /// the #823 bundle→document derivation edge has a scope to name.
+    ///
+    /// Adding this variant is a source-breaking change — `Scope` is
+    /// intentionally not `#[non_exhaustive]`, so every exhaustive match
+    /// over `Scope` is updated in the same change.
+    Bundle,
     /// Diff-rule context; the caller supplies a [`DiffInput`] rather
     /// than a slice of markings. See crate docs.
     Diff,

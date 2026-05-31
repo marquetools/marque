@@ -397,6 +397,7 @@ fn apply_intent_recanonicalize_returns_unchanged_marking() {
 
     let intents = [ReplacementIntent::Recanonicalize {
         scope: RecanonScope::Portion,
+        prior: None,
     }];
     let out = scheme
         .apply_intent(&m, &intents)

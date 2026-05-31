@@ -132,6 +132,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     let intent: FixIntent<StubScheme> = FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: Recognition::strict(),
         feature_ids: Default::default(),

@@ -881,6 +881,12 @@ pub trait SchemeArtifacts: MarkingScheme {
 /// - [`IntentRejectsLattice`](Self::IntentRejectsLattice) — surface
 ///   as a diagnostic. The scheme refuses the fix because applying it
 ///   would violate a structural invariant.
+/// - [`IntentNotYetApplicable`](Self::IntentNotYetApplicable) —
+///   surface as a diagnostic. The intent is a reserved variant whose
+///   apply path is not yet wired (currently `Relocate`; Phase E /
+///   #824). Distinct from `IntentRejectsLattice` so a not-yet-wired
+///   reserved variant is never silently dropped, silently applied, or
+///   mislabeled as a true lattice rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyIntentError {
     /// The intent doesn't apply: `FactRemove` of a token that's
@@ -898,6 +904,17 @@ pub enum ApplyIntentError {
     /// structural invariant the scheme can't repair through fact-set
     /// delta alone. The engine surfaces this as a diagnostic.
     IntentRejectsLattice,
+    /// The intent is a reserved [`ReplacementIntent`] variant —
+    /// currently [`Relocate`](crate::ReplacementIntent::Relocate) —
+    /// whose apply path is not yet wired (Phase E / #824). The engine
+    /// surfaces this as a diagnostic rather than silently dropping or
+    /// applying it. This is deliberately NOT
+    /// [`IntentRejectsLattice`](Self::IntentRejectsLattice): the fix is
+    /// not refused because it violates an invariant, it is refused
+    /// because the cross-scope move semantics are not implemented yet.
+    ///
+    /// [`ReplacementIntent`]: crate::ReplacementIntent
+    IntentNotYetApplicable,
 }
 
 impl fmt::Display for ApplyIntentError {
@@ -911,6 +928,9 @@ impl fmt::Display for ApplyIntentError {
             }
             ApplyIntentError::IntentRejectsLattice => {
                 f.write_str("applying intent would violate a structural invariant of this scheme")
+            }
+            ApplyIntentError::IntentNotYetApplicable => {
+                f.write_str("intent uses a reserved variant whose apply path is not yet wired")
             }
         }
     }

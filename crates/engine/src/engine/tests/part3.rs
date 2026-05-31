@@ -561,6 +561,7 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
     tc.fix = Some(FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
@@ -635,6 +636,7 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
+                    prior: None,
                 },
                 confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),

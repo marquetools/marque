@@ -384,7 +384,7 @@ fn emit_form_mismatch(
     citation: Citation,
 ) -> Diagnostic<CapcoScheme> {
     let fix_intent = FixIntent {
-        replacement: ReplacementIntent::Recanonicalize { scope },
+        replacement: ReplacementIntent::Recanonicalize { scope, prior: None },
         confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::WrongTokenForm, MessageArgs::default()),

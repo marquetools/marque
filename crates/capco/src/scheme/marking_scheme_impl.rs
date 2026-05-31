@@ -358,7 +358,8 @@ impl MarkingScheme for CapcoScheme {
     ) -> Self::Marking {
         match scope {
             Scope::Portion => self.project(scope, markings),
-            Scope::Page | Scope::Document | Scope::Diff => {
+            // Bundle ≡ Document for single-doc inputs; multi-doc mosaic is #823
+            Scope::Page | Scope::Document | Scope::Bundle | Scope::Diff => {
                 let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
                 let out_attrs = self.project_attrs_pipeline_with_sink(&raw, sink);
                 CapcoMarking::new(out_attrs)
@@ -432,7 +433,8 @@ impl MarkingScheme for CapcoScheme {
                     .cloned()
                     .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
             }
-            Scope::Page | Scope::Document | Scope::Diff => {
+            // Bundle ≡ Document for single-doc inputs; multi-doc mosaic is #823
+            Scope::Page | Scope::Document | Scope::Bundle | Scope::Diff => {
                 // The production page projection runs the lattice
                 // pipeline:
                 //

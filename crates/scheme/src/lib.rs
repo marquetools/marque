@@ -133,7 +133,9 @@ pub use decision::sinks::{CountingSink, NoopSink, RecordingSink};
 pub use decision::{DecisionEvent, DecisionKind, DecisionSink, DecisionSite, DecisionSource};
 pub use derivation::{DerivationEdge, DerivationRelation, EdgeId, FiringPredicate};
 pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
-pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
+pub use fix_intent::{
+    FactRef, RecanonPriorState, RecanonScope, RelocatePriorState, ReplacementIntent,
+};
 pub use lattice::{
     BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
     MeetSemilattice,

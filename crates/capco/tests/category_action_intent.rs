@@ -41,7 +41,8 @@ use marque_ism::{
 };
 use marque_scheme::{
     ApplyIntentError, CategoryAction, CategoryPredicate, Citation, FactRef, MarkingScheme,
-    PageRewrite, RecanonScope, ReplacementIntent, Scope, SectionLetter, TokenId,
+    PageRewrite, RecanonScope, RelocatePriorState, ReplacementIntent, Scope, SectionLetter,
+    TokenId,
 };
 
 // Test-fixture sentinel Citation (Constitution V Principle V test
@@ -234,6 +235,7 @@ fn page_rewrite_intent_recanonicalize_is_no_op() {
         },
         action: CategoryAction::Intent(ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Page,
+            prior: None,
         }),
         reads: &[CAT_DISSEM],
         writes: &[CAT_DISSEM],
@@ -553,6 +555,41 @@ fn apply_fact_add_noforn_double_insertion_with_clear_axes() {
         "FactAdd of NOFORN onto NOFORN-already-present marking is \
          idempotent; the country-list cleanup is the FIRST injection's \
          responsibility, not the no-op second one's; got {:?}",
+        result,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Relocate audit-safety contract: the reserved D8 variant fails loudly.
+// ---------------------------------------------------------------------------
+
+/// `CapcoScheme::apply_intent` returns
+/// `Err(ApplyIntentError::IntentNotYetApplicable)` for the `Relocate`
+/// variant. Relocate (D8, relocate-not-evict) is a reserved variant whose
+/// move semantics are not wired in Phase 0b; the audit-safety contract
+/// requires it to fail loudly rather than appear as a silent success
+/// (which would let a reserved variant emit an applied-but-no-op audit
+/// record). This pins the contract so a future wiring change is forced to
+/// update this test deliberately.
+#[test]
+fn relocate_intent_is_not_yet_applicable() {
+    let prior = RelocatePriorState::<CapcoScheme> {
+        token: FactRef::Cve(TOK_NOFORN),
+        origin_span: marque_scheme::Span::new(0, 5),
+        digest: [0u8; 32],
+    };
+    let relocate = ReplacementIntent::Relocate {
+        from: Scope::Portion,
+        to: Scope::Page,
+        token: FactRef::Cve(TOK_NOFORN),
+        prior,
+    };
+
+    let result = run_apply_intent(portion_at(Classification::Secret), vec![relocate]);
+    assert!(
+        matches!(result, Err(ApplyIntentError::IntentNotYetApplicable)),
+        "Relocate is a reserved variant and must fail loudly with \
+         IntentNotYetApplicable, never a silent success; got {:?}",
         result,
     );
 }

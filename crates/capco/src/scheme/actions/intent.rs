@@ -96,6 +96,16 @@ pub(crate) fn apply_intent_to_marking(
             // via render_canonical to produce the canonical form.
             Ok(())
         }
+        ReplacementIntent::Relocate { .. } => {
+            // Relocate (D8, relocate-not-evict) is a reserved variant;
+            // its cross-scope move semantics are not wired yet (Phase E
+            // / #824). Fail visibly with the honestly-named variant so
+            // reaching this arm is surfaced as a diagnostic rather than
+            // silently succeeding (which would corrupt the audit log,
+            // Constitution V) or being mislabeled as a true lattice
+            // rejection.
+            Err(ApplyIntentError::IntentNotYetApplicable)
+        }
         // #[non_exhaustive] forward-compat guard: unknown future variants
         // are rejected loudly so newly added intents cannot be
         // silently dropped as no-ops without explicit wiring here.
