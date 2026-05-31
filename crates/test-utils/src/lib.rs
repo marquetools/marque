@@ -12,6 +12,11 @@
 
 pub mod fixtures;
 
+/// Shared minimal second [`MarkingScheme`](marque_scheme::scheme::MarkingScheme)
+/// fixture for Phase B generic-surface tests. See the [`stub_scheme`]
+/// module docs.
+pub mod stub_scheme;
+
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
