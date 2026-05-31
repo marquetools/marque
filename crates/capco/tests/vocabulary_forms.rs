@@ -10,12 +10,12 @@
 //!
 //! ## What this pins
 //!
-//! - `scheme.portion_form(t) == scheme.forms(t).short_form` for every
+//! - `scheme.portion_form(t) == scheme.forms(t).portion` for every
 //!   active sentinel.
 //! - `scheme.banner_form(t) ==
-//!   scheme.forms(t).abbreviated_form.unwrap_or(scheme.forms(t).long_form)`
+//!   scheme.forms(t).banner_abbreviation.unwrap_or(scheme.forms(t).banner_title)`
 //!   — the banner-form projection equation.
-//! - `scheme.abbreviated_form(t) == scheme.forms(t).abbreviated_form`
+//! - `scheme.banner_abbreviation(t) == scheme.forms(t).banner_abbreviation`
 //!   AND the explicit expected `Option<&str>` recorded in
 //!   `EXPECTED_FORMS`. The table pins `abbreviated_form` for
 //!   `RD` / `FRD` / `TFNI` (`Some("RD")` / `Some("FRD")` /
@@ -206,8 +206,8 @@ fn forms_round_trips_for_every_active_sentinel() {
         // Default-method projection #1: portion_form
         assert_eq!(
             scheme.portion_form(token),
-            form_set.short_form,
-            "portion_form / forms.short_form disagree for {token:?}",
+            form_set.portion,
+            "portion_form / forms.portion disagree for {token:?}",
         );
         assert_eq!(
             scheme.portion_form(token),
@@ -218,13 +218,13 @@ fn forms_round_trips_for_every_active_sentinel() {
         // Default-method projection #2: banner_form per the
         // exact equation
         let projected_banner = form_set
-            .abbreviated_form
-            .unwrap_or(form_set.long_form);
+            .banner_abbreviation
+            .unwrap_or(form_set.banner_title);
         assert_eq!(
             scheme.banner_form(token),
             projected_banner,
             "banner_form does not match \
-             abbreviated_form.unwrap_or(long_form) for {token:?}",
+             banner_abbreviation.unwrap_or(banner_title) for {token:?}",
         );
         assert_eq!(
             scheme.banner_form(token),
@@ -232,25 +232,25 @@ fn forms_round_trips_for_every_active_sentinel() {
             "banner_form regression for {token:?}",
         );
 
-        // Default-method projection #3: abbreviated_form. Two
+        // Default-method projection #3: banner_abbreviation. Two
         // independent assertions — neither comparison is tautological:
-        //   (a) `scheme.abbreviated_form(token)` (the trait
+        //   (a) `scheme.banner_abbreviation(token)` (the trait
         //       default-method projection) vs the EXPECTED_FORMS pin;
-        //   (b) `form_set.abbreviated_form` (the FormSet field) vs
+        //   (b) `form_set.banner_abbreviation` (the FormSet field) vs
         //       the EXPECTED_FORMS pin.
         // Earlier code did
-        // `scheme.abbreviated_form(token) == form_set.abbreviated_form`,
+        // `scheme.banner_abbreviation(token) == form_set.banner_abbreviation`,
         // which both route through the same FormSet — the abbreviation
         // flip on RD / FRD / TFNI was therefore unpinned. The
         // EXPECTED_FORMS 4-tuple addition closes that gap.
         assert_eq!(
-            scheme.abbreviated_form(token),
+            scheme.banner_abbreviation(token),
             *expected_abbreviated_form,
-            "abbreviated_form regression (trait projection) for {token:?}",
+            "banner_abbreviation regression (trait projection) for {token:?}",
         );
         assert_eq!(
-            form_set.abbreviated_form, *expected_abbreviated_form,
-            "abbreviated_form regression (FormSet field) for {token:?}",
+            form_set.banner_abbreviation, *expected_abbreviated_form,
+            "banner_abbreviation regression (FormSet field) for {token:?}",
         );
     }
 }

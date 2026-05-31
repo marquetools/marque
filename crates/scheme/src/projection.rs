@@ -13,7 +13,7 @@
 //! operational without committing to specific machinery.
 //!
 //! This module is intentionally thin: each `MarkingScheme`
-//! implementation provides its own `project_banner` that knows how to
+//! implementation provides its own `project_summary` that knows how to
 //! read the concrete `Marking` type's fields. The `Projection` trait
 //! here is a documentation contract and a future extension point for
 //! pluggable projections.

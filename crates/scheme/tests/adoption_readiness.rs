@@ -231,10 +231,10 @@ impl MarkingScheme for StubScheme {
             .iter()
             .fold(StubMarking::bottom(), |acc, m| acc.join(m))
     }
-    fn render_portion(&self, m: &Self::Marking) -> String {
+    fn render_item(&self, m: &Self::Marking) -> String {
         if m.has_token { "(STUB)" } else { "()" }.to_string()
     }
-    fn render_banner(&self, m: &Self::Marking) -> String {
+    fn render_summary(&self, m: &Self::Marking) -> String {
         if m.has_token { "STUB" } else { "" }.to_string()
     }
     fn render_canonical(
@@ -244,12 +244,12 @@ impl MarkingScheme for StubScheme {
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         // Degenerate delegation — preserves byte-identity with the
-        // existing `render_portion` / `render_banner` overrides
+        // existing `render_item` / `render_summary` overrides
         // above. `Scope::Diff` rejects per the trait contract.
         match ctx.scope {
-            Scope::Portion => out.write_str(&self.render_portion(m)),
+            Scope::Portion => out.write_str(&self.render_item(m)),
             // Bundle ≡ Document for single-doc inputs; multi-doc mosaic is #823
-            Scope::Page | Scope::Document | Scope::Bundle => out.write_str(&self.render_banner(m)),
+            Scope::Page | Scope::Document | Scope::Bundle => out.write_str(&self.render_summary(m)),
             Scope::Diff => Err(core::fmt::Error),
         }
     }
@@ -449,9 +449,9 @@ fn second_scheme_builds_without_engine_edits() {
     let marking = StubMarking::top();
     assert!(scheme.satisfies(&marking, &TokenRef::Token(STUB_TOKEN)));
     assert!(!scheme.satisfies(&marking, &TokenRef::Token(OTHER_TOKEN)));
-    assert_eq!(scheme.render_portion(&marking), "(STUB)");
-    assert_eq!(scheme.render_banner(&marking), "STUB");
-    assert_eq!(scheme.render_banner(&StubMarking::bottom()), "");
+    assert_eq!(scheme.render_item(&marking), "(STUB)");
+    assert_eq!(scheme.render_summary(&marking), "STUB");
+    assert_eq!(scheme.render_summary(&StubMarking::bottom()), "");
 
     // `validate` defaults to `evaluate(scheme, marking)`. Our single
     // declared constraint is `Conflicts(STUB_TOKEN, OTHER_TOKEN)`,

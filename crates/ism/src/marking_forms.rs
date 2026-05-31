@@ -617,7 +617,7 @@ pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
 pub fn portion_to_banner(short_form: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
-        .find(|f| f.short_form == portion && f.banner != f.short_form)
+        .find(|f| f.short_form == short_form && f.banner != f.short_form)
         .map(|f| f.banner)
 }
 

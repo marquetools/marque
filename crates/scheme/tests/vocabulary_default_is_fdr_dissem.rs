@@ -162,9 +162,9 @@ static NO_FDR_METADATA: TokenMetadataFull<TokenId> = TokenMetadataFull {
 };
 
 static NO_FDR_FORM_SET: FormSet = FormSet {
-    short_form: "NOFDR",
-    long_form: "NOFDR",
-    abbreviated_form: None,
+    portion: "NOFDR",
+    banner_title: "NOFDR",
+    banner_abbreviation: None,
     recognized_aliases: &[],
 };
 

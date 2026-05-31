@@ -82,10 +82,12 @@ fn render_item_byte_identical_golden() {
         ("(TS)", MarkingType::Portion, "TS"),
         // Dissem axis — NOFORN portion abbreviation.
         ("(S//NF)", MarkingType::Portion, "S//NF"),
-        // SCI axis. Bare SCI implies RELIDO per §B.3 Table 2 p21; the
-        // renderer applies that closure, so the canonical output carries
-        // the RELIDO the input omits.
-        ("(TS//SI)", MarkingType::Portion, "TS//SI//RELIDO"),
+        // SCI axis. Bare SCI implies RELIDO per §B.3 Table 2 p21, but that
+        // closure is applied by the engine's project/closure layer, NOT by
+        // render_canonical — so the pure render path emits the bare SCI
+        // form (matches the trusted render_canonical_axis_fixtures.rs SCI
+        // fixture, which renders bare SI without RELIDO).
+        ("(TS//SI)", MarkingType::Portion, "TS//SI"),
         // REL TO axis — sorted release list.
         ("(S//REL TO USA, GBR)", MarkingType::Portion, "S//REL TO USA, GBR"),
         // Non-IC dissem — FOUO portion form.
@@ -115,8 +117,10 @@ fn render_summary_byte_identical_golden() {
         ("TOP SECRET", "TOP SECRET"),
         // Dissem axis — NOFORN banner form.
         ("SECRET//NOFORN", "SECRET//NOFORN"),
-        // SCI axis. Bare SCI implies RELIDO per §B.3 Table 2 p21.
-        ("TOP SECRET//SI", "TOP SECRET//SI//RELIDO"),
+        // SCI axis. Bare SCI implies RELIDO per §B.3 Table 2 p21, but the
+        // RELIDO closure is applied at the engine/project layer, not by
+        // render_canonical; the pure render path emits the bare SCI form.
+        ("TOP SECRET//SI", "TOP SECRET//SI"),
         // REL TO axis — sorted release list.
         ("SECRET//REL TO USA, GBR", "SECRET//REL TO USA, GBR"),
     ];

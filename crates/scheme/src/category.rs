@@ -17,7 +17,7 @@
 //! - `expansion` — optional: expand composite tokens (tetragraphs) to
 //!   atomic tokens before aggregation.
 //!
-//! The operator is applied by the engine during `project_banner`; the
+//! The operator is applied by the engine during `project_summary`; the
 //! `Custom` variant is the escape hatch for rules that can't be
 //! expressed as one of the enumerated operators.
 

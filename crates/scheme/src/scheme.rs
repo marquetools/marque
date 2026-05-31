@@ -179,6 +179,32 @@ pub trait MarkingScheme {
     /// Declarative invariants checked by `validate`.
     fn constraints(&self) -> &[Constraint];
 
+    /// The scheme's wire namespace — the `scheme` half of every rule-id
+    /// 2-tuple this scheme mints.
+    ///
+    /// Defaults to `"scheme"`; every real scheme overrides it
+    /// (`CapcoScheme` returns `"capco"`). Returned as `&'static str` so
+    /// the projection in [`Self::constraint_rule_id`] allocates nothing.
+    fn scheme_id(&self) -> &'static str {
+        "scheme"
+    }
+
+    /// Projects a constraint `label` to the rule-id 2-tuple
+    /// `(scheme, predicate_id)` the engine's constraint bridge stamps
+    /// onto a `Diagnostic`.
+    ///
+    /// Constraint labels are authored in the canonical
+    /// `<surface>.<category>.<predicate>` predicate form, so the default
+    /// is the identity projection `(self.scheme_id(), label)` — the label
+    /// is the predicate id verbatim under the scheme's namespace. Returns
+    /// the bare 2-tuple rather than a `marque_rules::RuleId` because
+    /// `marque-scheme` is the dependency-graph leaf (Constitution VII)
+    /// and must not depend on `marque-rules`; the engine constructs
+    /// `RuleId::new(scheme, predicate_id)` at the bridge.
+    fn constraint_rule_id(&self, label: &'static str) -> (&'static str, &'static str) {
+        (self.scheme_id(), label)
+    }
+
     /// Structural templates (portion, banner, CAB, ...).
     fn templates(&self) -> &[Template];
 
@@ -442,7 +468,7 @@ pub trait MarkingScheme {
     /// Convenience shim: project at page scope. Default implementation
     /// calls `project(Scope::Page, portions)`.
     #[inline]
-    fn project_banner(&self, portions: &[Self::Marking]) -> Self::Marking {
+    fn project_summary(&self, portions: &[Self::Marking]) -> Self::Marking {
         self.project(Scope::Page, portions)
     }
 
@@ -720,8 +746,8 @@ pub trait MarkingScheme {
     /// # Scope semantics — return-value contract
     ///
     /// Implementations MUST honor the following per-scope contract on
-    /// `ctx.scope`. The default impls of [`Self::render_portion`] /
-    /// [`Self::render_banner`] rely on this contract being upheld;
+    /// `ctx.scope`. The default impls of [`Self::render_item`] /
+    /// [`Self::render_summary`] rely on this contract being upheld;
     /// they `debug_assert!` on contract violation.
     ///
     /// - `Scope::Portion` — canonical portion form. MUST return `Ok(())`.
@@ -772,7 +798,7 @@ pub trait MarkingScheme {
     /// `String` round-trip, but the override MUST produce
     /// byte-identical output to the default chain — `render_canonical`
     /// is the canonical-form authority.
-    fn render_portion(&self, m: &Self::Marking) -> String {
+    fn render_item(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
         // `Write for String` is infallible, so a `String` write target
         // never produces `fmt::Error`. The only way the `Result` could
@@ -807,17 +833,17 @@ pub trait MarkingScheme {
     ///
     /// Default delegates to [`Self::render_canonical`] with
     /// [`crate::scope::Scope::Page`]. Same byte-identity contract as
-    /// [`Self::render_portion`].
+    /// [`Self::render_item`].
     ///
     /// # Note on scope naming
     ///
     /// The argument is [`crate::scope::Scope::Page`], not a hypothetical
     /// `Scope::Banner` — banner roll-up is *defined* as page-scope
     /// rendering in the architecture spec ("banner = lattice join over
-    /// the page's portions"). The method name `render_banner` is the
+    /// the page's portions"). The method name `render_summary` is the
     /// public API surface; the underlying scope is `Page`. Schemes that
     /// override this method MUST honor the same scope semantics.
-    fn render_banner(&self, m: &Self::Marking) -> String {
+    fn render_summary(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
         // Construct an `Auto + MarqueMvp3` RenderContext; the §G.1
         // Table 4 emission-form dispatch body is future work.

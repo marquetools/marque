@@ -456,10 +456,10 @@ mod tests {
         fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
             FakeMarking(0)
         }
-        fn render_portion(&self, _: &Self::Marking) -> String {
+        fn render_item(&self, _: &Self::Marking) -> String {
             String::new()
         }
-        fn render_banner(&self, _: &Self::Marking) -> String {
+        fn render_summary(&self, _: &Self::Marking) -> String {
             String::new()
         }
         fn render_canonical(
@@ -748,8 +748,8 @@ mod tests {
     #[test]
     fn fake_scheme_render_returns_empty() {
         let s = FakeScheme;
-        assert_eq!(s.render_portion(&FakeMarking(0)), "");
-        assert_eq!(s.render_banner(&FakeMarking(0)), "");
+        assert_eq!(s.render_item(&FakeMarking(0)), "");
+        assert_eq!(s.render_summary(&FakeMarking(0)), "");
     }
 
     #[test]
@@ -761,9 +761,9 @@ mod tests {
     }
 
     #[test]
-    fn fake_scheme_project_banner_shim_delegates_to_project() {
-        // Exercise the `project_banner` default shim.
+    fn fake_scheme_project_summary_shim_delegates_to_project() {
+        // Exercise the `project_summary` default shim.
         let s = FakeScheme;
-        assert_eq!(s.project_banner(&[FakeMarking(1)]), FakeMarking(0));
+        assert_eq!(s.project_summary(&[FakeMarking(1)]), FakeMarking(0));
     }
 }

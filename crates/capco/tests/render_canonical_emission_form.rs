@@ -8,7 +8,7 @@
 //!
 //! 1. **Enabled** — `EmissionForm::Auto` + `Scope::{Page, Portion}`
 //!    assertions for NOFORN / SECRET / FOUO. These pin byte-identity
-//!    with the `render_banner` / `render_portion` outputs.
+//!    with the `render_summary` / `render_item` outputs.
 //!
 //! 2. **`#[ignore]`-gated** — `EmissionForm::Portion` /
 //!    `EmissionForm::BannerTitle` / `EmissionForm::BannerAbbreviation`
@@ -98,43 +98,43 @@ fn render(scheme: &CapcoScheme, marking: &CapcoMarking, ctx: &RenderContext) -> 
 // ===========================================================================
 //
 // These tests are the load-bearing byte-identity gate:
-// `Auto + Page` MUST produce the same bytes as `render_banner`.
+// `Auto + Page` MUST produce the same bytes as `render_summary`.
 
 #[test]
-fn auto_page_secret_matches_render_banner() {
+fn auto_page_secret_matches_render_summary() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
     let auto_page = render(&scheme, &marking, &ctx(Scope::Page, EmissionForm::Auto));
-    let banner = scheme.render_banner(&marking);
+    let banner = scheme.render_summary(&marking);
     assert_eq!(
         auto_page, banner,
-        "Auto + Page MUST byte-match render_banner output"
+        "Auto + Page MUST byte-match render_summary output"
     );
     assert_eq!(banner, "SECRET");
 }
 
 #[test]
-fn auto_page_noforn_matches_render_banner() {
+fn auto_page_noforn_matches_render_summary() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
     let auto_page = render(&scheme, &marking, &ctx(Scope::Page, EmissionForm::Auto));
-    let banner = scheme.render_banner(&marking);
+    let banner = scheme.render_summary(&marking);
     assert_eq!(
         auto_page, banner,
-        "Auto + Page MUST byte-match render_banner output"
+        "Auto + Page MUST byte-match render_summary output"
     );
     assert_eq!(banner, "SECRET//NOFORN");
 }
 
 #[test]
-fn auto_page_fouo_matches_render_banner() {
+fn auto_page_fouo_matches_render_summary() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();
     let auto_page = render(&scheme, &marking, &ctx(Scope::Page, EmissionForm::Auto));
-    let banner = scheme.render_banner(&marking);
+    let banner = scheme.render_summary(&marking);
     assert_eq!(
         auto_page, banner,
-        "Auto + Page MUST byte-match render_banner output"
+        "Auto + Page MUST byte-match render_summary output"
     );
     assert_eq!(banner, "UNCLASSIFIED//FOUO");
 }
@@ -144,40 +144,40 @@ fn auto_page_fouo_matches_render_banner() {
 // ===========================================================================
 
 #[test]
-fn auto_portion_secret_matches_render_portion() {
+fn auto_portion_secret_matches_render_item() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
     let auto_portion = render(&scheme, &marking, &ctx(Scope::Portion, EmissionForm::Auto));
-    let portion = scheme.render_portion(&marking);
+    let portion = scheme.render_item(&marking);
     assert_eq!(
         auto_portion, portion,
-        "Auto + Portion MUST byte-match render_portion output"
+        "Auto + Portion MUST byte-match render_item output"
     );
     assert_eq!(portion, "S");
 }
 
 #[test]
-fn auto_portion_noforn_matches_render_portion() {
+fn auto_portion_noforn_matches_render_item() {
     let scheme = CapcoScheme::new();
     let marking = make_secret_noforn();
     let auto_portion = render(&scheme, &marking, &ctx(Scope::Portion, EmissionForm::Auto));
-    let portion = scheme.render_portion(&marking);
+    let portion = scheme.render_item(&marking);
     assert_eq!(
         auto_portion, portion,
-        "Auto + Portion MUST byte-match render_portion output"
+        "Auto + Portion MUST byte-match render_item output"
     );
     assert_eq!(portion, "S//NF");
 }
 
 #[test]
-fn auto_portion_fouo_matches_render_portion() {
+fn auto_portion_fouo_matches_render_item() {
     let scheme = CapcoScheme::new();
     let marking = make_unclassified_fouo();
     let auto_portion = render(&scheme, &marking, &ctx(Scope::Portion, EmissionForm::Auto));
-    let portion = scheme.render_portion(&marking);
+    let portion = scheme.render_item(&marking);
     assert_eq!(
         auto_portion, portion,
-        "Auto + Portion MUST byte-match render_portion output"
+        "Auto + Portion MUST byte-match render_item output"
     );
     assert_eq!(portion, "U//FOUO");
 }
