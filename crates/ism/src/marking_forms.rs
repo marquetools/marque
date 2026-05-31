@@ -70,7 +70,7 @@ pub struct MarkingForm {
     pub banner: &'static str,
     /// "Authorized Portion Mark" form (§G.1 Table 4, column 3), e.g., "NF",
     /// "OC".
-    pub portion: &'static str,
+    pub short_form: &'static str,
     /// ODNI ISM CVE `<Description>` body when it diverges from
     /// [`Self::title`].
     ///
@@ -140,25 +140,25 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         title: "TALENT KEYHOLE",
         banner: "TK",
-        portion: "TK",
+        short_form: "TK",
         description_title: None,
     },
     MarkingForm {
         title: "RESERVE",
         banner: "RSV",
-        portion: "RSV",
+        short_form: "RSV",
         description_title: None,
     },
     MarkingForm {
         title: "MARVEL",
         banner: "MVL",
-        portion: "MVL",
+        short_form: "MVL",
         description_title: None,
     },
     MarkingForm {
         title: "KLAMATH",
         banner: "KLM",
-        portion: "KLM",
+        short_form: "KLM",
         description_title: None,
     },
     // §H.4 SCI compartment long-form rows. Per CAPCO §G.1 Table 4
@@ -175,25 +175,25 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         title: "GAMMA",
         banner: "G",
-        portion: "G",
+        short_form: "G",
         description_title: None,
     },
     MarkingForm {
         title: "BLUEFISH",
         banner: "BLFH",
-        portion: "BLFH",
+        short_form: "BLFH",
         description_title: None,
     },
     MarkingForm {
         title: "IDITAROD",
         banner: "IDIT",
-        portion: "IDIT",
+        short_form: "IDIT",
         description_title: None,
     },
     MarkingForm {
         title: "KANDIK",
         banner: "KAND",
-        portion: "KAND",
+        short_form: "KAND",
         description_title: None,
     },
     // §H.4 SCI compound forms where the Authorized Banner Line Abbreviation
@@ -220,7 +220,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // `FormKind::IsmDescriptionTitle`.
         title: "SI-ECRU",
         banner: "SI-EU",
-        portion: "SI-EU",
+        short_form: "SI-EU",
         description_title: Some("ECRU"),
     },
     MarkingForm {
@@ -235,7 +235,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // `SI-NONBOOK`. Recognize-only on input.
         title: "SI-NONBOOK",
         banner: "SI-NK",
-        portion: "SI-NK",
+        short_form: "SI-NK",
         description_title: Some("NONBOOK"),
     },
     // §H.7 Non-US Protective Markings — NATO classifications and programs.
@@ -255,35 +255,35 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // CAPCO-2016 §G.1 Table 4 p37: `| COSMIC TOP SECRET | None | CTS |`.
         title: "COSMIC TOP SECRET",
         banner: "COSMIC TOP SECRET",
-        portion: "CTS",
+        short_form: "CTS",
         description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p37: `| NATO SECRET | None | NS |`.
         title: "NATO SECRET",
         banner: "NATO SECRET",
-        portion: "NS",
+        short_form: "NS",
         description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p37: `| NATO CONFIDENTIAL | None | NC |`.
         title: "NATO CONFIDENTIAL",
         banner: "NATO CONFIDENTIAL",
-        portion: "NC",
+        short_form: "NC",
         description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p37: `| NATO RESTRICTED | None | NR |`.
         title: "NATO RESTRICTED",
         banner: "NATO RESTRICTED",
-        portion: "NR",
+        short_form: "NR",
         description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p37: `| NATO UNCLASSIFIED | None | NU |`.
         title: "NATO UNCLASSIFIED",
         banner: "NATO UNCLASSIFIED",
-        portion: "NU",
+        short_form: "NU",
         description_title: None,
     },
     // NATO programs — same-form across all three columns. Included here
@@ -294,21 +294,21 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // CAPCO-2016 §G.1 Table 4 p37: `| ATOMAL | None | ATOMAL |`.
         title: "ATOMAL",
         banner: "ATOMAL",
-        portion: "ATOMAL",
+        short_form: "ATOMAL",
         description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p37: `| BALK | None | BALK |`.
         title: "BALK",
         banner: "BALK",
-        portion: "BALK",
+        short_form: "BALK",
         description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p37: `| BOHEMIA | None | BOHEMIA |`.
         title: "BOHEMIA",
         banner: "BOHEMIA",
-        portion: "BOHEMIA",
+        short_form: "BOHEMIA",
         description_title: None,
     },
     // §H.5 Special Access Program Markings — intentionally omitted.
@@ -326,19 +326,19 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         title: "RESTRICTED DATA",
         banner: "RD",
-        portion: "RD",
+        short_form: "RD",
         description_title: None,
     },
     MarkingForm {
         title: "FORMERLY RESTRICTED DATA",
         banner: "FRD",
-        portion: "FRD",
+        short_form: "FRD",
         description_title: None,
     },
     MarkingForm {
         title: "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
         banner: "TFNI",
-        portion: "TFNI",
+        short_form: "TFNI",
         description_title: None,
     },
     MarkingForm {
@@ -351,7 +351,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // Recognize-only on input via `FormKind::IsmDescriptionTitle`.
         title: "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION",
         banner: "CNWDI",
-        portion: "CNWDI",
+        short_form: "CNWDI",
         description_title: Some("Controled Nuclear Weapon Design Information Warning statement"),
     },
     MarkingForm {
@@ -361,7 +361,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // surface-form divergence; recognize-only on input.
         title: "DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
         banner: "DOD UCNI",
-        portion: "DCNI",
+        short_form: "DCNI",
         description_title: Some("DoD CONTROLLED NUCLEAR INFORMATION"),
     },
     MarkingForm {
@@ -371,7 +371,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // surface-form divergence; recognize-only on input.
         title: "DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
         banner: "DOE UCNI",
-        portion: "UCNI",
+        short_form: "UCNI",
         description_title: Some("DoE CONTROLLED NUCLEAR INFORMATION"),
     },
     // §H.8 Dissemination Control Markings.
@@ -381,7 +381,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         title: "NOT RELEASABLE TO FOREIGN NATIONALS",
         banner: "NOFORN",
-        portion: "NF",
+        short_form: "NF",
         description_title: None,
     },
     MarkingForm {
@@ -392,31 +392,31 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // recognize-only on input.
         title: "ORIGINATOR CONTROLLED-USGOV",
         banner: "ORCON-USGOV",
-        portion: "OC-USGOV",
+        short_form: "OC-USGOV",
         description_title: Some("ORIGINATOR CONTROLLED US GOVERNMENT"),
     },
     MarkingForm {
         title: "ORIGINATOR CONTROLLED",
         banner: "ORCON",
-        portion: "OC",
+        short_form: "OC",
         description_title: None,
     },
     MarkingForm {
         title: "CONTROLLED IMAGERY",
         banner: "IMCON",
-        portion: "IMC",
+        short_form: "IMC",
         description_title: None,
     },
     MarkingForm {
         title: "CAUTION-PROPRIETARY INFORMATION INVOLVED",
         banner: "PROPIN",
-        portion: "PR",
+        short_form: "PR",
         description_title: None,
     },
     MarkingForm {
         title: "RISK SENSITIVE",
         banner: "RSEN",
-        portion: "RS",
+        short_form: "RS",
         description_title: None,
     },
     MarkingForm {
@@ -425,7 +425,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // skip this row (no substitution possible).
         title: "DEA SENSITIVE",
         banner: "DEA SENSITIVE",
-        portion: "DSEN",
+        short_form: "DSEN",
         description_title: None,
     },
     MarkingForm {
@@ -448,7 +448,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // (`<Value>EYES</Value>`, `<Description>EYES ONLY</Description>`).
         title: "EYES ONLY",
         banner: "EYES ONLY",
-        portion: "EYES",
+        short_form: "EYES",
         description_title: None,
     },
     // §H.8 same-form entries: banner == portion, but title differs.
@@ -457,20 +457,20 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         title: "FOR OFFICIAL USE ONLY",
         banner: "FOUO",
-        portion: "FOUO",
+        short_form: "FOUO",
         description_title: None,
     },
     MarkingForm {
         title: "RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL",
         banner: "RELIDO",
-        portion: "RELIDO",
+        short_form: "RELIDO",
         description_title: None,
     },
     // from ISM `CVEnumISMDissem` schema
     MarkingForm {
         title: "RAW FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "RAWFISA",
-        portion: "RAWFISA",
+        short_form: "RAWFISA",
         description_title: None,
     },
     MarkingForm {
@@ -480,7 +480,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // via `FormKind::IsmDescriptionTitle` (recognize-only).
         title: "FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "FISA",
-        portion: "FISA",
+        short_form: "FISA",
         description_title: Some(
             "Foreign Intelligence Surveillance Act. Related to unclassified \
              and declassified information that is collected from \
@@ -491,51 +491,51 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         title: "DISPLAY ONLY",
         banner: "DISPLAY ONLY",
-        portion: "DISPLAY ONLY",
+        short_form: "DISPLAY ONLY",
         description_title: None,
     },
     // §H.9 Non-IC Dissemination Control Markings.
     MarkingForm {
         title: "LIMITED DISTRIBUTION",
         banner: "LIMDIS",
-        portion: "DS",
+        short_form: "DS",
         description_title: None,
     },
     MarkingForm {
         title: "EXCLUSIVE DISTRIBUTION",
         banner: "EXDIS",
-        portion: "XD",
+        short_form: "XD",
         description_title: None,
     },
     MarkingForm {
         title: "NO DISTRIBUTION",
         banner: "NODIS",
-        portion: "ND",
+        short_form: "ND",
         description_title: None,
     },
     // §H.9 same-form entries: banner == portion, but title differs.
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED NOFORN",
         banner: "SBU NOFORN",
-        portion: "SBU-NF",
+        short_form: "SBU-NF",
         description_title: None,
     },
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED",
         banner: "SBU",
-        portion: "SBU",
+        short_form: "SBU",
         description_title: None,
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE NOFORN",
         banner: "LES NOFORN",
-        portion: "LES-NF",
+        short_form: "LES-NF",
         description_title: None,
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE",
         banner: "LES",
-        portion: "LES",
+        short_form: "LES",
         description_title: None,
     },
     MarkingForm {
@@ -546,7 +546,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // (recognize-only).
         title: "SENSITIVE SECURITY INFORMATION",
         banner: "SSI",
-        portion: "SSI",
+        short_form: "SSI",
         description_title: Some(
             "Sensitive Security Information. As defined in 49 C.F.R. Part \
              15.5, Sensitive Security Information is information obtained \
@@ -571,7 +571,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         // via `FormKind::IsmDescriptionTitle` (recognize-only).
         title: "NAVAL NUCLEAR PROPULSION INFORMATION",
         banner: "NNPI",
-        portion: "NNPI",
+        short_form: "NNPI",
         description_title: Some(
             "Naval Nuclear Propulsion Information. Related to the safety \
              of reactors and associated naval nuclear propulsion plants, \
@@ -601,8 +601,8 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
 pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
-        .find(|f| f.banner == banner && f.banner != f.portion)
-        .map(|f| f.portion)
+        .find(|f| f.banner == banner && f.banner != f.short_form)
+        .map(|f| f.short_form)
 }
 
 /// Look up the banner-form expansion for a portion-form abbreviation.
@@ -614,10 +614,10 @@ pub fn banner_to_portion(banner: &str) -> Option<&'static str> {
 /// banner form (`banner != portion`). Same-form entries (e.g., `LES`, `SBU`,
 /// `FOUO`, `FISA`, `RELIDO`) return `None` because there is no substitution to
 /// make — E001 must not fire a no-op fix for them.
-pub fn portion_to_banner(portion: &str) -> Option<&'static str> {
+pub fn portion_to_banner(short_form: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
-        .find(|f| f.portion == portion && f.banner != f.portion)
+        .find(|f| f.short_form == portion && f.banner != f.short_form)
         .map(|f| f.banner)
 }
 
@@ -636,7 +636,7 @@ pub fn title_to_portion(title: &str) -> Option<&'static str> {
     MARKING_FORMS
         .iter()
         .find(|f| f.title == title && f.title != f.banner)
-        .map(|f| f.portion)
+        .map(|f| f.short_form)
 }
 
 /// Look up the banner-line abbreviation for a long "Marking Title" string.
@@ -782,7 +782,7 @@ mod tests {
             "CNWDI",
             // §H.7 NATO programs and §H.8 DISPLAY ONLY — same-form-all-three
             // documentation rows. Lookup helpers must still return None
-            // because `f.banner != f.portion` filters them out.
+            // because `f.banner != f.short_form` filters them out.
             "ATOMAL",
             "BALK",
             "BOHEMIA",
@@ -818,9 +818,9 @@ mod tests {
             for (j, b) in MARKING_FORMS.iter().enumerate() {
                 if i != j {
                     assert_ne!(
-                        a.portion, b.portion,
+                        a.short_form, b.short_form,
                         "duplicate portion entry: {:?}",
-                        a.portion
+                        a.short_form
                     );
                 }
             }

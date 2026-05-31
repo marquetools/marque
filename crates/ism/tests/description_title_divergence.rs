@@ -83,7 +83,7 @@ use marque_ism::marking_forms::MARKING_FORMS;
 /// concise title; ODNI's `<Description>` adds a regulatory citation
 /// or definition. The CAPCO transcription is correct per §G.1, but
 /// the ODNI surface form is admissible on input via the
-/// `FormKind::IsmDescriptionTitle` recognize-only channel when
+/// `FormKind::StandardDescriptionTitle` recognize-only channel when
 /// `recognized_aliases` is populated:
 /// - `FISA` (ODNI adds the "Foreign Intelligence Surveillance Act
 ///   ... unconsenting individuals ..." citation).

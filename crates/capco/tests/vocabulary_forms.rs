@@ -6,21 +6,21 @@
 //!
 //! Asserts that the aggregated `FormSet` accessor and the per-form
 //! default-method projections (`portion_form`, `banner_form`,
-//! `banner_abbreviation`) agree for every active sentinel TokenId.
+//! `abbreviated_form`) agree for every active sentinel TokenId.
 //!
 //! ## What this pins
 //!
-//! - `scheme.portion_form(t) == scheme.forms(t).portion` for every
+//! - `scheme.portion_form(t) == scheme.forms(t).short_form` for every
 //!   active sentinel.
 //! - `scheme.banner_form(t) ==
-//!   scheme.forms(t).banner_abbreviation.unwrap_or(scheme.forms(t).banner_title)`
+//!   scheme.forms(t).abbreviated_form.unwrap_or(scheme.forms(t).long_form)`
 //!   — the banner-form projection equation.
-//! - `scheme.banner_abbreviation(t) == scheme.forms(t).banner_abbreviation`
+//! - `scheme.abbreviated_form(t) == scheme.forms(t).abbreviated_form`
 //!   AND the explicit expected `Option<&str>` recorded in
-//!   `EXPECTED_FORMS`. The table pins `banner_abbreviation` for
+//!   `EXPECTED_FORMS`. The table pins `abbreviated_form` for
 //!   `RD` / `FRD` / `TFNI` (`Some("RD")` / `Some("FRD")` /
 //!   `Some("TFNI")`) via an explicit `Option` — not via a tautological
-//!   `form_set.banner_abbreviation == form_set.banner_abbreviation`
+//!   `form_set.abbreviated_form == form_set.abbreviated_form`
 //!   comparison.
 //!
 //! The expected projection outputs are captured inline as a hand-rolled
@@ -47,18 +47,18 @@ use marque_capco::scheme::{
 use marque_scheme::{FormKind, TokenId, Vocabulary};
 
 /// Every active sentinel TokenId with its expected
-/// `(portion_form, banner_form, banner_abbreviation)` projection.
+/// `(portion_form, banner_form, abbreviated_form)` projection.
 ///
 /// `banner_form` is derived per-row in the test loop from
-/// `banner_abbreviation.unwrap_or(banner_title)`. `banner_abbreviation`
+/// `abbreviated_form.unwrap_or(long_form)`. `abbreviated_form`
 /// is pinned explicitly as the third element so the RD / FRD / TFNI
 /// `Some(banner)` case is regression-checked against an explicit
-/// `Option`, not against `form_set.banner_abbreviation` (which would be
+/// `Option`, not against `form_set.abbreviated_form` (which would be
 /// tautological).
 ///
-/// ## banner_abbreviation semantic
+/// ## abbreviated_form semantic
 ///
-/// `banner_abbreviation` is `Some` iff `banner != title` (CAPCO §G.1
+/// `abbreviated_form` is `Some` iff `banner != title` (CAPCO §G.1
 /// Table 4 col 2 emptiness) — distinct from `banner != portion`. The
 /// two predicates agree for rows where
 /// the banner differs from both portion and title (NOFORN, NODIS,
@@ -69,7 +69,7 @@ use marque_scheme::{FormKind, TokenId, Vocabulary};
 /// for. The flip: pre-3d `None` → 3d `Some("RD")` / `Some("FRD")` /
 /// `Some("TFNI")`.
 const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
-    // (token, expected portion, expected banner, expected banner_abbreviation)
+    // (token, expected portion, expected banner, expected abbreviated_form)
     //
     // NOFORN row: title="NOT RELEASABLE TO FOREIGN NATIONALS",
     // banner="NOFORN", portion="NF". banner != title → Some("NOFORN").
@@ -86,7 +86,7 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // CNWDI sentinel's canonical is "RD-CNWDI" — no MARKING_FORMS
     // row matches (the bare CNWDI row exists at canonical "CNWDI",
     // unreachable through TOK_CNWDI). Canonical-collapse fallback:
-    // banner_abbreviation=None.
+    // abbreviated_form=None.
     (TOK_CNWDI, "RD-CNWDI", "RD-CNWDI", None),
     // UCNI row: title="DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
     // banner="DOE UCNI", portion="UCNI". banner != title → Some("DOE UCNI").
@@ -96,7 +96,7 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // RESTRICTED canonical is "R"; no MARKING_FORMS row, no
     // classification_form_set arm (per byte-identity preservation —
     // see `classification_form_set` doc). Canonical-collapse:
-    // banner_abbreviation=None.
+    // abbreviated_form=None.
     (TOK_RESTRICTED, "R", "R", None),
     // NODIS row: title="NO DISTRIBUTION", banner="NODIS",
     // portion="ND". banner != title → Some("NODIS").
@@ -138,8 +138,8 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     //
     // All six rows are canonical-collapse: no MARKING_FORMS entry
     // exists for these compound forms, so `build_form_set` returns
-    // `portion = banner_title = canonical` and
-    // `banner_abbreviation = None`. The CAPCO Register §G.1 Table 4
+    // `portion = long_form = canonical` and
+    // `abbreviated_form = None`. The CAPCO Register §G.1 Table 4
     // describes the per-system parent rows (HCS, SI, TK) but the
     // §H.4 per-compartment templates do not introduce distinct
     // banner abbreviations — the canonical CVE value is used at
@@ -157,7 +157,7 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // ODNI publishes the CVE canonicals as `NATO-ATOMAL`/`NATO-BALK`/
     // `NATO-BOHEMIA` in `CVE_NON_US_CONTROLS`; CAPCO §G.1 Table 4 p37
     // registers them bare (`ATOMAL`/`BALK`/`BOHEMIA`) with no banner
-    // abbreviation (col 2 empty → `banner_abbreviation = None`).
+    // abbreviation (col 2 empty → `abbreviated_form = None`).
     // `nato_program_form_set` in `crates/capco/src/vocabulary.rs`
     // projects the CVE canonical onto the bare display form so the
     // `expected_portion` / `expected_banner` columns below carry the
@@ -200,14 +200,14 @@ fn expected_forms_covers_full_active_sentinel_set() {
 fn forms_round_trips_for_every_active_sentinel() {
     let scheme = CapcoScheme::new();
 
-    for (token, expected_portion, expected_banner, expected_banner_abbreviation) in EXPECTED_FORMS {
+    for (token, expected_portion, expected_banner, expected_abbreviated_form) in EXPECTED_FORMS {
         let form_set = scheme.forms(token);
 
         // Default-method projection #1: portion_form
         assert_eq!(
             scheme.portion_form(token),
-            form_set.portion,
-            "portion_form / forms.portion disagree for {token:?}",
+            form_set.short_form,
+            "portion_form / forms.short_form disagree for {token:?}",
         );
         assert_eq!(
             scheme.portion_form(token),
@@ -218,13 +218,13 @@ fn forms_round_trips_for_every_active_sentinel() {
         // Default-method projection #2: banner_form per the
         // exact equation
         let projected_banner = form_set
-            .banner_abbreviation
-            .unwrap_or(form_set.banner_title);
+            .abbreviated_form
+            .unwrap_or(form_set.long_form);
         assert_eq!(
             scheme.banner_form(token),
             projected_banner,
             "banner_form does not match \
-             banner_abbreviation.unwrap_or(banner_title) for {token:?}",
+             abbreviated_form.unwrap_or(long_form) for {token:?}",
         );
         assert_eq!(
             scheme.banner_form(token),
@@ -232,25 +232,25 @@ fn forms_round_trips_for_every_active_sentinel() {
             "banner_form regression for {token:?}",
         );
 
-        // Default-method projection #3: banner_abbreviation. Two
+        // Default-method projection #3: abbreviated_form. Two
         // independent assertions — neither comparison is tautological:
-        //   (a) `scheme.banner_abbreviation(token)` (the trait
+        //   (a) `scheme.abbreviated_form(token)` (the trait
         //       default-method projection) vs the EXPECTED_FORMS pin;
-        //   (b) `form_set.banner_abbreviation` (the FormSet field) vs
+        //   (b) `form_set.abbreviated_form` (the FormSet field) vs
         //       the EXPECTED_FORMS pin.
         // Earlier code did
-        // `scheme.banner_abbreviation(token) == form_set.banner_abbreviation`,
+        // `scheme.abbreviated_form(token) == form_set.abbreviated_form`,
         // which both route through the same FormSet — the abbreviation
         // flip on RD / FRD / TFNI was therefore unpinned. The
         // EXPECTED_FORMS 4-tuple addition closes that gap.
         assert_eq!(
-            scheme.banner_abbreviation(token),
-            *expected_banner_abbreviation,
-            "banner_abbreviation regression (trait projection) for {token:?}",
+            scheme.abbreviated_form(token),
+            *expected_abbreviated_form,
+            "abbreviated_form regression (trait projection) for {token:?}",
         );
         assert_eq!(
-            form_set.banner_abbreviation, *expected_banner_abbreviation,
-            "banner_abbreviation regression (FormSet field) for {token:?}",
+            form_set.abbreviated_form, *expected_abbreviated_form,
+            "abbreviated_form regression (FormSet field) for {token:?}",
         );
     }
 }
@@ -375,7 +375,7 @@ fn recognized_aliases_consistency_with_marking_forms_description_title() {
         // description_title to alias.
         let row = MARKING_FORMS
             .iter()
-            .find(|f| f.portion == *expected_portion || f.banner == *expected_portion);
+            .find(|f| f.short_form == *expected_portion || f.banner == *expected_portion);
 
         match row.and_then(|r| r.description_title) {
             Some(ism_title) => {

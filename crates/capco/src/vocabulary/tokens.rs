@@ -193,11 +193,11 @@ fn build_metadata(token: TokenId) -> TokenMetadataFull<TokenId> {
         owner_producer: derived.owner_producer,
         point_of_contact: derived.authority.point_of_contact,
         deprecation: build_deprecation(canonical),
-        portion_form: form_set.portion,
+        portion_form: form_set.short_form,
         banner_form: form_set
-            .banner_abbreviation
-            .unwrap_or(form_set.banner_title),
-        banner_abbreviation: form_set.banner_abbreviation,
+            .abbreviated_form
+            .unwrap_or(form_set.long_form),
+        abbreviated_form: form_set.abbreviated_form,
     }
 }
 
@@ -210,9 +210,9 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
         _ => return None,
     };
     Some(FormSet {
-        portion: class.portion_str(),
-        banner_title: class.banner_str(),
-        banner_abbreviation: None,
+        short_form: class.portion_str(),
+        long_form: class.banner_str(),
+        abbreviated_form: None,
         recognized_aliases: &[],
     })
 }
@@ -225,9 +225,9 @@ fn nato_program_form_set(canonical: &'static str) -> Option<FormSet> {
         _ => return None,
     };
     Some(FormSet {
-        portion: bare,
-        banner_title: bare,
-        banner_abbreviation: None,
+        short_form: bare,
+        long_form: bare,
+        abbreviated_form: None,
         recognized_aliases: &[],
     })
 }
@@ -307,27 +307,27 @@ fn build_form_set(canonical: &'static str) -> FormSet {
 
     let row: Option<&'static MarkingForm> = MARKING_FORMS
         .iter()
-        .find(|f| f.portion == canonical || f.banner == canonical);
+        .find(|f| f.short_form == canonical || f.banner == canonical);
     let recognized_aliases = recognized_aliases_for_canonical(canonical);
 
     match row {
         Some(f) => {
-            let banner_abbreviation = if f.banner != f.title {
+            let abbreviated_form = if f.banner != f.title {
                 Some(f.banner)
             } else {
                 None
             };
             FormSet {
-                portion: f.portion,
-                banner_title: f.title,
-                banner_abbreviation,
+                short_form: f.short_form,
+                long_form: f.title,
+                abbreviated_form,
                 recognized_aliases,
             }
         }
         None => FormSet {
-            portion: canonical,
-            banner_title: canonical,
-            banner_abbreviation: None,
+            short_form: canonical,
+            long_form: canonical,
+            abbreviated_form: None,
             recognized_aliases,
         },
     }
