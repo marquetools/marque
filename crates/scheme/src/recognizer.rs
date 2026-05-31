@@ -39,7 +39,19 @@ use crate::scheme::MarkingScheme;
 /// type. Keeping the enum here lets non-CAPCO schemes (CUI, NATO,
 /// future frameworks) reuse the same recognizer surface without
 /// pulling in `marque-ism`.
+///
+/// # `#[non_exhaustive]` + `Custom` (T026, #641 T3)
+///
+/// The CAPCO-coupled `Cab` variant was renamed to the domain-neutral
+/// [`Zone::Custom`] carrying a `&'static str` discriminator, so a
+/// non-CAPCO scheme can name its own structural zone (a CUI designation
+/// block, a NATO cover sheet, ...) without an ISM-specific variant
+/// leaking into the scheme-neutral recognizer surface. The CAPCO
+/// adapter passes `Zone::Custom("cab")` where it previously used
+/// `Zone::Cab`. The enum is `#[non_exhaustive]` so a future closed
+/// zone addition stays non-breaking for downstream matchers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Zone {
     /// Document header (first `N` lines, or structurally-marked header).
     Header,
@@ -47,9 +59,11 @@ pub enum Zone {
     Footer,
     /// Body text.
     Body,
-    /// Classification Authority Block (Classified By / Derived From /
-    /// Declassify On).
-    Cab,
+    /// A scheme-specific structural zone, named by a `&'static`
+    /// discriminator. CAPCO uses `Custom("cab")` for the Classification
+    /// Authority Block (Classified By / Derived From / Declassify On);
+    /// other schemes name their own (e.g. a CUI designation block).
+    Custom(&'static str),
 }
 
 /// Coarse position within the document.
