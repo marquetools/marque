@@ -8,8 +8,8 @@ mod tokens;
 
 use crate::scheme::{CapcoScheme, capco_token_category};
 use marque_scheme::{
-    Authority, CategoryId, Deprecation, OwnerProducer, PointOfContact, TokenId, TokenMetadataFull,
-    Vocabulary,
+    Authority, CategoryId, Deprecation, IcMarkingVocabulary, OwnerProducer, PointOfContact, TokenId,
+    TokenMetadataFull, Vocabulary,
 };
 
 pub use tokens::active_sentinel_count;
@@ -40,11 +40,6 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
     }
 
     #[inline]
-    fn is_fdr_dissem(&self, token: &TokenId) -> bool {
-        predicates::is_fdr_dissem(*token)
-    }
-
-    #[inline]
     fn shape_admits(&self, category: CategoryId, bytes: &[u8]) -> bool {
         categories::shape_admits(category, bytes)
     }
@@ -63,6 +58,13 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
             .map(|c| c.name)
             .unwrap_or("unknown");
         std::borrow::Cow::Owned(format!("{cat_name}.{canonical}"))
+    }
+}
+
+impl IcMarkingVocabulary<CapcoScheme> for CapcoScheme {
+    #[inline]
+    fn is_fdr_dissem(&self, token: &TokenId) -> bool {
+        predicates::is_fdr_dissem(*token)
     }
 }
 

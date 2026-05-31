@@ -25,7 +25,7 @@ use marque_capco::scheme::{
     TOK_IMCON, TOK_JOINT, TOK_NODIS, TOK_NOFORN, TOK_ORCON, TOK_ORCON_USGOV, TOK_RD, TOK_RELIDO,
     TOK_RESTRICTED, TOK_RSEN, TOK_TFNI, TOK_UCNI, TOK_USA,
 };
-use marque_scheme::Vocabulary;
+use marque_scheme::IcMarkingVocabulary;
 
 fn vocab() -> CapcoScheme {
     CapcoScheme::new()
