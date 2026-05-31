@@ -15,7 +15,7 @@ pub(super) struct RecognizedCandidate {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_page_break_candidate(
-    engine: &Engine,
+    engine: &Engine<CapcoScheme>,
     candidate: &marque_ism::MarkingCandidate,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     deadline: Option<Instant>,

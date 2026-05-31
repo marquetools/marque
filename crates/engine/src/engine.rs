@@ -226,20 +226,25 @@ pub trait SyncDecisionSink: marque_scheme::DecisionSink + Send + Sync {}
 impl<T: marque_scheme::DecisionSink + Send + Sync> SyncDecisionSink for T {}
 
 /// A configured engine instance.
-pub struct Engine {
+pub struct Engine<S: MarkingScheme = CapcoScheme> {
     config: Config,
-    rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+    rule_sets: Vec<Box<dyn RuleSet<S>>>,
     /// Scheme catalog held for constraint-bridge dispatch in
-    /// `lint_inner`. A fresh `CapcoScheme::new()` is built at
-    /// construction time because the engine is concrete over
-    /// `CapcoScheme` (the generic-`S` parameter on the constructors is
-    /// only used to extract `page_rewrites()` for scheduling — the
-    /// scheduler test in `crates/engine/tests/scheduler.rs` passes
-    /// a stub scheme through that surface, but every production call
-    /// site passes `CapcoScheme::new()` and the bridge fires only
-    /// against the default catalog). Making `Engine<S>` truly generic
-    /// over the scheme would replace this field with the user-supplied
-    /// `S`.
+    /// `lint_inner`. The struct is generic — `Engine<S>` — but the
+    /// constructors are pinned to `S = CapcoScheme` (their `impl` block
+    /// is `impl Engine<CapcoScheme>`), so this field always stores a
+    /// fresh `CapcoScheme::new()` built at construction time. The
+    /// generic-`S` parameter on the `new<S>` / `with_clock<S>`
+    /// constructors is only used to extract `page_rewrites()` for
+    /// scheduling — the scheduler test in
+    /// `crates/engine/tests/scheduler.rs` passes a stub scheme through
+    /// that surface, but every production call site passes
+    /// `CapcoScheme::new()` and the bridge fires only against the
+    /// default catalog. Generifying the struct shape is PR-B2 of the
+    /// 007 Phase B engine-generification work; storing the
+    /// user-supplied `S` into this field (rather than discarding it for
+    /// `CapcoScheme::new()`) closes in PR-B3 when the recognizer and
+    /// dispatch layers generify.
     ///
     /// # Bridge diagnostic population
     ///
@@ -252,7 +257,7 @@ pub struct Engine {
     ///
     /// The bridge code lives in
     /// [`Engine::bridge_constraint_diagnostic`].
-    scheme: CapcoScheme,
+    scheme: S,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
@@ -490,7 +495,7 @@ pub struct Engine {
 }
 
 #[cfg(feature = "decision-tracing")]
-impl Engine {
+impl Engine<CapcoScheme> {
     /// Mint the next monotone step counter and record one
     /// [`DecisionEvent`](marque_scheme::DecisionEvent) on the engine's
     /// sink.
