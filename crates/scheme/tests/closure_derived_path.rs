@@ -116,6 +116,7 @@ impl MarkingScheme for DerivedOnlyScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "derived-only-stub"
@@ -253,6 +254,7 @@ impl MarkingScheme for StaticParityScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "static-parity-stub"

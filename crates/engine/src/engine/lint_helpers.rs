@@ -290,7 +290,7 @@ pub(super) fn dispatch_rules_for_marking(
     if candidate.kind == MarkingType::Banner {
         *page_banner_span = Some(candidate.span);
     }
-    let ctx = RuleContext::new(candidate.kind, candidate.span)
+    let ctx = RuleContext::<CapcoScheme>::new(candidate.kind, candidate.span)
         .with_page_portions(ctx_page_portions)
         .with_page_marking(ctx_page_marking)
         .with_page_banner_span(None)

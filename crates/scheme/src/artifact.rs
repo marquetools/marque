@@ -309,6 +309,7 @@ mod tests {
         type OpenVocabRef = core::convert::Infallible;
         type Parsed<'src> = ();
         type Canonical = ();
+        type Projected = ();
 
         fn name(&self) -> &str {
             "artifact-fake"

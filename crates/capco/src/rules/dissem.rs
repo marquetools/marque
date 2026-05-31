@@ -70,7 +70,11 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         DEPRECATED_DISSEM_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         // Walk every TokenSpan whose kind is either DissemControl (the
         // deprecated marking is in the modern CVE — e.g., FOUO) or Unknown
@@ -216,7 +220,11 @@ impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         NON_IC_IN_CLASSIFIED_BANNER_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];

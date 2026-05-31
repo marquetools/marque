@@ -243,7 +243,11 @@ impl Rule<CapcoScheme> for StubRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Emit text-correction diagnostics: the C001 path is the
         // only fix channel that carries byte-precise replacement
         // bytes the engine actually applies. Engine tests
@@ -384,7 +388,11 @@ impl Rule<CapcoScheme> for ContextRecorderRule {
     fn phase(&self) -> marque_rules::Phase {
         marque_rules::Phase::PageFinalization
     }
-    fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let count = ctx
             .page_portions
             .as_ref()
@@ -423,7 +431,11 @@ impl Rule<CapcoScheme> for NamedStub {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         vec![]
     }
 }

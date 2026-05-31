@@ -294,7 +294,7 @@ byte-identical across `marque-3.0`/`3.1`/`3.2`.
 - **`Rule<S>` trait** in `marque-rules` — `id` / `name` /
   `default_severity` / `check` / `phase` /
   `additional_emitted_ids` / `trusted` / `cited_authorities`
-  surface; `Phase` non-exhaustive enum; `RuleContext<'a>`
+  surface; `Phase` non-exhaustive enum; `RuleContext<'a, S>`
   `#[non_exhaustive]` shape + `new` / `with_*` constructors.
 - **`RuleId` 2-tuple form** — the
   `(scheme: &'static str, predicate_id: &'static str)` shape with

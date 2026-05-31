@@ -466,6 +466,7 @@ mod tests {
         // See evaluator.rs for the binding rationale.
         type Parsed<'src> = ();
         type Canonical = ();
+        type Projected = ();
         fn name(&self) -> &str {
             "stub"
         }

@@ -138,7 +138,11 @@ impl Rule<CapcoScheme> for FgiExplicitWithTrigraphRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         FGI_EXPLICIT_WITH_TRIGRAPH_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::TOK_NOFORN;
         use marque_ism::DissemControl;
 

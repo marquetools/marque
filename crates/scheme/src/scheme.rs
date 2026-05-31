@@ -125,6 +125,12 @@ pub trait MarkingScheme {
     /// schemes bind to their own owned canonical shape.
     type Canonical;
 
+    /// The page-roll-up projection shape banner/CAB rules consume via
+    /// `RuleContext::page_marking`. The engine produces it from a
+    /// `Scope::Page` projection; rules read it but never construct it.
+    /// CAPCO binds this to `marque_ism::ProjectedMarking`.
+    type Projected: core::fmt::Debug + Clone + Send + Sync + 'static;
+
     /// Convert a parsed-attrs value into the scheme's canonical
     /// representation.
     ///

@@ -183,7 +183,7 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// marking is an aggregate, not a portion view).
 fn analyze_uncertain_reduction(
     _attrs: &CanonicalAttrs,
-    ctx: &RuleContext,
+    ctx: &RuleContext<'_, CapcoScheme>,
 ) -> Vec<Diagnostic<CapcoScheme>> {
     use marque_ism::is_decomposable;
 
@@ -447,7 +447,11 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
     }
 }

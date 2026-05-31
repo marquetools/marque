@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-use marque_ism::{CanonicalAttrs, DocumentPosition, MarkingType, Zone};
-use marque_scheme::Span;
+use marque_ism::{DocumentPosition, MarkingType, Zone};
+use marque_scheme::{MarkingScheme, Span};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -22,13 +22,13 @@ use std::sync::Arc;
 /// `MarkingType::PageBreak` candidates (form-feed `\f` and `\n\n\n+`
 /// heuristics) so each reflects only the current page:
 ///
-/// - **`page_portions`** — `Arc<Box<[CanonicalAttrs]>>` raw per-portion
+/// - **`page_portions`** — `Arc<Box<[S::Canonical]>>` raw per-portion
 ///   slice. Rules that need per-portion membership (e.g. W004's
 ///   `JointSet::from_attrs_iter` for the `DisunityCollapse` state, S005's
 ///   per-portion REL TO intersection analysis) read this directly. NOT
 ///   the surface a banner-rollup walker should compare against — see
 ///   `page_marking` below.
-/// - **`page_marking`** — `Arc<ProjectedMarking>` composite roll-up of
+/// - **`page_marking`** — `Arc<S::Projected>` composite roll-up of
 ///   the page's lattice projection. `BannerMatchesProjectedRule` (the
 ///   walker dispatching E031 / E035 / E040) and E039
 ///   (`NodisExdisClearsBannerRelToRule`) compare the observed banner /
@@ -77,9 +77,8 @@ use std::sync::Arc;
 /// check enforces the pattern. `..base` functional-update does not
 /// work for downstream rule crates — the constructor doc at
 /// `RuleContext::new` is authoritative.
-#[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct RuleContext<'a> {
+pub struct RuleContext<'a, S: MarkingScheme> {
     pub marking_type: MarkingType,
     /// Document zone (header/footer/body/CAB) when known. `None` in Phase 3
     /// — the scanner cannot prove header vs footer from raw text.
@@ -113,11 +112,11 @@ pub struct RuleContext<'a> {
     /// `None` for portion candidates and for banner / CAB candidates
     /// on an empty page.
     ///
-    /// `Box<[CanonicalAttrs]>` (immutable snapshot) is what `Arc`
+    /// `Box<[S::Canonical]>` (immutable snapshot) is what `Arc`
     /// wraps because the slice form mirrors Constitution Principle II
     /// "pivot fields use `Box<[T]>`" and the snapshot is genuinely
     /// immutable once frozen at the banner/CAB boundary.
-    pub page_portions: Option<std::sync::Arc<Box<[CanonicalAttrs]>>>,
+    pub page_portions: Option<std::sync::Arc<Box<[S::Canonical]>>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
     /// [`marque_ism::MarkingType::PageBreak`]. Sits alongside the
@@ -146,7 +145,7 @@ pub struct RuleContext<'a> {
     ///     // page.dissem_us / page.dissem_nato / page.sci_markings / ...
     /// }
     /// ```
-    pub page_marking: Option<std::sync::Arc<marque_ism::ProjectedMarking>>,
+    pub page_marking: Option<std::sync::Arc<S::Projected>>,
     /// Byte span of the most recent banner candidate observed on the
     /// current page (issue #663). `Some(span)` once a
     /// [`marque_ism::MarkingType::Banner`] candidate has cleared the
@@ -225,7 +224,7 @@ pub struct RuleContext<'a> {
     ///
     /// Rules MUST handle `None` — never unconditionally unwrap. The
     /// field is populated by the engine's `TwoPassFixer` from a stack-
-    /// scoped `SmallVec<[(Span, CanonicalAttrs); 4]>` cache built before
+    /// scoped `SmallVec<[(Span, S::Canonical); 4]>` cache built before
     /// the pass-1 splice. The borrow lifetime `'a` is tied to that
     /// cache and dies when pass-2 dispatch completes.
     ///
@@ -236,13 +235,49 @@ pub struct RuleContext<'a> {
     /// signal — it is plumbed through every rule's `check` signature
     /// so future consumers can read it without re-threading the
     /// lifetime parameter. A future evolution replaces this borrow
-    /// with `Arc<CanonicalAttrs>` when the parse cache adopts
+    /// with `Arc<S::Canonical>` when the parse cache adopts
     /// refcount-shared attrs alongside the v0.2 LMDB incremental
     /// cache.
-    pub pre_pass_1_attrs: Option<&'a CanonicalAttrs>,
+    pub pre_pass_1_attrs: Option<&'a S::Canonical>,
 }
 
-impl<'a> RuleContext<'a> {
+impl<'a, S: MarkingScheme> core::fmt::Debug for RuleContext<'a, S>
+where
+    S::Canonical: core::fmt::Debug,
+    S::Projected: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RuleContext")
+            .field("marking_type", &self.marking_type)
+            .field("zone", &self.zone)
+            .field("position", &self.position)
+            .field("candidate_span", &self.candidate_span)
+            .field("page_portions", &self.page_portions)
+            .field("page_marking", &self.page_marking)
+            .field("page_banner_span", &self.page_banner_span)
+            .field("corrections", &self.corrections)
+            .field("pre_pass_1_attrs", &self.pre_pass_1_attrs)
+            .finish()
+    }
+}
+
+impl<'a, S: MarkingScheme> Clone for RuleContext<'a, S> {
+    fn clone(&self) -> Self {
+        Self {
+            marking_type: self.marking_type,
+            zone: self.zone,
+            position: self.position,
+            candidate_span: self.candidate_span,
+            page_portions: self.page_portions.clone(),
+            page_marking: self.page_marking.clone(),
+            page_banner_span: self.page_banner_span,
+            corrections: self.corrections.clone(),
+            pre_pass_1_attrs: self.pre_pass_1_attrs,
+        }
+    }
+}
+
+impl<'a, S: MarkingScheme> RuleContext<'a, S> {
     /// Construct a minimal `RuleContext` with all `Option`-typed
     /// context fields set to `None`. Required-field arguments
     /// (`marking_type`, `candidate_span`) come from the engine's
@@ -302,16 +337,13 @@ impl<'a> RuleContext<'a> {
 
     /// Set [`Self::page_portions`] (per-page snapshot of accumulated
     /// portion attributes).
-    pub fn with_page_portions(mut self, page_portions: Option<Arc<Box<[CanonicalAttrs]>>>) -> Self {
+    pub fn with_page_portions(mut self, page_portions: Option<Arc<Box<[S::Canonical]>>>) -> Self {
         self.page_portions = page_portions;
         self
     }
 
     /// Set [`Self::page_marking`] (page-level rolled-up marking).
-    pub fn with_page_marking(
-        mut self,
-        page_marking: Option<Arc<marque_ism::ProjectedMarking>>,
-    ) -> Self {
+    pub fn with_page_marking(mut self, page_marking: Option<Arc<S::Projected>>) -> Self {
         self.page_marking = page_marking;
         self
     }
@@ -332,8 +364,173 @@ impl<'a> RuleContext<'a> {
     }
 
     /// Set [`Self::pre_pass_1_attrs`] (pass-1 reshape signal).
-    pub fn with_pre_pass_1_attrs(mut self, pre_pass_1_attrs: Option<&'a CanonicalAttrs>) -> Self {
+    pub fn with_pre_pass_1_attrs(mut self, pre_pass_1_attrs: Option<&'a S::Canonical>) -> Self {
         self.pre_pass_1_attrs = pre_pass_1_attrs;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_scheme::ambiguity::Parsed;
+    use marque_scheme::category::Category;
+    use marque_scheme::constraint::Constraint;
+    use marque_scheme::lattice::JoinSemilattice;
+    use marque_scheme::template::Template;
+    use marque_scheme::{RenderContext, Scope};
+
+    // Minimal in-crate scheme stub. `marque-rules` itself never builds a
+    // `RuleContext` against a concrete scheme (that happens in
+    // `marque-capco` / `marque-engine`), so the hand-written generic
+    // `Debug` / `Clone` impls below would otherwise have no direct
+    // unit coverage in this crate. `Canonical` and `Projected` are `()`
+    // so both satisfy the `Debug` bound on the `Debug` impl.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct StubMarking;
+
+    impl JoinSemilattice for StubMarking {
+        fn join(&self, _other: &Self) -> Self {
+            StubMarking
+        }
+    }
+
+    struct StubScheme;
+
+    impl MarkingScheme for StubScheme {
+        type Token = ();
+        type Marking = StubMarking;
+        type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
+        type Projected = ();
+
+        fn name(&self) -> &str {
+            "StubScheme"
+        }
+        fn schema_version(&self) -> &str {
+            "0.0.1"
+        }
+        fn categories(&self) -> &[Category] {
+            &[]
+        }
+        fn constraints(&self) -> &[Constraint] {
+            &[]
+        }
+        fn templates(&self) -> &[Template] {
+            &[]
+        }
+        fn parse(&self, _input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+            Ok(Parsed::Unambiguous(StubMarking))
+        }
+        fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
+            StubMarking
+        }
+        fn render_item(&self, _m: &Self::Marking) -> String {
+            String::new()
+        }
+        fn render_summary(&self, _m: &Self::Marking) -> String {
+            String::new()
+        }
+        fn render_canonical(
+            &self,
+            _m: &Self::Marking,
+            _ctx: &RenderContext,
+            _out: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
+        }
+    }
+
+    /// A `RuleContext` with every optional field populated (except the
+    /// borrowed `pre_pass_1_attrs`, which needs a caller-scoped borrow —
+    /// see [`with_pre_pass_1_attrs_sets_borrow`]).
+    fn sample_ctx<'a>() -> RuleContext<'a, StubScheme> {
+        let portions: Box<[()]> = Box::new([(), ()]);
+        RuleContext::new(MarkingType::Banner, Span::new(0, 12))
+            .with_zone(None)
+            .with_position(None)
+            .with_page_portions(Some(Arc::new(portions)))
+            .with_page_marking(Some(Arc::new(())))
+            .with_page_banner_span(Some(Span::new(0, 12)))
+            .with_corrections(Some(Arc::new(HashMap::new())))
+    }
+
+    #[test]
+    fn new_sets_required_fields_and_leaves_options_none() {
+        let ctx = RuleContext::<StubScheme>::new(MarkingType::Banner, Span::new(3, 9));
+        assert_eq!(ctx.marking_type, MarkingType::Banner);
+        assert_eq!(ctx.candidate_span, Span::new(3, 9));
+        assert!(ctx.zone.is_none());
+        assert!(ctx.position.is_none());
+        assert!(ctx.page_portions.is_none());
+        assert!(ctx.page_marking.is_none());
+        assert!(ctx.page_banner_span.is_none());
+        assert!(ctx.corrections.is_none());
+        assert!(ctx.pre_pass_1_attrs.is_none());
+    }
+
+    #[test]
+    fn builders_populate_optional_fields() {
+        let ctx = sample_ctx();
+        assert_eq!(ctx.page_portions.as_ref().map(|p| p.len()), Some(2));
+        assert!(ctx.page_marking.is_some());
+        assert_eq!(ctx.page_banner_span, Some(Span::new(0, 12)));
+        assert!(ctx.corrections.is_some());
+    }
+
+    #[test]
+    fn with_pre_pass_1_attrs_sets_borrow() {
+        let unit = ();
+        let ctx = RuleContext::<StubScheme>::new(MarkingType::Banner, Span::new(0, 1))
+            .with_pre_pass_1_attrs(Some(&unit));
+        assert!(ctx.pre_pass_1_attrs.is_some());
+    }
+
+    #[test]
+    fn clone_preserves_all_fields_and_shares_arcs() {
+        let ctx = sample_ctx();
+        let cloned = ctx.clone();
+        assert_eq!(cloned.marking_type, ctx.marking_type);
+        assert_eq!(cloned.zone, ctx.zone);
+        assert_eq!(cloned.position, ctx.position);
+        assert_eq!(cloned.candidate_span, ctx.candidate_span);
+        assert_eq!(cloned.page_banner_span, ctx.page_banner_span);
+        assert_eq!(
+            cloned.page_portions.as_ref().map(|p| p.len()),
+            ctx.page_portions.as_ref().map(|p| p.len())
+        );
+        assert_eq!(cloned.page_marking.is_some(), ctx.page_marking.is_some());
+        assert_eq!(cloned.corrections.is_some(), ctx.corrections.is_some());
+        // `Arc` clone shares the allocation — the per-page snapshot is
+        // shared cheaply across rule invocations on a page, not deep-copied.
+        assert!(Arc::ptr_eq(
+            ctx.page_portions.as_ref().unwrap(),
+            cloned.page_portions.as_ref().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            ctx.page_marking.as_ref().unwrap(),
+            cloned.page_marking.as_ref().unwrap()
+        ));
+    }
+
+    #[test]
+    fn debug_renders_every_field_name() {
+        let rendered = format!("{:?}", sample_ctx());
+        assert!(rendered.starts_with("RuleContext"));
+        for field in [
+            "marking_type",
+            "zone",
+            "position",
+            "candidate_span",
+            "page_portions",
+            "page_marking",
+            "page_banner_span",
+            "corrections",
+            "pre_pass_1_attrs",
+        ] {
+            assert!(rendered.contains(field), "Debug output missing `{field}`");
+        }
     }
 }

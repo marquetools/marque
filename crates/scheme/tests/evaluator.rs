@@ -112,6 +112,7 @@ impl MarkingScheme for StubScheme {
     // code paths).
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
     fn name(&self) -> &str {
         "stub"
     }

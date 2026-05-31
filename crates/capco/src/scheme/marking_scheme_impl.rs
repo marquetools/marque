@@ -49,6 +49,7 @@ impl MarkingScheme for CapcoScheme {
 
     type Parsed<'src> = ParsedAttrs<'src>;
     type Canonical = CanonicalAttrs;
+    type Projected = marque_ism::ProjectedMarking;
 
     /// CAPCO/ISM canonicalization — collapse the borrowed
     /// `ParsedAttrs<'src>` produced by `marque-core`'s strict parser

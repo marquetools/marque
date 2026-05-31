@@ -16,21 +16,25 @@ is what allows rule crates to be swapped without touching the engine.
 ## Role in Marque
 
 ```
-marque-rules (traits)
+marque-scheme (leaf trait surface: MarkingScheme, Lattice, …)
+   ↑
+marque-rules (rule traits, generic over S: MarkingScheme)
    ↑                ↑
 marque-capco    marque-engine
 (implements)    (orchestrates)
 ```
 
 The engine depends on `marque-rules` and on whatever rule crates the binary
-chooses to register. Rule crates depend only on `marque-rules` and
-`marque-ism`.
+chooses to register. Rule crates depend on `marque-rules`, `marque-ism`, and
+`marque-scheme` — the last because the generic `Rule<S>` API references scheme
+types (`S::Canonical`, `S::Projected`, `FixIntent<S>`) directly. `marque-scheme`
+stays the graph leaf (Constitution VII), so this edge keeps the graph acyclic.
 
 ## Public API
 
 | Type | Role |
 |---|---|
-| `Rule` | The trait every rule implements. Stateless; given parsed attributes plus a `RuleContext`, returns `Vec<Diagnostic>`. |
+| `Rule<S>` | The trait every rule implements, generic over the marking scheme `S`. Stateless; given `S::Canonical` attributes plus a `RuleContext<'_, S>`, returns `Vec<Diagnostic<S>>`. |
 | `RuleSet` | A bundle of rules exposed by a rule crate, with a schema version. |
 | `RuleId` | Stable rule identifier (e.g., `"E002"`). |
 | `Severity` | `Off` / `Suggest` / `Info` / `Warn` / `Error` / `Fix`. Configurable per rule. Defined in `marque-scheme`, re-exported here. |
@@ -43,27 +47,30 @@ chooses to register. Rule crates depend only on `marque-rules` and
 
 A minimal rule:
 
-```rust
-use marque_ism::CanonicalAttrs;
+```rust,ignore
 use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, Severity};
-use marque_scheme::Span;
+use marque_scheme::MarkingScheme;
 
-struct AlwaysFire;
+struct AlwaysWarn;
 
-impl Rule for AlwaysFire {
-    fn id(&self) -> RuleId { RuleId::new("X001") }
-    fn name(&self) -> &'static str { "always-fire" }
-    fn default_severity(&self) -> Severity { Severity::Warn }
+// Rules are generic over the marking scheme `S`. A concrete rule crate
+// (e.g. `marque-capco`) implements `Rule<CapcoScheme>`; the trait itself
+// stays scheme-agnostic so the engine can host more than one scheme.
+impl<S: MarkingScheme> Rule<S> for AlwaysWarn {
+    fn id(&self) -> RuleId {
+        RuleId::new("example", "demo.always-warn")
+    }
+    fn name(&self) -> &'static str {
+        "always-warn"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
 
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
-        vec![Diagnostic::new(
-            self.id(),
-            Severity::Warn,
-            Span::new(0, 0),
-            "example diagnostic",
-            "EXAMPLE-§1",
-            None,
-        )]
+    fn check(&self, _attrs: &S::Canonical, _ctx: &RuleContext<'_, S>) -> Vec<Diagnostic<S>> {
+        // A real rule inspects `attrs` / `ctx` and returns diagnostics,
+        // often carrying a `FixProposal`. This stub fires nothing.
+        Vec::new()
     }
 }
 ```

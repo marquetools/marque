@@ -194,6 +194,7 @@ impl MarkingScheme for FamilyScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         if self.use_family {

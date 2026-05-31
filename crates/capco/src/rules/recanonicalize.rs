@@ -174,7 +174,11 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
         E067_AUTHORITIES
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
         for token in attrs.token_spans.iter() {
             // Category gate: only `Unknown` tokens are candidates.
