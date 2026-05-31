@@ -16,15 +16,19 @@ is what allows rule crates to be swapped without touching the engine.
 ## Role in Marque
 
 ```
-marque-rules (traits)
+marque-scheme (leaf trait surface: MarkingScheme, Lattice, …)
+   ↑
+marque-rules (rule traits, generic over S: MarkingScheme)
    ↑                ↑
 marque-capco    marque-engine
 (implements)    (orchestrates)
 ```
 
 The engine depends on `marque-rules` and on whatever rule crates the binary
-chooses to register. Rule crates depend only on `marque-rules` and
-`marque-ism`.
+chooses to register. Rule crates depend on `marque-rules`, `marque-ism`, and
+`marque-scheme` — the last because the generic `Rule<S>` API references scheme
+types (`S::Canonical`, `S::Projected`, `FixIntent<S>`) directly. `marque-scheme`
+stays the graph leaf (Constitution VII), so this edge keeps the graph acyclic.
 
 ## Public API
 
