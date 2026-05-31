@@ -314,6 +314,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             FixIntent {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: intent_scope_recanon,
+                    prior: None,
                 },
                 confidence: Recognition::strict(),
                 feature_ids: Default::default(),

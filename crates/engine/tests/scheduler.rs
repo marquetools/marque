@@ -622,6 +622,7 @@ fn engine_new_accepts_recanonicalize_intent_in_page_rewrite() {
         trigger: CategoryPredicate::Empty { category: CAT_X },
         action: CategoryAction::Intent(ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Page,
+            prior: None,
         }),
         reads: &[CAT_X],
         writes: &[CAT_X],

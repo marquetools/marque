@@ -557,6 +557,7 @@ mod tests {
         let a: CategoryAction<FakeScheme> =
             CategoryAction::Intent(crate::fix_intent::ReplacementIntent::Recanonicalize {
                 scope: crate::fix_intent::RecanonScope::Page,
+                prior: None,
             });
         let s = format!("{a:?}");
         assert!(s.contains("Intent"), "got: {s}");

@@ -405,4 +405,118 @@ mod tests {
         assert!(dbg.contains("FrontMarking"));
         assert!(dbg.contains("edge(s)"));
     }
+
+    #[test]
+    fn sc005_bundle_seam_composes() {
+        // SC-005 reserved bundle seam: Scope::Bundle +
+        // DerivationRelation::SourceDerived + a Bundle-scope
+        // DocumentArtifact compose with no #823 source-metadata adapter;
+        // full wiring is #823. This is purely a COMPILE-GATE proving the
+        // bundle vocabulary composes — the real declassify-on node is
+        // Phase D.
+        use crate::citation::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
+        use crate::derivation::{DerivationEdge, DerivationRelation, FiringPredicate};
+        use core::num::NonZeroU16;
+
+        let citation = Citation::new(
+            AuthoritativeSource::EngineInternal,
+            SectionRef::new(SectionLetter::A),
+            NonZeroU16::new(1).unwrap(),
+        );
+        let edge = DerivationEdge::new(
+            "test/bundle-source-derived",
+            DerivationRelation::SourceDerived,
+            citation,
+            &[],
+            &[],
+            FiringPredicate::Always,
+        );
+
+        let node: DocumentArtifact<ArtifactScheme> = DocumentArtifact {
+            kind: ArtifactKind::DeclassifyInstruction,
+            scope: Scope::Bundle,
+            state: ArtifactState::AbsentNotRequired,
+            derivation: ValueDerivation::RolledUp,
+            inbound: Box::new([edge]),
+            span: None,
+        };
+
+        assert_eq!(node.scope, Scope::Bundle);
+        assert_eq!(node.inbound.len(), 1);
+        assert_eq!(node.inbound[0].relation, DerivationRelation::SourceDerived);
+    }
+
+    /// Pins that the manual [`PartialEq`] impl compares every one of the
+    /// six fields. Constructs a baseline, asserts an identical copy is
+    /// equal, then for each field in turn builds a sibling that differs
+    /// only in that field and asserts inequality. A future seventh field
+    /// added to `DocumentArtifact` but dropped from `eq` cannot pass this
+    /// test once it is folded into the baseline.
+    #[test]
+    fn document_artifact_eq_distinguishes_each_field() {
+        use crate::citation::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
+        use crate::derivation::{DerivationEdge, DerivationRelation, FiringPredicate};
+        use core::num::NonZeroU16;
+
+        // A derivation edge used only to make `inbound` non-empty, so the
+        // empty-vs-one-edge contrast exercises the `inbound` comparison.
+        let edge = || {
+            DerivationEdge::new(
+                "test/eq-edge",
+                DerivationRelation::SourceDerived,
+                Citation::new(
+                    AuthoritativeSource::EngineInternal,
+                    SectionRef::new(SectionLetter::A),
+                    NonZeroU16::new(1).unwrap(),
+                ),
+                &[],
+                &[],
+                FiringPredicate::Always,
+            )
+        };
+
+        // Baseline. Every sibling below copies this and mutates exactly
+        // one field.
+        let base = || DocumentArtifact::<ArtifactScheme> {
+            kind: ArtifactKind::FrontMarking,
+            scope: Scope::Document,
+            state: ArtifactState::Present(1),
+            derivation: ValueDerivation::Authored,
+            inbound: Box::new([]),
+            span: Some(Span::new(0, 10)),
+        };
+
+        // An identical pair compares equal.
+        assert_eq!(base(), base());
+
+        // `kind` participates in equality.
+        let mut differs = base();
+        differs.kind = ArtifactKind::Notice;
+        assert_ne!(base(), differs);
+
+        // `scope` participates in equality.
+        let mut differs = base();
+        differs.scope = Scope::Page;
+        assert_ne!(base(), differs);
+
+        // `state` participates in equality.
+        let mut differs = base();
+        differs.state = ArtifactState::Present(2);
+        assert_ne!(base(), differs);
+
+        // `derivation` participates in equality.
+        let mut differs = base();
+        differs.derivation = ValueDerivation::RolledUp;
+        assert_ne!(base(), differs);
+
+        // `inbound` participates in equality.
+        let mut differs = base();
+        differs.inbound = Box::new([edge()]);
+        assert_ne!(base(), differs);
+
+        // `span` participates in equality.
+        let mut differs = base();
+        differs.span = None;
+        assert_ne!(base(), differs);
+    }
 }

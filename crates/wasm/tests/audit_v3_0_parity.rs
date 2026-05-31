@@ -116,6 +116,7 @@ fn make_recanonicalize_intent(rule: RuleId) -> FixIntent<CapcoScheme> {
     FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: Recognition::strict(),
         feature_ids: Default::default(),

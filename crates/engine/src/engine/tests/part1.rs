@@ -260,6 +260,7 @@ fn fix_excludes_explicit_suggest_severity_from_auto_apply() {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
+                    prior: None,
                 },
                 confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),

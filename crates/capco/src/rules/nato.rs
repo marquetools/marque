@@ -590,7 +590,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         );
 
         let fix_intent = FixIntent {
-            replacement: ReplacementIntent::Recanonicalize { scope },
+            replacement: ReplacementIntent::Recanonicalize { scope, prior: None },
             confidence: Recognition::strict(),
             feature_ids: Default::default(),
             message: Message::new(

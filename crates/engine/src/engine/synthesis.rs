@@ -652,6 +652,7 @@ pub(super) fn build_decoder_diagnostic(
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence,
         feature_ids: SmallVec::new(),

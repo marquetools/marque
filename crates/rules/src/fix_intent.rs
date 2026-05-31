@@ -293,6 +293,7 @@ mod tests {
         let intent: FixIntent<TestScheme> = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
+                prior: None,
             },
             confidence: Recognition::strict(),
             feature_ids: SmallVec::new(),
@@ -312,7 +313,8 @@ mod tests {
         assert!(matches!(
             intent.replacement,
             ReplacementIntent::Recanonicalize {
-                scope: RecanonScope::Page
+                scope: RecanonScope::Page,
+                prior: None,
             }
         ));
     }

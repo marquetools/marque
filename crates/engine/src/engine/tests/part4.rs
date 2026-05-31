@@ -32,6 +32,7 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
+                    prior: None,
                 },
                 confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),
@@ -242,6 +243,7 @@ fn synth_fix(rule: &'static str, start: usize, end: usize, replacement: &str) ->
         intent: FixIntent::<CapcoScheme> {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
+                prior: None,
             },
             confidence: marque_rules::Recognition::strict(),
             feature_ids: SmallVec::new(),
@@ -495,6 +497,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),

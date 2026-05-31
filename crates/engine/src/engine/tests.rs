@@ -272,6 +272,7 @@ impl Rule<CapcoScheme> for StubRule {
                     d.fix = Some(FixIntent::<CapcoScheme> {
                         replacement: ReplacementIntent::Recanonicalize {
                             scope: RecanonScope::Portion,
+                            prior: None,
                         },
                         confidence: p.confidence.clone(),
                         feature_ids: SmallVec::new(),
@@ -431,6 +432,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),

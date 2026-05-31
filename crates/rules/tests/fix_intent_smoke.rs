@@ -154,6 +154,7 @@ fn external_crate_constructs_fix_intent_with_recanonicalize() {
     let intent: FixIntent<StubScheme> = FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Document,
+            prior: None,
         },
         confidence: Recognition::strict(),
         feature_ids: SmallVec::new(),
@@ -164,7 +165,8 @@ fn external_crate_constructs_fix_intent_with_recanonicalize() {
     assert!(matches!(
         intent.replacement,
         ReplacementIntent::Recanonicalize {
-            scope: RecanonScope::Document
+            scope: RecanonScope::Document,
+            prior: None,
         }
     ));
 }

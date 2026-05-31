@@ -170,6 +170,7 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
