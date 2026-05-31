@@ -730,7 +730,10 @@ fn display_only_rel_to_commingling_uses_single_slash() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA"), cc("IRQ")].into();
     a.display_only_to = vec![cc("AFG")].into();
-    assert_eq!(render_summary(a), "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG");
+    assert_eq!(
+        render_summary(a),
+        "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG"
+    );
 }
 
 #[test]

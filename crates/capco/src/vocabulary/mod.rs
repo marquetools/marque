@@ -8,8 +8,8 @@ mod tokens;
 
 use crate::scheme::{CapcoScheme, capco_token_category};
 use marque_scheme::{
-    Authority, CategoryId, Deprecation, IcMarkingVocabulary, OwnerProducer, PointOfContact, TokenId,
-    TokenMetadataFull, Vocabulary,
+    Authority, CategoryId, Deprecation, IcMarkingVocabulary, OwnerProducer, PointOfContact,
+    TokenId, TokenMetadataFull, Vocabulary,
 };
 
 pub use tokens::active_sentinel_count;

@@ -30,9 +30,9 @@
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_core::Parser;
+use marque_ism::CanonicalAttrs;
 use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
-use marque_ism::CanonicalAttrs;
 use marque_scheme::{MarkingScheme, Span};
 
 /// Parse `source` as `kind` into canonicalized attrs. The strict-path
@@ -89,7 +89,11 @@ fn render_item_byte_identical_golden() {
         // fixture, which renders bare SI without RELIDO).
         ("(TS//SI)", MarkingType::Portion, "TS//SI"),
         // REL TO axis — sorted release list.
-        ("(S//REL TO USA, GBR)", MarkingType::Portion, "S//REL TO USA, GBR"),
+        (
+            "(S//REL TO USA, GBR)",
+            MarkingType::Portion,
+            "S//REL TO USA, GBR",
+        ),
         // Non-IC dissem — FOUO portion form.
         ("(S//FOUO)", MarkingType::Portion, "S//FOUO"),
     ];
