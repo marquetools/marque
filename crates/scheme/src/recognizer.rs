@@ -76,7 +76,21 @@ pub enum DocumentPosition {
 /// The `DecoderRecognizer` returns an empty candidate set when
 /// `strict_evidence` is set and the input does not match the strict
 /// grammar — that's how strict-path latency stays linear.
+///
+/// # `#[non_exhaustive]` (#176 staging step 1)
+///
+/// `ParseContext` is `#[non_exhaustive]`: the #176 input-boundary work
+/// adds an [`input_source`](ParseContext::input_source) field (and may
+/// add more recognizer-environment fields in later phases), and the
+/// attribute lets those additions land without breaking every
+/// downstream construction site. Outside `marque-scheme` the struct
+/// can no longer be built with a record literal — construct it via
+/// [`ParseContext::default`] (or [`ParseContext::new`]) and assign the
+/// public fields you need. In-crate code may still use a record
+/// literal; `#[non_exhaustive]` only restricts construction across the
+/// crate boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ParseContext {
     /// When `true`, the recognizer must not emit probabilistic
     /// candidates — only parses that hit the strict grammar.
@@ -202,6 +216,21 @@ pub struct ParseContext {
     /// the candidate-has-lowercase predicate the decoder pairs with
     /// this flag never trips.
     pub surrounding_is_lowercase: bool,
+    /// How the input that produced this candidate was presented to the
+    /// engine — the recognition-provenance axis (#176, SC-010).
+    ///
+    /// [`InputSource::DocumentContent`] (the default) is the existing
+    /// behavior: the candidate was extracted from document text, so the
+    /// decoder's lone-case heuristic stays conservative (a lone
+    /// marking-shaped token with no `//` or vocab nearby is probably
+    /// prose, suggestion-only). [`InputSource::StructuredField`] is a
+    /// trusted caller asserting the input *is* a marking-shaped field;
+    /// the lone-case guard lifts, so a lone `(YS)` typed into a portion
+    /// field heuristic-fixes at high confidence (#176 matrix). The
+    /// engine populates this from the [`InputContext`](crate::InputContext)
+    /// it routes on; direct `ParseContext` callers and the WASM target
+    /// leave it at the safe `DocumentContent` default.
+    pub input_source: crate::input::InputSource,
 }
 
 /// Up to 32 bytes of same-line context preceding a candidate.
@@ -282,6 +311,26 @@ impl PartialEq for LinePrefix {
 
 impl Eq for LinePrefix {}
 
+impl ParseContext {
+    /// Construct the default [`ParseContext`].
+    ///
+    /// Equivalent to [`ParseContext::default`]; provided as a named
+    /// constructor so external crates — which can no longer use a
+    /// record literal now that the struct is `#[non_exhaustive]`
+    /// (#176 staging step 1) — have a stable, discoverable entry
+    /// point. Mutate the public fields after construction:
+    ///
+    /// ```
+    /// use marque_scheme::recognizer::ParseContext;
+    /// let mut cx = ParseContext::new();
+    /// cx.strict_evidence = false;
+    /// ```
+    #[inline]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 impl Default for ParseContext {
     /// Default context: strict path, no zone / position evidence, no
     /// strict classification floor, no temporal anchor, and a default
@@ -320,6 +369,9 @@ impl Default for ParseContext {
             line_offset: None,
             line_prefix: None,
             surrounding_is_lowercase: false,
+            // Safe default: treat as document content so the decoder's
+            // lone-case heuristic stays conservative (#176 / SC-010).
+            input_source: crate::input::InputSource::DocumentContent,
         }
     }
 }

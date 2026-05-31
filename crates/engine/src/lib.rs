@@ -51,6 +51,7 @@ pub use session::{InterfaceCode, SessionMetadata};
 pub type CapcoEngine = Engine;
 pub use audit_render::{audit_line_to_json_v1_0, audit_line_to_ndjson};
 pub use errors::{EngineConstructionError, EngineError};
+pub use marque_scheme::{InputContext, InputSource};
 pub use merkle::{SessionRoot, merkle_root};
 pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};

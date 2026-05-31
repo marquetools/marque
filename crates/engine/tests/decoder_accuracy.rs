@@ -318,11 +318,12 @@ fn load_fixtures() -> Vec<FixtureCase> {
 /// Deep-scan parse context — no zone, no position, no classification floor.
 /// Mirrors `decoder_recovery.rs::deep_cx`.
 fn deep_cx() -> ParseContext {
-    ParseContext {
-        strict_evidence: false,
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
-    }
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1), so
+    // it is built via `default()` + field assignment.
+    let mut cx = ParseContext::default();
+    cx.strict_evidence = false;
+    cx.preceded_by_whitespace = true;
+    cx
 }
 
 /// Parse the canonical `expected` form via the strict recognizer for

@@ -41,6 +41,10 @@
 //!   `MaxDate`, `OptionalSingleton`, `Product`.
 //! - [`recognizer`] — `Recognizer<S>` trait + `ParseContext`
 //!   (decoder dispatch).
+//! - [`input`] — input boundary (#176 / #643): `InputSource`
+//!   (recognition-provenance axis), `InputContext<'a>` (the
+//!   `ParseContext` wrapper the engine routes on), and the
+//!   `InputAdapter` / `StructuredDocument` schema-document surface.
 //! - [`render_context`] — `RenderContext { scope, emission_form,
 //!   schema_version }`, `EmissionForm` (Auto / Portion / BannerTitle /
 //!   BannerAbbreviation), `SchemaVersionId`. The §G.1 Table 4
@@ -97,6 +101,7 @@ pub mod decision;
 pub mod derivation;
 pub mod fact_bitmask;
 pub mod fix_intent;
+pub mod input;
 pub mod lattice;
 pub mod page_rewrite;
 pub mod projection;
@@ -135,6 +140,10 @@ pub use derivation::{DerivationEdge, DerivationRelation, EdgeId, FiringPredicate
 pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
 pub use fix_intent::{
     FactRef, RecanonPriorState, RecanonScope, RelocatePriorState, ReplacementIntent,
+};
+pub use input::{
+    AdaptError, DocumentLayer, DocumentStructure, InputAdapter, InputContext, InputSource,
+    RepairKind, StructuredDocument,
 };
 pub use lattice::{
     BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,

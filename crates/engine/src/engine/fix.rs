@@ -191,6 +191,7 @@ impl Engine {
             deadline: opts.deadline,
             classifier_id,
             session_metadata,
+            input_source: opts.input_source,
         }
         .run()
     }
@@ -355,6 +356,12 @@ pub(super) struct TwoPassFixer<'engine> {
     /// Session-level audit metadata (issue #399), cloned into every
     /// `FixResult` this fixer produces.
     pub(super) session_metadata: crate::SessionMetadata,
+    /// Recognition input-source axis (#176 / SC-010) routed into the
+    /// fix path's internal lint passes so `fix --input-source
+    /// structured-field` actually applies the assertive recovery the
+    /// flag promises (rather than silently ignoring it). Defaults to
+    /// `DocumentContent` via [`FixOptions`].
+    pub(super) input_source: marque_scheme::InputSource,
 }
 
 /// Promoted-fix tuple returned by [`TwoPassFixer::apply_kept_fixes`].

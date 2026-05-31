@@ -34,11 +34,12 @@ fn deep_cx() -> ParseContext {
     // the dispatcher always tries the decoder leg, and
     // `preceded_by_whitespace = true` so the prose-glue suppression
     // doesn't fire on single-letter portion inputs.
-    ParseContext {
-        strict_evidence: false,
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
-    }
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1), so
+    // it is built via `default()` + field assignment.
+    let mut cx = ParseContext::default();
+    cx.strict_evidence = false;
+    cx.preceded_by_whitespace = true;
+    cx
 }
 
 fn scheme() -> CapcoScheme {

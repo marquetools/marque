@@ -115,6 +115,7 @@ pub(super) fn recognize_marking_candidate(
     diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
     recognized_marking_count: &mut usize,
     classification_floor: &mut Option<u8>,
+    input_source: marque_scheme::InputSource,
 ) -> Option<RecognizedCandidate> {
     let span_start = candidate.span.start.min(source.len());
     let span_end = candidate.span.end.min(source.len());
@@ -134,17 +135,22 @@ pub(super) fn recognize_marking_candidate(
     let line_prefix =
         marque_scheme::recognizer::LinePrefix::from_slice(&source[line_start..span_start]);
     let surrounding_is_lowercase = surrounding_lowercase_majority(source, span_start, span_end);
-    let parse_cx = ParseContext {
-        strict_evidence: false,
-        zone: None,
-        position: None,
-        classification_floor: *classification_floor,
-        as_of: None,
-        preceded_by_whitespace,
-        line_offset: Some(line_offset),
-        line_prefix: Some(line_prefix),
-        surrounding_is_lowercase,
-    };
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1), so
+    // it is constructed via `default()` + field assignment rather than
+    // a record literal across the crate boundary.
+    let mut parse_cx = ParseContext::default();
+    parse_cx.strict_evidence = false;
+    parse_cx.classification_floor = *classification_floor;
+    parse_cx.preceded_by_whitespace = preceded_by_whitespace;
+    parse_cx.line_offset = Some(line_offset);
+    parse_cx.line_prefix = Some(line_prefix);
+    parse_cx.surrounding_is_lowercase = surrounding_is_lowercase;
+    // #176 / SC-010: thread the recognition-provenance axis into the
+    // per-candidate context so the decoder's lone-case heuristic can
+    // calibrate. `DocumentContent` (the raw-text path) keeps the
+    // conservative guard; `StructuredField` (trusted-caller entry)
+    // lifts it.
+    parse_cx.input_source = input_source;
 
     let start = span_start;
     let end = span_end;

@@ -45,6 +45,7 @@ use std::borrow::Cow;
 pub(super) fn generate_candidate_bytes(
     bytes: &[u8],
     kind: MarkingType,
+    input_source: marque_scheme::InputSource,
 ) -> SmallVec<[CanonicalAttempt; 4]> {
     let Ok(text) = std::str::from_utf8(bytes) else {
         return SmallVec::new();
@@ -460,7 +461,8 @@ pub(super) fn generate_candidate_bytes(
     //      and the fuzzy one would win — defeating the heuristic's
     //      purpose. The audit-record provenance still distinguishes
     //      this path through `FixSource::DecoderClassificationHeuristic`.
-    if let Some(heuristic_bytes) = try_classification_heuristic_fix(&fuzzy_corrected) {
+    if let Some(heuristic_bytes) = try_classification_heuristic_fix(&fuzzy_corrected, input_source)
+    {
         let mut features = delim_features.clone();
         features.extend(fuzzy_features.iter().copied());
         emit(
