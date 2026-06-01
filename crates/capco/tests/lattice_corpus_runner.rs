@@ -64,7 +64,7 @@ struct LatticeExpectedFixture {
     #[allow(dead_code)] // surfaced for reviewer auditing, not test-time use.
     note: Option<String>,
     /// Expected banner rendered by
-    /// `CapcoScheme::render_banner(&scheme.project(Scope::Page, &markings))`.
+    /// `CapcoScheme::render_summary(&scheme.project(Scope::Page, &markings))`.
     /// For the `CabCommingling` fixture shape this field is intentionally
     /// `None` — the fixture has no portions to project.
     #[serde(default)]
@@ -89,7 +89,7 @@ enum FixtureShape {
     CabCommingling,
     /// Fixture is one-or-more `(...)` portion lines followed by a
     /// banner line. Tested via `scheme.project(Scope::Page, &portions)`
-    /// + `scheme.render_banner(&projected)` + `Engine::lint(bytes)`.
+    /// + `scheme.render_summary(&projected)` + `Engine::lint(bytes)`.
     PortionsBanner,
 }
 
@@ -195,7 +195,7 @@ fn discover() {
             let markings: Vec<CapcoMarking> =
                 portions.iter().cloned().map(CapcoMarking::new).collect();
             let projected = scheme.project(Scope::Page, &markings);
-            let rendered = scheme.render_banner(&projected);
+            let rendered = scheme.render_summary(&projected);
             println!("expected_banner: {rendered:?}");
         }
 
@@ -235,7 +235,7 @@ fn load_lattice_expected(fixture_path: &Path) -> LatticeExpectedFixture {
 
 /// Load-bearing test: every fixture under
 /// `tests/corpus/lattice/` MUST round-trip through
-/// `CapcoScheme::project(Scope::Page, ...)` + `scheme.render_banner(...)`,
+/// `CapcoScheme::project(Scope::Page, ...)` + `scheme.render_summary(...)`,
 /// with the rendered banner asserted **byte-identical** to the sidecar's
 /// `expected_banner` field. `Engine::lint(...)` diagnostics are matched
 /// against the sidecar's `diagnostics` array by **rule-id occurrence
@@ -279,7 +279,7 @@ fn lattice_corpus_fixtures_match_expected() {
             let markings: Vec<CapcoMarking> =
                 portions.iter().cloned().map(CapcoMarking::new).collect();
             let projected = scheme.project(Scope::Page, &markings);
-            let rendered = scheme.render_banner(&projected);
+            let rendered = scheme.render_summary(&projected);
 
             let expected_banner = expected.expected_banner.as_deref().unwrap_or_else(|| {
                 panic!(

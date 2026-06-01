@@ -7,6 +7,7 @@
 use marque_capco::CapcoScheme;
 use marque_rules::Diagnostic;
 use marque_rules::audit::{AppliedFix, AppliedTextCorrection, AuditLine};
+use marque_scheme::MarkingScheme;
 use secrecy::SecretSlice;
 
 use crate::session::SessionMetadata;
@@ -24,7 +25,7 @@ use crate::session::SessionMetadata;
 ///
 /// ```
 /// use marque_engine::LintResult;
-/// let mut result = LintResult::default();
+/// let mut result: LintResult = LintResult::default();
 /// result.diagnostics.clear();
 /// ```
 ///
@@ -36,9 +37,9 @@ use crate::session::SessionMetadata;
 /// produces `truncated: true` with
 /// `0 < candidates_processed < candidates_total`.
 #[non_exhaustive]
-#[derive(Debug, Default, Clone)]
-pub struct LintResult {
-    pub diagnostics: Vec<Diagnostic<CapcoScheme>>,
+#[derive(Debug)]
+pub struct LintResult<S: MarkingScheme = CapcoScheme> {
+    pub diagnostics: Vec<Diagnostic<S>>,
     /// `true` when the lint pass aborted before processing every
     /// scanner-emitted candidate due to deadline expiry. The
     /// `diagnostics` vector contains every diagnostic produced from
@@ -77,7 +78,38 @@ pub struct LintResult {
     pub recognized_marking_count: usize,
 }
 
-impl LintResult {
+// Hand-written `Default` / `Clone` bounded only on `S: MarkingScheme` — a
+// `#[derive]` would over-constrain with a spurious `S: Default` / `S: Clone`
+// bound (the scheme marker is neither), and the generic lint pipeline
+// constructs `LintResult { .. ..Default::default() }` without those bounds.
+// `Diagnostic<S>` itself hand-writes `Clone` for the same reason; `Vec` /
+// `bool` / `usize` carry the rest. (Same rationale as `Diagnostic<S>` and
+// `RuleContext<'_, S>`.)
+impl<S: MarkingScheme> Default for LintResult<S> {
+    fn default() -> Self {
+        Self {
+            diagnostics: Vec::new(),
+            truncated: false,
+            candidates_processed: 0,
+            candidates_total: 0,
+            recognized_marking_count: 0,
+        }
+    }
+}
+
+impl<S: MarkingScheme> Clone for LintResult<S> {
+    fn clone(&self) -> Self {
+        Self {
+            diagnostics: self.diagnostics.clone(),
+            truncated: self.truncated,
+            candidates_processed: self.candidates_processed,
+            candidates_total: self.candidates_total,
+            recognized_marking_count: self.recognized_marking_count,
+        }
+    }
+}
+
+impl<S: MarkingScheme> LintResult<S> {
     pub fn is_clean(&self) -> bool {
         self.diagnostics.is_empty()
     }
@@ -150,7 +182,7 @@ impl LintResult {
 /// additively without breaking external brace constructions.
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct FixResult {
+pub struct FixResult<S: MarkingScheme = CapcoScheme> {
     /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
     ///
@@ -164,16 +196,16 @@ pub struct FixResult {
     /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
-    /// Audit stream. A single [`AuditLine<CapcoScheme>`] stream preserves the
+    /// Audit stream. A single [`AuditLine<S>`] stream preserves the
     /// confidence-then-span promotion-order invariant across the
     /// marking-fix channel (`AuditLine::AppliedFix`) and the
     /// text-correction channel (`AuditLine::TextCorrection`). The
     /// renderer projects each line to its NDJSON record type. This is
     /// the sole audit-output channel.
-    pub audit_lines: Vec<AuditLine<CapcoScheme>>,
+    pub audit_lines: Vec<AuditLine<S>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
-    pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
+    pub remaining_diagnostics: Vec<Diagnostic<S>>,
     /// `true` when pass-1 re-parse failed and the engine emitted an
     /// `R002` synthetic diagnostic. When set:
     ///
@@ -206,7 +238,7 @@ pub struct FixResult {
     pub session_metadata: SessionMetadata,
 }
 
-impl FixResult {
+impl<S: MarkingScheme> FixResult<S> {
     /// Iterate marking-side audit lines (zero-alloc filter view).
     ///
     /// The sole audit-output channel is [`Self::audit_lines`]: a
@@ -217,14 +249,14 @@ impl FixResult {
     ///
     /// # Zero-alloc
     ///
-    /// Returns `impl Iterator<Item = &AppliedFix<CapcoScheme>>` —
+    /// Returns `impl Iterator<Item = &AppliedFix<S>>` —
     /// each invocation walks [`Self::audit_lines`] lazily without
     /// allocating an intermediate `Vec`. Callers that need `.len()`
     /// or `.is_empty()` use `.count()` / `.next().is_none()`
     /// respectively (or `Iterator::collect` into a local `Vec` when
     /// the same fixes need to be visited twice).
     #[inline]
-    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<CapcoScheme>> {
+    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<S>> {
         self.audit_lines.iter().filter_map(|line| match line {
             AuditLine::AppliedFix(f) => Some(f),
             _ => None,
@@ -277,7 +309,7 @@ mod tests {
 
     #[test]
     fn is_clean_returns_true_when_no_diagnostics() {
-        let clean_result = LintResult {
+        let clean_result: LintResult = LintResult {
             diagnostics: vec![],
             ..Default::default()
         };
@@ -286,7 +318,7 @@ mod tests {
 
     #[test]
     fn is_clean_returns_false_when_has_diagnostics() {
-        let dirty_result = LintResult {
+        let dirty_result: LintResult = LintResult {
             diagnostics: vec![Diagnostic::new(
                 // Synthetic test fixture in the reserved `"test"` scheme.
                 RuleId::new("test", "synthetic.is-clean-fixture"),
@@ -301,6 +333,52 @@ mod tests {
         assert!(!dirty_result.is_clean());
     }
 
+    /// The hand-written `Default` (bounded on `S: MarkingScheme`, not the
+    /// derive that would impose a spurious `S: Default`) zeroes every field:
+    /// empty diagnostics, not truncated, all counts at 0.
+    #[test]
+    fn default_zeroes_every_field() {
+        let result = LintResult::<CapcoScheme>::default();
+        assert!(result.diagnostics.is_empty());
+        assert!(!result.truncated);
+        assert_eq!(result.candidates_processed, 0);
+        assert_eq!(result.candidates_total, 0);
+        assert_eq!(result.recognized_marking_count, 0);
+    }
+
+    /// The hand-written `Clone` (bounded on `S: MarkingScheme`, mirroring
+    /// `Diagnostic<S>`) copies every field; mutating the clone does not
+    /// disturb the original (deep copy of the diagnostics vector).
+    #[test]
+    fn clone_copies_every_field_independently() {
+        let original: LintResult = LintResult {
+            diagnostics: vec![Diagnostic::new(
+                RuleId::new("test", "synthetic.clone-fixture"),
+                Severity::Warn,
+                Span::new(3, 7),
+                stub_message(),
+                stub_citation(),
+                None,
+            )],
+            truncated: true,
+            candidates_processed: 4,
+            candidates_total: 9,
+            recognized_marking_count: 2,
+        };
+
+        let mut cloned = original.clone();
+        assert_eq!(cloned.diagnostics.len(), original.diagnostics.len());
+        assert!(cloned.truncated);
+        assert_eq!(cloned.candidates_processed, 4);
+        assert_eq!(cloned.candidates_total, 9);
+        assert_eq!(cloned.recognized_marking_count, 2);
+
+        // The clone owns its own diagnostics vector — clearing it leaves the
+        // original intact.
+        cloned.diagnostics.clear();
+        assert_eq!(original.diagnostics.len(), 1);
+    }
+
     #[test]
     fn info_count_isolates_info_from_error_and_warn() {
         // `Severity::Info` diagnostics count in `info_count()`
@@ -312,7 +390,7 @@ mod tests {
         // that a rule configured at Info keeps the CLI exit code at
         // 0 — that's the whole point of the severity between Off and
         // Warn.
-        let result = LintResult {
+        let result: LintResult = LintResult {
             diagnostics: vec![
                 Diagnostic::new(
                     RuleId::new("capco", "portion.sci.unpublished-custom-control"),

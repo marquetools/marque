@@ -52,11 +52,11 @@ pub(super) fn spans_overlap(a: Span, b: Span) -> bool {
 /// the safe-code shape that satisfies Constitution `forbid(unsafe_code)`.
 /// On this hot path the allocation is one `Vec` with ≤32 `Diagnostic`
 /// clones — well below the interactive-latency budget at 10 KB.
-pub(super) fn apply_fr023_and_i18(
-    pass2_diags: &[&Diagnostic<CapcoScheme>],
+pub(super) fn apply_fr023_and_i18<S: MarkingScheme>(
+    pass2_diags: &[&Diagnostic<S>],
     pass1_applied_keys: &HashSet<(RuleId, Span)>,
-) -> Vec<Diagnostic<CapcoScheme>> {
-    let mut out: Vec<Diagnostic<CapcoScheme>> = Vec::with_capacity(pass2_diags.len());
+) -> Vec<Diagnostic<S>> {
+    let mut out: Vec<Diagnostic<S>> = Vec::with_capacity(pass2_diags.len());
     for &d in pass2_diags {
         // Drop diagnostics with the same (rule, span) as a
         // pass-1 promoted fix. The candidate_span is the marking-
@@ -91,19 +91,25 @@ pub(super) fn apply_fr023_and_i18(
 }
 
 /// Find the marking span (a key in the sorted `parsed_markings`
-/// slice) whose byte range contains `fix_span`. Linear scan over the
-/// markings table — typical documents have <100 markings and this is
-/// the defect path (a well-behaved Localized rule emits sub-token
-/// spans by construction), so no binary-search optimization is
-/// justified.
+/// slice) whose byte range contains `fix_span`. `O(log N)`
+/// `partition_point` binary search.
 ///
-/// The slice is sorted by `Span.start` because the scanner emits
-/// disjoint non-overlapping candidates in source order; this function
-/// does not rely on that order for correctness, but a future
-/// containment-scan optimization could (e.g., `partition_point`
-/// against `start <= fix_span.start`).
-pub(super) fn find_containing_marking(
-    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+/// Correctness assumes the cached markings are **non-overlapping**
+/// (no nesting) with strictly-increasing `Span.start` — the same
+/// invariant `lookup_marking` documents. `Scanner::scan` only
+/// *orders* candidates (`(start, kind_priority)`); the cache
+/// construction is what establishes the assumption (PageBreak
+/// candidates filtered out, push-site `debug_assert!` on increasing
+/// starts), and the scanner emits flat, non-nesting candidates so
+/// non-overlap holds in practice. Under non-overlap the only entry
+/// that can contain `fix_span` is the one with the greatest `start <=
+/// fix_span.start`: `partition_point` against `start <= fix_span.start`
+/// yields the first index past it, so that entry is at index − 1,
+/// confirmed with a containment check. (If markings ever nested, an
+/// outer marking with an earlier start could be missed — that case
+/// does not arise from the scanner's flat emission.)
+pub(super) fn find_containing_marking<S: MarkingScheme>(
+    parsed_markings: &[(Span, S::Marking)],
     fix_span: Span,
 ) -> Option<Span> {
     // Binary search: `parsed_markings` is sorted by `Span.start` ascending
@@ -141,10 +147,10 @@ pub(super) fn find_containing_marking(
 /// full-`Span`-equality lookup semantics exactly, and degrading
 /// gracefully to `None` in the (currently impossible by construction)
 /// degenerate case where two cache entries share a start.
-pub(super) fn lookup_marking(
-    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+pub(super) fn lookup_marking<S: MarkingScheme>(
+    parsed_markings: &[(Span, S::Marking)],
     span: Span,
-) -> Option<&marque_capco::CapcoMarking> {
+) -> Option<&S::Marking> {
     let idx = parsed_markings
         .binary_search_by_key(&span.start, |(s, _)| s.start)
         .ok()?;
@@ -181,7 +187,9 @@ pub(super) fn lookup_marking(
 /// Sorts `synthesized` **in place** and consumes each kept fix
 /// into the result vector. Allocates zero extra `SynthesizedFix`
 /// values — no intermediate reference vector, no per-element clone.
-pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix> {
+pub(super) fn sort_and_c1_dedup<S: MarkingScheme>(
+    mut synthesized: Vec<SynthesizedFix<S>>,
+) -> Vec<SynthesizedFix<S>> {
     synthesized.sort_by(|a, b| {
         b.span
             .end
@@ -190,7 +198,7 @@ pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<Syn
             .then(a.rule.cmp(&b.rule))
             .then(a.replacement.cmp(&b.replacement))
     });
-    let mut kept_fixes: Vec<SynthesizedFix> = Vec::with_capacity(synthesized.len());
+    let mut kept_fixes: Vec<SynthesizedFix<S>> = Vec::with_capacity(synthesized.len());
     let mut next_window_end: Option<usize> = None;
     for fix in synthesized {
         let fits = next_window_end.is_none_or(|boundary| fix.span.end <= boundary);
@@ -226,7 +234,10 @@ pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<Syn
 /// targeted message in dev/CI, the slice panic provides a hard
 /// stop in release. Neither silently corrupts the buffer; a real
 /// overlap is observable in either build mode.
-pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> Vec<u8> {
+pub(super) fn splice_fixes_forward<S: MarkingScheme>(
+    source: &[u8],
+    fixes: &[SynthesizedFix<S>],
+) -> Vec<u8> {
     let extra: usize = fixes
         .iter()
         .map(|f| {
@@ -262,8 +273,8 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// by `candidate_span` (or `span` when `candidate_span` is unset), looks
 /// up each candidate's recognized marking in the `parsed_markings`
 /// cache populated by the lint phase, applies the group's intent batch
-/// via [`CapcoScheme::apply_intent`], and renders the resulting marking
-/// via [`CapcoScheme::render_portion`] or [`CapcoScheme::render_banner`].
+/// via [`MarkingScheme::apply_intent`], and renders the resulting marking
+/// via [`MarkingScheme::render_item`] or [`MarkingScheme::render_summary`].
 /// The candidate's portion-vs-banner scope is inferred from the
 /// candidate bytes themselves: a portion is wrapped in `()`, a banner
 /// is not.
@@ -301,13 +312,13 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// `__engine_promote` moves it into
 /// `AppliedFixProposal::FixIntent(_)`. Original bytes are never
 /// copied into the audit record — Constitution V Principle V.
-pub(super) fn synthesize_fixes(
-    scheme: &CapcoScheme,
-    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+pub(super) fn synthesize_fixes<S: MarkingScheme>(
+    scheme: &S,
+    parsed_markings: &[(Span, S::Marking)],
     source: &[u8],
-    diagnostics: &[&marque_rules::Diagnostic<CapcoScheme>],
+    diagnostics: &[&marque_rules::Diagnostic<S>],
     threshold: f32,
-) -> Vec<SynthesizedFix> {
+) -> Vec<SynthesizedFix<S>> {
     use std::collections::BTreeMap;
 
     // Group diagnostics by candidate_span (falls back to span when
@@ -315,10 +326,8 @@ pub(super) fn synthesize_fixes(
     // marking apply atomically. BTreeMap keyed on (start, end) so
     // iteration order is deterministic — Span itself doesn't impl Ord.
     #[allow(clippy::type_complexity)]
-    let mut groups: BTreeMap<
-        (usize, usize),
-        (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
-    > = BTreeMap::new();
+    let mut groups: BTreeMap<(usize, usize), (Span, Vec<&marque_rules::Diagnostic<S>>)> =
+        BTreeMap::new();
     for &d in diagnostics {
         let Some(intent) = d.fix.as_ref() else {
             continue;
@@ -350,7 +359,7 @@ pub(super) fn synthesize_fixes(
         return Vec::new();
     }
 
-    let mut out: Vec<SynthesizedFix> = Vec::with_capacity(groups.len());
+    let mut out: Vec<SynthesizedFix<S>> = Vec::with_capacity(groups.len());
 
     for (_key, (cspan, mut group_diags)) in groups {
         let start = cspan.start.min(source.len());
@@ -364,7 +373,7 @@ pub(super) fn synthesize_fixes(
         // candidate. The cache is populated by
         // `lint_with_options_internal` so the marking here is
         // byte-identical to the one the rule fired against.
-        let Some(marking) = lookup_marking(parsed_markings, cspan) else {
+        let Some(marking) = lookup_marking::<S>(parsed_markings, cspan) else {
             tracing::warn!(
                 target: "marque_engine::fix_synth",
                 start = start,
@@ -380,7 +389,7 @@ pub(super) fn synthesize_fixes(
         // contributes one intent; the scheme applies them in slice
         // order. `apply_intent` is required to be commutative within a
         // batch (trait doc), so slice order is not load-bearing.
-        let intents: Vec<marque_scheme::ReplacementIntent<CapcoScheme>> = group_diags
+        let intents: Vec<marque_scheme::ReplacementIntent<S>> = group_diags
             .iter()
             .filter_map(|d| d.fix.as_ref().map(|i| i.replacement.clone()))
             .collect();
@@ -405,7 +414,7 @@ pub(super) fn synthesize_fixes(
 
         // Render the modified marking, preserving any leading /
         // trailing ASCII whitespace from the candidate slice.
-        // `render_banner` emits no surrounding whitespace; without
+        // `render_summary` emits no surrounding whitespace; without
         // this preservation step the splice would strip indentation /
         // trailing spaces from any banner line.
         let leading_ws_len = bytes.iter().take_while(|b| b.is_ascii_whitespace()).count();
@@ -428,13 +437,14 @@ pub(super) fn synthesize_fixes(
         }
 
         let trimmed = &bytes[trimmed_start..trimmed_end];
-        // Portion vs banner: inferred from the trimmed candidate
-        // bytes — a portion is wrapped in `()` per CAPCO-2016 §A.6.
+        // Portion vs banner: the engine's universal `()`-wrapper
+        // heuristic — a parenthesized candidate is a portion — which
+        // originates from the CAPCO portion grammar (CAPCO-2016 §A.6).
         let is_portion = trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')');
         let core: String = if is_portion {
-            format!("({})", scheme.render_portion(&modified))
+            format!("({})", scheme.render_item(&modified))
         } else {
-            scheme.render_banner(&modified)
+            scheme.render_summary(&modified)
         };
         let scope = if is_portion {
             Scope::Portion
@@ -491,197 +501,6 @@ pub(super) fn synthesize_fixes(
     out
 }
 
-// ---------------------------------------------------------------------------
-// Decoder-path diagnostic synthesis
-// ---------------------------------------------------------------------------
-
-/// Build the synthetic `R001 decoder-recognition` diagnostic the engine
-/// emits when a recognizer returned a marking carrying
-/// [`DecoderProvenance`]. Returns `None` when the original or canonical
-/// bytes are not valid UTF-8 — `FixProposal` carries `Box<str>` for both
-/// `original` and `replacement`, so we cannot construct the proposal
-/// without UTF-8 validity. CAPCO markings are ASCII by spec (CAPCO-2016
-/// §A.6); a non-UTF-8 result here would mean the canonicalization pass
-/// produced something the strict parser shouldn't have accepted, which
-/// is a separate bug to surface — silently dropping the synthetic
-/// diagnostic is the conservative move.
-///
-/// # Audit-shape contract (Constitution V Principle V)
-///
-/// The diagnostic's `message` MUST NOT carry verbatim input bytes —
-/// only token canonicals, span offsets, and digests/posterior scalars
-/// are permitted in audit output. The "before" form is omitted from
-/// the message; the span tells the audit consumer *where* the fix
-/// landed and the structural `FixIntent` carries *what* shape the
-/// recognition became (a `Recanonicalize { scope: RecanonScope::Page }`
-/// emission for R001).
-///
-/// The audit record's `AppliedFix.proposal` carries no document bytes
-/// for the decoder path: the `AppliedFixProposal::FixIntent(_)` variant
-/// carries the structural intent only. Original document bytes already
-/// exist in the source; the audit record is not the right channel for
-/// them.
-///
-/// Note: this contract addresses the audit-record *shape*. A separate
-/// upstream concern was whether the canonical-bytes synthesis was
-/// well-formed when the decoder accepted unrecognized bytes as a
-/// compartment-shaped token and uppercased them — that's a decoder-
-/// correctness issue tracked separately; the structural-intent path
-/// closes the audit-shape channel by construction.
-///
-/// The fix's `Recognition` is populated entirely from the decoder's
-/// provenance trace:
-///
-/// - `recognition` derives from `runner_up_ratio` via softmax (see
-///   [`DecoderProvenance::recognition_score`]); strictly less than
-///   `1.0` so audit consumers can distinguish strict from decoder
-///   provenance via a single field comparison. For the position-aware
-///   classification heuristic (issue #133) the posterior is further
-///   capped at [`HEURISTIC_RECOGNITION_CAP`] so a single-candidate
-///   heuristic recognition cannot saturate above the default threshold.
-/// - `runner_up_ratio` and `features` thread through verbatim from the
-///   provenance.
-/// - When `corpus_override_active` is `true`, an extra
-///   [`FeatureId::CorpusOverrideInEffect`] contribution with
-///   `delta = 0.0` is appended to `features`. The zero delta is
-///   load-bearing: PR-5 minimal scope wires the surface end-to-end
-///   without yet substituting override priors into decoder scoring,
-///   so the contribution is purely an audit-trail marker
-///   ("this fix was produced under organizational overrides")
-///   rather than an actual posterior shift. A future PR that wires
-///   override-prior substitution will replace `0.0` with the real
-///   delta and re-version the audit schema.
-pub(super) fn build_decoder_diagnostic(
-    span: Span,
-    original_bytes: &[u8],
-    provenance: &DecoderProvenance,
-    _kind: marque_ism::MarkingType,
-    corpus_override_active: bool,
-) -> Option<Diagnostic<CapcoScheme>> {
-    use marque_rules::recognition::{FeatureContribution, FeatureId};
-
-    let original = std::str::from_utf8(original_bytes).ok()?;
-    let replacement = std::str::from_utf8(&provenance.canonical_bytes).ok()?;
-
-    // No-op rewrite (canonicalization preserved bytes byte-for-byte) is
-    // not informative and would produce a degenerate audit record; skip.
-    if original == replacement {
-        return None;
-    }
-
-    // `provenance.features` is a `Box<[FeatureContribution]>`; copy into
-    // a `SmallVec<[…; 4]>` matching `Recognition::features` so the inline-4
-    // case stays heap-free even after the optional override-marker push.
-    let mut features: marque_rules::SmallVec<[FeatureContribution; 4]> =
-        marque_rules::SmallVec::from_slice(&provenance.features);
-    if corpus_override_active {
-        features.push(FeatureContribution {
-            id: FeatureId::CorpusOverrideInEffect,
-            delta: 0.0,
-        });
-    }
-
-    // Dispatch on the decoder's `fix_source`. Standard vocab-based
-    // recognition emits at `Severity::Fix` with the decoder's full
-    // posterior on `recognition` (engine applies whenever
-    // `recognition >= confidence_threshold`). The position-aware
-    // classification heuristic (issue #133) emits at `Severity::Warn`
-    // (always-visible in `--check`, non-zero exit code) with
-    // `recognition` capped at [`HEURISTIC_RECOGNITION_CAP = 0.95`] —
-    // matching the default `confidence_threshold` so a single-candidate
-    // heuristic fix lands at-threshold rather than saturating above
-    // it. The `0.95` value is justified by empirical corpus measurement
-    // — see the cap's doc comment for the analysis script and measured
-    // numbers.
-    //
-    // Pre-PR-B the cap lived on the `rule` axis; PR B retired that
-    // axis and the cap moved onto `recognition` directly.
-    let raw_recognition = provenance.recognition_score();
-    let (severity, recognition, fix_source) = match provenance.fix_source {
-        FixSource::DecoderClassificationHeuristic => (
-            Severity::Warn,
-            raw_recognition.min(HEURISTIC_RECOGNITION_CAP),
-            FixSource::DecoderClassificationHeuristic,
-        ),
-        // All non-heuristic decoder paths use the existing posterior
-        // shape. Strict-source variants (BuiltinRule, CorrectionsMap,
-        // MigrationTable) do not flow through this builder — they
-        // come from rule-pipeline emissions, not the decoder — so
-        // routing them to `DecoderPosterior` here is a defensive
-        // default that preserves the existing strict-decoder shape
-        // for any future fix-source variant.
-        _ => (Severity::Fix, raw_recognition, FixSource::DecoderPosterior),
-    };
-
-    let confidence = Recognition {
-        recognition,
-        runner_up_ratio: provenance.runner_up_ratio,
-        features,
-    };
-    // DECODER_RULE_ID is a `RuleId`, so the dispatcher hands it through
-    // directly — no `RuleId::new` wrapping needed. The `Copy` bound
-    // on the 2-tuple `RuleId` makes the let-binding free.
-    let rule = DECODER_RULE_ID;
-    // Audit-shape contract: the decoder-path engine-minted record
-    // carries no document bytes (Constitution V Principle V). The
-    // span identifies *where* the fix landed; the engine's synthesis
-    // path re-renders the canonical form from a `Recanonicalize` intent
-    // at promotion time.
-    //
-    // Issue #699: the lint-side `Diagnostic.recognized_canonical` field
-    // DOES carry the canonical bytes so user-facing renderers can show
-    // the recognized form in `check` output without running `fix`. The
-    // asymmetry is intentional and pinned by
-    // `lint_carries_recognized_canonical_fix_audit_does_not` — lint
-    // shows the bytes; the audit envelope continues to carry only the
-    // BLAKE3 digest + structural intent.
-    //
-    // The `original` / `replacement` bindings above served the
-    // UTF-8-validity and no-op-rewrite gates only — both have already
-    // run by this point. The canonical bytes feeding
-    // `recognized_canonical` come directly from
-    // `provenance.canonical_bytes`. The wrapper is `SecretSlice<u8>`
-    // (alias for `SecretBox<[u8]>`), the same content-bearing type
-    // backing `FixResult.source`. Constitution II — the secret wipes
-    // on drop; every readout goes through `expose_secret()`.
-    let _ = (original, replacement);
-    let recognized_canonical = Some(secrecy::SecretBox::new(Box::from(
-        provenance.canonical_bytes.as_ref(),
-    )));
-    use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
-    let intent = FixIntent::<CapcoScheme> {
-        replacement: ReplacementIntent::Recanonicalize {
-            scope: RecanonScope::Portion,
-        },
-        confidence,
-        feature_ids: SmallVec::new(),
-        message: marque_rules::Message::new(
-            marque_rules::MessageTemplate::DecoderRecognized,
-            marque_rules::MessageArgs::default(),
-        ),
-        source: fix_source,
-        migration_ref: None,
-    };
-    Some(
-        Diagnostic::with_fix_at_span(
-            rule,
-            severity,
-            span,
-            span,
-            marque_rules::Message::new(
-                marque_rules::MessageTemplate::DecoderRecognized,
-                marque_rules::MessageArgs {
-                    span: Some(span),
-                    ..marque_rules::MessageArgs::default()
-                },
-            ),
-            DECODER_CITATION_TYPED,
-            intent,
-        )
-        .with_recognized_canonical(recognized_canonical),
-    )
-}
-
 /// Build the synthetic `R002 reparse-failed` diagnostic the engine
 /// emits when the post-pass-1 buffer cannot be re-parsed.
 ///
@@ -734,10 +553,10 @@ pub(super) fn build_decoder_diagnostic(
 /// false-positive audit record claiming a fix was applied when none
 /// was. The audit log integrity invariant (Constitution V Principle V)
 /// forbids it.
-pub(super) fn build_r002_diagnostic(
+pub(super) fn build_r002_diagnostic<S: MarkingScheme>(
     contributing_rule_ids: SmallVec<[RuleId; 4]>,
     failure_span: Span,
-) -> Diagnostic<CapcoScheme> {
+) -> Diagnostic<S> {
     // Typed `Message` per `MessageTemplate::ReparseFailed`.
     // `MessageArgs.contributing_rule_ids` carries the closed-list of
     // pass-1 RuleIds that contributed to the failure — `RuleId` is on
@@ -763,14 +582,3 @@ pub(super) fn build_r002_diagnostic(
         None,
     )
 }
-
-/// Cap applied to `recognition` for the position-aware classification
-/// heuristic (issue #133) — pinned at the default
-/// `confidence_threshold` (0.95) so a solo heuristic candidate lands
-/// at-threshold rather than saturating above it. Pre-PR-B this cap
-/// lived on the (now-retired) `Recognition::rule` axis as
-/// `HEURISTIC_RULE_AXIS_CAP`; PR B collapsed the two axes into one and
-/// the cap moved onto `recognition` directly. The empirical corpus
-/// measurement justifying the `0.95` value (≥99.4% confidence per
-/// trigger) is unchanged.
-pub(super) const HEURISTIC_RECOGNITION_CAP: f32 = 0.95;

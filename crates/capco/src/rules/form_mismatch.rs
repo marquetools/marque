@@ -151,7 +151,11 @@ impl Rule<CapcoScheme> for PortionFormInBannerRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         PORTION_FORM_IN_BANNER_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Fire on Banner only. Portion-form-in-portion is canonical;
         // CAB/PageBreak/PageFinalization are not banner-line surfaces.
         if ctx.marking_type != MarkingType::Banner {
@@ -210,7 +214,11 @@ impl Rule<CapcoScheme> for BannerFormInPortionRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         BANNER_FORM_IN_PORTION_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         if ctx.marking_type != MarkingType::Portion {
             return Vec::new();
         }
@@ -384,7 +392,7 @@ fn emit_form_mismatch(
     citation: Citation,
 ) -> Diagnostic<CapcoScheme> {
     let fix_intent = FixIntent {
-        replacement: ReplacementIntent::Recanonicalize { scope },
+        replacement: ReplacementIntent::Recanonicalize { scope, prior: None },
         confidence: Recognition::strict(),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::WrongTokenForm, MessageArgs::default()),

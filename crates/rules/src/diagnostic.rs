@@ -75,7 +75,7 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// `DecoderRecognizer` emits R001 (`engine:recognition.decoder-
     /// recognized`) so users can see the canonical form in `marque
     /// check` output without running `marque fix` and diffing bytes.
-    /// Populated by the engine's `build_decoder_diagnostic` helper from
+    /// Populated by marque-capco's `build_decoder_diagnostic` helper from
     /// `DecoderProvenance::canonical_bytes` after both the UTF-8-validity
     /// and no-op-rewrite gates pass — implying every emitted R001
     /// carries `Some(_)` and no other rule emission populates the
@@ -304,7 +304,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// Attach the decoder-recognized canonical bytes to this
     /// diagnostic (issue #699 builder).
     ///
-    /// Used exclusively by the engine's `build_decoder_diagnostic`
+    /// Used exclusively by marque-capco's `build_decoder_diagnostic`
     /// helper today; surfaced as a `pub` builder so a future rule
     /// that needs to publish a recognized canonical form to the
     /// user-facing renderers can opt in without re-touching the

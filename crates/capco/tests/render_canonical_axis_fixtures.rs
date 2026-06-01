@@ -59,11 +59,11 @@ fn render(attrs: CanonicalAttrs, scope: Scope) -> String {
     out
 }
 
-fn render_banner(attrs: CanonicalAttrs) -> String {
+fn render_summary(attrs: CanonicalAttrs) -> String {
     render(attrs, Scope::Page)
 }
 
-fn render_portion(attrs: CanonicalAttrs) -> String {
+fn render_item(attrs: CanonicalAttrs) -> String {
     render(attrs, Scope::Portion)
 }
 
@@ -80,7 +80,7 @@ fn classification_us_secret_banner() {
     // Authority: CAPCO-2016 §H.1 p49 — US Secret banner = `SECRET`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    assert_eq!(render_banner(a), "SECRET");
+    assert_eq!(render_summary(a), "SECRET");
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn classification_us_topsecret_portion() {
     // Authority: CAPCO-2016 §H.1 p49 — US TS portion = `TS`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    assert_eq!(render_portion(a), "TS");
+    assert_eq!(render_item(a), "TS");
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn classification_fgi_acknowledged_single_country_banner() {
         countries: vec![cc("GBR")].into(),
         level: Classification::Secret,
     }));
-    assert_eq!(render_banner(a), "//GBR SECRET");
+    assert_eq!(render_summary(a), "//GBR SECRET");
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn classification_fgi_concealed_banner() {
         countries: vec![].into(),
         level: Classification::Secret,
     }));
-    assert_eq!(render_banner(a), "//FGI SECRET");
+    assert_eq!(render_summary(a), "//FGI SECRET");
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn classification_nato_banner() {
     // slot per §A.6 p15). NATO Secret banner = `//NATO SECRET`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
-    assert_eq!(render_banner(a), "//NATO SECRET");
+    assert_eq!(render_summary(a), "//NATO SECRET");
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn classification_nato_portion() {
     // Non-US markings start with `//`; NATO Secret portion = `//NS`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
-    assert_eq!(render_portion(a), "//NS");
+    assert_eq!(render_item(a), "//NS");
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn classification_nato_cosmic_top_secret_portion() {
     a.classification = Some(MarkingClassification::Nato(
         NatoClassification::CosmicTopSecret,
     ));
-    assert_eq!(render_portion(a), "//CTS");
+    assert_eq!(render_item(a), "//CTS");
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn classification_joint_alphabetical_banner() {
         level: Classification::Secret,
         countries: vec![cc("GBR"), cc("USA"), cc("AUS")].into(),
     }));
-    assert_eq!(render_banner(a), "//JOINT SECRET AUS GBR USA");
+    assert_eq!(render_summary(a), "//JOINT SECRET AUS GBR USA");
 }
 
 // ===========================================================================
@@ -180,7 +180,7 @@ fn sci_single_system_bare() {
         None,
     )]
     .into();
-    assert_eq!(render_banner(a), "TOP SECRET//SI");
+    assert_eq!(render_summary(a), "TOP SECRET//SI");
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn sci_compartment_numeric_then_alpha_sort() {
         None,
     )]
     .into();
-    assert_eq!(render_banner(a), "TOP SECRET//SI-ABCD-DEFG");
+    assert_eq!(render_summary(a), "TOP SECRET//SI-ABCD-DEFG");
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn sci_sub_compartments_space_separated() {
         None,
     )]
     .into();
-    assert_eq!(render_banner(a), "TOP SECRET//SI-G ABCD DEFG");
+    assert_eq!(render_summary(a), "TOP SECRET//SI-G ABCD DEFG");
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn sci_multiple_systems_slash_separated() {
         ),
     ]
     .into();
-    assert_eq!(render_banner(a), "TOP SECRET//SI/TK");
+    assert_eq!(render_summary(a), "TOP SECRET//SI/TK");
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn sci_numeric_system_sorts_before_alpha() {
         ),
     ]
     .into();
-    assert_eq!(render_banner(a), "TOP SECRET//123/SI-G");
+    assert_eq!(render_summary(a), "TOP SECRET//123/SI-G");
 }
 
 // ===========================================================================
@@ -280,7 +280,7 @@ fn sar_single_program_short_indicator() {
         SarIndicator::Abbrev,
         vec![SarProgram::new("ABC", Box::new([]))].into(),
     ));
-    assert_eq!(render_banner(a), "SECRET//SAR-ABC");
+    assert_eq!(render_summary(a), "SECRET//SAR-ABC");
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn sar_multi_program_alpha_sort() {
         ]
         .into(),
     ));
-    assert_eq!(render_banner(a), "SECRET//SAR-ABC/XYZ");
+    assert_eq!(render_summary(a), "SECRET//SAR-ABC/XYZ");
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn sar_program_with_compartment() {
         )]
         .into(),
     ));
-    assert_eq!(render_banner(a), "SECRET//SAR-ABC-DEF");
+    assert_eq!(render_summary(a), "SECRET//SAR-ABC-DEF");
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn sar_full_indicator_for_multiword_program() {
         vec![SarProgram::new("BUTTER POPCORN", Box::new([]))].into(),
     ));
     assert_eq!(
-        render_banner(a),
+        render_summary(a),
         "TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN"
     );
 }
@@ -351,7 +351,7 @@ fn sar_compartment_with_sub_compartments() {
         )]
         .into(),
     ));
-    assert_eq!(render_banner(a), "SECRET//SAR-ABC-DEF 123");
+    assert_eq!(render_summary(a), "SECRET//SAR-ABC-DEF 123");
 }
 
 // ===========================================================================
@@ -364,7 +364,7 @@ fn aea_rd_alone_banner() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
-    assert_eq!(render_banner(a), "SECRET//RD");
+    assert_eq!(render_summary(a), "SECRET//RD");
 }
 
 #[test]
@@ -378,7 +378,7 @@ fn aea_rd_with_cnwdi_banner() {
         sigma: Box::new([]),
     })]
     .into();
-    assert_eq!(render_banner(a), "SECRET//RD-CNWDI");
+    assert_eq!(render_summary(a), "SECRET//RD-CNWDI");
 }
 
 #[test]
@@ -392,7 +392,7 @@ fn aea_rd_sigma_numeric_ascending() {
         sigma: vec![18, 14, 20].into(),
     })]
     .into();
-    assert_eq!(render_banner(a), "TOP SECRET//RD-SIGMA 14 18 20");
+    assert_eq!(render_summary(a), "TOP SECRET//RD-SIGMA 14 18 20");
 }
 
 #[test]
@@ -406,7 +406,7 @@ fn aea_register_order_rd_before_frd() {
         AeaMarking::Rd(RdBlock::default()),
     ]
     .into();
-    assert_eq!(render_banner(a), "SECRET//RD/FRD");
+    assert_eq!(render_summary(a), "SECRET//RD/FRD");
 }
 
 #[test]
@@ -416,8 +416,8 @@ fn aea_dod_ucni_portion_form() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Unclassified));
     a.aea_markings = vec![AeaMarking::DodUcni].into();
-    assert_eq!(render_banner(a.clone()), "UNCLASSIFIED//DOD UCNI");
-    assert_eq!(render_portion(a), "U//DCNI");
+    assert_eq!(render_summary(a.clone()), "UNCLASSIFIED//DOD UCNI");
+    assert_eq!(render_item(a), "U//DCNI");
 }
 
 #[test]
@@ -426,7 +426,7 @@ fn aea_tfni_banner() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Tfni].into();
-    assert_eq!(render_banner(a), "SECRET//TFNI");
+    assert_eq!(render_summary(a), "SECRET//TFNI");
 }
 
 // ===========================================================================
@@ -440,7 +440,7 @@ fn fgi_marker_concealed() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.fgi_marker = Some(FgiMarker::SourceConcealed);
-    assert_eq!(render_banner(a), "SECRET//FGI");
+    assert_eq!(render_summary(a), "SECRET//FGI");
 }
 
 #[test]
@@ -450,7 +450,7 @@ fn fgi_marker_acknowledged_single_trigraph() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.fgi_marker = FgiMarker::acknowledged([cc("GBR")]);
-    assert_eq!(render_banner(a), "SECRET//FGI GBR");
+    assert_eq!(render_summary(a), "SECRET//FGI GBR");
 }
 
 #[test]
@@ -459,7 +459,7 @@ fn fgi_marker_acknowledged_trigraphs_alpha_sort() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.fgi_marker = FgiMarker::acknowledged([cc("JPN"), cc("GBR")]);
-    assert_eq!(render_banner(a), "SECRET//FGI GBR JPN");
+    assert_eq!(render_summary(a), "SECRET//FGI GBR JPN");
 }
 
 #[test]
@@ -469,7 +469,7 @@ fn fgi_marker_acknowledged_trigraphs_then_tetragraphs() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.fgi_marker = FgiMarker::acknowledged([cc("NATO"), cc("GBR"), cc("JPN")]);
-    assert_eq!(render_banner(a), "SECRET//FGI GBR JPN NATO");
+    assert_eq!(render_summary(a), "SECRET//FGI GBR JPN NATO");
 }
 
 #[test]
@@ -481,7 +481,7 @@ fn fgi_marker_with_rel_to_inline() {
     a.fgi_marker = FgiMarker::acknowledged([cc("GBR"), cc("JPN"), cc("NATO")]);
     a.rel_to = vec![cc("USA"), cc("GBR"), cc("JPN"), cc("NATO")].into();
     assert_eq!(
-        render_banner(a),
+        render_summary(a),
         "SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO"
     );
 }
@@ -497,7 +497,7 @@ fn dissem_noforn_banner() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Nf].into();
-    assert_eq!(render_banner(a), "SECRET//NOFORN");
+    assert_eq!(render_summary(a), "SECRET//NOFORN");
 }
 
 #[test]
@@ -506,7 +506,7 @@ fn dissem_noforn_portion() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Nf].into();
-    assert_eq!(render_portion(a), "S//NF");
+    assert_eq!(render_item(a), "S//NF");
 }
 
 #[test]
@@ -516,7 +516,7 @@ fn dissem_orcon_banner_form() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     a.dissem_us = vec![DissemControl::Oc].into();
-    assert_eq!(render_banner(a), "TOP SECRET//ORCON");
+    assert_eq!(render_summary(a), "TOP SECRET//ORCON");
 }
 
 #[test]
@@ -526,7 +526,7 @@ fn dissem_register_order_orcon_before_noforn() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     a.dissem_us = vec![DissemControl::Relido, DissemControl::Nf, DissemControl::Oc].into();
-    assert_eq!(render_banner(a), "TOP SECRET//ORCON/NOFORN/RELIDO");
+    assert_eq!(render_summary(a), "TOP SECRET//ORCON/NOFORN/RELIDO");
 }
 
 #[test]
@@ -539,7 +539,7 @@ fn dissem_bare_rel_dropped_when_rel_to_present() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Rel].into();
     a.rel_to = vec![cc("USA"), cc("GBR")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR");
+    assert_eq!(render_summary(a), "SECRET//REL TO USA, GBR");
 }
 
 // ===========================================================================
@@ -552,7 +552,7 @@ fn rel_to_usa_first() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("GBR"), cc("USA"), cc("JPN")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR, JPN");
+    assert_eq!(render_summary(a), "SECRET//REL TO USA, GBR, JPN");
 }
 
 #[test]
@@ -562,7 +562,7 @@ fn rel_to_trigraphs_alpha() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA"), cc("JPN"), cc("GBR"), cc("AUS")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA, AUS, GBR, JPN");
+    assert_eq!(render_summary(a), "SECRET//REL TO USA, AUS, GBR, JPN");
 }
 
 #[test]
@@ -572,7 +572,7 @@ fn rel_to_tetragraphs_after_trigraphs() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA"), cc("NATO"), cc("GBR"), cc("FVEY")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR, FVEY, NATO");
+    assert_eq!(render_summary(a), "SECRET//REL TO USA, GBR, FVEY, NATO");
 }
 
 #[cfg(debug_assertions)]
@@ -597,7 +597,7 @@ fn rel_to_only_usa_panics_in_debug() {
     // rather than panicking) — leaving downstream lint rules to catch
     // the violation.
     //
-    // Pre-guard, this test asserted `render_banner == "SECRET//REL
+    // Pre-guard, this test asserted `render_summary == "SECRET//REL
     // TO USA"`, which captured the prior (broken) renderer output.
     // The reframe to a `#[should_panic]` invariant pin preserves
     // the test as a regression guard for the assertion itself
@@ -605,7 +605,7 @@ fn rel_to_only_usa_panics_in_debug() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA")].into();
-    let _ = render_banner(a);
+    let _ = render_summary(a);
 }
 
 #[cfg(not(debug_assertions))]
@@ -623,7 +623,7 @@ fn rel_to_only_usa_release_emits_unauthorized_form() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA");
+    assert_eq!(render_summary(a), "SECRET//REL TO USA");
 }
 
 #[test]
@@ -633,7 +633,7 @@ fn rel_to_dedup_duplicates() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA"), cc("GBR"), cc("GBR"), cc("JPN")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR, JPN");
+    assert_eq!(render_summary(a), "SECRET//REL TO USA, GBR, JPN");
 }
 
 // ===========================================================================
@@ -647,7 +647,7 @@ fn display_only_single_country_banner() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.display_only_to = vec![cc("IRQ")].into();
-    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY IRQ");
+    assert_eq!(render_summary(a), "SECRET//DISPLAY ONLY IRQ");
 }
 
 #[test]
@@ -659,7 +659,7 @@ fn display_only_multi_country_banner() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Confidential));
     a.display_only_to = vec![cc("AFG"), cc("IRQ")].into();
-    assert_eq!(render_banner(a), "CONFIDENTIAL//DISPLAY ONLY AFG, IRQ");
+    assert_eq!(render_summary(a), "CONFIDENTIAL//DISPLAY ONLY AFG, IRQ");
 }
 
 #[test]
@@ -670,7 +670,7 @@ fn display_only_input_order_normalized_to_alpha() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.display_only_to = vec![cc("IRQ"), cc("AFG")].into();
-    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY AFG, IRQ");
+    assert_eq!(render_summary(a), "SECRET//DISPLAY ONLY AFG, IRQ");
 }
 
 #[test]
@@ -682,7 +682,7 @@ fn display_only_no_usa_required() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.display_only_to = vec![cc("AFG")].into();
-    let rendered = render_banner(a);
+    let rendered = render_summary(a);
     assert!(
         !rendered.contains("USA"),
         "USA must not appear in DISPLAY ONLY banner; got {rendered:?}"
@@ -698,7 +698,7 @@ fn display_only_trigraphs_before_tetragraphs() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.display_only_to = vec![cc("NATO"), cc("AFG"), cc("ACGU"), cc("IRQ")].into();
     assert_eq!(
-        render_banner(a),
+        render_summary(a),
         "SECRET//DISPLAY ONLY AFG, IRQ, ACGU, NATO"
     );
 }
@@ -712,7 +712,7 @@ fn display_only_dedupes_defensively() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.display_only_to = vec![cc("AFG"), cc("IRQ"), cc("AFG")].into();
-    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY AFG, IRQ");
+    assert_eq!(render_summary(a), "SECRET//DISPLAY ONLY AFG, IRQ");
 }
 
 #[test]
@@ -730,7 +730,10 @@ fn display_only_rel_to_commingling_uses_single_slash() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA"), cc("IRQ")].into();
     a.display_only_to = vec![cc("AFG")].into();
-    assert_eq!(render_banner(a), "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG");
+    assert_eq!(
+        render_summary(a),
+        "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG"
+    );
 }
 
 #[test]
@@ -743,7 +746,7 @@ fn display_only_dissem_rel_to_three_way_commingling() {
     a.rel_to = vec![cc("USA"), cc("IRQ")].into();
     a.display_only_to = vec![cc("AFG")].into();
     assert_eq!(
-        render_banner(a),
+        render_summary(a),
         "SECRET//ORCON/REL TO USA, IRQ/DISPLAY ONLY AFG"
     );
 }
@@ -759,7 +762,7 @@ fn display_only_followed_by_non_ic_uses_double_slash() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.display_only_to = vec![cc("AFG")].into();
     a.non_ic_dissem = vec![NonIcDissem::Les].into();
-    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY AFG//LES");
+    assert_eq!(render_summary(a), "SECRET//DISPLAY ONLY AFG//LES");
 }
 
 #[test]
@@ -854,7 +857,7 @@ fn display_only_empty_emits_nothing() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     // display_only_to defaults to empty
-    let rendered = render_banner(a);
+    let rendered = render_summary(a);
     assert!(
         !rendered.contains("DISPLAY ONLY"),
         "empty display_only_to must emit nothing; got {rendered:?}"
@@ -872,7 +875,7 @@ fn non_ic_dissem_exdis_banner() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Exdis].into();
-    assert_eq!(render_banner(a), "SECRET//EXDIS");
+    assert_eq!(render_summary(a), "SECRET//EXDIS");
 }
 
 #[test]
@@ -882,7 +885,7 @@ fn non_ic_dissem_exdis_portion_form() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Exdis].into();
-    assert_eq!(render_portion(a), "S//XD");
+    assert_eq!(render_item(a), "S//XD");
 }
 
 #[test]
@@ -892,7 +895,7 @@ fn non_ic_dissem_register_order() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Nodis, NonIcDissem::Exdis].into();
-    assert_eq!(render_banner(a), "SECRET//EXDIS/NODIS");
+    assert_eq!(render_summary(a), "SECRET//EXDIS/NODIS");
 }
 
 #[test]
@@ -902,7 +905,7 @@ fn non_ic_dissem_sbu_nf_portion_hyphenated() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Unclassified));
     a.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
-    assert_eq!(render_portion(a), "U//SBU-NF");
+    assert_eq!(render_item(a), "U//SBU-NF");
 }
 
 #[test]
@@ -912,7 +915,7 @@ fn non_ic_dissem_les_banner_full_form() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.non_ic_dissem = vec![NonIcDissem::Les].into();
-    assert_eq!(render_banner(a), "SECRET//LES");
+    assert_eq!(render_summary(a), "SECRET//LES");
 }
 
 // ===========================================================================
@@ -928,7 +931,7 @@ fn declassify_no_op_in_banner() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.declassify_on = Some(IsmDate::Date(2030, 6, 15));
     // Declassify-on has no effect on the banner output.
-    assert_eq!(render_banner(a), "SECRET");
+    assert_eq!(render_summary(a), "SECRET");
 }
 
 #[test]
@@ -937,7 +940,7 @@ fn declassify_no_op_in_portion() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     a.declassify_on = Some(IsmDate::Date(2030, 6, 15));
-    assert_eq!(render_portion(a), "TS");
+    assert_eq!(render_item(a), "TS");
 }
 
 // ===========================================================================
@@ -969,7 +972,7 @@ fn full_composition_class_sci_aea_dissem_relto() {
     // in the render dispatch loop (#445);
     // the canonical form per §A.6 is `/REL TO` here.
     assert_eq!(
-        render_banner(a),
+        render_summary(a),
         "TOP SECRET//SI//ORCON/NOFORN/REL TO USA, GBR"
     );
 }
@@ -982,7 +985,7 @@ fn full_composition_class_aea_dissem() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
     a.dissem_us = vec![DissemControl::Nf].into();
-    assert_eq!(render_banner(a), "SECRET//RD//NOFORN");
+    assert_eq!(render_summary(a), "SECRET//RD//NOFORN");
 }
 
 // ---------------------------------------------------------------------------

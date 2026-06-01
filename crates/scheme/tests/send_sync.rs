@@ -61,6 +61,7 @@ impl MarkingScheme for StubScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "stub"
@@ -86,10 +87,10 @@ impl MarkingScheme for StubScheme {
     fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
         StubMarking
     }
-    fn render_portion(&self, _: &Self::Marking) -> String {
+    fn render_item(&self, _: &Self::Marking) -> String {
         String::new()
     }
-    fn render_banner(&self, _: &Self::Marking) -> String {
+    fn render_summary(&self, _: &Self::Marking) -> String {
         String::new()
     }
     fn render_canonical(

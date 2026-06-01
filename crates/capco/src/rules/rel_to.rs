@@ -104,7 +104,11 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         MISSING_USA_TRIGRAPH_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.rel_to.is_empty() {
             return vec![];
         }
@@ -314,6 +318,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             FixIntent {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: intent_scope_recanon,
+                    prior: None,
                 },
                 confidence: Recognition::strict(),
                 feature_ids: Default::default(),
@@ -410,7 +415,11 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
     fn trusted(&self) -> bool {
         true
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Gate 1: nothing to collapse with an empty REL TO.
         if attrs.rel_to.is_empty() {
             return vec![];
@@ -591,7 +600,11 @@ impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
     fn trusted(&self) -> bool {
         true
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         check_collapse_uniform_rel_portions(attrs, ctx)
     }
 }
@@ -624,7 +637,7 @@ fn expand_rel_to_atomic(
 
 fn check_collapse_uniform_rel_portions(
     _attrs: &CanonicalAttrs,
-    ctx: &RuleContext,
+    ctx: &RuleContext<'_, CapcoScheme>,
 ) -> Vec<Diagnostic<CapcoScheme>> {
     let Some(page_portions) = ctx.page_portions.as_ref() else {
         return Vec::new();
@@ -724,14 +737,18 @@ impl Rule<CapcoScheme> for BareRelPortionDivergenceRule {
     fn trusted(&self) -> bool {
         true
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         check_bare_rel_portion_divergence(attrs, ctx)
     }
 }
 
 fn check_bare_rel_portion_divergence(
     _attrs: &CanonicalAttrs,
-    ctx: &RuleContext,
+    ctx: &RuleContext<'_, CapcoScheme>,
 ) -> Vec<Diagnostic<CapcoScheme>> {
     let Some(page_portions) = ctx.page_portions.as_ref() else {
         return Vec::new();

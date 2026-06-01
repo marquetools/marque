@@ -9,33 +9,33 @@ use super::*;
 ///
 /// `effective_source` is wrapped in [`Zeroizing`] per Constitution
 /// Principle II — Marque-owned scratch buffers wipe on drop.
-pub(super) struct Pass0Result {
+pub(super) struct Pass0Result<S: MarkingScheme = CapcoScheme> {
     /// Source bytes after pass-0 text corrections have been applied.
     /// Equals `source.to_vec()` when no text corrections fired.
     pub(super) effective_source: Zeroizing<Vec<u8>>,
     /// Promoted `marque-1.0` audit-line records from pass-0. Each
     /// entry is an [`AuditLine::TextCorrection`] for the pass-0
     /// path.
-    pub(super) audit_lines: Vec<AuditLine<CapcoScheme>>,
+    pub(super) audit_lines: Vec<AuditLine<S>>,
     /// Diagnostics whose text-correction fixes were dropped by the
     /// C-1 overlap guard during pass-0. Surfaced via
     /// `FixResult.remaining_diagnostics` because pass-2's re-lint
     /// runs on the corrected buffer and would not re-emit them.
-    pub(super) dropped_diags: Vec<Diagnostic<CapcoScheme>>,
+    pub(super) dropped_diags: Vec<Diagnostic<S>>,
 }
 
 /// Outcome of pass-1 ([`Phase::Localized`] rule fixes).
 ///
 /// `post_buffer` is wrapped in [`Zeroizing`] per Constitution
 /// Principle II.
-pub(super) struct Pass1Result {
+pub(super) struct Pass1Result<S: MarkingScheme = CapcoScheme> {
     /// Buffer after pass-1 fixes have been spliced into `effective_source`.
     /// Equals `effective_source` when pass-1 produced no fixes.
     pub(super) post_buffer: Zeroizing<Vec<u8>>,
     /// Promoted `marque-1.0` audit-line records from pass-1. Each
     /// entry is an [`AuditLine::AppliedFix`] for the pass-1 marking
     /// path.
-    pub(super) audit_lines: Vec<AuditLine<CapcoScheme>>,
+    pub(super) audit_lines: Vec<AuditLine<S>>,
     /// `(rule_id, span)` keys of pass-1 fixes — feeds the
     /// `remaining_diagnostics` filter so a fixed diagnostic is not
     /// reported again.
@@ -48,16 +48,21 @@ pub(super) struct Pass1Result {
 /// On the happy path it transfers to [`FixResult.source`]
 /// ([`SecretSlice<u8>`]) via [`into_secret_slice`] — the wipe
 /// guarantee flows from the scratch wrapper to the public wrapper.
-pub(super) struct Pass2Result {
+pub(super) struct Pass2Result<S: MarkingScheme = CapcoScheme> {
     /// Final buffer (Apply mode) or original source (DryRun).
     pub(super) output: Zeroizing<Vec<u8>>,
     /// Promoted `marque-1.0` audit-line records from pass-2. Each
     /// entry is an [`AuditLine::AppliedFix`].
-    pub(super) audit_lines: Vec<AuditLine<CapcoScheme>>,
+    pub(super) audit_lines: Vec<AuditLine<S>>,
     pub(super) applied_keys: HashSet<(RuleId, Span)>,
 }
 
-impl<'engine> TwoPassFixer<'engine> {
+impl<'engine, S, R> TwoPassFixer<'engine, S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone + Default + PartialEq,
+    R: Recognizer<S>,
+{
     /// Run the full three-stage pipeline and produce a [`FixResult`].
     ///
     /// Error mapping mirrors the pre-7b `fix_inner` shape:
@@ -72,16 +77,36 @@ impl<'engine> TwoPassFixer<'engine> {
     /// `Ok(FixResult { r002_fired: true, ..})` carrying the pass-1
     /// buffer + the union of pass-0 / pass-1 applied fixes + the
     /// synthetic R002 diagnostic. Pass-2 does NOT run.
-    pub(super) fn run(self) -> Result<FixResult, EngineError> {
+    pub(super) fn run(self) -> Result<FixResult<S>, EngineError<S>> {
         let lint_opts = LintOptions {
             deadline: self.deadline,
             ..Default::default()
         };
 
+        // #176 / SC-010: route the fix path's internal lint passes by
+        // the caller's recognition input-source. `SchemaDocument`
+        // normalizes to the conservative text path here (no schema
+        // adapter ships for `S` yet), mirroring
+        // `Engine::lint_with_input_context`. `StructuredField` lifts the
+        // decoder's lone-case heuristic so `fix --input-source
+        // structured-field` applies the assertive recovery the flag
+        // promises.
+        let input_source = match self.input_source {
+            marque_scheme::InputSource::StructuredField => {
+                marque_scheme::InputSource::StructuredField
+            }
+            // DocumentContent + SchemaDocument + any future
+            // `#[non_exhaustive]` variant → conservative text path.
+            _ => marque_scheme::InputSource::DocumentContent,
+        };
+
         // Pass-0: lint original + apply text corrections.
-        let (lint1, parsed_markings1) = self
-            .engine
-            .lint_with_options_internal(self.source, &lint_opts);
+        let (lint1, parsed_markings1) = self.engine.lint_with_options_internal_with_source(
+            self.source,
+            &lint_opts,
+            None,
+            input_source,
+        );
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded {
                 partial_lint: lint1,
@@ -96,8 +121,12 @@ impl<'engine> TwoPassFixer<'engine> {
         // markings)` pair so synthesis can consume `parsed_markings`
         // without an explicit clone.
         let (lint, parsed_markings) = if !pass0.audit_lines.is_empty() {
-            self.engine
-                .lint_with_options_internal(&pass0.effective_source, &lint_opts)
+            self.engine.lint_with_options_internal_with_source(
+                &pass0.effective_source,
+                &lint_opts,
+                None,
+                input_source,
+            )
         } else {
             (lint1, parsed_markings1)
         };
@@ -169,8 +198,8 @@ impl<'engine> TwoPassFixer<'engine> {
         // and we can reuse `parsed_markings` AND the pre-pass-1
         // `pass2_diags` partition directly.
         //
-        // CanonicalAttrs is owned (no `<'src>` parameter), and
-        // parsed_markings is `Vec<(Span, CapcoMarking)>` (issue
+        // `S::Canonical` is owned (no borrow parameter), and
+        // parsed_markings is `Vec<(Span, S::Marking)>` (issue
         // #432 swapped the type from `HashMap` to a sorted `Vec`).
         // Moving it in both branches keeps both arms producing the
         // same owned type — no `Cow`, no clone (rust pre-flight Q3).
@@ -237,10 +266,11 @@ impl<'engine> TwoPassFixer<'engine> {
                 // overlaps a pass-1-reshaped marking. The field is the
                 // architectural two-pass-reshape signal kept for future
                 // rule consumers.
-                let (relint, new_markings) = self.engine.lint_with_options_internal_with_cache(
+                let (relint, new_markings) = self.engine.lint_with_options_internal_with_source(
                     &pass1.post_buffer,
                     &lint_opts,
                     Some(&pre_pass_1_cache),
+                    input_source,
                 );
                 // R002 trigger: pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
@@ -346,7 +376,7 @@ impl<'engine> TwoPassFixer<'engine> {
         // corrections; pass1; pass2. The confidence-then-span fix
         // ordering generalizes to the marking-fix + text-correction
         // sum-type stream.
-        let mut all_audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(
+        let mut all_audit_lines: Vec<AuditLine<S>> = Vec::with_capacity(
             pass0_audit_lines.len() + pass1_audit_lines.len() + pass2.audit_lines.len(),
         );
         all_audit_lines.extend(pass0_audit_lines);
@@ -375,7 +405,7 @@ impl<'engine> TwoPassFixer<'engine> {
             applied_keys.insert(*k);
         }
 
-        let mut remaining_diagnostics: Vec<Diagnostic<CapcoScheme>> = lint
+        let mut remaining_diagnostics: Vec<Diagnostic<S>> = lint
             .diagnostics
             .into_iter()
             .filter(|d| {
@@ -411,7 +441,7 @@ impl<'engine> TwoPassFixer<'engine> {
     /// helper. **Behavior unchanged** from pre-7b (D-7.6: "C001 stays
     /// as pass-0"); this method exists to keep the pipeline shape
     /// visible at the `run()` call site.
-    fn run_pass0_c001(&self, lint: &LintResult) -> Pass0Result {
+    fn run_pass0_c001(&self, lint: &LintResult<S>) -> Pass0Result<S> {
         let (effective_source, dropped_diags, audit_lines) = self.engine.apply_text_corrections(
             self.source,
             lint,
@@ -449,10 +479,10 @@ impl<'engine> TwoPassFixer<'engine> {
     fn run_pass1_localized(
         &self,
         effective_source: &[u8],
-        parsed_markings: &[(Span, marque_capco::CapcoMarking)],
-        pass1_diags: &[&Diagnostic<CapcoScheme>],
-        lint: &LintResult,
-    ) -> Result<Pass1Result, EngineError> {
+        parsed_markings: &[(Span, S::Marking)],
+        pass1_diags: &[&Diagnostic<S>],
+        lint: &LintResult<S>,
+    ) -> Result<Pass1Result<S>, EngineError<S>> {
         if pass1_diags.is_empty() {
             // No diagnostics → no fixes → caller short-circuits and
             // consumes its own pre-pass-1 buffer. Skip the document
@@ -464,7 +494,7 @@ impl<'engine> TwoPassFixer<'engine> {
             });
         }
 
-        let synthesized: Vec<SynthesizedFix> = synthesize_fixes(
+        let synthesized: Vec<SynthesizedFix<S>> = synthesize_fixes(
             &self.engine.scheme,
             parsed_markings,
             effective_source,
@@ -479,10 +509,10 @@ impl<'engine> TwoPassFixer<'engine> {
         // marking's bytes are `parsed_markings`' key span. A fix whose
         // span sits outside the candidate is a misuse of the phase tag
         // and is dropped before the confidence-then-span sort.
-        let in_shape: Vec<SynthesizedFix> = synthesized
+        let in_shape: Vec<SynthesizedFix<S>> = synthesized
             .into_iter()
             .filter(
-                |sf| match find_containing_marking(parsed_markings, sf.span) {
+                |sf| match find_containing_marking::<S>(parsed_markings, sf.span) {
                     Some(marking_span) => {
                         if span_is_within_marking(sf.span, marking_span) {
                             true
@@ -579,11 +609,11 @@ impl<'engine> TwoPassFixer<'engine> {
     fn run_pass2_whole_marking(
         &self,
         pass2_source: &[u8],
-        parsed_markings: &[(Span, marque_capco::CapcoMarking)],
-        pass2_diags: &[&Diagnostic<CapcoScheme>],
+        parsed_markings: &[(Span, S::Marking)],
+        pass2_diags: &[&Diagnostic<S>],
         pass1_applied_keys: &HashSet<(RuleId, Span)>,
-        lint: &LintResult,
-    ) -> Result<Pass2Result, EngineError> {
+        lint: &LintResult<S>,
+    ) -> Result<Pass2Result<S>, EngineError<S>> {
         if pass2_diags.is_empty() {
             return Ok(Pass2Result {
                 output: Zeroizing::new(match self.mode {
@@ -602,7 +632,7 @@ impl<'engine> TwoPassFixer<'engine> {
         // vector lives for the duration of this function so the
         // refs are valid.
         let adjusted_owned = apply_fr023_and_i18(pass2_diags, pass1_applied_keys);
-        let adjusted_refs: Vec<&Diagnostic<CapcoScheme>> = adjusted_owned.iter().collect();
+        let adjusted_refs: Vec<&Diagnostic<S>> = adjusted_owned.iter().collect();
 
         let synthesized = synthesize_fixes(
             &self.engine.scheme,
@@ -685,17 +715,18 @@ impl<'engine> TwoPassFixer<'engine> {
     /// The `parsed_markings` slice is the pre-pass-1 cache from
     /// `lint_with_options_internal` (issue #432 swapped the storage
     /// from `HashMap<Span, _>` to a sorted `Vec<(Span, _)>` for
-    /// cache-locality wins on high-candidate inputs): its
-    /// `CapcoMarking.0` is the `CanonicalAttrs` snapshot the rule
-    /// originally fired against. Cloning the attrs is unavoidable
-    /// here because the cache outlives the `parsed_markings` slice
-    /// (the engine moves the underlying `Vec` into the re-parse arm).
+    /// cache-locality wins on high-candidate inputs). The
+    /// `S::Canonical` snapshot is taken through
+    /// `MarkingScheme::canonical_from_marking` — the rule fired against
+    /// these same attributes. Cloning the attrs is unavoidable here
+    /// because the cache outlives the `parsed_markings` slice (the
+    /// engine moves the underlying `Vec` into the re-parse arm).
     fn populate_pre_pass_1_cache(
         &self,
-        pass1_audit_lines: &[AuditLine<CapcoScheme>],
-        parsed_markings: &[(Span, marque_capco::CapcoMarking)],
-    ) -> PrePass1Cache {
-        let mut cache: PrePass1Cache = SmallVec::new();
+        pass1_audit_lines: &[AuditLine<S>],
+        parsed_markings: &[(Span, S::Marking)],
+    ) -> PrePass1Cache<S> {
+        let mut cache: PrePass1Cache<S> = SmallVec::new();
         if pass1_audit_lines.is_empty() {
             return cache;
         }
@@ -715,7 +746,7 @@ impl<'engine> TwoPassFixer<'engine> {
                 AuditLine::TextCorrection(tc) => (&tc.rule, tc.span),
                 _ => continue,
             };
-            let Some(marking_span) = find_containing_marking(parsed_markings, span) else {
+            let Some(marking_span) = find_containing_marking::<S>(parsed_markings, span) else {
                 // A Localized rule whose fix span has no enclosing
                 // marking should already have been dropped by the
                 // in_shape filter; if one slips through it
@@ -733,10 +764,17 @@ impl<'engine> TwoPassFixer<'engine> {
             if cache.iter().any(|(s, _)| *s == marking_span) {
                 continue;
             }
-            let Some(marking) = lookup_marking(parsed_markings, marking_span) else {
+            let Some(marking) = lookup_marking::<S>(parsed_markings, marking_span) else {
                 continue;
             };
-            cache.push((marking_span, marking.0.clone()));
+            // Snapshot the marking's canonical attributes through the
+            // scheme accessor. At `S = CapcoScheme` this is exactly the
+            // former `marking.0.clone()`; routing through the trait keeps
+            // the cache build scheme-agnostic.
+            cache.push((
+                marking_span,
+                self.engine.scheme.canonical_from_marking(marking),
+            ));
         }
         cache
     }

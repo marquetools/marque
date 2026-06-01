@@ -14,12 +14,11 @@ use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
-use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    CORRECTIONS_MAP_CITATION, Diagnostic, EnginePromotionToken, FixIntent, FixSource, Phase,
-    Recognition, RuleId, RuleSet, Severity, SmallVec,
+    CORRECTIONS_MAP_CITATION, ConstraintBridge, Diagnostic, EnginePromotionToken, FixSource, Phase,
+    RuleId, RuleSet, Severity, SmallVec,
 };
 use marque_scheme::Span;
 use marque_scheme::ambiguity::Parsed;
@@ -103,25 +102,6 @@ fn surrounding_lowercase_majority(source: &[u8], start: usize, end: usize) -> bo
     lowercase >= LOWERCASE_MIN_COUNT && lowercase > uppercase
 }
 
-/// Synthetic rule identifier the engine attaches to decoder-path
-/// `FixSource::DecoderPosterior` diagnostics emitted from
-/// `Engine::lint`. This identifier lets the recognition-layer rewrite
-/// carry a real `RuleId` (rules and fixes share that requirement)
-/// without colliding with any CAPCO rule. The `"engine"` scheme is the
-/// reserved namespace for engine-minted diagnostics, and the predicate
-/// id describes the rewrite in plain English.
-const DECODER_RULE_ID: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
-
-/// Citation attached to `R001 decoder-recognition` diagnostics. Points
-/// at CAPCO-2016 §A.6 — the canonical-marking-form section the decoder
-/// is enforcing. Per Constitution VIII the citation is verifiable: §A.6
-/// is "(U) Formatting" beginning on page 15 (table of contents,
-/// `crates/capco/docs/CAPCO-2016.md` line 49) and contains the
-/// canonical syntax for portion / banner / CAB markings the decoder
-/// canonicalizes input toward.
-const DECODER_CITATION_TYPED: marque_scheme::Citation =
-    marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15);
-
 /// Synthetic rule identifier for the post-pass-1 re-parse-failure
 /// sentinel. Emitted when the post-pass-1 buffer fails to re-parse —
 /// pass-1 produced ≥1 applied fix that turned the source into an
@@ -173,7 +153,7 @@ pub(crate) const DEFAULT_PORTIONS_CAPACITY: usize = 8;
 /// The `fresh_accumulator_uses_default_capacity` unit test below pins the
 /// capacity contract.
 #[inline]
-pub(crate) fn fresh_page_portions_accumulator() -> Vec<marque_ism::CanonicalAttrs> {
+pub(crate) fn fresh_page_portions_accumulator<S: MarkingScheme>() -> Vec<S::Canonical> {
     Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY)
 }
 
@@ -225,34 +205,52 @@ pub trait SyncDecisionSink: marque_scheme::DecisionSink + Send + Sync {}
 #[cfg(feature = "decision-tracing")]
 impl<T: marque_scheme::DecisionSink + Send + Sync> SyncDecisionSink for T {}
 
+/// The fully-defaulted [`Engine`] — `Engine<CapcoScheme, EngineRecognizer>`
+/// spelled out.
+///
+/// Type-parameter defaults do not apply in every position (impl blocks,
+/// some inference sites), so this alias gives the default instantiation a
+/// stable name. The `S = CapcoScheme` default still lets call sites write
+/// `Engine` / `Engine<CapcoScheme>` unchanged; `CapcoEngine` is purely an
+/// ergonomic spelling, not a different type.
+pub type CapcoEngine = Engine<CapcoScheme, EngineRecognizer>;
+
 /// A configured engine instance.
-pub struct Engine {
+///
+/// `R` is the recognizer type, defaulted to [`EngineRecognizer`] — the
+/// opaque CAPCO-bound recognizer that keeps default dispatch
+/// monomorphized (strict-first with a decoder fallback) while preserving
+/// a trait-object escape hatch. The default keeps every
+/// existing `Engine<CapcoScheme>` call site source-unchanged (the second
+/// param resolves to `EngineRecognizer`). `R` exists so a later second
+/// scheme can drive its own recognizer through the same `Engine` core;
+/// the default stays until then. See [`CapcoEngine`] for the spelled-out
+/// alias.
+pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecognizer> {
     config: Config,
-    rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+    rule_sets: Vec<Box<dyn RuleSet<S>>>,
     /// Scheme catalog held for constraint-bridge dispatch in
-    /// `lint_inner`. A fresh `CapcoScheme::new()` is built at
-    /// construction time because the engine is concrete over
-    /// `CapcoScheme` (the generic-`S` parameter on the constructors is
-    /// only used to extract `page_rewrites()` for scheduling — the
-    /// scheduler test in `crates/engine/tests/scheduler.rs` passes
-    /// a stub scheme through that surface, but every production call
-    /// site passes `CapcoScheme::new()` and the bridge fires only
-    /// against the default catalog). Making `Engine<S>` truly generic
-    /// over the scheme would replace this field with the user-supplied
-    /// `S`.
+    /// `lint_inner`. Stores the scheme passed to the constructor:
+    /// [`Engine::with_clock_and_recognizer`] takes an arbitrary
+    /// `scheme: S` and stores it directly, and the CAPCO conveniences
+    /// ([`Engine::new`] / [`Engine::with_clock`]) pass the caller's
+    /// `CapcoScheme` through unchanged. The constraint-catalog bridge in
+    /// `lint_inner` fires against this stored scheme's catalog.
     ///
     /// # Bridge diagnostic population
     ///
     /// The engine bridge uses row names from the `Constraint` catalog
     /// to populate `Diagnostic.rule`. The bridge is a **no-op
     /// pass-through**: the catalog row's `constraint_label` IS the
-    /// predicate id; the bridge constructs `RuleId::new("capco",
-    /// constraint_label)` with no string manipulation. Every catalog
-    /// row gets its own predicate id at the row level.
+    /// predicate id; the bridge constructs the `RuleId` from
+    /// [`MarkingScheme::constraint_rule_id`], whose default namespaces
+    /// the predicate under the scheme's own `scheme_id()` (`"capco"` for
+    /// `CapcoScheme`) with no string manipulation. Every catalog row
+    /// gets its own predicate id at the row level.
     ///
     /// The bridge code lives in
     /// [`Engine::bridge_constraint_diagnostic`].
-    scheme: CapcoScheme,
+    scheme: S,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
@@ -274,11 +272,14 @@ pub struct Engine {
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
-    /// a `CanonicalAttrs`. Stored as an enum with concrete variants for
-    /// the in-tree recognizers (`Strict`, `StrictOrDecoder`)
-    /// so default dispatch stays monomorphized; a `Dyn` escape hatch
-    /// preserves the existing `with_recognizer(Arc<dyn Recognizer<_>>)`
-    /// customization surface for downstream callers.
+    /// a `CanonicalAttrs`. Typed as the generic `R`, which defaults to
+    /// [`EngineRecognizer`] — the opaque CAPCO-bound recognizer that
+    /// keeps default dispatch monomorphized (strict-first with a decoder
+    /// fallback) while preserving the `with_recognizer(Arc<dyn
+    /// Recognizer<_>>)` trait-object escape hatch. Every
+    /// existing `Engine<CapcoScheme>` stores an `EngineRecognizer`
+    /// exactly as before; the generic parameter only opens the seam for
+    /// a future scheme's recognizer.
     ///
     /// Default: [`StrictOrDecoderRecognizer`] — strict-first dispatch
     /// with a decoder fallback on strict-parse zero-candidate. The
@@ -289,7 +290,7 @@ pub struct Engine {
     /// the engine; surfaces that need to pin strict-only behavior (the
     /// interactive-latency benchmark, tests asserting strict
     /// dispatch) should call [`Engine::with_strict_recognizer`].
-    recognizer: EngineRecognizer,
+    recognizer: R,
 
     /// CLI-supplied corpus override. Held only behind the
     /// `corpus-override` Cargo feature so the WASM artifact and the
@@ -490,7 +491,7 @@ pub struct Engine {
 }
 
 #[cfg(feature = "decision-tracing")]
-impl Engine {
+impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
     /// Mint the next monotone step counter and record one
     /// [`DecisionEvent`](marque_scheme::DecisionEvent) on the engine's
     /// sink.
@@ -557,10 +558,10 @@ impl Engine {
     /// matches OFF-feature semantics and avoids unwinding into Tower
     /// middleware per Constitution VI.
     #[inline]
-    pub(crate) fn with_sink<R>(
+    pub(crate) fn with_sink<T>(
         &self,
-        body: impl FnOnce(&mut dyn marque_scheme::DecisionSink) -> R,
-    ) -> R {
+        body: impl FnOnce(&mut dyn marque_scheme::DecisionSink) -> T,
+    ) -> T {
         match self.sink.lock() {
             Ok(mut guard) => body(&mut **guard),
             Err(_poisoned) => {
@@ -608,10 +609,10 @@ impl Engine {
     /// continue to resolve correctly after remapping. The map is
     /// dropped when `body` returns.
     #[inline]
-    pub(crate) fn with_remapping_sink<R>(
+    pub(crate) fn with_remapping_sink<T>(
         &self,
-        body: impl FnOnce(&mut StepRemappingSink<'_>) -> R,
-    ) -> R {
+        body: impl FnOnce(&mut StepRemappingSink<'_>) -> T,
+    ) -> T {
         self.with_sink(|inner| {
             let mut remapper = StepRemappingSink {
                 inner,
@@ -680,8 +681,36 @@ impl marque_scheme::DecisionSink for StepRemappingSink<'_> {
 // `static_assertions::assert_impl_all!(Engine: Send, Sync)` (kept
 // test-only because `static_assertions` is a `dev-dependency`).
 
+/// The engine's default recognizer — an opaque wrapper over the private
+/// dispatch enum.
+///
+/// Public because it is the default for the `Engine<CapcoScheme, R>`
+/// recognizer type parameter and the second argument of the
+/// [`CapcoEngine`] alias — a private default on a public struct's type
+/// parameter would leak a private type through the public API (E0446).
+/// It is only a valid `R` when `S = CapcoScheme`, since it only
+/// implements `Recognizer<CapcoScheme>`.
+///
+/// The dispatch variants (strict, strict-first/decoder-fallback,
+/// trait-object escape hatch) are deliberately NOT part of the public
+/// surface: the inner enum is private, so downstream code can name the
+/// type (to spell `Engine<CapcoScheme, EngineRecognizer>` or use the
+/// [`CapcoEngine`] alias) but cannot construct or match on it. Callers
+/// select a recognizer through the engine builders
+/// ([`Engine::with_recognizer`] for a trait-object recognizer,
+/// [`Engine::with_strict_recognizer`] for strict-only); the default
+/// ([`Engine::new`]) is strict-first with a decoder fallback. Wrapping a
+/// private enum is what makes that contract real — `#[non_exhaustive]`
+/// alone would still leave the variants constructable.
 #[derive(Clone)]
-enum EngineRecognizer {
+pub struct EngineRecognizer(EngineRecognizerKind);
+
+/// Private dispatch enum behind [`EngineRecognizer`]. Keeping the
+/// strict-only and strict-first/decoder arms as concrete variants lets
+/// default dispatch stay monomorphized; `Dyn` is the trait-object escape
+/// hatch.
+#[derive(Clone)]
+enum EngineRecognizerKind {
     /// Fully monomorphized strict-only recognizer path.
     Strict(StrictRecognizer),
     /// Fully monomorphized strict-first/decoder-fallback recognizer path
@@ -692,9 +721,26 @@ enum EngineRecognizer {
     Dyn(Arc<dyn Recognizer<CapcoScheme>>),
 }
 
+impl EngineRecognizer {
+    /// Strict-only dispatch. Backs [`Engine::with_strict_recognizer`].
+    pub(crate) fn strict() -> Self {
+        Self(EngineRecognizerKind::Strict(StrictRecognizer::new()))
+    }
+
+    /// Trait-object dispatch over a caller-supplied recognizer. Backs
+    /// [`Engine::with_recognizer`].
+    pub(crate) fn dynamic(recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
+        Self(EngineRecognizerKind::Dyn(recognizer))
+    }
+}
+
 impl Default for EngineRecognizer {
+    /// Strict-first with a decoder fallback — the dispatch installed by
+    /// [`Engine::new`].
     fn default() -> Self {
-        Self::StrictOrDecoder(StrictOrDecoderRecognizer::new())
+        Self(EngineRecognizerKind::StrictOrDecoder(
+            StrictOrDecoderRecognizer::new(),
+        ))
     }
 }
 
@@ -706,10 +752,10 @@ impl Recognizer<CapcoScheme> for EngineRecognizer {
         scheme: &CapcoScheme,
         cx: &ParseContext,
     ) -> Parsed<marque_capco::CapcoMarking> {
-        match self {
-            Self::Strict(r) => r.recognize(bytes, offset, scheme, cx),
-            Self::StrictOrDecoder(r) => r.recognize(bytes, offset, scheme, cx),
-            Self::Dyn(r) => r.recognize(bytes, offset, scheme, cx),
+        match &self.0 {
+            EngineRecognizerKind::Strict(r) => r.recognize(bytes, offset, scheme, cx),
+            EngineRecognizerKind::StrictOrDecoder(r) => r.recognize(bytes, offset, scheme, cx),
+            EngineRecognizerKind::Dyn(r) => r.recognize(bytes, offset, scheme, cx),
         }
     }
 }

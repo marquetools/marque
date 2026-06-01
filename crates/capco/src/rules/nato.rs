@@ -249,7 +249,11 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         BARE_NATO_REQUIRES_REL_TO_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
         // Clause 1: portion-only.
@@ -492,7 +496,11 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         LEGACY_NATO_COMPOUND_REMARK_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{
             AeaMarking, MarkingClassification, MarkingType, NatoSap, SciControlSystem,
         };
@@ -590,7 +598,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         );
 
         let fix_intent = FixIntent {
-            replacement: ReplacementIntent::Recanonicalize { scope },
+            replacement: ReplacementIntent::Recanonicalize { scope, prior: None },
             confidence: Recognition::strict(),
             feature_ids: Default::default(),
             message: Message::new(

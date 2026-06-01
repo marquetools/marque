@@ -50,6 +50,11 @@ pub async fn fix_handler(
     fix_opts.classifier_id = req.classifier_id.clone();
     fix_opts.classification_authority = req.classification_authority.clone();
     fix_opts.signature = req.signature.clone();
+    // #176 / SC-010: thread the trusted-caller recognition input-source
+    // into the fix path so `input_source: "structured_field"` applies
+    // the assertive recovery on the server fix endpoint, matching the
+    // lint endpoint. Absent / unknown → DocumentContent (the safe path).
+    fix_opts.input_source = req.resolved_input_source();
 
     match state
         .engine

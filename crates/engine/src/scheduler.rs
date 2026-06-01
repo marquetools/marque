@@ -466,6 +466,7 @@ mod tests {
         // See evaluator.rs for the binding rationale.
         type Parsed<'src> = ();
         type Canonical = ();
+        type Projected = ();
         fn name(&self) -> &str {
             "stub"
         }
@@ -493,10 +494,10 @@ mod tests {
         fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
             StubMarking
         }
-        fn render_portion(&self, _: &Self::Marking) -> String {
+        fn render_item(&self, _: &Self::Marking) -> String {
             String::new()
         }
-        fn render_banner(&self, _: &Self::Marking) -> String {
+        fn render_summary(&self, _: &Self::Marking) -> String {
             String::new()
         }
         fn render_canonical(

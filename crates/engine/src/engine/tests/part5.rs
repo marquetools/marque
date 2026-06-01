@@ -14,6 +14,7 @@ fn assemble_r002_result_carries_pass0_then_pass1_applied_plus_r002_diag() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
 
     let pass0_audit_lines = vec![synth_audit_line("C001", 0, 6)];
@@ -81,6 +82,7 @@ fn assemble_r002_result_dryrun_returns_original_source() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
 
     let pass1 = Pass1Result {
@@ -116,6 +118,7 @@ fn assemble_r002_result_carries_through_pass0_dropped_diagnostics() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
 
     let dropped = vec![Diagnostic::<CapcoScheme>::new(
@@ -165,11 +168,13 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
 
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
@@ -230,6 +235,7 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
 #[cfg(all(test, debug_assertions))]
 mod sentinel_tests {
     use super::check_portions_unchanged;
+    use marque_capco::CapcoScheme;
     use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
 
     /// Construct a default `CanonicalAttrs`. `CanonicalAttrs` is
@@ -262,13 +268,13 @@ mod sentinel_tests {
     #[test]
     fn check_portions_unchanged_returns_ok_on_equal_slices() {
         // Empty + empty — the typical no-portion dispatch shape.
-        assert!(check_portions_unchanged(&[], &[], 0).is_ok());
+        assert!(check_portions_unchanged::<CapcoScheme>(&[], &[], 0).is_ok());
 
         // Single portion, cloned — Vec clone proves the comparison
         // is value-equality, not pointer-equality.
         let portions = vec![secret_attrs()];
         let cloned = portions.clone();
-        assert!(check_portions_unchanged(&portions, &cloned, 1).is_ok());
+        assert!(check_portions_unchanged::<CapcoScheme>(&portions, &cloned, 1).is_ok());
     }
 
     /// Test 2 — mismatched lengths return `Err`, error string
@@ -284,7 +290,7 @@ mod sentinel_tests {
         let before = vec![secret_attrs()];
         let after: Vec<CanonicalAttrs> = vec![];
 
-        let err = check_portions_unchanged(&before, &after, 7)
+        let err = check_portions_unchanged::<CapcoScheme>(&before, &after, 7)
             .expect_err("length mismatch must surface as Err");
 
         // Counts present.
@@ -330,7 +336,7 @@ mod sentinel_tests {
         let before = vec![empty_attrs()];
         let after = vec![secret_attrs()];
 
-        let err = check_portions_unchanged(&before, &after, 1)
+        let err = check_portions_unchanged::<CapcoScheme>(&before, &after, 1)
             .expect_err("content mismatch must surface as Err");
 
         // Counts: both sides are length-1, so the count phrasing
@@ -385,7 +391,7 @@ mod sentinel_tests {
         let before = vec![attrs_with_canary];
         let after: Vec<CanonicalAttrs> = vec![];
 
-        let err = check_portions_unchanged(&before, &after, 1)
+        let err = check_portions_unchanged::<CapcoScheme>(&before, &after, 1)
             .expect_err("mismatch must surface as Err for the content-ignorance check");
 
         // The load-bearing assertion: the distinctive sentinel

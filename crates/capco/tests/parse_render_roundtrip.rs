@@ -155,7 +155,7 @@ fn fixture_text(bytes: &[u8]) -> String {
 // =============================================================================
 // Classification round-trip (current renderer coverage)
 //
-// The `MarkingScheme::render_portion` / `render_banner` impl on `CapcoScheme`
+// The `MarkingScheme::render_item` / `render_summary` impl on `CapcoScheme`
 // today emits the classification level only. The narrowest round-trip the
 // renderer can satisfy is on `Classification::effective_level()`.
 //
@@ -184,7 +184,7 @@ fn render_and_reparse_classification(
             // `strip_prefix('(') / strip_suffix(')')` step — pinning it
             // explicitly here keeps the round-trip end-to-end through the
             // public surface.
-            let inner = scheme.render_portion(&marking1);
+            let inner = scheme.render_item(&marking1);
             // The renderer returns an empty string when classification
             // is `None`; the parser would also accept `()` and produce
             // empty attrs, which round-trips trivially. Skip to avoid
@@ -198,7 +198,7 @@ fn render_and_reparse_classification(
             (rendered, attrs2)
         }
         Kind::Banner => {
-            let rendered = scheme.render_banner(&marking1);
+            let rendered = scheme.render_summary(&marking1);
             if rendered.is_empty() {
                 return;
             }
@@ -306,7 +306,7 @@ fn fr016_bare_fgi_classification_round_trips() {
     // ("SECRET") round-trips through the renderer.
     let scheme = CapcoScheme::new();
     let attrs1 = parse_banner(&scheme, "SECRET//FGI//NOFORN");
-    let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
+    let rendered = scheme.render_summary(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_banner(&scheme, &rendered);
     assert_eq!(
         attrs1
@@ -326,7 +326,7 @@ fn fr017_acknowledged_fgi_single_country_classification_round_trips() {
     // §H.7 p122 lawful acknowledged form. Single-country list.
     let scheme = CapcoScheme::new();
     let attrs1 = parse_banner(&scheme, "SECRET//FGI DEU//NOFORN");
-    let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
+    let rendered = scheme.render_summary(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_banner(&scheme, &rendered);
     assert_eq!(
         attrs1
@@ -346,7 +346,7 @@ fn fr017_acknowledged_fgi_multi_country_classification_round_trips() {
     // §H.7 p122 + §A.6 p16 multi-trigraph list (sorted).
     let scheme = CapcoScheme::new();
     let attrs1 = parse_banner(&scheme, "SECRET//FGI USA GBR JPN//NOFORN");
-    let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
+    let rendered = scheme.render_summary(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_banner(&scheme, &rendered);
     assert_eq!(
         attrs1
@@ -368,7 +368,7 @@ fn fr015_sar_program_only_classification_round_trips() {
     // compartment). Portion side.
     let scheme = CapcoScheme::new();
     let attrs1 = parse_portion(&scheme, "(TS//SAR-BP)");
-    let rendered = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
+    let rendered = scheme.render_item(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_portion(&scheme, &format!("({rendered})"));
     assert_eq!(
         attrs1
@@ -389,7 +389,7 @@ fn fr015_sar_program_with_compartment_classification_round_trips() {
     // Portion side.
     let scheme = CapcoScheme::new();
     let attrs1 = parse_portion(&scheme, "(TS//SAR-BP-J12)");
-    let rendered = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
+    let rendered = scheme.render_item(&CapcoMarking::from(attrs1.clone()));
     let attrs2 = parse_portion(&scheme, &format!("({rendered})"));
     assert_eq!(
         attrs1
@@ -455,13 +455,13 @@ fn full_attribute_round_trip_across_strict_corpus() {
         let (rendered_1, kind_owned) = match kind {
             Kind::Portion => {
                 let attrs = parse_portion(&scheme, &text);
-                let inner = scheme.render_portion(&CapcoMarking::from(attrs));
+                let inner = scheme.render_item(&CapcoMarking::from(attrs));
                 (format!("({inner})"), Kind::Portion)
             }
             Kind::Banner => {
                 let attrs = parse_banner(&scheme, &text);
                 (
-                    scheme.render_banner(&CapcoMarking::from(attrs)),
+                    scheme.render_summary(&CapcoMarking::from(attrs)),
                     Kind::Banner,
                 )
             }
@@ -473,12 +473,12 @@ fn full_attribute_round_trip_across_strict_corpus() {
         let rendered_2 = match kind_owned {
             Kind::Portion => {
                 let attrs = parse_portion(&scheme, &rendered_1);
-                let inner = scheme.render_portion(&CapcoMarking::from(attrs));
+                let inner = scheme.render_item(&CapcoMarking::from(attrs));
                 format!("({inner})")
             }
             Kind::Banner => {
                 let attrs = parse_banner(&scheme, &rendered_1);
-                scheme.render_banner(&CapcoMarking::from(attrs))
+                scheme.render_summary(&CapcoMarking::from(attrs))
             }
             Kind::Cab | Kind::Other => unreachable!(),
         };

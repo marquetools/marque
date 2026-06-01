@@ -119,7 +119,11 @@ impl Rule<CapcoScheme> for FgiOwnershipTrigraphSuggestRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         FGI_OWNERSHIP_SUGGEST_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
         use marque_ism::CapcoTokenSet;
         use marque_ism::token_set::TokenSet;
@@ -403,7 +407,11 @@ impl Rule<CapcoScheme> for FgiInvalidOwnershipTokenRule {
     /// describe who may receive a marking, not who owns it (issue
     /// #280). Re-verified against `crates/capco/docs/CAPCO-2016.md` at
     /// authorship per Constitution VIII.
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
         for tok in attrs.token_spans.iter() {
             if tok.kind != TokenKind::Unknown {

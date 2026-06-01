@@ -13,8 +13,9 @@
 //! real marking logic is required.
 
 use marque_config::Config;
-use marque_engine::{Engine, EngineConstructionError};
-use marque_rules::RuleSet;
+use marque_engine::{Engine, EngineConstructionError, SystemClock};
+use marque_rules::{ConstraintBridge, RuleSet};
+use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Citation,
     Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme, MeetSemilattice,
@@ -72,6 +73,7 @@ impl MarkingScheme for StubScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "stub"
@@ -113,10 +115,10 @@ impl MarkingScheme for StubScheme {
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &self.rewrites
     }
-    fn render_portion(&self, _: &Self::Marking) -> String {
+    fn render_item(&self, _: &Self::Marking) -> String {
         String::new()
     }
-    fn render_banner(&self, _: &Self::Marking) -> String {
+    fn render_summary(&self, _: &Self::Marking) -> String {
         String::new()
     }
     fn render_canonical(
@@ -129,21 +131,48 @@ impl MarkingScheme for StubScheme {
     }
 }
 
+// `StubScheme` declares no diagnostic constraints, so it inherits every
+// `ConstraintBridge` no-op default (including `bridge_emitted_rule_ids`
+// → `&[]`). The empty impl is what lets the generic `Engine<StubScheme>`
+// constructor satisfy its `S: ConstraintBridge` bound.
+impl ConstraintBridge for StubScheme {}
+
+/// Local [`Recognizer<StubScheme>`] — always zero-candidate `Ambiguous`
+/// (the engine-safe "nothing recognized" answer). The scheduler tests
+/// never lint, so the recognizer body never runs; it exists only to
+/// satisfy the generic constructor's `R: Recognizer<S>` bound.
+struct StubRecognizer;
+
+impl Recognizer<StubScheme> for StubRecognizer {
+    fn recognize(
+        &self,
+        _bytes: &[u8],
+        _offset: usize,
+        _scheme: &StubScheme,
+        _cx: &ParseContext,
+    ) -> Parsed<StubMarking> {
+        Parsed::Ambiguous {
+            candidates: Vec::new(),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Helper: construct an `Engine` from a scheme without pulling in rules.
+// Helper: construct an `Engine` over the local stub scheme through the
+// generic constructor. Only the scheduler's `page_rewrites()` axis is
+// exercised; the returned `Engine<StubScheme, StubRecognizer>` is
+// inspected solely via `scheduled_rewrites()`.
 // ---------------------------------------------------------------------------
 
-fn try_build(scheme: StubScheme) -> Result<Engine, EngineConstructionError> {
-    // The engine is hardcoded to `CapcoScheme` for its internal rule
-    // dispatch (decoder, recognizer); the scheduler test
-    // exercises only the `MarkingScheme::page_rewrites` axis of a
-    // *separate* `StubScheme` value, so the rule-set type parameter
-    // here is `CapcoScheme` (matching the engine's bound), not the
-    // local stub.
-    Engine::new(
+fn try_build(
+    scheme: StubScheme,
+) -> Result<Engine<StubScheme, StubRecognizer>, EngineConstructionError> {
+    Engine::with_clock_and_recognizer(
         Config::default(),
-        Vec::<Box<dyn RuleSet<marque_capco::CapcoScheme>>>::new(),
+        Vec::<Box<dyn RuleSet<StubScheme>>>::new(),
         scheme,
+        StubRecognizer,
+        Box::new(SystemClock),
     )
 }
 
@@ -622,6 +651,7 @@ fn engine_new_accepts_recanonicalize_intent_in_page_rewrite() {
         trigger: CategoryPredicate::Empty { category: CAT_X },
         action: CategoryAction::Intent(ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Page,
+            prior: None,
         }),
         reads: &[CAT_X],
         writes: &[CAT_X],

@@ -128,6 +128,7 @@ impl MarkingScheme for MonotoneScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "monotone-stub"
@@ -370,6 +371,7 @@ impl MarkingScheme for NonMonotoneScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "non-monotone-stub"
@@ -654,6 +656,7 @@ impl MarkingScheme for MonotoneDerivedScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "monotone-derived-stub"
@@ -764,6 +767,7 @@ impl MarkingScheme for NonMonotoneDerivedScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "non-monotone-derived-stub"

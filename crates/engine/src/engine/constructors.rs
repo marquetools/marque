@@ -3,46 +3,46 @@ use super::dispatch::{
 };
 use super::*;
 
-impl Engine {
-    /// Create a new engine with the given configuration, rule sets, and
-    /// marking scheme.
+// Generic construction core. Unlike the CAPCO-default conveniences
+// below, this block is generic over the scheme `S` and recognizer `R`:
+// it stores the user-supplied `scheme` and `recognizer` directly — no
+// discard, no fresh `CapcoScheme::new()`. The heavy construction body
+// monomorphizes once per `(scheme, recognizer)` pair actually built
+// (the CAPCO path, plus any test stub), not per call site.
+impl<S, R> Engine<S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    R: Recognizer<S>,
+{
+    /// Create an engine over an arbitrary scheme and recognizer with a
+    /// custom clock — the generic construction core.
     ///
     /// Runs the page-rewrite scheduler (Kahn's algorithm over the
     /// scheme's declared `reads` / `writes` axes) once at construction
     /// time. Cycles and unannotated `Custom` rewrites fail closed with
     /// [`EngineConstructionError`] rather than degrading at lint time.
+    /// The passed `scheme` and `recognizer` become the engine's stored
+    /// scheme and recognizer.
     ///
-    /// Use [`Engine::with_clock`] for deterministic-timestamp testing.
-    pub fn new<S: MarkingScheme>(
-        config: Config,
-        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
-        scheme: S,
-    ) -> Result<Self, EngineConstructionError> {
-        Self::with_clock(config, rule_sets, scheme, Box::new(SystemClock))
-    }
-
-    /// Create an engine with a custom clock (for deterministic tests).
-    pub fn with_clock<S: MarkingScheme>(
+    /// [`Engine::new`] / [`Engine::with_clock`] are the CAPCO-default
+    /// conveniences over this: they fix `S = CapcoScheme`,
+    /// `R = EngineRecognizer`, and supply [`EngineRecognizer::default`]
+    /// and [`SystemClock`] so existing call sites stay source-unchanged.
+    pub fn with_clock_and_recognizer(
         mut config: Config,
-        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        rule_sets: Vec<Box<dyn RuleSet<S>>>,
         scheme: S,
+        recognizer: R,
         clock: Box<dyn Clock>,
     ) -> Result<Self, EngineConstructionError> {
-        // Instantiate the constraint-catalog bridge's `CapcoScheme`
-        // up front so the override canonicalizer can consult its
-        // `bridge_emitted_rule_ids()` for IDs the engine emits without
-        // a registered `Rule`. The user-supplied generic `scheme: S`
-        // is `drop()`-ped below the corrections-map setup and
-        // `bridge_scheme` becomes the engine's stored scheme (the
-        // `let scheme = bridge_scheme;` step).
-        let bridge_scheme = CapcoScheme::new();
-
         // Canonicalize [rules] overrides against the registered rule
         // set: accept the wire-string rule ID, its predicate-id half,
         // or the rule's descriptive name, resolve all to the canonical
         // predicate id before the engine stores the map, and hard-fail
-        // on any unknown key. See `canonicalize_rule_overrides`.
-        canonicalize_rule_overrides(&mut config, &rule_sets, &bridge_scheme)?;
+        // on any unknown key. Consults `scheme.bridge_emitted_rule_ids()`
+        // (a `ConstraintBridge` method) for IDs the engine emits without
+        // a registered `Rule`. See `canonicalize_rule_overrides`.
+        canonicalize_rule_overrides(&mut config, &rule_sets, &scheme)?;
 
         // Validate every `CategoryAction::Intent` payload BEFORE
         // scheduling. Reordering
@@ -57,48 +57,7 @@ impl Engine {
         // the first page that triggers the rewrite.
         validate_intent_rewrites(&scheme, scheme.page_rewrites())?;
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
-        // Drop the user-supplied scheme after page-rewrite extraction;
-        // the constraint-catalog bridge in `lint_inner` uses a fresh
-        // `CapcoScheme::new()` (see the `scheme` field doc above for
-        // the design rationale).
-        //
-        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
-        // that passes a configured `CapcoScheme` (custom catalog,
-        // runtime-amended constraint rows, alternative rewrite axis
-        // beyond what we already extracted) loses every customization
-        // here. No compile-time guard — the `S: MarkingScheme` bound
-        // permits any scheme because the scheduler test
-        // (`crates/engine/tests/scheduler.rs:106`) deliberately
-        // exercises that flexibility with a `StubScheme`. Every
-        // production call site today passes `CapcoScheme::new()` (the
-        // default), so the discard is currently lossless; a future
-        // refactor that makes `Engine<S>` truly generic over the
-        // scheme will close this. The `tracing::debug!` below makes
-        // the silent drop observable to a developer running with
-        // `MARQUE_LOG=marque=debug` (off by default in
-        // production).
-        tracing::debug!(
-            target: "marque_engine::scheme_discard",
-            "user-supplied scheme dropped; constraint-catalog bridge uses default \
-             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
-        );
-        drop(scheme);
-        Self::with_clock_prepared(config, rule_sets, clock, bridge_scheme, scheduled_rewrites)
-    }
 
-    /// Non-generic tail of [`Engine::with_clock`].
-    ///
-    /// Keeping the heavy construction path behind a concrete signature
-    /// avoids monomorphizing the full constructor body for every `S`
-    /// used at call sites; only the rewrite-validation/scheduling front
-    /// edge remains generic.
-    fn with_clock_prepared(
-        mut config: Config,
-        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
-        clock: Box<dyn Clock>,
-        bridge_scheme: CapcoScheme,
-        scheduled_rewrites: Box<[RewriteId]>,
-    ) -> Result<Self, EngineConstructionError> {
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
         let corrections_arc = if config.corrections.is_empty() {
@@ -136,8 +95,6 @@ impl Engine {
             }
         });
 
-        let scheme = bridge_scheme;
-
         // Phase-partition walk. Read every registered rule's declared
         // `Phase` and partition the rule set into a
         // pass-1 (Localized) list, a pass-2 (WholeMarking) list, and
@@ -172,7 +129,7 @@ impl Engine {
             corrections_arc,
             corrections_ac,
             scheduled_rewrites,
-            recognizer: EngineRecognizer::default(),
+            recognizer,
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
             pass1_rule_indices,
@@ -205,15 +162,52 @@ impl Engine {
             next_step: std::sync::atomic::AtomicU32::new(0),
         })
     }
+}
 
-    /// The topologically-sorted rewrite order computed by the scheduler
-    /// at construction time.
+// CAPCO-default conveniences and recognizer/sink builders. Pinned to the
+// default `Engine<CapcoScheme, EngineRecognizer>` because the `new` /
+// `with_clock` conveniences supply `EngineRecognizer::default()`, and the
+// `with_recognizer` / `with_strict_recognizer` builders mutate that same
+// `EngineRecognizer`. A type-param default does not apply in impl
+// position, so the instantiation is spelled out explicitly. Generic
+// construction over an arbitrary scheme / recognizer goes through
+// [`Engine::with_clock_and_recognizer`] above.
+impl Engine<CapcoScheme, EngineRecognizer> {
+    /// Create a new engine with the given configuration, rule sets, and
+    /// CAPCO marking scheme. Installs the default [`EngineRecognizer`]
+    /// (strict-first with a decoder fallback).
     ///
-    /// Exposed for diagnostic / test inspection. Per-document lint does
-    /// not re-sort; this slice is the canonical order every page roll-up
-    /// walks.
-    pub fn scheduled_rewrites(&self) -> &[RewriteId] {
-        &self.scheduled_rewrites
+    /// Runs the page-rewrite scheduler (Kahn's algorithm over the
+    /// scheme's declared `reads` / `writes` axes) once at construction
+    /// time. Cycles and unannotated `Custom` rewrites fail closed with
+    /// [`EngineConstructionError`] rather than degrading at lint time.
+    ///
+    /// Use [`Engine::with_clock`] for deterministic-timestamp testing,
+    /// or [`Engine::with_clock_and_recognizer`] to drive a non-CAPCO
+    /// scheme / custom recognizer.
+    pub fn new(
+        config: Config,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        scheme: CapcoScheme,
+    ) -> Result<Self, EngineConstructionError> {
+        Self::with_clock(config, rule_sets, scheme, Box::new(SystemClock))
+    }
+
+    /// Create a CAPCO engine with a custom clock (for deterministic
+    /// tests). Installs the default [`EngineRecognizer`].
+    pub fn with_clock(
+        config: Config,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        scheme: CapcoScheme,
+        clock: Box<dyn Clock>,
+    ) -> Result<Self, EngineConstructionError> {
+        Self::with_clock_and_recognizer(
+            config,
+            rule_sets,
+            scheme,
+            EngineRecognizer::default(),
+            clock,
+        )
     }
 
     /// Override the engine's recognizer. The default installed by
@@ -231,7 +225,7 @@ impl Engine {
     /// ```
     #[must_use = "with_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_recognizer(mut self, recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
-        self.recognizer = EngineRecognizer::Dyn(recognizer);
+        self.recognizer = EngineRecognizer::dynamic(recognizer);
         self
     }
 
@@ -249,7 +243,7 @@ impl Engine {
     /// ```
     #[must_use = "with_strict_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_strict_recognizer(mut self) -> Self {
-        self.recognizer = EngineRecognizer::Strict(StrictRecognizer::new());
+        self.recognizer = EngineRecognizer::strict();
         self
     }
 
@@ -263,7 +257,7 @@ impl Engine {
     /// Only available when the engine is built with the
     /// `decision-tracing` Cargo feature. With the feature off the
     /// method does not exist and the engine carries no sink field —
-    /// Constitution Principle I (SC-001 16 ms p95) is preserved by
+    /// Constitution Principle I (SC-001 p95 ≤ 2 ms) is preserved by
     /// the absence of any per-call-site branch on the hot path.
     ///
     /// Returns the engine by value so callers can chain:
@@ -310,6 +304,23 @@ impl Engine {
         self.corpus_override = Some(override_data);
         self
     }
+}
+
+// Recognizer-agnostic accessors. These read fields that do not depend on
+// the recognizer type, so they generalize over `R` and stay callable from
+// the `R`-generic lint pipeline (e.g. `lint_helpers` reads
+// `corpus_override_active`). Kept separate from the `EngineRecognizer`-
+// pinned constructor block so generic-`R` call sites resolve.
+impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
+    /// The topologically-sorted rewrite order computed by the scheduler
+    /// at construction time.
+    ///
+    /// Exposed for diagnostic / test inspection. Per-document lint does
+    /// not re-sort; this slice is the canonical order every page roll-up
+    /// walks.
+    pub fn scheduled_rewrites(&self) -> &[RewriteId] {
+        &self.scheduled_rewrites
+    }
 
     /// Whether a corpus override is in effect for this engine.
     ///
@@ -318,9 +329,11 @@ impl Engine {
     /// builds therefore cannot observe a `true` here regardless of
     /// what any caller passes through other surfaces. Callers that
     /// need to thread the flag into audit-record construction (the
-    /// private `build_decoder_diagnostic` helper inside this module)
-    /// should go through this method rather than poking at the
-    /// field directly.
+    /// `build_decoder_diagnostic` helper in marque-capco, reached by the
+    /// recognition path through
+    /// [`ConstraintBridge::recognition_outcome`]
+    /// should go through this method rather than poking at the field
+    /// directly.
     #[inline]
     pub fn corpus_override_active(&self) -> bool {
         #[cfg(feature = "corpus-override")]
@@ -336,12 +349,12 @@ impl Engine {
     /// Borrow the engine's active marking scheme.
     ///
     /// Used by the CLI / WASM audit-record renderers to project
-    /// [`AuditLine<CapcoScheme>`] values through the scheme's
+    /// `AuditLine<S>` values through the scheme's
     /// [`Vocabulary`](marque_scheme::Vocabulary) and
     /// [`MarkingScheme::categories`](marque_scheme::MarkingScheme::categories)
     /// surfaces for the audit JSON shape. Off the lint/scan
     /// hot path — purely a wire-format projection helper.
-    pub fn scheme(&self) -> &CapcoScheme {
+    pub fn scheme(&self) -> &S {
         &self.scheme
     }
 }

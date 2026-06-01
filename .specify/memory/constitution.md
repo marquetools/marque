@@ -7,6 +7,37 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.6.0 → 1.7.0
+
+Bump type: MINOR
+  - Principle I (Uncompromising Performance) — retired the 16 ms
+    interactive p95 placeholder; set p95 ≤ 2 ms (absolute, not a soft
+    target) for strict/decoder resolution on a 10 KB input. The legacy
+    16 ms figure was a pre-measurement placeholder set before achievable
+    performance was known. Added a SEPARATE, independent budget for #420
+    missing-portion/absence detection: p95 ≤ 1 ms target, 2 ms absolute
+    max on a 10 KB input. SC-001 still governs the threshold.
+  - Principle II (Zero-Copy, Streaming Core) — corrected Span ownership.
+    The prior "`Span` lives in `marque-ism` alongside the pivot type"
+    sentence was stale; `Span` is defined in `marque-scheme`
+    (`crates/scheme/src/span.rs`) and re-exported by `marque-ism`. The
+    code relocation was already complete; the docs were catching up.
+  - Principle VII (Crate Discipline and Dependency Hygiene) — same Span
+    correction in the `marque-ism` "foundational vocabulary crate" prose:
+    `Span` now reads "(defined in `marque-scheme`, re-exported here)".
+
+Modified sections:
+  - Principle I (interactive-latency perf thresholds).
+  - Principle II (Span ownership sentence).
+  - Principle VII (Span mention in the `marque-ism` prose).
+
+No principles added/removed. The perf change tightens a non-functional
+threshold (and retires a placeholder); the Span change is a factual
+correction the code already implemented. Dependent artifacts updated in
+sync: `CLAUDE.md` (Key Types `Span` row, Current Status latency line),
+specs/007 (SC-001 / SC-008a / SC-008b).
+==================
+
 Version change: 1.5.0 → 1.6.0
 
 Bump type: MINOR
@@ -335,8 +366,12 @@ Follow-up TODOs:
 Performance is the primary value proposition of `marque`. "Perceptual instantaneity"
 is non-negotiable — the tool MUST feel like magic at every scale.
 
-- Interactive use (single field, single file) MUST achieve p95 ≤ 16 ms on typical
-  inputs (SC-001 benchmark harness governs the threshold).
+- Interactive use (single field, single file) MUST achieve p95 ≤ 2 ms for
+  strict/decoder resolution on a 10 KB input — an absolute ceiling, not a soft
+  target (SC-001 benchmark harness governs the threshold). The legacy 16 ms
+  figure was a pre-measurement placeholder and is retired. Missing-portion /
+  absence detection (#420) is budgeted SEPARATELY and independently of
+  resolution: p95 ≤ 1 ms target, 2 ms absolute max on a 10 KB input.
 - Batch processing MUST scale linearly; throughput MUST be benchmarked, not assumed
   (SC-005 governs the threshold).
 - Every performance decision MUST be backed by measurement against a Criterion
@@ -356,7 +391,8 @@ The memory model is non-negotiable. The format-agnostic core MUST operate withou
 heap allocation on the hot path.
 
 - All candidate detection MUST produce `Span` values (byte offsets into original
-  buffers), never copies of content. `Span` lives in `marque-ism` alongside the
+  buffers), never copies of content. `Span` is defined in `marque-scheme`
+  (`crates/scheme/src/span.rs`) and re-exported by `marque-ism`, alongside the
   pivot type.
 - Documents MUST stream through the pipeline in chunks; no stage may hold an
   entire document in memory.
@@ -613,7 +649,8 @@ The workspace dependency graph MUST be one-directional and acyclic.
   ODNI-specific vocabulary.
 
   **`marque-ism` is the foundational vocabulary crate** — ODNI-generated
-  CVE enums, `Span`, the pivot type triple (`ParsedAttrs<'src>` /
+  CVE enums, `Span` (defined in `marque-scheme`, re-exported here), the
+  pivot type triple (`ParsedAttrs<'src>` /
   `CanonicalAttrs` / `ProjectedMarking`). It MAY depend on `marque-scheme`
   (e.g., `ProjectedMarking::scope: Scope`); this is the sole permitted
   edge from `marque-ism` and was anticipated by the engine + rule
@@ -871,4 +908,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.6.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-17
+**Version**: 1.7.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-30

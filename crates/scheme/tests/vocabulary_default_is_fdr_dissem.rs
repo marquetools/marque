@@ -2,29 +2,22 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Default-impl pinning for [`Vocabulary::is_fdr_dissem`].
+//! Opt-in pinning for [`IcMarkingVocabulary::is_fdr_dissem`].
 //!
-//! A scheme that does NOT override `is_fdr_dissem` must see the
-//! trait's default impl return `false` for every token. This is the
-//! correct behavior for schemes with no FD&R concept (e.g., a
-//! hypothetical CUI-only scheme where every disclosure decision is
-//! unconditional) — see the doc comment on
-//! `Vocabulary::is_fdr_dissem` for the full contract.
+//! FD&R membership lives on the [`IcMarkingVocabulary`] sub-trait, not
+//! on the base [`Vocabulary`] trait. A scheme with no FD&R concept
+//! simply does not implement [`IcMarkingVocabulary`] — there is no
+//! default to fall through to and no "forgot to override → silent
+//! false" footgun. This test pins that opt-in shape: `NoFdrScheme`
+//! implements [`Vocabulary`] WITHOUT implementing
+//! [`IcMarkingVocabulary`], and compiles + is usable as a vocabulary.
+//! The compile-time absence of `is_fdr_dissem` on `NoFdrScheme` is the
+//! property under test.
 //!
-//! This test is intentionally separated from
-//! `crates/scheme/tests/adoption_readiness.rs` (the Phase-F readiness
-//! compile test) so a failure here points unambiguously at the
-//! default-impl contract rather than at the broader trait surface.
-//! It is also separated from
-//! `crates/scheme/tests/proptest_closure.rs` because that file's
-//! `ClosureStubScheme` does not implement `Vocabulary` — wiring one
-//! on would expand its surface beyond closure-operator concerns.
-//!
-//! The override-side bidirectional pin against `FDR_DOMINATORS`
-//! lives in `crates/capco/src/vocabulary.rs::fdr_dissem_pin` (an
-//! in-crate unit-test module). The override's public-API behavior
-//! is exercised in `crates/capco/tests/fdr_dissem_predicate.rs`.
-//! Together the three sites pin every direction of the contract.
+//! The override-side bidirectional pin against `FDR_DOMINATORS` lives in
+//! `crates/capco/src/vocabulary/fdr_dissem_pin.rs`; the override's
+//! public-API behavior is exercised in
+//! `crates/capco/tests/fdr_dissem_predicate.rs`.
 
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::{Category, CategoryId, TokenId};
@@ -43,12 +36,11 @@ use marque_scheme::vocabulary::{
 // Minimal scheme with no FD&R concept.
 // ---------------------------------------------------------------------------
 //
-// `NoFdrScheme` mirrors the shape of `crates/scheme/tests/adoption_readiness.rs`'s
-// `StubScheme` but trimmed to what `Vocabulary::is_fdr_dissem` needs:
-// a `MarkingScheme` impl whose `Token` type is `TokenId`, and a
-// `Vocabulary` impl that does NOT override `is_fdr_dissem`. The
-// default impl from the trait should then return `false` for every
-// token.
+// `NoFdrScheme` mirrors the shape of `adoption_readiness.rs`'s
+// `StubScheme` but trimmed: a `MarkingScheme` impl whose `Token` is
+// `TokenId`, and a `Vocabulary` impl that does NOT implement the
+// `IcMarkingVocabulary` sub-trait. The scheme therefore carries no
+// `is_fdr_dissem` surface at all.
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct NoFdrMarking;
@@ -66,7 +58,6 @@ impl MeetSemilattice for NoFdrMarking {
 }
 
 const SOME_TOKEN: TokenId = TokenId(1);
-const ANOTHER_TOKEN: TokenId = TokenId(2);
 
 #[derive(Debug)]
 struct NoFdrParseError;
@@ -88,6 +79,7 @@ impl MarkingScheme for NoFdrScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "no-fdr"
@@ -130,8 +122,8 @@ impl MarkingScheme for NoFdrScheme {
 
 // ---------------------------------------------------------------------------
 // Vocabulary impl — every required accessor returns `&'static` data.
-// `is_fdr_dissem` is INTENTIONALLY NOT overridden — the whole point
-// of this test file is to pin the trait's default return value.
+// `NoFdrScheme` deliberately does NOT implement `IcMarkingVocabulary`,
+// so it carries no `is_fdr_dissem` surface.
 // ---------------------------------------------------------------------------
 
 static NO_FDR_AUTHORITY: Authority = Authority {
@@ -199,40 +191,34 @@ impl Vocabulary<NoFdrScheme> for NoFdrScheme {
     fn shape_admits(&self, _category: CategoryId, _bytes: &[u8]) -> bool {
         false
     }
-    // `is_fdr_dissem` deliberately NOT overridden. The trait's
-    // default `fn is_fdr_dissem(&self, _: &S::Token) -> bool { false }`
-    // is the contract under test.
+    // `IcMarkingVocabulary` is deliberately NOT implemented for
+    // `NoFdrScheme` — a non-IC scheme has no FD&R surface at all.
 }
 
 // ---------------------------------------------------------------------------
 // Tests.
 // ---------------------------------------------------------------------------
 
-/// The default `Vocabulary::is_fdr_dissem` returns `false` for every
-/// token id. A scheme that opts into the default impl by not
-/// overriding accepts this no-FD&R semantic.
+/// A scheme can implement the base `Vocabulary` trait without
+/// implementing the IC-specific `IcMarkingVocabulary` sub-trait. This
+/// pins the opt-in shape: FD&R membership is not forced onto every
+/// scheme. The body exercises the base-trait surface to prove
+/// `NoFdrScheme` is a usable `Vocabulary`; `is_fdr_dissem` is simply not
+/// callable on it (it is not in scope without the sub-trait), which is
+/// the property under test — enforced at compile time by the absence of
+/// an `IcMarkingVocabulary` impl.
 #[test]
-fn default_is_fdr_dissem_returns_false_for_every_token() {
+fn non_ic_scheme_is_vocabulary_without_fdr_surface() {
     let scheme = NoFdrScheme;
+    // Base-trait accessors work; the scheme is a valid Vocabulary.
+    let _ = scheme.metadata(&SOME_TOKEN);
+    let _ = scheme.forms(&SOME_TOKEN);
     assert!(
-        !scheme.is_fdr_dissem(&SOME_TOKEN),
-        "default `is_fdr_dissem` must return false; a scheme that \
-         declares no FD&R override is treated as having no FD&R \
-         concept",
+        !scheme.shape_admits(CategoryId::MARKING, b"X"),
+        "NoFdrScheme::shape_admits is the trimmed stub returning false",
     );
-    assert!(
-        !scheme.is_fdr_dissem(&ANOTHER_TOKEN),
-        "default `is_fdr_dissem` must return false uniformly across \
-         token ids — the default impl is constant-false by design",
-    );
-    // Exercise additional token-id values to pin the constant-false
-    // property across a non-trivial range. The default impl's
-    // contract is "false for every token", so 0, 1, u32::MAX and a
-    // few hand-picked points are sufficient evidence.
-    for raw in [0_u32, 100, 1_000, 65_535, u32::MAX] {
-        assert!(
-            !scheme.is_fdr_dissem(&TokenId(raw)),
-            "default `is_fdr_dissem` returned true for TokenId({raw})",
-        );
-    }
+    // `scheme.is_fdr_dissem(&SOME_TOKEN)` would NOT compile here:
+    // `NoFdrScheme` does not implement `IcMarkingVocabulary`, so the
+    // method is not in scope. That compile-time absence IS the opt-in
+    // guarantee this test pins.
 }

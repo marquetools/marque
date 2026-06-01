@@ -223,7 +223,7 @@ fn parsed_markings_cache_persists_across_page_breaks() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            ctx: &RuleContext,
+            ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             if ctx.marking_type != marque_ism::MarkingType::Portion {
                 return vec![];
@@ -238,6 +238,7 @@ fn parsed_markings_cache_persists_across_page_breaks() {
                 FixIntent {
                     replacement: ReplacementIntent::Recanonicalize {
                         scope: RecanonScope::Portion,
+                        prior: None,
                     },
                     confidence: Recognition::strict(),
                     feature_ids: SmallVec::new(),

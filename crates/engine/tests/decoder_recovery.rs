@@ -24,11 +24,12 @@ use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 
 fn deep_cx() -> ParseContext {
-    ParseContext {
-        strict_evidence: false,
-        preceded_by_whitespace: true,
-        ..ParseContext::default()
-    }
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1), so
+    // it is built via `default()` + field assignment.
+    let mut cx = ParseContext::default();
+    cx.strict_evidence = false;
+    cx.preceded_by_whitespace = true;
+    cx
 }
 
 /// Shared scheme instance for the test module. `CapcoScheme::new()`
@@ -186,10 +187,9 @@ fn unclassified_candidate_rejected_below_secret_floor() {
     // banner form so the underlying floor predicate is what gets
     // tested, not the dispatch interaction with the null hypothesis.
     let rx = DecoderRecognizer::new();
-    let floored = ParseContext {
-        classification_floor: Some(Classification::Secret as u8),
-        ..deep_cx()
-    };
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1).
+    let mut floored = deep_cx();
+    floored.rank_floor = Some(Classification::Secret as u8);
     match rx.recognize(b"UNCLASSIFIED", 0, &*TEST_SCHEME, &floored) {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
@@ -208,10 +208,9 @@ fn floor_at_equal_level_accepts_candidate() {
     // prose null hypothesis. The unit under test is the floor
     // predicate, not the portion-vs-banner dispatch.
     let rx = DecoderRecognizer::new();
-    let floored = ParseContext {
-        classification_floor: Some(Classification::Secret as u8),
-        ..deep_cx()
-    };
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1).
+    let mut floored = deep_cx();
+    floored.rank_floor = Some(Classification::Secret as u8);
     match rx.recognize(b"SECRET", 0, &*TEST_SCHEME, &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -227,10 +226,9 @@ fn floor_below_candidate_accepts_higher_level() {
     // `(TS)` (portion form); the banner form is more discriminative
     // against the prose null hypothesis.
     let rx = DecoderRecognizer::new();
-    let floored = ParseContext {
-        classification_floor: Some(Classification::Confidential as u8),
-        ..deep_cx()
-    };
+    // `ParseContext` is `#[non_exhaustive]` (#176 staging step 1).
+    let mut floored = deep_cx();
+    floored.rank_floor = Some(Classification::Confidential as u8);
     match rx.recognize(b"TOP SECRET", 0, &*TEST_SCHEME, &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
@@ -241,7 +239,7 @@ fn floor_below_candidate_accepts_higher_level() {
 
 #[test]
 fn no_floor_accepts_any_classification() {
-    // With `classification_floor: None` the floor is inactive —
+    // With `rank_floor: None` the floor is inactive —
     // any classification passes through. Issue #258: pre-#258 this
     // used portion forms (`(U)`, `(C)`, `(S)`, `(TS)`); the banner
     // forms are more discriminative against the prose null

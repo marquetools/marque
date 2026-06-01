@@ -14,9 +14,11 @@ use core::fmt::Debug;
 use core::hash::Hash;
 
 use crate::ambiguity::Parsed;
+use crate::artifact::ArtifactKind;
 use crate::category::{Category, CategoryId, TokenId};
 use crate::closure::{ClosureRule, ClosureRuleMetadata};
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
+use crate::derivation::DerivationEdge;
 use crate::fix_intent::FactRef;
 use crate::page_rewrite::PageRewrite;
 use crate::render_context::RenderContext;
@@ -121,7 +123,24 @@ pub trait MarkingScheme {
     ///
     /// CAPCO binds this to `marque_ism::CanonicalAttrs`; future
     /// schemes bind to their own owned canonical shape.
+    ///
+    /// Intentionally unbounded at the trait level — this keeps the trait
+    /// lift purely additive. The bounds the generic engine pipeline needs
+    /// to thread page state in canonical space (`Clone + Default + Debug +
+    /// Send + Sync + 'static`) are applied at the *use sites* that need
+    /// them: [`Self::canonical_page_join`]'s default body requires
+    /// `Clone + Default` (declared as a method `where`-clause), and the
+    /// generic engine impl adds the threading bounds as `where`-clauses on
+    /// its own block. A scheme whose canonical lacks those bounds is still
+    /// a valid `MarkingScheme`; it just cannot be driven through the
+    /// generic engine pipeline (or use the `canonical_page_join` default).
     type Canonical;
+
+    /// The page-roll-up projection shape banner/CAB rules consume via
+    /// `RuleContext::page_marking`. The engine produces it from a
+    /// `Scope::Page` projection; rules read it but never construct it.
+    /// CAPCO binds this to `marque_ism::ProjectedMarking`.
+    type Projected: core::fmt::Debug + Clone + Send + Sync + 'static;
 
     /// Convert a parsed-attrs value into the scheme's canonical
     /// representation.
@@ -176,6 +195,32 @@ pub trait MarkingScheme {
 
     /// Declarative invariants checked by `validate`.
     fn constraints(&self) -> &[Constraint];
+
+    /// The scheme's wire namespace — the `scheme` half of every rule-id
+    /// 2-tuple this scheme mints.
+    ///
+    /// Defaults to `"scheme"`; every real scheme overrides it
+    /// (`CapcoScheme` returns `"capco"`). Returned as `&'static str` so
+    /// the projection in [`Self::constraint_rule_id`] allocates nothing.
+    fn scheme_id(&self) -> &'static str {
+        "scheme"
+    }
+
+    /// Projects a constraint `label` to the rule-id 2-tuple
+    /// `(scheme, predicate_id)` the engine's constraint bridge stamps
+    /// onto a `Diagnostic`.
+    ///
+    /// Constraint labels are authored in the canonical
+    /// `<surface>.<category>.<predicate>` predicate form, so the default
+    /// is the identity projection `(self.scheme_id(), label)` — the label
+    /// is the predicate id verbatim under the scheme's namespace. Returns
+    /// the bare 2-tuple rather than a `marque_rules::RuleId` because
+    /// `marque-scheme` is the dependency-graph leaf (Constitution VII)
+    /// and must not depend on `marque-rules`; the engine constructs
+    /// `RuleId::new(scheme, predicate_id)` at the bridge.
+    fn constraint_rule_id(&self, label: &'static str) -> (&'static str, &'static str) {
+        (self.scheme_id(), label)
+    }
 
     /// Structural templates (portion, banner, CAB, ...).
     fn templates(&self) -> &[Template];
@@ -440,8 +485,137 @@ pub trait MarkingScheme {
     /// Convenience shim: project at page scope. Default implementation
     /// calls `project(Scope::Page, portions)`.
     #[inline]
-    fn project_banner(&self, portions: &[Self::Marking]) -> Self::Marking {
+    fn project_summary(&self, portions: &[Self::Marking]) -> Self::Marking {
         self.project(Scope::Page, portions)
+    }
+
+    /// Join a slice of canonicals into a single canonical, in
+    /// **canonical space** (not marking space).
+    ///
+    /// The engine accumulates a page incrementally in `Self::Canonical`
+    /// (the recognizer's per-candidate output), so the page roll-up join
+    /// is expressed over canonicals rather than over `Self::Marking`.
+    /// This is distinct from [`Self::project`], which operates on
+    /// `&[Self::Marking]` and yields a marking.
+    ///
+    /// The default folds to the last portion (`portions.last().cloned()`,
+    /// or the canonical bottom for an empty page) — the correct behavior
+    /// for a scheme whose canonical carries no cross-portion composition.
+    /// CapcoScheme overrides this with its per-axis lattice join.
+    ///
+    /// The `Clone + Default` bound lives on the method (not the associated
+    /// type) so the trait stays additive; a scheme whose canonical is
+    /// neither `Clone` nor `Default` simply cannot call the default and
+    /// must override.
+    fn canonical_page_join(&self, portions: &[Self::Canonical]) -> Self::Canonical
+    where
+        Self::Canonical: Clone + Default,
+    {
+        portions.last().cloned().unwrap_or_default()
+    }
+
+    /// Project a slice of canonicals into the page projection shape, in
+    /// **canonical space** (the non-instrumented hot path).
+    ///
+    /// This is the canonical-space companion to [`Self::project`] (which
+    /// operates on `&[Self::Marking]`). The engine produces its
+    /// `RuleContext::page_marking` from this when its page accumulator is
+    /// already in canonical space and no decision sink is installed.
+    ///
+    /// The default is `unimplemented!()` (mirrors [`Self::canonicalize`]):
+    /// `marque-scheme` is domain-neutral and cannot synthesize a
+    /// `Self::Projected` from `Self::Canonical` generically. Schemes that
+    /// project (CapcoScheme) override; test-stub schemes never reach this
+    /// path and inherit the default safely.
+    fn project_canonical(&self, _portions: &[Self::Canonical]) -> Self::Projected {
+        unimplemented!(
+            "MarkingScheme::project_canonical not overridden by this scheme. \
+             Schemes that project from canonical space (e.g. CapcoScheme) override it; \
+             test stub schemes never reach this path and inherit the default safely."
+        )
+    }
+
+    /// Sink-aware variant of [`Self::project_canonical`], emitting
+    /// [`DecisionEvent`]s to the sink as projection-stage decisions are
+    /// made. The engine threads a sink here only when an observer is
+    /// installed; otherwise it calls the plain [`Self::project_canonical`]
+    /// hot path.
+    ///
+    /// The default delegates to [`Self::project_canonical`] and emits no
+    /// events — the zero-cost off-mode path, mirroring how
+    /// [`Self::project_with_sink`] defaults to [`Self::project`]. So any
+    /// scheme that implements `project_canonical` gets a correct (if
+    /// uninstrumented) sink method for free, and calling the public sink
+    /// method never panics on it. Schemes that want per-stage projection
+    /// events override this (CapcoScheme does, under its `decision-tracing`
+    /// gate).
+    ///
+    /// [`DecisionEvent`]: crate::DecisionEvent
+    fn project_canonical_with_sink(
+        &self,
+        portions: &[Self::Canonical],
+        _sink: &mut dyn crate::DecisionSink,
+    ) -> Self::Projected {
+        self.project_canonical(portions)
+    }
+
+    /// Convert an owned canonical into the scheme's marking
+    /// representation.
+    ///
+    /// The engine holds recognized state as `Self::Canonical` but several
+    /// trait surfaces (notably [`Self::validate`]) take `&Self::Marking`;
+    /// this is the lift the engine uses to cross from canonical space into
+    /// marking space.
+    ///
+    /// The default is `unimplemented!()` (mirrors [`Self::canonicalize`]):
+    /// a generic canonical→marking conversion does not exist. Schemes that
+    /// canonicalize (CapcoScheme) override; test-stub schemes never reach
+    /// this path and inherit the default safely.
+    fn marking_from_canonical(&self, _canonical: Self::Canonical) -> Self::Marking {
+        unimplemented!(
+            "MarkingScheme::marking_from_canonical not overridden by this scheme. \
+             Schemes that canonicalize (e.g. CapcoScheme) override it; test stub \
+             schemes never reach this path and inherit the default safely."
+        )
+    }
+
+    /// Project a marking back down into canonical space.
+    ///
+    /// The inverse of [`Self::marking_from_canonical`]: the recognizer
+    /// yields `Self::Marking`, but the page accumulator and the two-pass
+    /// reshape cache operate in `Self::Canonical`, so the pipeline crosses
+    /// from marking space back into canonical space here. Borrowing rather
+    /// than consuming lets a caller read the canonical while the marking
+    /// (with any recognizer side-channel) stays intact.
+    ///
+    /// The default is `unimplemented!()` (mirrors [`Self::canonicalize`] and
+    /// [`Self::marking_from_canonical`]): a generic marking→canonical
+    /// projection does not exist. Schemes whose marking carries (or wraps) a
+    /// canonical (CapcoScheme) override; test-stub schemes never reach this
+    /// path and inherit the default safely.
+    fn canonical_from_marking(&self, _marking: &Self::Marking) -> Self::Canonical {
+        unimplemented!(
+            "MarkingScheme::canonical_from_marking not overridden by this scheme. \
+             Schemes whose marking projects to canonical space (e.g. CapcoScheme) \
+             override it; test stub schemes never reach this path and inherit the \
+             default safely."
+        )
+    }
+
+    /// The scheme's monotone sensitivity rank for a canonical, when one
+    /// exists (CAPCO's effective classification level).
+    ///
+    /// The engine uses the rank as a recognition *floor*: once a portion of
+    /// rank N is recognized on a page, the per-candidate recognition context
+    /// for later candidates on that page carries N so a probabilistic
+    /// recognizer does not silently accept a lower-ranked reading. Schemes
+    /// with no monotone severity axis return `None` and the engine applies
+    /// no floor.
+    ///
+    /// Default: `None` (no rank axis). Additive — a scheme that does not
+    /// rank canonicals is behavior-unchanged.
+    fn canonical_rank(&self, _canonical: &Self::Canonical) -> Option<u8> {
+        None
     }
 
     /// Cross-category rewrites applied after component-wise
@@ -450,6 +624,35 @@ pub trait MarkingScheme {
     ///
     /// Default: no rewrites. Schemes override to declare their table.
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &[]
+    }
+
+    /// The document-scoped artifact kinds this scheme models (CABs,
+    /// declassify instructions, notices, caveat layers, front markings).
+    ///
+    /// This is a declarative inventory surface, parallel to
+    /// [`Self::categories`] / [`Self::page_rewrites`]: tooling and the
+    /// engine can read which artifact kinds a scheme recognizes without
+    /// executing scheme code.
+    ///
+    /// Default: empty slice (no document artifacts declared). Returning
+    /// the empty slice is behavior-neutral — a scheme that does not model
+    /// document artifacts is unchanged.
+    fn document_artifacts(&self) -> &[ArtifactKind] {
+        &[]
+    }
+
+    /// The inbound derivation edges this scheme declares for its
+    /// document-scoped artifacts.
+    ///
+    /// Mirrors [`Self::page_rewrites`]'s `reads` / `writes` shape so the
+    /// engine's Kahn scheduler (Phase C) can order derivation edges and
+    /// page rewrites in one topological pass. The edge topology is static
+    /// (validated at `Engine::new`); per-edge firing is conditional via
+    /// each edge's [`crate::FiringPredicate`].
+    ///
+    /// Default: empty slice (no derivation edges declared).
+    fn derivation_edges(&self) -> &[DerivationEdge] {
         &[]
     }
 
@@ -689,8 +892,8 @@ pub trait MarkingScheme {
     /// # Scope semantics — return-value contract
     ///
     /// Implementations MUST honor the following per-scope contract on
-    /// `ctx.scope`. The default impls of [`Self::render_portion`] /
-    /// [`Self::render_banner`] rely on this contract being upheld;
+    /// `ctx.scope`. The default impls of [`Self::render_item`] /
+    /// [`Self::render_summary`] rely on this contract being upheld;
     /// they `debug_assert!` on contract violation.
     ///
     /// - `Scope::Portion` — canonical portion form. MUST return `Ok(())`.
@@ -741,7 +944,7 @@ pub trait MarkingScheme {
     /// `String` round-trip, but the override MUST produce
     /// byte-identical output to the default chain — `render_canonical`
     /// is the canonical-form authority.
-    fn render_portion(&self, m: &Self::Marking) -> String {
+    fn render_item(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
         // `Write for String` is infallible, so a `String` write target
         // never produces `fmt::Error`. The only way the `Result` could
@@ -776,17 +979,17 @@ pub trait MarkingScheme {
     ///
     /// Default delegates to [`Self::render_canonical`] with
     /// [`crate::scope::Scope::Page`]. Same byte-identity contract as
-    /// [`Self::render_portion`].
+    /// [`Self::render_item`].
     ///
     /// # Note on scope naming
     ///
     /// The argument is [`crate::scope::Scope::Page`], not a hypothetical
     /// `Scope::Banner` — banner roll-up is *defined* as page-scope
     /// rendering in the architecture spec ("banner = lattice join over
-    /// the page's portions"). The method name `render_banner` is the
+    /// the page's portions"). The method name `render_summary` is the
     /// public API surface; the underlying scope is `Page`. Schemes that
     /// override this method MUST honor the same scope semantics.
-    fn render_banner(&self, m: &Self::Marking) -> String {
+    fn render_summary(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
         // Construct an `Auto + MarqueMvp3` RenderContext; the §G.1
         // Table 4 emission-form dispatch body is future work.
@@ -808,6 +1011,36 @@ pub trait MarkingScheme {
     }
 }
 
+/// Opt-in extension trait for schemes that model document-scoped
+/// artifacts.
+///
+/// The `ArtifactPayload` associated type — what a
+/// [`DocumentArtifact`](crate::artifact::DocumentArtifact) node carries
+/// when present — lives here rather than on [`MarkingScheme`] so the frozen
+/// `MarkingScheme` surface gains only *defaulted* methods
+/// ([`MarkingScheme::document_artifacts`] /
+/// [`MarkingScheme::derivation_edges`]) and no new *required* associated
+/// type. A scheme that does not model document artifacts simply does not
+/// implement `SchemeArtifacts`, and still compiles unchanged — the critical
+/// additive-staging property of this phase.
+///
+/// Schemes that DO model document artifacts implement this trait and bind
+/// `ArtifactPayload` to their parsed-artifact type (CAPCO will eventually
+/// bind it to a parsed-CAB structural type; in this phase it binds `()` as
+/// a placeholder).
+///
+/// # Constitution V Principle V (audit content-ignorance)
+///
+/// `ArtifactPayload` is scheme-chosen, but schemes MUST keep it
+/// content-ignorant for any audit-adjacent use — a parsed, structural
+/// representation of the artifact, never raw document bytes.
+pub trait SchemeArtifacts: MarkingScheme {
+    /// The payload an artifact node carries when present — e.g. CAPCO's
+    /// parsed CAB. Schemes that model document artifacts bind this to their
+    /// own structural artifact type.
+    type ArtifactPayload: Send + Sync;
+}
+
 /// Error variants returned by [`MarkingScheme::apply_intent`].
 ///
 /// The engine dispatches on these so different failure modes get
@@ -820,6 +1053,12 @@ pub trait MarkingScheme {
 /// - [`IntentRejectsLattice`](Self::IntentRejectsLattice) — surface
 ///   as a diagnostic. The scheme refuses the fix because applying it
 ///   would violate a structural invariant.
+/// - [`IntentNotYetApplicable`](Self::IntentNotYetApplicable) —
+///   surface as a diagnostic. The intent is a reserved variant whose
+///   apply path is not yet wired (currently `Relocate`; Phase E /
+///   #824). Distinct from `IntentRejectsLattice` so a not-yet-wired
+///   reserved variant is never silently dropped, silently applied, or
+///   mislabeled as a true lattice rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyIntentError {
     /// The intent doesn't apply: `FactRemove` of a token that's
@@ -837,6 +1076,17 @@ pub enum ApplyIntentError {
     /// structural invariant the scheme can't repair through fact-set
     /// delta alone. The engine surfaces this as a diagnostic.
     IntentRejectsLattice,
+    /// The intent is a reserved [`ReplacementIntent`] variant —
+    /// currently [`Relocate`](crate::ReplacementIntent::Relocate) —
+    /// whose apply path is not yet wired (Phase E / #824). The engine
+    /// surfaces this as a diagnostic rather than silently dropping or
+    /// applying it. This is deliberately NOT
+    /// [`IntentRejectsLattice`](Self::IntentRejectsLattice): the fix is
+    /// not refused because it violates an invariant, it is refused
+    /// because the cross-scope move semantics are not implemented yet.
+    ///
+    /// [`ReplacementIntent`]: crate::ReplacementIntent
+    IntentNotYetApplicable,
 }
 
 impl fmt::Display for ApplyIntentError {
@@ -850,6 +1100,9 @@ impl fmt::Display for ApplyIntentError {
             }
             ApplyIntentError::IntentRejectsLattice => {
                 f.write_str("applying intent would violate a structural invariant of this scheme")
+            }
+            ApplyIntentError::IntentNotYetApplicable => {
+                f.write_str("intent uses a reserved variant whose apply path is not yet wired")
             }
         }
     }

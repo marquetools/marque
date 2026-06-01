@@ -54,7 +54,11 @@ impl Rule<CapcoScheme> for AlwaysPanicsRule {
         Severity::Error
     }
 
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         panic!("FixProposal invalid confidence: simulated rule defect (Z001 panic-isolation test)");
     }
 }
@@ -102,7 +106,11 @@ impl Rule<CapcoScheme> for AlwaysFiresRule {
         Severity::Info
     }
 
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Build a Diagnostic without a fix — we just need to prove
         // this rule's output reaches the LintResult after a sibling
         // rule panics.

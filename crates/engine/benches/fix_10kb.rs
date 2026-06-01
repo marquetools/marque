@@ -26,7 +26,9 @@
 //!
 //! # Gating
 //!
-//! - **Absolute (interactive-latency gate)**: p95 ≤ 16 ms on 10 KB inputs.
+//! - **Absolute (interactive-latency gate)**: p95 ≤ 2 ms on 10 KB inputs
+//!   (constitution 1.7.0; the prior 16 ms figure was a retired
+//!   pre-measurement placeholder).
 //! - **Delta**: p99 ≤ baseline.p99 × 1.05 against the prior baseline.
 //!   `scripts/bench-check.sh` enforces the delta.
 
@@ -180,7 +182,7 @@ fn fix_10kb_two_pass(c: &mut Criterion) {
 ///
 /// Advisory marketing/reference bench (paired with `lint_single_page` in
 /// `lint_latency.rs`). Baseline-tracked as `fix_single_page` in
-/// `benches/baseline.json` with the SC-001 16ms absolute ceiling, but NOT
+/// `benches/baseline.json` with the SC-001 2ms absolute ceiling, but NOT
 /// wired into `scripts/bench-check.sh` — no +10% regression gate, cannot
 /// flake CI.
 fn fix_single_page(c: &mut Criterion) {

@@ -64,6 +64,7 @@
 
 pub mod audit;
 pub mod audit_note;
+pub mod constraint_bridge;
 pub mod context;
 pub mod diagnostic;
 pub mod fix;
@@ -78,6 +79,7 @@ pub use audit::{
     Discriminant,
 };
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
+pub use constraint_bridge::{ConstraintBridge, RecognitionOutcome};
 pub use context::RuleContext;
 pub use diagnostic::{Diagnostic, TextCorrection};
 pub use fix::{CORRECTIONS_MAP_CITATION, EnginePromotionToken, FixSource};

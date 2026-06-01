@@ -4,16 +4,17 @@ use super::fix_impl::Pass1Result;
 #[cfg(debug_assertions)]
 use super::page_context::check_portions_unchanged;
 use super::synthesis::{
-    HEURISTIC_RECOGNITION_CAP, build_r002_diagnostic, find_containing_marking, lookup_marking,
-    sort_and_c1_dedup, span_is_within_marking, splice_fixes_forward,
+    build_r002_diagnostic, find_containing_marking, lookup_marking, sort_and_c1_dedup,
+    span_is_within_marking, splice_fixes_forward,
 };
 use super::*;
 use crate::clock::FixedClock;
+use marque_capco::HEURISTIC_RECOGNITION_CAP;
 use marque_ism::CanonicalAttrs;
 use marque_rules::audit::AppliedFix;
 use marque_rules::{
-    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule, RuleContext,
-    RuleId, RuleSet, Severity,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Recognition, Rule,
+    RuleContext, RuleId, RuleSet, Severity,
 };
 use marque_scheme::fix_intent::RecanonScope;
 use marque_scheme::{AuthoritativeSource, Citation, ReplacementIntent, SectionLetter, SectionRef};
@@ -117,7 +118,7 @@ fn stub_citation() -> Citation {
 /// `DEFAULT_PORTIONS_CAPACITY`.
 #[test]
 fn fresh_accumulator_uses_default_capacity() {
-    let v = fresh_page_portions_accumulator();
+    let v = fresh_page_portions_accumulator::<CapcoScheme>();
     assert!(
         v.is_empty(),
         "fresh accumulator must be empty, got len={}",
@@ -243,7 +244,11 @@ impl Rule<CapcoScheme> for StubRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Emit text-correction diagnostics: the C001 path is the
         // only fix channel that carries byte-precise replacement
         // bytes the engine actually applies. Engine tests
@@ -272,6 +277,7 @@ impl Rule<CapcoScheme> for StubRule {
                     d.fix = Some(FixIntent::<CapcoScheme> {
                         replacement: ReplacementIntent::Recanonicalize {
                             scope: RecanonScope::Portion,
+                            prior: None,
                         },
                         confidence: p.confidence.clone(),
                         feature_ids: SmallVec::new(),
@@ -383,7 +389,11 @@ impl Rule<CapcoScheme> for ContextRecorderRule {
     fn phase(&self) -> marque_rules::Phase {
         marque_rules::Phase::PageFinalization
     }
-    fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let count = ctx
             .page_portions
             .as_ref()
@@ -422,7 +432,11 @@ impl Rule<CapcoScheme> for NamedStub {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         vec![]
     }
 }
@@ -431,6 +445,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),

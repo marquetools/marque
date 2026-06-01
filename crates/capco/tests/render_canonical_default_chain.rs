@@ -6,13 +6,13 @@
 //!
 //! Pins the byte-identity property of the trait-default delegation
 //! between `render_canonical(_, Scope::Portion, _)` and
-//! `render_portion(_)`, and between
+//! `render_item(_)`, and between
 //! `render_canonical(_, Scope::Page|Document, _)` and
-//! `render_banner(_)`. Plus the `Scope::Diff -> Err(fmt::Error)` contract.
+//! `render_summary(_)`. Plus the `Scope::Diff -> Err(fmt::Error)` contract.
 //!
 //! The byte-identity property is the invariant regardless of which
 //! direction the delegation runs: whether `render_canonical` delegates
-//! to `render_portion` / `render_banner` or vice versa, the rendered
+//! to `render_item` / `render_summary` or vice versa, the rendered
 //! bytes must match.
 //!
 //! # Scope: `Scope::Diff`
@@ -55,12 +55,12 @@ fn make_secret() -> CapcoMarking {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn render_canonical_portion_matches_render_portion() {
+fn render_canonical_portion_matches_render_item() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
 
-    // Direct render_portion (the override path).
-    let portion = scheme.render_portion(&marking);
+    // Direct render_item (the override path).
+    let portion = scheme.render_item(&marking);
 
     // render_canonical via Scope::Portion.
     let mut canon = String::new();
@@ -72,7 +72,7 @@ fn render_canonical_portion_matches_render_portion() {
 
     assert_eq!(
         canon, portion,
-        "Scope::Portion render_canonical output must be byte-identical to render_portion"
+        "Scope::Portion render_canonical output must be byte-identical to render_item"
     );
     // Sanity: the renderer emits "S" for a Secret portion. If
     // this assertion fires, the renderer's classification axis
@@ -81,11 +81,11 @@ fn render_canonical_portion_matches_render_portion() {
 }
 
 #[test]
-fn render_canonical_page_matches_render_banner() {
+fn render_canonical_page_matches_render_summary() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
 
-    let banner = scheme.render_banner(&marking);
+    let banner = scheme.render_summary(&marking);
 
     let mut canon = String::new();
     let result = scheme.render_canonical(&marking, &ctx(Scope::Page), &mut canon);
@@ -96,17 +96,17 @@ fn render_canonical_page_matches_render_banner() {
 
     assert_eq!(
         canon, banner,
-        "Scope::Page render_canonical output must be byte-identical to render_banner"
+        "Scope::Page render_canonical output must be byte-identical to render_summary"
     );
     assert_eq!(banner, "SECRET");
 }
 
 #[test]
-fn render_canonical_document_matches_render_banner() {
+fn render_canonical_document_matches_render_summary() {
     let scheme = CapcoScheme::new();
     let marking = make_secret();
 
-    let banner = scheme.render_banner(&marking);
+    let banner = scheme.render_summary(&marking);
 
     let mut canon = String::new();
     let result = scheme.render_canonical(&marking, &ctx(Scope::Document), &mut canon);
@@ -121,7 +121,7 @@ fn render_canonical_document_matches_render_banner() {
     // by construction.
     assert_eq!(
         canon, banner,
-        "Scope::Document render_canonical output must agree with render_banner on this fixture"
+        "Scope::Document render_canonical output must agree with render_summary on this fixture"
     );
 }
 

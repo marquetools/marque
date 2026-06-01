@@ -445,7 +445,11 @@ impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
         E065_AUTHORITIES
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        _ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         for token_span in attrs.token_spans.iter() {
             // Only consider tokens that the parser tagged as SCI controls

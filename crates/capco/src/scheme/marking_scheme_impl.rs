@@ -49,6 +49,7 @@ impl MarkingScheme for CapcoScheme {
 
     type Parsed<'src> = ParsedAttrs<'src>;
     type Canonical = CanonicalAttrs;
+    type Projected = marque_ism::ProjectedMarking;
 
     /// CAPCO/ISM canonicalization — collapse the borrowed
     /// `ParsedAttrs<'src>` produced by `marque-core`'s strict parser
@@ -358,7 +359,8 @@ impl MarkingScheme for CapcoScheme {
     ) -> Self::Marking {
         match scope {
             Scope::Portion => self.project(scope, markings),
-            Scope::Page | Scope::Document | Scope::Diff => {
+            // Bundle ≡ Document for single-doc inputs; multi-doc mosaic is #823
+            Scope::Page | Scope::Document | Scope::Bundle | Scope::Diff => {
                 let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
                 let out_attrs = self.project_attrs_pipeline_with_sink(&raw, sink);
                 CapcoMarking::new(out_attrs)
@@ -432,7 +434,8 @@ impl MarkingScheme for CapcoScheme {
                     .cloned()
                     .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
             }
-            Scope::Page | Scope::Document | Scope::Diff => {
+            // Bundle ≡ Document for single-doc inputs; multi-doc mosaic is #823
+            Scope::Page | Scope::Document | Scope::Bundle | Scope::Diff => {
                 // The production page projection runs the lattice
                 // pipeline:
                 //
@@ -472,8 +475,74 @@ impl MarkingScheme for CapcoScheme {
         }
     }
 
+    /// Canonical-space page join (the engine's per-page accumulator
+    /// composition). Delegates to the per-axis lattice fold
+    /// [`CapcoMarking::join_via_lattice`]; see that method for the
+    /// axis-ordering and supersession rationale.
+    fn canonical_page_join(&self, portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        CapcoMarking::join_via_lattice(portions)
+    }
+
+    /// Canonical-space page projection (non-instrumented hot path).
+    /// Delegates to [`Self::project_from_attrs_slice`] — the same
+    /// shared `project_attrs_pipeline` body the engine's hot path uses —
+    /// and lifts the result into [`marque_ism::ProjectedMarking`].
+    fn project_canonical(&self, portions: &[CanonicalAttrs]) -> marque_ism::ProjectedMarking {
+        marque_ism::ProjectedMarking::from_canonical(self.project_from_attrs_slice(portions))
+    }
+
+    /// Sink-aware canonical-space page projection — emits per-stage
+    /// decision events. Compiled only under the `decision-tracing` feature,
+    /// mirroring [`Self::project_with_sink`]. Tracing-off builds inherit the
+    /// trait default, which safely delegates to `project_canonical` and
+    /// emits nothing (no panic); in practice the engine's sink call site is
+    /// itself `decision-tracing`-gated, so the default is never reached.
+    #[cfg(feature = "decision-tracing")]
+    fn project_canonical_with_sink(
+        &self,
+        portions: &[CanonicalAttrs],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> marque_ism::ProjectedMarking {
+        marque_ism::ProjectedMarking::from_canonical(
+            self.project_attrs_pipeline_with_sink(portions, sink),
+        )
+    }
+
+    /// Lift an owned canonical into a [`CapcoMarking`] via the existing
+    /// `From<CanonicalAttrs>` conversion. The engine uses this to cross
+    /// from its canonical-space accumulator into marking space for
+    /// [`MarkingScheme::validate`].
+    fn marking_from_canonical(&self, canonical: CanonicalAttrs) -> CapcoMarking {
+        CapcoMarking::from(canonical)
+    }
+
+    /// Project a [`CapcoMarking`] back into canonical space: clone out
+    /// the canonical attrs at tuple-position 0, dropping the optional
+    /// decoder provenance side-channel at position 1 (provenance is
+    /// recognition metadata, not canonical state). The inverse of
+    /// [`Self::marking_from_canonical`]; the engine uses it to feed the
+    /// recognizer's output into its canonical-space page accumulator.
+    fn canonical_from_marking(&self, marking: &CapcoMarking) -> CanonicalAttrs {
+        marking.0.clone()
+    }
+
+    /// CAPCO's monotone sensitivity rank is the effective classification
+    /// level. `None` when the canonical carries no classification (a
+    /// portion that named only controls). Mirrors the engine's prior
+    /// inline `classification.effective_level() as u8` rank-floor read.
+    fn canonical_rank(&self, canonical: &CanonicalAttrs) -> Option<u8> {
+        canonical
+            .classification
+            .as_ref()
+            .map(|c| c.effective_level() as u8)
+    }
+
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &self.page_rewrites
+    }
+
+    fn scheme_id(&self) -> &'static str {
+        "capco"
     }
 
     /// Substantive `render_canonical` body driven by the per-axis
@@ -494,9 +563,9 @@ impl MarkingScheme for CapcoScheme {
     /// # Byte-identity invariant
     ///
     /// `scheme.render_canonical(m, Scope::Portion, &mut s)` and
-    /// `scheme.render_portion(m)` MUST produce byte-identical output
-    /// for any input the existing `render_portion` override handled
-    /// (and similarly for `Page` / `render_banner`). The
+    /// `scheme.render_item(m)` MUST produce byte-identical output
+    /// for any input the existing `render_item` override handled
+    /// (and similarly for `Page` / `render_summary`). The
     /// `render_canonical_default_chain.rs` integration tests pin this
     /// property.
     fn render_canonical(
@@ -575,13 +644,13 @@ impl MarkingScheme for CapcoScheme {
         Ok(())
     }
 
-    fn render_portion(&self, m: &Self::Marking) -> String {
+    fn render_item(&self, m: &Self::Marking) -> String {
         // Override retained for the byte-identity gate
         // (`render_canonical_default_chain.rs`). `render_canonical` is
         // the substantive renderer; this override delegates to it
         // through the trait-default String round-trip. Removing the
         // override is a follow-up once the engine call sites move off
-        // `render_portion` to `render_canonical`.
+        // `render_item` to `render_canonical`.
         //
         // `Write for String` is infallible, so a `String` write target
         // never produces `fmt::Error`. The only way the discarded
@@ -591,7 +660,7 @@ impl MarkingScheme for CapcoScheme {
         // this. Debug-assert in development; in release, the contract
         // violation produces an empty / partial `String` rather than
         // a panic (matching the trait-default behavior in
-        // `MarkingScheme::render_portion`).
+        // `MarkingScheme::render_item`).
         //
         // Construct an `Auto + MarqueMvp3` RenderContext; a future
         // change will land the §G.1 Table 4 dispatch body.
@@ -610,8 +679,8 @@ impl MarkingScheme for CapcoScheme {
         s
     }
 
-    fn render_banner(&self, m: &Self::Marking) -> String {
-        // See `render_portion`. Override retained for byte-identity
+    fn render_summary(&self, m: &Self::Marking) -> String {
+        // See `render_item`. Override retained for byte-identity
         // gate; the substantive body is `render_canonical`. Same
         // contract-violation invariant: `Write for String` is
         // infallible, so `Err` here would be a conforming-impl bug

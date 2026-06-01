@@ -356,7 +356,7 @@ fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
         RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
     ];
     let failure_span = Span::new(0, 64);
-    let diag = super::build_r002_diagnostic(contributing, failure_span);
+    let diag = super::build_r002_diagnostic::<CapcoScheme>(contributing, failure_span);
 
     // The function returns a `Diagnostic<CapcoScheme>`; the type
     // system already forbids it from being an `AppliedFix`. The
@@ -394,7 +394,7 @@ fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
 fn build_r002_diagnostic_empty_contributors_uses_generic_message() {
     let contributing: SmallVec<[RuleId; 4]> = SmallVec::new();
     let failure_span = Span::new(0, 0);
-    let diag = super::build_r002_diagnostic(contributing, failure_span);
+    let diag = super::build_r002_diagnostic::<CapcoScheme>(contributing, failure_span);
 
     assert_eq!(diag.rule, super::R002_RULE_ID);
     assert!(diag.fix.is_none());
@@ -561,6 +561,7 @@ fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
     tc.fix = Some(FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
@@ -622,7 +623,7 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            ctx: &RuleContext,
+            ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             // Emit a Recanonicalize FixIntent at the marking's
             // portion span. CapcoScheme will recanonicalize the
@@ -635,6 +636,7 @@ fn pass1_localized_fixintent_run_dispatches_pass2_with_fresh_relint() {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
+                    prior: None,
                 },
                 confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),

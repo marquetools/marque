@@ -5,7 +5,7 @@
 //! Issue #699 — scoping pin for `Diagnostic.recognized_canonical`.
 //!
 //! The field is populated only by `build_decoder_diagnostic` in
-//! `marque-engine` today (for R001 / `engine:recognition.decoder-
+//! `marque-capco` today (for R001 / `engine:recognition.decoder-
 //! recognized` diagnostics). This test file pins the absence of the
 //! field on every other diagnostic path the engine emits so a future
 //! rule that gains a `recognized_canonical` payload by accident

@@ -106,7 +106,11 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
         // Marking-type guard. CABs carry only authority fields

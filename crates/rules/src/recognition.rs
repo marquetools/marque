@@ -194,7 +194,20 @@ pub struct FeatureContribution {
 /// — there are no downstream readers yet — so the contract is the
 /// `as_str()` mapping plus the `feature_id_as_str_matches_audit_contract`
 /// pinned-strings test, both updated in lock-step.
+///
+/// # `#[non_exhaustive]` + the `Grammar` escape (T025)
+///
+/// The enum is `#[non_exhaustive]` so a future variant addition is a
+/// non-breaking change for downstream matchers, and the
+/// [`FeatureId::Grammar`] escape variant lets a co-resident non-CAPCO
+/// grammar (CUI, NATO, ...) contribute a feature without editing this
+/// closed CAPCO-derived set at all. The escape carries a
+/// `grammar_id: &'static str` (the contributing scheme's name) plus a
+/// `variant: u32` (scheme-local feature ordinal). This is **additive
+/// only** — the existing CAPCO variants and their `as_str()` labels are
+/// byte-identical, so no `MARQUE_AUDIT_SCHEMA` bump is required.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum FeatureId {
     /// Observed form is edit-distance 1 from a canonical token.
     EditDistance1,
@@ -240,6 +253,20 @@ pub enum FeatureId {
     /// overwhelmingly prose, not a mangled marking the decoder
     /// should recover. Negative delta.
     LowercaseSurroundingContext,
+
+    /// Multi-scheme escape (T025): a feature contributed by a co-resident
+    /// non-CAPCO grammar. `grammar_id` is the contributing scheme's name
+    /// (e.g. `"cui"`); `variant` is a scheme-local feature ordinal the
+    /// owning grammar assigns. Keeps the CAPCO-derived variant set above
+    /// closed while letting a second grammar surface its own decoder
+    /// features without an audit-schema bump.
+    Grammar {
+        /// The contributing scheme's name (a `MarkingScheme::name`-style
+        /// `&'static` grammar id).
+        grammar_id: &'static str,
+        /// A scheme-local feature ordinal assigned by the owning grammar.
+        variant: u32,
+    },
 }
 
 impl FeatureId {
@@ -269,6 +296,11 @@ impl FeatureId {
             FeatureId::LinePositionPenalty => "LinePositionPenalty",
             FeatureId::BulletAnchorBonus => "BulletAnchorBonus",
             FeatureId::LowercaseSurroundingContext => "LowercaseSurroundingContext",
+            // The escape variant projects to its grammar id — the only
+            // `&'static str` it carries. The `variant` ordinal is
+            // grammar-local and surfaces through the structured audit
+            // args, not the label.
+            FeatureId::Grammar { grammar_id, .. } => grammar_id,
         }
     }
 }
@@ -332,6 +364,35 @@ mod tests {
         for (id, expected) in cases {
             assert_eq!(id.as_str(), *expected, "label drift for {id:?}");
         }
+    }
+
+    #[test]
+    fn grammar_escape_variant_carries_grammar_id_and_variant() {
+        // T025: the additive `Grammar { grammar_id, variant }` escape
+        // lets a non-CAPCO grammar contribute a feature without forcing
+        // a closed-enum edit (and the audit-schema bump that would
+        // entail). `as_str()` projects to the grammar id — the only
+        // `&'static str` the variant carries.
+        let f = FeatureId::Grammar {
+            grammar_id: "cui",
+            variant: 7,
+        };
+        assert_eq!(f.as_str(), "cui");
+        // Distinct grammar ids / variants compare unequal.
+        assert_ne!(
+            f,
+            FeatureId::Grammar {
+                grammar_id: "cui",
+                variant: 8
+            }
+        );
+        assert_ne!(
+            f,
+            FeatureId::Grammar {
+                grammar_id: "nato",
+                variant: 7
+            }
+        );
     }
 
     #[test]

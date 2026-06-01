@@ -4,7 +4,7 @@
 
 use crate::CapcoScheme;
 use crate::scheme::FDR_DOMINATORS;
-use marque_scheme::{TokenId, TokenRef, Vocabulary};
+use marque_scheme::{IcMarkingVocabulary, TokenId, TokenRef};
 
 fn vocab() -> CapcoScheme {
     CapcoScheme::new()

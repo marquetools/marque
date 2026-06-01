@@ -198,7 +198,7 @@ fn lint_post_pass_leaves_fix_severity_with_no_fix_payload_alone() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            _ctx: &RuleContext,
+            _ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             vec![Diagnostic::info(
                 RuleId::new("test", "synthetic.e997-fixture"),
@@ -255,11 +255,12 @@ fn fix_excludes_explicit_suggest_severity_from_auto_apply() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            _ctx: &RuleContext,
+            _ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
+                    prior: None,
                 },
                 confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),
@@ -416,7 +417,11 @@ impl Rule<CapcoScheme> for ContextRecorderRule {
     fn phase(&self) -> marque_rules::Phase {
         marque_rules::Phase::PageFinalization
     }
-    fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         let count = ctx
             .page_portions
             .as_ref()

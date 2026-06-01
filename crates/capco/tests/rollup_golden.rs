@@ -24,7 +24,7 @@
 //!   acknowledged-union FGI.
 //! - `sci_controls_from_markings(&[CanonicalAttrs])` for the flat
 //!   SCI CVE projection union.
-//! - `CapcoScheme::render_banner(scheme.project(Scope::Page, &markings))`
+//! - `CapcoScheme::render_summary(scheme.project(Scope::Page, &markings))`
 //!   for the banner-string roll-up (replaces `render_expected_banner`).
 //!
 //! These golden tests live in `marque-ism` for the historical reason
@@ -49,11 +49,11 @@ fn portion(c: Classification) -> CanonicalAttrs {
     a
 }
 
-fn render_banner_from_portions(portions: &[CanonicalAttrs]) -> String {
+fn render_summary_from_portions(portions: &[CanonicalAttrs]) -> String {
     let scheme = CapcoScheme::new();
     let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     let projected = scheme.project(Scope::Page, &markings);
-    scheme.render_banner(&projected)
+    scheme.render_summary(&projected)
 }
 
 // =========================================================================
@@ -627,7 +627,7 @@ fn banner_renders_noforn_when_portion_has_nodis() {
     let mut p2 = portion(Classification::Secret);
     p2.non_ic_dissem = vec![NonIcDissem::Nodis].into();
 
-    let banner = render_banner_from_portions(&[p1, p2]);
+    let banner = render_summary_from_portions(&[p1, p2]);
 
     assert!(
         banner.contains("NOFORN"),
@@ -660,7 +660,7 @@ fn banner_renders_noforn_when_portion_has_exdis() {
     let mut p2 = portion(Classification::Secret);
     p2.non_ic_dissem = vec![NonIcDissem::Exdis].into();
 
-    let banner = render_banner_from_portions(&[p1, p2]);
+    let banner = render_summary_from_portions(&[p1, p2]);
 
     assert!(
         banner.contains("NOFORN"),

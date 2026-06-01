@@ -83,6 +83,7 @@ impl MarkingScheme for StubScheme {
     type OpenVocabRef = core::convert::Infallible;
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
 
     fn name(&self) -> &str {
         "StubScheme"
@@ -105,10 +106,10 @@ impl MarkingScheme for StubScheme {
     fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
         StubMarking
     }
-    fn render_portion(&self, _m: &Self::Marking) -> String {
+    fn render_item(&self, _m: &Self::Marking) -> String {
         String::new()
     }
-    fn render_banner(&self, _m: &Self::Marking) -> String {
+    fn render_summary(&self, _m: &Self::Marking) -> String {
         String::new()
     }
     fn render_canonical(
@@ -132,6 +133,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     let intent: FixIntent<StubScheme> = FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: Recognition::strict(),
         feature_ids: Default::default(),

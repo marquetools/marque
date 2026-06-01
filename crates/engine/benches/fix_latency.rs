@@ -23,7 +23,7 @@
 //! The subtractive `FactRemove(RELIDO, Scope::Portion)` intent is the
 //! canonical example of the intent-synthesis fix path: the engine parses
 //! the candidate span, applies the intent via `CapcoScheme::apply_intent`,
-//! and re-renders the result via `render_portion`. The rewrite removes
+//! and re-renders the result via `render_item`. The rewrite removes
 //! RELIDO from the portion, leaving `(S//NF)`.
 //!
 //! The bench uses the RELIDO-conflicts-NOFORN rule (`E054` in the

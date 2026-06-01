@@ -46,6 +46,15 @@ pub struct LintRequest {
     /// Calling context hint — affects scanner heuristics.
     #[allow(dead_code)]
     pub context: Option<String>,
+    /// Per-request recognition input source (#176 / T015). Trusted-
+    /// caller opt-in: `"structured_field"` asserts the input IS a
+    /// marking-shaped field (lifting the decoder's lone-case heuristic
+    /// guard, SC-010); `"document_content"` / absent is the
+    /// conservative default. Unlike the WASM target (which pins
+    /// `DocumentContent` and exposes no equivalent, Constitution III),
+    /// the server is a trusted caller permitted to opt in per request.
+    #[serde(default)]
+    pub input_source: Option<String>,
     /// T3 guard: if the key is present (regardless of value), the
     /// handler rejects with 400. `PresenceMarker` records key presence
     /// without deserializing or storing the payload, so even
@@ -58,6 +67,20 @@ pub struct LintRequest {
 impl LintRequest {
     pub(crate) fn carries_corpus_override(&self) -> bool {
         self._corpus_override.is_present()
+    }
+
+    /// Resolve the per-request [`input_source`](Self::input_source)
+    /// string to an [`marque_engine::InputSource`] (#176 / T015).
+    /// Unknown / absent values fall back to the conservative
+    /// `DocumentContent` default rather than erroring — a server caller
+    /// that mistypes the field gets the safe path, not a 400.
+    pub(crate) fn resolved_input_source(&self) -> marque_engine::InputSource {
+        match self.input_source.as_deref() {
+            Some("structured_field") | Some("StructuredField") => {
+                marque_engine::InputSource::StructuredField
+            }
+            _ => marque_engine::InputSource::DocumentContent,
+        }
     }
 }
 
@@ -149,6 +172,16 @@ pub struct FixRequest {
     /// `require_signature` — otherwise the fix is refused with 403.
     #[serde(default)]
     pub signature: Option<String>,
+    /// Per-request recognition input source (#176 / SC-010). Trusted-
+    /// caller opt-in, identical to `LintRequest::input_source`:
+    /// `"structured_field"` asserts the input IS a marking-shaped field
+    /// (lifting the decoder's lone-case heuristic so `fix` applies the
+    /// assertive recovery), `"document_content"` / absent is the
+    /// conservative default. The WASM fix path pins `DocumentContent`
+    /// and exposes no equivalent (Constitution III); the server is a
+    /// trusted caller permitted to opt in per request.
+    #[serde(default)]
+    pub input_source: Option<String>,
     /// T3 guard: see `LintRequest::_corpus_override`.
     #[serde(default, rename = "corpus_override")]
     _corpus_override: PresenceMarker,
@@ -157,6 +190,21 @@ pub struct FixRequest {
 impl FixRequest {
     pub(crate) fn carries_corpus_override(&self) -> bool {
         self._corpus_override.is_present()
+    }
+
+    /// Resolve the per-request [`input_source`](Self::input_source)
+    /// string to a [`marque_engine::InputSource`] (#176 / SC-010). Same
+    /// fail-safe resolver `LintRequest` uses: unknown / absent values
+    /// fall back to the conservative `DocumentContent` default rather
+    /// than erroring — a server caller that mistypes the field gets the
+    /// safe path, not a 400.
+    pub(crate) fn resolved_input_source(&self) -> marque_engine::InputSource {
+        match self.input_source.as_deref() {
+            Some("structured_field") | Some("StructuredField") => {
+                marque_engine::InputSource::StructuredField
+            }
+            _ => marque_engine::InputSource::DocumentContent,
+        }
     }
 }
 

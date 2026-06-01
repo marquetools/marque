@@ -207,6 +207,7 @@ mod tests {
         type OpenVocabRef = core::convert::Infallible;
         type Parsed<'src> = ();
         type Canonical = ();
+        type Projected = ();
 
         fn name(&self) -> &str {
             "TestScheme"
@@ -229,10 +230,10 @@ mod tests {
         fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
             TestMarking
         }
-        fn render_portion(&self, _m: &Self::Marking) -> String {
+        fn render_item(&self, _m: &Self::Marking) -> String {
             String::new()
         }
-        fn render_banner(&self, _m: &Self::Marking) -> String {
+        fn render_summary(&self, _m: &Self::Marking) -> String {
             String::new()
         }
         fn render_canonical(
@@ -293,6 +294,7 @@ mod tests {
         let intent: FixIntent<TestScheme> = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
+                prior: None,
             },
             confidence: Recognition::strict(),
             feature_ids: SmallVec::new(),
@@ -312,7 +314,8 @@ mod tests {
         assert!(matches!(
             intent.replacement,
             ReplacementIntent::Recanonicalize {
-                scope: RecanonScope::Page
+                scope: RecanonScope::Page,
+                prior: None,
             }
         ));
     }

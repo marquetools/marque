@@ -95,7 +95,7 @@ fn assert_e066_fires_and_rewrites_to(
         .as_ref()
         .expect("E066 must carry a FixIntent (FixIntent shape, not legacy FixProposal)");
     match fix_intent.replacement {
-        ReplacementIntent::Recanonicalize { scope } => {
+        ReplacementIntent::Recanonicalize { scope, .. } => {
             assert_eq!(
                 scope, expected_scope,
                 "E066 Recanonicalize scope mismatch on {input:?}: \

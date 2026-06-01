@@ -6,9 +6,9 @@
 //! `Diagnostic.message` is a `(template, args)` pair rather than a
 //! free-form `Box<str>`, closing the `format!`-built-string leak
 //! channel (interpolating input bytes) that Constitution V Principle
-//! V's audit-content-ignorance invariant forbids. The engine's decoder
+//! V's audit-content-ignorance invariant forbids. marque-capco's decoder
 //! synthesis helper (`build_decoder_diagnostic` in
-//! `crates/engine/src/engine/synthesis.rs`) constructs
+//! `crates/capco/src/provenance.rs`) constructs
 //! `Message::new(MessageTemplate::DecoderRecognized, ...)`.
 //!
 //! # Closed-template invariant
@@ -125,15 +125,27 @@ pub fn to_audit_string(hash: &Blake3Hash) -> String {
 ///
 /// Rule emission constructs these variants; there is no
 /// `format!`-interpolated free-form path.
+///
+/// # `#[non_exhaustive]` + the `Grammar` escape (T025)
+///
+/// The enum is `#[non_exhaustive]` so a future template addition is a
+/// non-breaking change for downstream exhaustive matchers, and the
+/// [`MessageTemplate::Grammar`] escape variant lets a co-resident
+/// non-CAPCO grammar (CUI, NATO, ...) carry its own diagnostic template
+/// without editing this CAPCO-derived set. The escape carries a
+/// `grammar_id: &'static str` + a `variant: u32`. This is **additive
+/// only** — every existing variant and its `as_str()` label is
+/// byte-identical, so no `MARQUE_AUDIT_SCHEMA` bump is required.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum MessageTemplate {
     /// Decoder recognized a canonical form for an input the strict
     /// recognizer rejected. Args: `actual_token` (the canonical the
     /// decoder produced).
     ///
-    /// Constructed by the engine's decoder synthesis helper
+    /// Constructed by marque-capco's decoder synthesis helper
     /// (`build_decoder_diagnostic` in
-    /// `crates/engine/src/engine/synthesis.rs`). Engine-synthetic — no
+    /// `crates/capco/src/provenance.rs`). Engine-synthetic — no
     /// §-citation.
     DecoderRecognized,
 
@@ -277,6 +289,22 @@ pub enum MessageTemplate {
     ///
     /// Authority: CAPCO-2016 §H.3 p57 ("[LIST]" superset semantics).
     RelToExpandsBeyondJoint,
+
+    /// Multi-scheme escape (T025): a diagnostic template owned by a
+    /// co-resident non-CAPCO grammar. `grammar_id` is the contributing
+    /// scheme's name (e.g. `"cui"`); `variant` is a scheme-local template
+    /// ordinal the owning grammar assigns. Keeps the CAPCO-derived
+    /// template set above closed while letting a second grammar surface
+    /// its own diagnostics without an audit-schema bump. The owning
+    /// grammar is responsible for keeping its `variant` ordinals stable
+    /// across its own schema revisions.
+    Grammar {
+        /// The contributing scheme's name (a `MarkingScheme::name`-style
+        /// `&'static` grammar id).
+        grammar_id: &'static str,
+        /// A scheme-local template ordinal assigned by the owning grammar.
+        variant: u32,
+    },
 }
 
 impl MessageTemplate {
@@ -311,6 +339,11 @@ impl MessageTemplate {
             Self::OutOfRangeNumericToken => "OutOfRangeNumericToken",
             Self::SarInvariantViolated => "SarInvariantViolated",
             Self::RelToExpandsBeyondJoint => "RelToExpandsBeyondJoint",
+            // The escape variant projects to its grammar id — the only
+            // `&'static str` it carries. The `variant` ordinal is
+            // grammar-local and surfaces through the structured audit
+            // args, not the label.
+            Self::Grammar { grammar_id, .. } => grammar_id,
         }
     }
 }
@@ -618,6 +651,27 @@ mod tests {
         assert_eq!(
             MessageTemplate::RelToExpandsBeyondJoint.as_str(),
             "RelToExpandsBeyondJoint"
+        );
+    }
+
+    #[test]
+    fn grammar_escape_template_projects_to_grammar_id() {
+        // T025: the additive `Grammar { grammar_id, variant }` escape
+        // lets a co-resident non-CAPCO grammar carry its own template
+        // without editing the closed CAPCO-derived set (and the
+        // audit-schema bump that would entail). `as_str()` projects to
+        // the grammar id.
+        let t = MessageTemplate::Grammar {
+            grammar_id: "cui",
+            variant: 3,
+        };
+        assert_eq!(t.as_str(), "cui");
+        assert_ne!(
+            t,
+            MessageTemplate::Grammar {
+                grammar_id: "cui",
+                variant: 4
+            }
         );
     }
 

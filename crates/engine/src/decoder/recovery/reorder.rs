@@ -349,7 +349,7 @@ pub(in crate::decoder) fn try_add_non_us_prefix(text: &str) -> Option<String> {
 /// True when `marking`'s classification level is ≥ `floor`.
 ///
 /// `floor` is the `Classification as u8` encoding
-/// (Unclassified=0 … TopSecret=4) — see [`ParseContext::classification_floor`].
+/// (Unclassified=0 … TopSecret=4) — see [`ParseContext::rank_floor`].
 ///
 /// A marking with no classification info cannot clear a non-trivial
 /// floor — return `false` so the candidate is dropped when the floor

@@ -27,11 +27,12 @@ fn pass1_localized_fixintent_dryrun_records_applied_without_mutating_source() {
         fn check(
             &self,
             _attrs: &CanonicalAttrs,
-            ctx: &RuleContext,
+            ctx: &RuleContext<'_, CapcoScheme>,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
+                    prior: None,
                 },
                 confidence: marque_rules::Recognition::strict(),
                 feature_ids: SmallVec::new(),
@@ -134,6 +135,7 @@ fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     let (apply_post, _, apply_audit_lines) = apply_fixer
         .apply_kept_fixes(source, kept_fixes.clone(), &dummy_lint)
@@ -159,6 +161,7 @@ fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     let (dry_run_post, _, dry_run_audit_lines) = dry_run_fixer
         .apply_kept_fixes(source, kept_fixes, &dummy_lint)
@@ -242,6 +245,7 @@ fn synth_fix(rule: &'static str, start: usize, end: usize, replacement: &str) ->
         intent: FixIntent::<CapcoScheme> {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
+                prior: None,
             },
             confidence: marque_rules::Recognition::strict(),
             feature_ids: SmallVec::new(),
@@ -313,7 +317,7 @@ fn sort_and_c1_dedup_tiebreaks_lex_min_rule_then_replacement() {
 
 #[test]
 fn sort_and_c1_dedup_empty_input_returns_empty() {
-    let kept = super::sort_and_c1_dedup(Vec::new());
+    let kept = super::sort_and_c1_dedup::<CapcoScheme>(Vec::new());
     assert!(kept.is_empty());
 }
 
@@ -335,7 +339,7 @@ fn splice_fixes_forward_splices_in_reverse_order() {
 #[test]
 fn splice_fixes_forward_with_empty_fixes_returns_source_clone() {
     let source = b"SECRET//NOFORN";
-    let out = super::splice_fixes_forward(source, &[]);
+    let out = super::splice_fixes_forward::<CapcoScheme>(source, &[]);
     assert_eq!(out, source);
 }
 
@@ -387,7 +391,7 @@ fn find_containing_marking_returns_some_when_span_inside() {
     )];
     // A sub-span inside marking_span resolves to marking_span.
     let sub = Span::new(marking_span.start, marking_span.start + 1);
-    let found = super::find_containing_marking(&markings, sub);
+    let found = super::find_containing_marking::<CapcoScheme>(&markings, sub);
     assert_eq!(found, Some(marking_span));
 }
 
@@ -399,7 +403,7 @@ fn find_containing_marking_returns_none_when_no_marking_contains() {
     )];
     // Way past the inserted marking span — no marking contains it.
     let far = Span::new(10_000, 10_001);
-    let found = super::find_containing_marking(&markings, far);
+    let found = super::find_containing_marking::<CapcoScheme>(&markings, far);
     assert!(found.is_none());
 }
 
@@ -421,17 +425,17 @@ fn lookup_marking_finds_exact_span() {
         ),
     ];
 
-    assert!(super::lookup_marking(&markings, span_a).is_some());
-    assert!(super::lookup_marking(&markings, span_b).is_some());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, span_a).is_some());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, span_b).is_some());
     // Same start, different end — does NOT match.
-    assert!(super::lookup_marking(&markings, Span::new(0, 12)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(0, 12)).is_none());
     // Start not in the table — does NOT match.
-    assert!(super::lookup_marking(&markings, Span::new(5, 10)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(5, 10)).is_none());
     // Between two entries — binary search lands on an adjacent
     // entry, the equality post-check rejects. Pins the case that
     // would silently regress if the search key changed from
     // `s.start` to something else.
-    assert!(super::lookup_marking(&markings, Span::new(14, 19)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(14, 19)).is_none());
 }
 
 #[test]
@@ -467,10 +471,10 @@ fn lookup_marking_walks_duplicate_start_run() {
     // The walk finds the exact target regardless of which entry
     // the binary search initially landed on (criterion would
     // otherwise be non-deterministic across implementations).
-    assert!(super::lookup_marking(&markings, target).is_some());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, target).is_some());
     // A start-matching but end-mismatching probe across the same
     // run still returns None.
-    assert!(super::lookup_marking(&markings, Span::new(50, 80)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(50, 80)).is_none());
 }
 
 // -------------------------------------------------------------------
@@ -495,6 +499,7 @@ fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<C
     let intent = FixIntent::<CapcoScheme> {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
+            prior: None,
         },
         confidence: marque_rules::Recognition::strict(),
         feature_ids: SmallVec::new(),
@@ -562,6 +567,7 @@ fn contributing_pass1_rule_ids_dedupes_and_sorts() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     // Three fixes: two duplicates of E006, one of C001. The helper
     // dedupes and sorts ASC. Result: [C001, E006].
@@ -586,6 +592,7 @@ fn contributing_pass1_rule_ids_caps_at_inline_capacity_4() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     // Five distinct IDs — only the first 4 (after sort) survive
     // the SmallVec inline cap.
@@ -613,6 +620,7 @@ fn contributing_pass1_rule_ids_empty_input_returns_empty() {
         deadline: None,
         classifier_id: None,
         session_metadata: super::test_session_metadata(),
+        input_source: marque_scheme::InputSource::DocumentContent,
     };
     let out = fixer.contributing_pass1_rule_ids(&[]);
     assert!(out.is_empty());

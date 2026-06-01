@@ -137,7 +137,11 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 
         // 1. Canonicalize the observed bytes into zero-or-more
         //    candidate byte-strings + per-candidate feature trace.
-        let canonical_attempts = generate_candidate_bytes(bytes, kind);
+        //    `cx.input_source` carries the #176 recognition-provenance
+        //    axis (SC-010): StructuredField lifts the lone-case guard
+        //    in the classification heuristic; DocumentContent (default)
+        //    keeps it conservative.
+        let canonical_attempts = generate_candidate_bytes(bytes, kind, cx.input_source);
         if canonical_attempts.is_empty() {
             return Parsed::Ambiguous {
                 candidates: Vec::new(),
@@ -258,7 +262,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
 
             // 3d. Drop candidates below the page's strict
             //     classification floor.
-            if let Some(floor) = cx.classification_floor
+            if let Some(floor) = cx.rank_floor
                 && !meets_classification_floor(&marking, floor)
             {
                 continue;

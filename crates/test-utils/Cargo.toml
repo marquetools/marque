@@ -10,6 +10,10 @@ rust-version.workspace = true
 description = "Shared test utilities and corpus loader for marque"
 repository.workspace = true
 license-file = "LICENSE.md"
+# Internal test-only crate — never published. Consumed solely under
+# [dev-dependencies] by engine/capco, so its normal dep on marque-scheme
+# (below) never reaches a shipping crate's graph or the WASM artifact.
+publish = false
 include = [
   "../../tests/**",
   "Cargo.toml",
@@ -21,6 +25,18 @@ include = [
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+# WASM-safe leaf crate (Constitution VII). marque-test-utils is
+# publish=false and consumed only under [dev-dependencies], so this edge
+# never enters a shipping crate's normal dep graph or the WASM artifact.
+# Hosts the shared `stub_scheme` second-scheme fixture for Phase B
+# generic-surface tests.
+marque-scheme = { workspace = true }
+# Same publish=false / dev-dependency-only rationale as marque-scheme
+# above (WASM-safe, never reaches a shipping graph). Needed so
+# `StubScheme` can implement `marque_rules::ConstraintBridge`, which a
+# generic `Engine<S>` bounds on when it drives the constraint bridge over
+# a second scheme.
+marque-rules = { workspace = true }
 
 [lints]
 workspace = true

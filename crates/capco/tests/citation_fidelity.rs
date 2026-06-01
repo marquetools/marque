@@ -284,7 +284,7 @@ fn corpus_covers_every_declared_authority() {
     // diagnostic rules emitted by `marque-engine` directly), add
     // them here.
     let engine_emitted: HashSet<Citation> = [
-        capco(SectionLetter::A, 6, 15), // R001 — `engine.rs::DECODER_CITATION_TYPED`
+        capco(SectionLetter::A, 6, 15), // R001 — emitted by `marque_capco::build_decoder_diagnostic`
         engine_internal_sentinel(),     // R002 — `engine.rs::R002_CITATION_TYPED`
     ]
     .into_iter()

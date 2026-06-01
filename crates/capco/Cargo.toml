@@ -26,6 +26,11 @@ marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 phf = { workspace = true }
+# Constitution Principle II — `build_decoder_diagnostic` wraps the
+# decoder's canonical-bytes attempt in `SecretBox<[u8]>` for
+# `Diagnostic.recognized_canonical` so it wipes on drop. WASM-safe
+# (marque-rules already normal-deps secrecy for the same field).
+secrecy = { workspace = true }
 smallvec = { workspace = true }
 smol_str = { workspace = true }
 thiserror = { workspace = true }
@@ -47,9 +52,6 @@ marque-core = { workspace = true }
 marque-engine = { workspace = true }
 marque-test-utils = { workspace = true }
 proptest = { workspace = true }
-# Constitution Principle II — capco integration tests assert against
-# `FixResult.source` (a `SecretBox<[u8]>`) via `expose_secret()`.
-secrecy = { workspace = true }
 # Parallel `LatticeExpectedFixture` sidecar type local to
 # `crates/capco/tests/lattice_corpus_runner.rs`. Sidecars are
 # deserialized directly here instead of extending the canonical

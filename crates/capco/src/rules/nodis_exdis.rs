@@ -134,7 +134,11 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         NODIS_EXDIS_CLEARS_BANNER_REL_TO_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         // Banner-only (and CAB, since CABs can carry REL TO). Portion
@@ -275,7 +279,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 /// `synthesize_intent_only_fixes` calls `CapcoScheme::apply_intent`
 /// to remove EXDIS from the marking's `non_ic_dissem` axis, then
 /// re-renders the portion via `MarkingScheme::render_canonical`
-/// (delegated to `render_portion`). The synthesized `FixProposal.span`
+/// (delegated to `render_item`). The synthesized `FixProposal.span`
 /// covers the full candidate, so the within-category `/` byte is
 /// replaced as part of the re-rendered portion — no parser change
 /// required.
@@ -313,7 +317,11 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         NODIS_SUPERSEDES_EXDIS_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         if ctx.marking_type != MarkingType::Portion {

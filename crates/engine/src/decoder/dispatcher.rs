@@ -55,7 +55,7 @@ use super::shape::{infer_marking_type, strict_parse_is_complete};
 ///   clone-with-`strict_evidence`-override was redundant.
 ///
 /// Other [`ParseContext`] fields (`zone`, `position`,
-/// `classification_floor`) pass through unchanged.
+/// `rank_floor`) pass through unchanged.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StrictOrDecoderRecognizer {
     strict: StrictRecognizer,

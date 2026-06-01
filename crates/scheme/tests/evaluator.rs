@@ -112,6 +112,7 @@ impl MarkingScheme for StubScheme {
     // code paths).
     type Parsed<'src> = ();
     type Canonical = ();
+    type Projected = ();
     fn name(&self) -> &str {
         "stub"
     }
@@ -158,10 +159,10 @@ impl MarkingScheme for StubScheme {
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &[]
     }
-    fn render_portion(&self, _: &Self::Marking) -> String {
+    fn render_item(&self, _: &Self::Marking) -> String {
         String::new()
     }
-    fn render_banner(&self, _: &Self::Marking) -> String {
+    fn render_summary(&self, _: &Self::Marking) -> String {
         String::new()
     }
     fn render_canonical(

@@ -147,7 +147,11 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         JOINT_USA_FIRST_AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{CountryCode, MarkingType};
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -224,6 +228,7 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
+                prior: None,
             },
             confidence: Recognition::strict(),
             feature_ids: Default::default(),
@@ -340,7 +345,11 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         JOINT_DISUNITY_COLLAPSE_AUTHORITIES
     }
-    fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        _attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         // Phase::PageFinalization invariant: the engine's
         // `dispatch_page_finalization` force-initializes
         // `ctx.page_portions` and `ctx.page_marking` before invoking

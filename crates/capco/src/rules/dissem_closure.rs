@@ -210,7 +210,11 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn cited_authorities(&self) -> &'static [Citation] {
         AUTHORITIES
     }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(
+        &self,
+        attrs: &CanonicalAttrs,
+        ctx: &RuleContext<'_, CapcoScheme>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{CapcoMarking, TOK_RELIDO};
         use marque_ism::DissemControl;
         use marque_scheme::Scope;

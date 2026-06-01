@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 use crate::{Diagnostic, Phase, RuleContext, Severity};
-use marque_ism::CanonicalAttrs;
 use marque_scheme::MarkingScheme;
 
 /// Unique rule identifier — a `(scheme, predicate_id)` 2-tuple.
@@ -124,7 +123,7 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     fn name(&self) -> &'static str;
     /// Default severity — overridable per rule in `.marque.toml`.
     fn default_severity(&self) -> Severity;
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext<'_>) -> Vec<Diagnostic<S>>;
+    fn check(&self, attrs: &S::Canonical, ctx: &RuleContext<'_, S>) -> Vec<Diagnostic<S>>;
 
     /// Dispatch phase for the engine's two-pass fix pipeline.
     ///

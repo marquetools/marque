@@ -679,6 +679,7 @@ mod tests {
         FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
+                prior: None,
             },
             confidence: marque_rules::Recognition::strict(),
             feature_ids: Default::default(),

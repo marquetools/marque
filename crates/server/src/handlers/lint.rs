@@ -49,9 +49,13 @@ pub async fn lint_handler(
     let mut lint_opts = LintOptions::default();
     lint_opts.deadline = Some(stamp_request_deadline(deadline_duration)?);
 
+    // #176 / T015: the server is a trusted caller permitted to opt into
+    // the recognition input-source axis per request. Absent / unknown →
+    // DocumentContent (byte-identical to the pre-#176 path).
+    let input_cx = marque_engine::InputContext::new(req.resolved_input_source());
     let result = state
         .engine
-        .lint_with_options(req.text.as_bytes(), &lint_opts);
+        .lint_with_input_context(req.text.as_bytes(), &lint_opts, &input_cx);
     let truncated = result.truncated;
     let candidates_processed = result.candidates_processed;
     let candidates_total = result.candidates_total;
