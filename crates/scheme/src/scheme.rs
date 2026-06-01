@@ -123,7 +123,17 @@ pub trait MarkingScheme {
     ///
     /// CAPCO binds this to `marque_ism::CanonicalAttrs`; future
     /// schemes bind to their own owned canonical shape.
-    type Canonical;
+    ///
+    /// The bound set is what the generic engine pipeline requires to
+    /// thread page state in canonical space: `Clone` (the per-candidate
+    /// accumulator clones recognized canonicals), `Default` (the
+    /// page-join accumulator seeds from the lattice bottom), `Debug`
+    /// (the read-only-attrs `debug_assert` sentinel), and `Send + Sync +
+    /// 'static` (`BatchEngine` threads canonical state across workers,
+    /// Constitution VI). `marque_ism::CanonicalAttrs` already satisfies
+    /// all five; test stubs binding `type Canonical = ()` satisfy them
+    /// trivially.
+    type Canonical: Clone + Default + core::fmt::Debug + Send + Sync + 'static;
 
     /// The page-roll-up projection shape banner/CAB rules consume via
     /// `RuleContext::page_marking`. The engine produces it from a
@@ -476,6 +486,86 @@ pub trait MarkingScheme {
     #[inline]
     fn project_summary(&self, portions: &[Self::Marking]) -> Self::Marking {
         self.project(Scope::Page, portions)
+    }
+
+    /// Join a slice of canonicals into a single canonical, in
+    /// **canonical space** (not marking space).
+    ///
+    /// The engine accumulates a page incrementally in `Self::Canonical`
+    /// (the recognizer's per-candidate output), so the page roll-up join
+    /// is expressed over canonicals rather than over `Self::Marking`.
+    /// This is distinct from [`Self::project`], which operates on
+    /// `&[Self::Marking]` and yields a marking.
+    ///
+    /// The default folds to the last portion (`portions.last().cloned()`,
+    /// or the canonical bottom for an empty page) — the correct behavior
+    /// for a scheme whose canonical carries no cross-portion composition.
+    /// CapcoScheme overrides this with its per-axis lattice join.
+    fn canonical_page_join(&self, portions: &[Self::Canonical]) -> Self::Canonical {
+        portions.last().cloned().unwrap_or_default()
+    }
+
+    /// Project a slice of canonicals into the page projection shape, in
+    /// **canonical space** (the non-instrumented hot path).
+    ///
+    /// This is the canonical-space companion to [`Self::project`] (which
+    /// operates on `&[Self::Marking]`). The engine produces its
+    /// `RuleContext::page_marking` from this when its page accumulator is
+    /// already in canonical space and no decision sink is installed.
+    ///
+    /// The default is `unimplemented!()` (mirrors [`Self::canonicalize`]):
+    /// `marque-scheme` is domain-neutral and cannot synthesize a
+    /// `Self::Projected` from `Self::Canonical` generically. Schemes that
+    /// project (CapcoScheme) override; test-stub schemes never reach this
+    /// path and inherit the default safely.
+    fn project_canonical(&self, _portions: &[Self::Canonical]) -> Self::Projected {
+        unimplemented!(
+            "MarkingScheme::project_canonical not overridden by this scheme. \
+             Schemes that project from canonical space (e.g. CapcoScheme) override it; \
+             test stub schemes never reach this path and inherit the default safely."
+        )
+    }
+
+    /// Sink-aware variant of [`Self::project_canonical`], emitting
+    /// [`DecisionEvent`]s to the sink as projection-stage decisions are
+    /// made. The engine threads a sink here only when an observer is
+    /// installed; otherwise it calls the plain [`Self::project_canonical`]
+    /// hot path.
+    ///
+    /// The default is `unimplemented!()` for the same reason as
+    /// [`Self::project_canonical`]. Schemes that project override both.
+    ///
+    /// [`DecisionEvent`]: crate::DecisionEvent
+    fn project_canonical_with_sink(
+        &self,
+        _portions: &[Self::Canonical],
+        _sink: &mut dyn crate::DecisionSink,
+    ) -> Self::Projected {
+        unimplemented!(
+            "MarkingScheme::project_canonical_with_sink not overridden by this scheme. \
+             Schemes that project from canonical space (e.g. CapcoScheme) override it; \
+             test stub schemes never reach this path and inherit the default safely."
+        )
+    }
+
+    /// Convert an owned canonical into the scheme's marking
+    /// representation.
+    ///
+    /// The engine holds recognized state as `Self::Canonical` but several
+    /// trait surfaces (notably [`Self::validate`]) take `&Self::Marking`;
+    /// this is the lift the engine uses to cross from canonical space into
+    /// marking space.
+    ///
+    /// The default is `unimplemented!()` (mirrors [`Self::canonicalize`]):
+    /// a generic canonical→marking conversion does not exist. Schemes that
+    /// canonicalize (CapcoScheme) override; test-stub schemes never reach
+    /// this path and inherit the default safely.
+    fn marking_from_canonical(&self, _canonical: Self::Canonical) -> Self::Marking {
+        unimplemented!(
+            "MarkingScheme::marking_from_canonical not overridden by this scheme. \
+             Schemes that canonicalize (e.g. CapcoScheme) override it; test stub \
+             schemes never reach this path and inherit the default safely."
+        )
     }
 
     /// Cross-category rewrites applied after component-wise
