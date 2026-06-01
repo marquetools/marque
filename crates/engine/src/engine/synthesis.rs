@@ -431,8 +431,9 @@ pub(super) fn synthesize_fixes<S: MarkingScheme>(
         }
 
         let trimmed = &bytes[trimmed_start..trimmed_end];
-        // Portion vs banner: inferred from the trimmed candidate
-        // bytes — a portion is wrapped in `()` per CAPCO-2016 §A.6.
+        // Portion vs banner: the engine's universal `()`-wrapper
+        // heuristic — a parenthesized candidate is a portion — which
+        // originates from the CAPCO portion grammar (CAPCO-2016 §A.6).
         let is_portion = trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')');
         let core: String = if is_portion {
             format!("({})", scheme.render_item(&modified))

@@ -366,7 +366,12 @@ where
 
 pub(super) struct TwoPassFixer<'engine, S = CapcoScheme, R = EngineRecognizer>
 where
-    S: MarkingScheme,
+    // Same bound set as the impl blocks (and the lint block the fixer
+    // re-lints through): keeping the struct and its impls consistent
+    // means the only constructible `TwoPassFixer` is one whose methods
+    // are all callable.
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone + Default + PartialEq,
     R: Recognizer<S>,
 {
     pub(super) engine: &'engine Engine<S, R>,
@@ -397,7 +402,6 @@ where
 /// post-buffer flows into the public [`FixResult.source`]
 /// [`secrecy::SecretSlice`] via [`into_secret_slice`]. Either way, the
 /// transient `Vec<u8>` never sits in freed memory unwiped.
-/// Tuple returned by [`TwoPassFixer::apply_kept_fixes`].
 ///
 /// Carries the post-pass output buffer + the audit-line stream + the
 /// `(rule_id, span)` keys of applied fixes. `audit_lines` is the sole

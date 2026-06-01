@@ -86,7 +86,7 @@ where
         // #176 / SC-010: route the fix path's internal lint passes by
         // the caller's recognition input-source. `SchemaDocument`
         // normalizes to the conservative text path here (no schema
-        // adapter ships for CapcoScheme yet), mirroring
+        // adapter ships for `S` yet), mirroring
         // `Engine::lint_with_input_context`. `StructuredField` lifts the
         // decoder's lone-case heuristic so `fix --input-source
         // structured-field` applies the assertive recovery the flag

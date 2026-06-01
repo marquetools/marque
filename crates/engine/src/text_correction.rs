@@ -93,9 +93,10 @@ pub(crate) struct SynthesizedFix<S: MarkingScheme = CapcoScheme> {
     pub replacement: Box<str>,
     /// Render scope the synthesizer chose
     /// ([`marque_scheme::scope::Scope::Portion`] vs
-    /// [`marque_scheme::scope::Scope::Page`]). Determined by whether
-    /// the original candidate bytes were wrapped in `()` per
-    /// CAPCO-2016 §A.6.
+    /// [`marque_scheme::scope::Scope::Page`]). Determined by the
+    /// engine's universal `()`-wrapper heuristic — a parenthesized
+    /// candidate renders as a portion — which originates from the CAPCO
+    /// portion grammar (CAPCO-2016 §A.6).
     pub scope: marque_scheme::scope::Scope,
     /// The rule's structural emission, snapshotted at synthesis
     /// time. Carried forward into `AppliedFixProposal::FixIntent`.
