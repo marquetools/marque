@@ -1552,7 +1552,7 @@ ongoing guard.
 
 ## 16 · Vulnerability disclosure & response
 
-See [`SECURITY.md`](../../SECURITY.md) at the repo root for the full
+See [`SECURITY.md`](https://github.com/marquetools/marque/security/policy) at the repo root for the full
 policy. Summary:
 
 - **Preferred channel**: GitHub Private Vulnerability Reporting.
