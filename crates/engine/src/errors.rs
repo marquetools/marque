@@ -33,7 +33,8 @@
 
 use crate::engine::InvalidThreshold;
 use crate::output::LintResult;
-use marque_scheme::{ApplyIntentError, CategoryId, RewriteId};
+use marque_capco::CapcoScheme;
+use marque_scheme::{ApplyIntentError, CategoryId, MarkingScheme, RewriteId};
 
 /// Errors that will be raised while constructing an `Engine`.
 ///
@@ -248,7 +249,7 @@ impl std::error::Error for EngineConstructionError {}
 /// audit stream (Constitution V Principle V).
 #[non_exhaustive]
 #[derive(Debug)]
-pub enum EngineError {
+pub enum EngineError<S: MarkingScheme = CapcoScheme> {
     /// `fix_with_options` aborted before applying every fix because
     /// the call's deadline expired. `partial_lint` is the
     /// `LintResult` that the lint pass produced before the abort —
@@ -261,7 +262,7 @@ pub enum EngineError {
     /// Carries the lint result by value (not boxed) because the
     /// happy path returns `Ok(FixResult)` and the size penalty on
     /// the error variant is paid only on the cold path.
-    DeadlineExceeded { partial_lint: LintResult },
+    DeadlineExceeded { partial_lint: LintResult<S> },
     /// `fix_with_options` rejected the per-call confidence
     /// threshold override. Wraps the existing standalone
     /// [`InvalidThreshold`] struct so `Engine::fix_with_threshold`
@@ -278,7 +279,7 @@ pub enum EngineError {
     SignatureRequired,
 }
 
-impl std::fmt::Display for EngineError {
+impl<S: MarkingScheme> std::fmt::Display for EngineError<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DeadlineExceeded { partial_lint } => write!(
@@ -295,7 +296,7 @@ impl std::fmt::Display for EngineError {
     }
 }
 
-impl std::error::Error for EngineError {
+impl<S: MarkingScheme + std::fmt::Debug> std::error::Error for EngineError<S> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             // `DeadlineExceeded` is not caused by an inner error — it
@@ -310,7 +311,7 @@ impl std::error::Error for EngineError {
     }
 }
 
-impl From<InvalidThreshold> for EngineError {
+impl<S: MarkingScheme> From<InvalidThreshold> for EngineError<S> {
     fn from(value: InvalidThreshold) -> Self {
         Self::InvalidThreshold(value)
     }
@@ -335,7 +336,7 @@ mod tests {
         // EngineError::SignatureRequired. Pin its Display string (the
         // CLI/server surface it to operators) and that it chains no
         // inner error (it is a policy condition, not a wrapped failure).
-        let err = EngineError::SignatureRequired;
+        let err = EngineError::<CapcoScheme>::SignatureRequired;
         let msg = err.to_string();
         assert!(
             msg.contains("require_signature") && msg.contains("signature"),
@@ -522,7 +523,7 @@ mod tests {
         // unwraps them at the boundary, so the user-visible string must
         // not drift between the two paths.
         let inner = InvalidThreshold(1.5);
-        let wrapped = EngineError::InvalidThreshold(InvalidThreshold(1.5));
+        let wrapped = EngineError::<CapcoScheme>::InvalidThreshold(InvalidThreshold(1.5));
         assert_eq!(inner.to_string(), wrapped.to_string());
     }
 
@@ -530,7 +531,7 @@ mod tests {
     fn invalid_threshold_display_renders_nan() {
         // The wrapped Display must still produce something meaningful for
         // NaN — the underlying impl uses `{}` on f32 which prints "NaN".
-        let err = EngineError::InvalidThreshold(InvalidThreshold(f32::NAN));
+        let err = EngineError::<CapcoScheme>::InvalidThreshold(InvalidThreshold(f32::NAN));
         let msg = err.to_string();
         assert!(msg.contains("NaN"), "got: {msg}");
     }
@@ -554,7 +555,7 @@ mod tests {
         // directly. The inner is the same `InvalidThreshold` struct
         // that `Engine::fix_with_threshold` returns directly to its
         // callers, so a chain walker sees a stable type.
-        let err = EngineError::InvalidThreshold(InvalidThreshold(2.0));
+        let err = EngineError::<CapcoScheme>::InvalidThreshold(InvalidThreshold(2.0));
         let as_error: &dyn std::error::Error = &err;
         let source = as_error.source().expect("InvalidThreshold has a source");
         // The inner Display matches the bare InvalidThreshold's Display.

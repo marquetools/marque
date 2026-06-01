@@ -356,7 +356,7 @@ fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
         RuleId::new("capco", "marking.deprecation.deprecated-dissem-control"),
     ];
     let failure_span = Span::new(0, 64);
-    let diag = super::build_r002_diagnostic(contributing, failure_span);
+    let diag = super::build_r002_diagnostic::<CapcoScheme>(contributing, failure_span);
 
     // The function returns a `Diagnostic<CapcoScheme>`; the type
     // system already forbids it from being an `AppliedFix`. The
@@ -394,7 +394,7 @@ fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
 fn build_r002_diagnostic_empty_contributors_uses_generic_message() {
     let contributing: SmallVec<[RuleId; 4]> = SmallVec::new();
     let failure_span = Span::new(0, 0);
-    let diag = super::build_r002_diagnostic(contributing, failure_span);
+    let diag = super::build_r002_diagnostic::<CapcoScheme>(contributing, failure_span);
 
     assert_eq!(diag.rule, super::R002_RULE_ID);
     assert!(diag.fix.is_none());

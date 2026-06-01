@@ -52,11 +52,11 @@ pub(super) fn spans_overlap(a: Span, b: Span) -> bool {
 /// the safe-code shape that satisfies Constitution `forbid(unsafe_code)`.
 /// On this hot path the allocation is one `Vec` with ≤32 `Diagnostic`
 /// clones — well below the interactive-latency budget at 10 KB.
-pub(super) fn apply_fr023_and_i18(
-    pass2_diags: &[&Diagnostic<CapcoScheme>],
+pub(super) fn apply_fr023_and_i18<S: MarkingScheme>(
+    pass2_diags: &[&Diagnostic<S>],
     pass1_applied_keys: &HashSet<(RuleId, Span)>,
-) -> Vec<Diagnostic<CapcoScheme>> {
-    let mut out: Vec<Diagnostic<CapcoScheme>> = Vec::with_capacity(pass2_diags.len());
+) -> Vec<Diagnostic<S>> {
+    let mut out: Vec<Diagnostic<S>> = Vec::with_capacity(pass2_diags.len());
     for &d in pass2_diags {
         // Drop diagnostics with the same (rule, span) as a
         // pass-1 promoted fix. The candidate_span is the marking-
@@ -102,8 +102,8 @@ pub(super) fn apply_fr023_and_i18(
 /// does not rely on that order for correctness, but a future
 /// containment-scan optimization could (e.g., `partition_point`
 /// against `start <= fix_span.start`).
-pub(super) fn find_containing_marking(
-    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+pub(super) fn find_containing_marking<S: MarkingScheme>(
+    parsed_markings: &[(Span, S::Marking)],
     fix_span: Span,
 ) -> Option<Span> {
     // Binary search: `parsed_markings` is sorted by `Span.start` ascending
@@ -141,10 +141,10 @@ pub(super) fn find_containing_marking(
 /// full-`Span`-equality lookup semantics exactly, and degrading
 /// gracefully to `None` in the (currently impossible by construction)
 /// degenerate case where two cache entries share a start.
-pub(super) fn lookup_marking(
-    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+pub(super) fn lookup_marking<S: MarkingScheme>(
+    parsed_markings: &[(Span, S::Marking)],
     span: Span,
-) -> Option<&marque_capco::CapcoMarking> {
+) -> Option<&S::Marking> {
     let idx = parsed_markings
         .binary_search_by_key(&span.start, |(s, _)| s.start)
         .ok()?;
@@ -181,7 +181,9 @@ pub(super) fn lookup_marking(
 /// Sorts `synthesized` **in place** and consumes each kept fix
 /// into the result vector. Allocates zero extra `SynthesizedFix`
 /// values — no intermediate reference vector, no per-element clone.
-pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix> {
+pub(super) fn sort_and_c1_dedup<S: MarkingScheme>(
+    mut synthesized: Vec<SynthesizedFix<S>>,
+) -> Vec<SynthesizedFix<S>> {
     synthesized.sort_by(|a, b| {
         b.span
             .end
@@ -190,7 +192,7 @@ pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<Syn
             .then(a.rule.cmp(&b.rule))
             .then(a.replacement.cmp(&b.replacement))
     });
-    let mut kept_fixes: Vec<SynthesizedFix> = Vec::with_capacity(synthesized.len());
+    let mut kept_fixes: Vec<SynthesizedFix<S>> = Vec::with_capacity(synthesized.len());
     let mut next_window_end: Option<usize> = None;
     for fix in synthesized {
         let fits = next_window_end.is_none_or(|boundary| fix.span.end <= boundary);
@@ -226,7 +228,10 @@ pub(super) fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<Syn
 /// targeted message in dev/CI, the slice panic provides a hard
 /// stop in release. Neither silently corrupts the buffer; a real
 /// overlap is observable in either build mode.
-pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> Vec<u8> {
+pub(super) fn splice_fixes_forward<S: MarkingScheme>(
+    source: &[u8],
+    fixes: &[SynthesizedFix<S>],
+) -> Vec<u8> {
     let extra: usize = fixes
         .iter()
         .map(|f| {
@@ -262,8 +267,8 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// by `candidate_span` (or `span` when `candidate_span` is unset), looks
 /// up each candidate's recognized marking in the `parsed_markings`
 /// cache populated by the lint phase, applies the group's intent batch
-/// via [`CapcoScheme::apply_intent`], and renders the resulting marking
-/// via [`CapcoScheme::render_item`] or [`CapcoScheme::render_summary`].
+/// via [`MarkingScheme::apply_intent`], and renders the resulting marking
+/// via [`MarkingScheme::render_item`] or [`MarkingScheme::render_summary`].
 /// The candidate's portion-vs-banner scope is inferred from the
 /// candidate bytes themselves: a portion is wrapped in `()`, a banner
 /// is not.
@@ -301,13 +306,13 @@ pub(super) fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> V
 /// `__engine_promote` moves it into
 /// `AppliedFixProposal::FixIntent(_)`. Original bytes are never
 /// copied into the audit record — Constitution V Principle V.
-pub(super) fn synthesize_fixes(
-    scheme: &CapcoScheme,
-    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+pub(super) fn synthesize_fixes<S: MarkingScheme>(
+    scheme: &S,
+    parsed_markings: &[(Span, S::Marking)],
     source: &[u8],
-    diagnostics: &[&marque_rules::Diagnostic<CapcoScheme>],
+    diagnostics: &[&marque_rules::Diagnostic<S>],
     threshold: f32,
-) -> Vec<SynthesizedFix> {
+) -> Vec<SynthesizedFix<S>> {
     use std::collections::BTreeMap;
 
     // Group diagnostics by candidate_span (falls back to span when
@@ -315,10 +320,8 @@ pub(super) fn synthesize_fixes(
     // marking apply atomically. BTreeMap keyed on (start, end) so
     // iteration order is deterministic — Span itself doesn't impl Ord.
     #[allow(clippy::type_complexity)]
-    let mut groups: BTreeMap<
-        (usize, usize),
-        (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
-    > = BTreeMap::new();
+    let mut groups: BTreeMap<(usize, usize), (Span, Vec<&marque_rules::Diagnostic<S>>)> =
+        BTreeMap::new();
     for &d in diagnostics {
         let Some(intent) = d.fix.as_ref() else {
             continue;
@@ -350,7 +353,7 @@ pub(super) fn synthesize_fixes(
         return Vec::new();
     }
 
-    let mut out: Vec<SynthesizedFix> = Vec::with_capacity(groups.len());
+    let mut out: Vec<SynthesizedFix<S>> = Vec::with_capacity(groups.len());
 
     for (_key, (cspan, mut group_diags)) in groups {
         let start = cspan.start.min(source.len());
@@ -364,7 +367,7 @@ pub(super) fn synthesize_fixes(
         // candidate. The cache is populated by
         // `lint_with_options_internal` so the marking here is
         // byte-identical to the one the rule fired against.
-        let Some(marking) = lookup_marking(parsed_markings, cspan) else {
+        let Some(marking) = lookup_marking::<S>(parsed_markings, cspan) else {
             tracing::warn!(
                 target: "marque_engine::fix_synth",
                 start = start,
@@ -380,7 +383,7 @@ pub(super) fn synthesize_fixes(
         // contributes one intent; the scheme applies them in slice
         // order. `apply_intent` is required to be commutative within a
         // batch (trait doc), so slice order is not load-bearing.
-        let intents: Vec<marque_scheme::ReplacementIntent<CapcoScheme>> = group_diags
+        let intents: Vec<marque_scheme::ReplacementIntent<S>> = group_diags
             .iter()
             .filter_map(|d| d.fix.as_ref().map(|i| i.replacement.clone()))
             .collect();
@@ -543,10 +546,10 @@ pub(super) fn synthesize_fixes(
 /// false-positive audit record claiming a fix was applied when none
 /// was. The audit log integrity invariant (Constitution V Principle V)
 /// forbids it.
-pub(super) fn build_r002_diagnostic(
+pub(super) fn build_r002_diagnostic<S: MarkingScheme>(
     contributing_rule_ids: SmallVec<[RuleId; 4]>,
     failure_span: Span,
-) -> Diagnostic<CapcoScheme> {
+) -> Diagnostic<S> {
     // Typed `Message` per `MessageTemplate::ReparseFailed`.
     // `MessageArgs.contributing_rule_ids` carries the closed-list of
     // pass-1 RuleIds that contributed to the failure — `RuleId` is on

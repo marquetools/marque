@@ -2,14 +2,21 @@ use super::fix_impl::Pass1Result;
 use super::synthesis::{span_is_within_marking, splice_fixes_forward};
 use super::*;
 
-// The fix path threads `&Engine` into the concrete `TwoPassFixer<'engine>`
-// helper struct (`fix.rs` / `fix_impl.rs`), which holds `engine:
-// &'engine Engine` at the default recognizer. Keeping this block pinned to
-// `R = EngineRecognizer` avoids threading `R` through the entire two-pass
-// fixer subsystem; the fix path re-lints through the engine's own
-// (`R`-generic) pipeline methods, which a concrete `EngineRecognizer`
-// satisfies.
-impl Engine<CapcoScheme, EngineRecognizer> {
+// The fix path threads `&Engine<S, R>` into the `TwoPassFixer<'engine, S, R>`
+// helper struct (`fix.rs` / `fix_impl.rs`) and re-lints through the engine's
+// own generic pipeline methods. It carries the same bound set as the lint
+// block because it re-lints through it: a scheme that reaches the fix path MUST
+// override the `unimplemented!()`-default `MarkingScheme` accessors
+// (`apply_intent`, `render_item`/`render_summary`, `canonical_from_marking`,
+// `category_of`) and the `ConstraintBridge` hooks. Today only `CapcoScheme`
+// does, but the surface is generic so a second scheme drops in without
+// touching the fixer.
+impl<S, R> Engine<S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone + Default + PartialEq,
+    R: Recognizer<S>,
+{
     /// Lint and apply fixes. Returns fixed source and audit log.
     ///
     /// Fix application order is `(span.end DESC, span.start DESC,
@@ -37,14 +44,25 @@ impl Engine<CapcoScheme, EngineRecognizer> {
     /// carry no deadline so `EngineError::DeadlineExceeded` cannot
     /// fire, and the config threshold is pre-validated at load time so
     /// `EngineError::InvalidThreshold` cannot fire.
-    pub fn fix(&self, source: &[u8], mode: FixMode) -> FixResult {
-        self.fix_inner(
+    pub fn fix(&self, source: &[u8], mode: FixMode) -> FixResult<S> {
+        // `match` rather than `.expect()`: `Result::expect` requires
+        // `EngineError<S>: Debug`, which would force an `S: Debug` impl
+        // bound this method does not otherwise need. The default
+        // options carry no deadline (so `DeadlineExceeded` cannot fire)
+        // and the config threshold is pre-validated at load time (so
+        // `InvalidThreshold` cannot fire); `require_signature` is
+        // bypassed because this calls `fix_inner` directly.
+        match self.fix_inner(
             source,
             mode,
             self.config.confidence_threshold(),
             &FixOptions::default(),
-        )
-        .expect("fix() default options cannot fail: no deadline + pre-validated config threshold")
+        ) {
+            Ok(result) => result,
+            Err(_) => unreachable!(
+                "fix() default options cannot fail: no deadline + pre-validated config threshold"
+            ),
+        }
     }
 
     /// Lint and apply fixes using an optional per-call confidence threshold.
@@ -68,7 +86,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         source: &[u8],
         mode: FixMode,
         threshold_override: Option<f32>,
-    ) -> Result<FixResult, InvalidThreshold> {
+    ) -> Result<FixResult<S>, InvalidThreshold> {
         let threshold = match threshold_override {
             Some(value) => {
                 if !(0.0..=1.0).contains(&value) || value.is_nan() {
@@ -125,7 +143,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         source: &[u8],
         mode: FixMode,
         opts: &FixOptions,
-    ) -> Result<FixResult, EngineError> {
+    ) -> Result<FixResult<S>, EngineError<S>> {
         // Signature gate (issue #399). In a high-integrity deployment
         // the operator sets `require_signature` in `.marque.toml`; the
         // engine then refuses to apply fixes unless the caller attaches
@@ -155,7 +173,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         mode: FixMode,
         threshold: f32,
         opts: &FixOptions,
-    ) -> Result<FixResult, EngineError> {
+    ) -> Result<FixResult<S>, EngineError<S>> {
         // Resolve the per-call classifier identity: a `FixOptions`
         // override (forwarded from a server request / CLI flag / WASM
         // config) beats the engine `Config`. Resolved once here so the
@@ -211,15 +229,11 @@ impl Engine<CapcoScheme, EngineRecognizer> {
     pub(super) fn apply_text_corrections(
         &self,
         source: &[u8],
-        lint: &LintResult,
+        lint: &LintResult<S>,
         threshold: f32,
         mode: FixMode,
         classifier_id: Option<Arc<str>>,
-    ) -> (
-        Vec<u8>,
-        Vec<Diagnostic<CapcoScheme>>,
-        Vec<AuditLine<CapcoScheme>>,
-    ) {
+    ) -> (Vec<u8>, Vec<Diagnostic<S>>, Vec<AuditLine<S>>) {
         // Mirror `fix_inner`'s suggest-channel exclusion: a
         // text-correction diagnostic that the lint post-pass rewrote to
         // `Severity::Suggest` (because its confidence fell below
@@ -284,7 +298,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         let kept_keys: HashSet<(RuleId, Span)> = kept.iter().map(|f| (f.rule, f.span)).collect();
         // Resurrect the diagnostics for the dropped fixes so they can
         // surface via `remaining_diagnostics`.
-        let dropped_diags: Vec<Diagnostic<CapcoScheme>> = lint
+        let dropped_diags: Vec<Diagnostic<S>> = lint
             .diagnostics
             .iter()
             .filter(|d| {
@@ -308,7 +322,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         // SERCET→SECRET). The final output for DryRun returns the original
         // source in fix_inner, not this intermediate buffer.
         let mut buf = source.to_vec();
-        let mut audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(kept.len());
+        let mut audit_lines: Vec<AuditLine<S>> = Vec::with_capacity(kept.len());
         for fix in kept {
             // Hash pre-correction bytes BEFORE the splice (the audit
             // record carries only the digest, never the bytes).
@@ -350,8 +364,12 @@ impl Engine<CapcoScheme, EngineRecognizer> {
     }
 }
 
-pub(super) struct TwoPassFixer<'engine> {
-    pub(super) engine: &'engine Engine<CapcoScheme, EngineRecognizer>,
+pub(super) struct TwoPassFixer<'engine, S = CapcoScheme, R = EngineRecognizer>
+where
+    S: MarkingScheme,
+    R: Recognizer<S>,
+{
+    pub(super) engine: &'engine Engine<S, R>,
     pub(super) source: &'engine [u8],
     pub(super) mode: FixMode,
     pub(super) threshold: f32,
@@ -384,10 +402,10 @@ pub(super) struct TwoPassFixer<'engine> {
 /// Carries the post-pass output buffer + the audit-line stream + the
 /// `(rule_id, span)` keys of applied fixes. `audit_lines` is the sole
 /// audit channel.
-pub(super) type AppliedTuple = (
+pub(super) type AppliedTuple<S = CapcoScheme> = (
     Zeroizing<Vec<u8>>,
     HashSet<(RuleId, Span)>,
-    Vec<AuditLine<CapcoScheme>>,
+    Vec<AuditLine<S>>,
 );
 
 /// Move a [`Zeroizing<Vec<u8>>`] into a [`SecretSlice<u8>`] without
@@ -434,7 +452,7 @@ pub(super) fn into_secret_slice(z: Zeroizing<Vec<u8>>) -> SecretSlice<u8> {
 ///
 /// One entry per marking whose span overlaps a pass-1 fix. The
 /// engine builds the cache before the pass-1 splice so the
-/// `CanonicalAttrs` snapshot reflects the bytes the rule originally
+/// `S::Canonical` snapshot reflects the bytes the rule originally
 /// matched against. Inline-4 matches the small `Phase::Localized` rule
 /// count (at most one fix per Localized rule per marking; the typical
 /// document
@@ -452,10 +470,12 @@ pub(super) fn into_secret_slice(z: Zeroizing<Vec<u8>>) -> SecretSlice<u8> {
 /// pre-pass-1 marking is the unique cache entry whose pre-splice
 /// span contained the same source bytes.
 ///
-/// Inline-4 storage is 4 × `sizeof(Span) + sizeof(CanonicalAttrs)`
-/// ≈ 4 × (16 + 112) = ~512 B on the stack. SmallVec spill to heap
-/// is acceptable when documents exceed the cap (rust pre-flight §2).
-pub(super) type PrePass1Cache = SmallVec<[(Span, marque_ism::CanonicalAttrs); 4]>;
+/// Inline-4 storage is 4 × `sizeof(Span) + sizeof(S::Canonical)`
+/// (≈ 4 × (16 + 112) = ~512 B on the stack for `CapcoScheme`'s
+/// `CanonicalAttrs`). SmallVec spill to heap is acceptable when
+/// documents exceed the cap (rust pre-flight §2).
+pub(super) type PrePass1Cache<S = CapcoScheme> =
+    SmallVec<[(Span, <S as MarkingScheme>::Canonical); 4]>;
 
 /// Look up the pre-pass-1 attrs for a marking whose span contains
 /// `query_span`. Linear scan over the ≤4-entry cache; the call is
@@ -464,7 +484,7 @@ pub(super) type PrePass1Cache = SmallVec<[(Span, marque_ism::CanonicalAttrs); 4]
 ///
 /// Returns `Some(&attrs)` when a cache entry's marking span contains
 /// the query span; `None` otherwise. The CONTENT of the entry
-/// (`CanonicalAttrs`) is borrowed into `RuleContext.pre_pass_1_attrs`
+/// (`S::Canonical`) is borrowed into `RuleContext.pre_pass_1_attrs`
 /// as the architectural two-pass-reshape signal — no current rule
 /// reads it, but the field stays plumbed for future consumers
 /// (D-7.22).
@@ -483,17 +503,17 @@ pub(super) fn pre_pass_1_attrs_for_span<S: MarkingScheme>(
 }
 
 /// Pass-1 diagnostic-reference partition.
-pub(super) type Pass1DiagRefs<'a> = SmallVec<[&'a Diagnostic<CapcoScheme>; 4]>;
+pub(super) type Pass1DiagRefs<'a, S = CapcoScheme> = SmallVec<[&'a Diagnostic<S>; 4]>;
 
 /// Pass-2 diagnostic-reference partition.
-pub(super) type Pass2DiagRefs<'a> = SmallVec<[&'a Diagnostic<CapcoScheme>; 32]>;
+pub(super) type Pass2DiagRefs<'a, S = CapcoScheme> = SmallVec<[&'a Diagnostic<S>; 32]>;
 
-pub(super) fn partition_diags_by_phase<'a>(
-    diagnostics: &'a [Diagnostic<CapcoScheme>],
+pub(super) fn partition_diags_by_phase<'a, S: MarkingScheme>(
+    diagnostics: &'a [Diagnostic<S>],
     localized_ids: &HashSet<&'static str>,
-) -> (Pass1DiagRefs<'a>, Pass2DiagRefs<'a>) {
-    let mut pass1_diags: Pass1DiagRefs<'a> = SmallVec::new();
-    let mut pass2_diags: Pass2DiagRefs<'a> = SmallVec::new();
+) -> (Pass1DiagRefs<'a, S>, Pass2DiagRefs<'a, S>) {
+    let mut pass1_diags: Pass1DiagRefs<'a, S> = SmallVec::new();
+    let mut pass2_diags: Pass2DiagRefs<'a, S> = SmallVec::new();
     for d in diagnostics {
         // text_correction diagnostics flow through pass-0 only;
         // they are excluded from both pass-1 and pass-2 splicing
@@ -518,13 +538,18 @@ pub(super) fn engine_promotion_token() -> EnginePromotionToken {
     EnginePromotionToken::__engine_construct()
 }
 
-impl<'engine> TwoPassFixer<'engine> {
+impl<'engine, S, R> TwoPassFixer<'engine, S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone + Default + PartialEq,
+    R: Recognizer<S>,
+{
     pub(super) fn apply_kept_fixes(
         &self,
         source_buf: &[u8],
-        kept_fixes: Vec<SynthesizedFix>,
-        lint: &LintResult,
-    ) -> Result<AppliedTuple, EngineError> {
+        kept_fixes: Vec<SynthesizedFix<S>>,
+        lint: &LintResult<S>,
+    ) -> Result<AppliedTuple<S>, EngineError<S>> {
         // Resolved per-call identity (FixOptions override beats Config);
         // see `Engine::fix_inner`.
         let classifier_id: Option<std::sync::Arc<str>> = self.classifier_id.clone();
@@ -535,7 +560,7 @@ impl<'engine> TwoPassFixer<'engine> {
         // `marque-1.0` audit-line stream — the sole audit-output
         // channel post-cutover. The CLI / WASM renderers project
         // each line to its NDJSON record type.
-        let mut audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(kept_fixes.len());
+        let mut audit_lines: Vec<AuditLine<S>> = Vec::with_capacity(kept_fixes.len());
 
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded {
@@ -547,14 +572,13 @@ impl<'engine> TwoPassFixer<'engine> {
         // the post-pass-1 coordinate space to dispatch correctly even
         // in DryRun. Wrap in `Zeroizing` so the scratch bytes wipe on
         // drop per Constitution Principle II.
-        let post_buffer = Zeroizing::new(splice_fixes_forward(source_buf, &kept_fixes));
+        let post_buffer = Zeroizing::new(splice_fixes_forward::<S>(source_buf, &kept_fixes));
 
         // EngineConstructor mints the open-vocab Canonical<S> values
         // for v2 audit records. The sealed constructor name + the
         // sealed `CanonicalConstructor` supertrait keep this path
         // engine-only per `marque-scheme::canonical` doc comment.
-        let constructor: EngineConstructor<CapcoScheme> =
-            EngineConstructor::<CapcoScheme>::__engine_construct();
+        let constructor: EngineConstructor<S> = EngineConstructor::<S>::__engine_construct();
 
         for fix in kept_fixes {
             if deadline_expired(self.deadline) {
@@ -596,7 +620,7 @@ impl<'engine> TwoPassFixer<'engine> {
             //   `Scope::Document`. Routes to
             //   [`CategoryId::MARKING`] (the reserved multi-category
             //   sentinel; projects to `"Marking"` in the JSON).
-            let scheme_ref: &CapcoScheme = &self.engine.scheme;
+            let scheme_ref: &S = &self.engine.scheme;
             let category_id: CategoryId = match &fix.intent.replacement {
                 marque_scheme::ReplacementIntent::FactAdd { token, .. } => {
                     scheme_ref.category_of(token).unwrap_or(CategoryId::MARKING)
@@ -611,7 +635,7 @@ impl<'engine> TwoPassFixer<'engine> {
                 // scheme's `category_of` mapping is extended.
                 _ => CategoryId::MARKING,
             };
-            let canonical: Canonical<CapcoScheme> = constructor.build_open_vocab(
+            let canonical: Canonical<S> = constructor.build_open_vocab(
                 category_id,
                 Box::from(fix.replacement.as_ref()),
                 fix.scope,
@@ -620,7 +644,7 @@ impl<'engine> TwoPassFixer<'engine> {
             // v2 promote — AppliedFix (marque-1.0 shape). The
             // constructor hashes both `original_bytes` and
             // `canonical.bytes()` inline per PM-D-6.
-            let v2_applied = marque_rules::audit::AppliedFix::<CapcoScheme>::__engine_promote(
+            let v2_applied = marque_rules::audit::AppliedFix::<S>::__engine_promote(
                 fix.rule,
                 fix.severity,
                 fix.span,
@@ -646,7 +670,7 @@ impl<'engine> TwoPassFixer<'engine> {
     /// bump.
     pub(super) fn contributing_pass1_rule_ids(
         &self,
-        pass1_audit_lines: &[AuditLine<CapcoScheme>],
+        pass1_audit_lines: &[AuditLine<S>],
     ) -> SmallVec<[RuleId; 4]> {
         let mut seen: HashSet<RuleId> = HashSet::new();
         let mut ids: Vec<RuleId> = Vec::new();
@@ -677,17 +701,17 @@ impl<'engine> TwoPassFixer<'engine> {
     /// caller after destructuring, so move-semantics is appropriate.
     pub(super) fn assemble_r002_result(
         &self,
-        pass0_audit_lines: Vec<AuditLine<CapcoScheme>>,
-        pass0_dropped_diags: Vec<Diagnostic<CapcoScheme>>,
-        pass1: Pass1Result,
-        lint: LintResult,
-        r002: Diagnostic<CapcoScheme>,
-    ) -> FixResult {
+        pass0_audit_lines: Vec<AuditLine<S>>,
+        pass0_dropped_diags: Vec<Diagnostic<S>>,
+        pass1: Pass1Result<S>,
+        lint: LintResult<S>,
+        r002: Diagnostic<S>,
+    ) -> FixResult<S> {
         // Audit-line merge. R002 is a remaining-diagnostic synthetic —
         // it does NOT contribute an `AuditLine::AppliedFix` entry; only
         // promoted fixes do. The
         // R002 itself surfaces via `remaining_diagnostics` below.
-        let mut all_audit_lines: Vec<AuditLine<CapcoScheme>> =
+        let mut all_audit_lines: Vec<AuditLine<S>> =
             Vec::with_capacity(pass0_audit_lines.len() + pass1.audit_lines.len());
         all_audit_lines.extend(pass0_audit_lines);
         all_audit_lines.extend(pass1.audit_lines);
@@ -706,7 +730,7 @@ impl<'engine> TwoPassFixer<'engine> {
             }
         }
 
-        let mut remaining_diagnostics: Vec<Diagnostic<CapcoScheme>> = lint
+        let mut remaining_diagnostics: Vec<Diagnostic<S>> = lint
             .diagnostics
             .into_iter()
             .filter(|d| {
