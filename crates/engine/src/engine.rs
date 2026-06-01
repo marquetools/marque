@@ -710,21 +710,36 @@ impl marque_scheme::DecisionSink for StepRemappingSink<'_> {
 
 /// The engine's default recognizer dispatch enum.
 ///
+/// The engine's default recognizer — an opaque wrapper over the private
+/// dispatch enum.
+///
 /// Public because it is the default for the `Engine<CapcoScheme, R>`
 /// recognizer type parameter and the second argument of the
 /// [`CapcoEngine`] alias — a private default on a public struct's type
 /// parameter would leak a private type through the public API (E0446).
 /// It is only a valid `R` when `S = CapcoScheme`, since it only
-/// implements `Recognizer<CapcoScheme>`. Its variants stay an
-/// implementation detail: `Strict` / `StrictOrDecoder` keep default
-/// dispatch monomorphized, and `Dyn` is the trait-object escape hatch
-/// behind [`Engine::with_recognizer`]. Constructed only by the engine;
-/// callers select a variant through the builder methods, not by naming
-/// it — `#[non_exhaustive]` enforces that contract across the crate
-/// boundary.
+/// implements `Recognizer<CapcoScheme>`.
+///
+/// The dispatch variants (strict, strict-first/decoder-fallback,
+/// trait-object escape hatch) are deliberately NOT part of the public
+/// surface: the inner enum is private, so downstream code can name the
+/// type (to spell `Engine<CapcoScheme, EngineRecognizer>` or use the
+/// [`CapcoEngine`] alias) but cannot construct or match on it. Callers
+/// select a recognizer through the engine builders
+/// ([`Engine::with_recognizer`] for a trait-object recognizer,
+/// [`Engine::with_strict_recognizer`] for strict-only); the default
+/// ([`Engine::new`]) is strict-first with a decoder fallback. Wrapping a
+/// private enum is what makes that contract real — `#[non_exhaustive]`
+/// alone would still leave the variants constructable.
 #[derive(Clone)]
-#[non_exhaustive]
-pub enum EngineRecognizer {
+pub struct EngineRecognizer(EngineRecognizerKind);
+
+/// Private dispatch enum behind [`EngineRecognizer`]. Keeping the
+/// strict-only and strict-first/decoder arms as concrete variants lets
+/// default dispatch stay monomorphized; `Dyn` is the trait-object escape
+/// hatch.
+#[derive(Clone)]
+enum EngineRecognizerKind {
     /// Fully monomorphized strict-only recognizer path.
     Strict(StrictRecognizer),
     /// Fully monomorphized strict-first/decoder-fallback recognizer path
@@ -735,9 +750,26 @@ pub enum EngineRecognizer {
     Dyn(Arc<dyn Recognizer<CapcoScheme>>),
 }
 
+impl EngineRecognizer {
+    /// Strict-only dispatch. Backs [`Engine::with_strict_recognizer`].
+    pub(crate) fn strict() -> Self {
+        Self(EngineRecognizerKind::Strict(StrictRecognizer::new()))
+    }
+
+    /// Trait-object dispatch over a caller-supplied recognizer. Backs
+    /// [`Engine::with_recognizer`].
+    pub(crate) fn dynamic(recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
+        Self(EngineRecognizerKind::Dyn(recognizer))
+    }
+}
+
 impl Default for EngineRecognizer {
+    /// Strict-first with a decoder fallback — the dispatch installed by
+    /// [`Engine::new`].
     fn default() -> Self {
-        Self::StrictOrDecoder(StrictOrDecoderRecognizer::new())
+        Self(EngineRecognizerKind::StrictOrDecoder(
+            StrictOrDecoderRecognizer::new(),
+        ))
     }
 }
 
@@ -749,10 +781,10 @@ impl Recognizer<CapcoScheme> for EngineRecognizer {
         scheme: &CapcoScheme,
         cx: &ParseContext,
     ) -> Parsed<marque_capco::CapcoMarking> {
-        match self {
-            Self::Strict(r) => r.recognize(bytes, offset, scheme, cx),
-            Self::StrictOrDecoder(r) => r.recognize(bytes, offset, scheme, cx),
-            Self::Dyn(r) => r.recognize(bytes, offset, scheme, cx),
+        match &self.0 {
+            EngineRecognizerKind::Strict(r) => r.recognize(bytes, offset, scheme, cx),
+            EngineRecognizerKind::StrictOrDecoder(r) => r.recognize(bytes, offset, scheme, cx),
+            EngineRecognizerKind::Dyn(r) => r.recognize(bytes, offset, scheme, cx),
         }
     }
 }

@@ -235,7 +235,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
     /// ```
     #[must_use = "with_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_recognizer(mut self, recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
-        self.recognizer = EngineRecognizer::Dyn(recognizer);
+        self.recognizer = EngineRecognizer::dynamic(recognizer);
         self
     }
 
@@ -253,7 +253,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
     /// ```
     #[must_use = "with_strict_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_strict_recognizer(mut self) -> Self {
-        self.recognizer = EngineRecognizer::Strict(StrictRecognizer::new());
+        self.recognizer = EngineRecognizer::strict();
         self
     }
 
