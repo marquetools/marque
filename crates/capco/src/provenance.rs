@@ -36,7 +36,17 @@
 //! `FixSource::DecoderPosterior`, locking the audit-record provenance
 //! per the data-model spec.
 
-use marque_rules::{FeatureContribution, FixSource};
+use marque_ism::MarkingType;
+use marque_rules::recognition::FeatureId;
+use marque_rules::{
+    Diagnostic, FeatureContribution, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    Recognition, RuleId, Severity, SmallVec,
+};
+use marque_scheme::{
+    Citation, ReplacementIntent, SectionLetter, Span, capco, fix_intent::RecanonScope,
+};
+
+use crate::CapcoScheme;
 
 /// Provenance trace recorded when a probabilistic recognizer (the
 /// probabilistic decoder) produces a marking. Strict-path recognizers leave
@@ -152,6 +162,197 @@ impl DecoderProvenance {
             _ => SOLO_RECOGNITION,
         }
     }
+}
+
+/// Synthetic rule identifier attached to decoder-path
+/// `FixSource::DecoderPosterior` diagnostics. This identifier lets the
+/// recognition-layer rewrite carry a real `RuleId` (rules and fixes
+/// share that requirement) without colliding with any CAPCO rule. The
+/// `"engine"` scheme is the reserved namespace for engine-minted
+/// diagnostics, and the predicate id describes the rewrite in plain
+/// English. (The constant and its synthesis live here, in marque-capco,
+/// because the diagnostic is built from `DecoderProvenance` — a CAPCO
+/// type — and is `Diagnostic<CapcoScheme>`, neither nameable by the
+/// generic engine. The recognition path calls [`build_decoder_diagnostic`]
+/// directly today; the
+/// [`ConstraintBridge::recognition_outcome`](marque_rules::ConstraintBridge::recognition_outcome)
+/// hook is the seam through which a generic pipeline reaches the same
+/// synthesis. The `"engine"` scheme string keeps the audit wire-form
+/// unchanged.)
+const DECODER_RULE_ID: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
+
+/// Citation attached to `R001 decoder-recognition` diagnostics. Points
+/// at CAPCO-2016 §A.6 — the canonical-marking-form section the decoder
+/// is enforcing. Per Constitution VIII the citation is verifiable: §A.6
+/// is "(U) Formatting" beginning on page 15 (table of contents,
+/// `crates/capco/docs/CAPCO-2016.md` line 49) and contains the
+/// canonical syntax for portion / banner / CAB markings the decoder
+/// canonicalizes input toward.
+const DECODER_CITATION_TYPED: Citation = capco(SectionLetter::A, 6, 15);
+
+/// Cap applied to `recognition` for the position-aware classification
+/// heuristic (issue #133) — pinned at the default
+/// `confidence_threshold` (0.95) so a solo heuristic candidate lands
+/// at-threshold rather than saturating above it. Pre-PR-B this cap
+/// lived on the (now-retired) `Recognition::rule` axis as
+/// `HEURISTIC_RULE_AXIS_CAP`; PR B collapsed the two axes into one and
+/// the cap moved onto `recognition` directly. The empirical corpus
+/// measurement justifying the `0.95` value (≥99.4% confidence per
+/// trigger) is unchanged.
+pub const HEURISTIC_RECOGNITION_CAP: f32 = 0.95;
+
+/// Build the synthetic `R001 decoder-recognition` diagnostic emitted
+/// when a recognizer returned a marking carrying [`DecoderProvenance`].
+/// Returns `None` when the original or canonical bytes are not valid
+/// UTF-8 — `FixProposal` carries `Box<str>` for both `original` and
+/// `replacement`, so we cannot construct the proposal without UTF-8
+/// validity. CAPCO markings are ASCII by spec (CAPCO-2016 §A.6); a
+/// non-UTF-8 result here would mean the canonicalization pass produced
+/// something the strict parser shouldn't have accepted, which is a
+/// separate bug to surface — silently dropping the synthetic diagnostic
+/// is the conservative move. Also returns `None` for a no-op rewrite
+/// (canonicalization preserved bytes byte-for-byte) — a degenerate
+/// audit record that carries no information.
+///
+/// Lives in marque-capco (rather than the engine) because it reads
+/// scheme-private [`DecoderProvenance`] and produces a
+/// `Diagnostic<CapcoScheme>` — neither nameable by the generic engine.
+/// The recognition path calls this function directly; the
+/// [`ConstraintBridge::recognition_outcome`](marque_rules::ConstraintBridge::recognition_outcome)
+/// hook is the seam through which a generic pipeline reaches the same
+/// synthesis.
+///
+/// # Audit-shape contract (Constitution V Principle V)
+///
+/// The diagnostic's `message` MUST NOT carry verbatim input bytes —
+/// only token canonicals, span offsets, and digests/posterior scalars
+/// are permitted in audit output. The "before" form is omitted from
+/// the message; the span tells the audit consumer *where* the fix
+/// landed and the structural `FixIntent` carries *what* shape the
+/// recognition became (a `Recanonicalize { scope: RecanonScope::Portion }`
+/// emission for R001).
+///
+/// The audit record's `AppliedFix.proposal` carries no document bytes
+/// for the decoder path: the `AppliedFixProposal::FixIntent(_)` variant
+/// carries the structural intent only. The lint-side
+/// `Diagnostic.recognized_canonical` field DOES carry the canonical
+/// bytes (as a `SecretBox<[u8]>` that wipes on drop, Constitution II) so
+/// user-facing renderers can show the recognized form in `check` output
+/// without running `fix`; the asymmetry is intentional and pinned by
+/// `lint_carries_recognized_canonical_fix_audit_does_not`.
+///
+/// The fix's [`Recognition`] is populated entirely from the decoder's
+/// provenance trace: `recognition` derives from `runner_up_ratio` via
+/// [`DecoderProvenance::recognition_score`] (strictly `< 1.0` so audit
+/// consumers distinguish strict from decoder provenance by a single
+/// field comparison; the position-aware classification heuristic caps it
+/// at [`HEURISTIC_RECOGNITION_CAP`]); `runner_up_ratio` and `features`
+/// thread through verbatim. When `corpus_override_active`, an extra
+/// [`FeatureId::CorpusOverrideInEffect`] contribution with `delta = 0.0`
+/// is appended as an audit-trail marker (the zero delta is load-bearing:
+/// the override surface is wired end-to-end without yet substituting
+/// override priors into decoder scoring).
+pub fn build_decoder_diagnostic(
+    span: Span,
+    original_bytes: &[u8],
+    provenance: &DecoderProvenance,
+    _kind: MarkingType,
+    corpus_override_active: bool,
+) -> Option<Diagnostic<CapcoScheme>> {
+    let original = std::str::from_utf8(original_bytes).ok()?;
+    let replacement = std::str::from_utf8(&provenance.canonical_bytes).ok()?;
+
+    // No-op rewrite (canonicalization preserved bytes byte-for-byte) is
+    // not informative and would produce a degenerate audit record; skip.
+    if original == replacement {
+        return None;
+    }
+
+    // `provenance.features` is a `Box<[FeatureContribution]>`; copy into
+    // a `SmallVec<[…; 4]>` matching `Recognition::features` so the inline-4
+    // case stays heap-free even after the optional override-marker push.
+    let mut features: SmallVec<[FeatureContribution; 4]> =
+        SmallVec::from_slice(&provenance.features);
+    if corpus_override_active {
+        features.push(FeatureContribution {
+            id: FeatureId::CorpusOverrideInEffect,
+            delta: 0.0,
+        });
+    }
+
+    // Dispatch on the decoder's `fix_source`. Standard vocab-based
+    // recognition emits at `Severity::Fix` with the decoder's full
+    // posterior on `recognition` (engine applies whenever
+    // `recognition >= confidence_threshold`). The position-aware
+    // classification heuristic (issue #133) emits at `Severity::Warn`
+    // (always-visible in `--check`, non-zero exit code) with
+    // `recognition` capped at [`HEURISTIC_RECOGNITION_CAP = 0.95`] —
+    // matching the default `confidence_threshold` so a single-candidate
+    // heuristic fix lands at-threshold rather than saturating above it.
+    let raw_recognition = provenance.recognition_score();
+    let (severity, recognition, fix_source) = match provenance.fix_source {
+        FixSource::DecoderClassificationHeuristic => (
+            Severity::Warn,
+            raw_recognition.min(HEURISTIC_RECOGNITION_CAP),
+            FixSource::DecoderClassificationHeuristic,
+        ),
+        // All non-heuristic decoder paths use the existing posterior
+        // shape. Strict-source variants (BuiltinRule, CorrectionsMap,
+        // MigrationTable) do not flow through this builder — they come
+        // from rule-pipeline emissions, not the decoder — so routing
+        // them to `DecoderPosterior` here is a defensive default that
+        // preserves the existing strict-decoder shape for any future
+        // fix-source variant.
+        _ => (Severity::Fix, raw_recognition, FixSource::DecoderPosterior),
+    };
+
+    let confidence = Recognition {
+        recognition,
+        runner_up_ratio: provenance.runner_up_ratio,
+        features,
+    };
+    let rule = DECODER_RULE_ID;
+    // Audit-shape contract: the decoder-path engine-minted record
+    // carries no document bytes (Constitution V Principle V). The
+    // `original` / `replacement` bindings above served the UTF-8-validity
+    // and no-op-rewrite gates only — both have already run. The canonical
+    // bytes feeding `recognized_canonical` come directly from
+    // `provenance.canonical_bytes`, wrapped in `SecretBox<[u8]>` — the
+    // secret wipes on drop and every readout goes through
+    // `expose_secret()` (Constitution II).
+    let _ = (original, replacement);
+    let recognized_canonical = Some(secrecy::SecretBox::new(Box::from(
+        provenance.canonical_bytes.as_ref(),
+    )));
+    let intent = FixIntent::<CapcoScheme> {
+        replacement: ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Portion,
+            prior: None,
+        },
+        confidence,
+        feature_ids: SmallVec::new(),
+        message: Message::new(MessageTemplate::DecoderRecognized, MessageArgs::default()),
+        source: fix_source,
+        migration_ref: None,
+    };
+    Some(
+        Diagnostic::with_fix_at_span(
+            rule,
+            severity,
+            span,
+            span,
+            Message::new(
+                MessageTemplate::DecoderRecognized,
+                MessageArgs {
+                    span: Some(span),
+                    ..MessageArgs::default()
+                },
+            ),
+            DECODER_CITATION_TYPED,
+            intent,
+        )
+        .with_recognized_canonical(recognized_canonical),
+    )
 }
 
 #[cfg(test)]

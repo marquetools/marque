@@ -516,6 +516,27 @@ impl MarkingScheme for CapcoScheme {
         CapcoMarking::from(canonical)
     }
 
+    /// Project a [`CapcoMarking`] back into canonical space: clone out
+    /// the canonical attrs at tuple-position 0, dropping the optional
+    /// decoder provenance side-channel at position 1 (provenance is
+    /// recognition metadata, not canonical state). The inverse of
+    /// [`Self::marking_from_canonical`]; the engine uses it to feed the
+    /// recognizer's output into its canonical-space page accumulator.
+    fn canonical_from_marking(&self, marking: &CapcoMarking) -> CanonicalAttrs {
+        marking.0.clone()
+    }
+
+    /// CAPCO's monotone sensitivity rank is the effective classification
+    /// level. `None` when the canonical carries no classification (a
+    /// portion that named only controls). Mirrors the engine's prior
+    /// inline `classification.effective_level() as u8` rank-floor read.
+    fn canonical_rank(&self, canonical: &CanonicalAttrs) -> Option<u8> {
+        canonical
+            .classification
+            .as_ref()
+            .map(|c| c.effective_level() as u8)
+    }
+
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &self.page_rewrites
     }

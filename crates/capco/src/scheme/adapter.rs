@@ -897,4 +897,43 @@ impl marque_rules::ConstraintBridge for CapcoScheme {
             emitted_id_overrides,
         )
     }
+
+    /// Interpret a recognized [`CapcoMarking`]. Tuple-position 1 is the
+    /// decoder provenance side-channel: `None` ⇒ strict path (accepted
+    /// unconditionally, no score, no diagnostic); `Some` ⇒ the
+    /// probabilistic decoder produced this marking, so report its
+    /// posterior and synthesize the `R001 decoder-recognition` diagnostic
+    /// via [`build_decoder_diagnostic`](crate::build_decoder_diagnostic)
+    /// (which itself returns `None` for a byte-preserving no-op rewrite).
+    ///
+    /// Unlike the other four bridge methods this has no inherent twin —
+    /// the synthesis it delegates to is a free function — so the body is
+    /// the concrete implementation rather than a delegation.
+    fn recognition_outcome(
+        &self,
+        marking: &CapcoMarking,
+        span: marque_scheme::Span,
+        original_bytes: &[u8],
+        kind: MarkingType,
+        corpus_override_active: bool,
+    ) -> marque_rules::RecognitionOutcome<CapcoScheme> {
+        match marking.1.as_ref() {
+            None => marque_rules::RecognitionOutcome {
+                is_decoder_path: false,
+                recognition_score: None,
+                diagnostic: None,
+            },
+            Some(prov) => marque_rules::RecognitionOutcome {
+                is_decoder_path: true,
+                recognition_score: Some(prov.recognition_score()),
+                diagnostic: crate::build_decoder_diagnostic(
+                    span,
+                    original_bytes,
+                    prov,
+                    kind,
+                    corpus_override_active,
+                ),
+            },
+        }
+    }
 }

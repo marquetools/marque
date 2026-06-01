@@ -88,7 +88,7 @@ const RULE_R001_DECODER: RuleId = RuleId::new("engine", "recognition.decoder-rec
 ///   `SupersededToken` — see `crates/capco/src/rules/dissem.rs`.
 /// - `RULE_R001_DECODER` (`recognition.decoder-recognized`) →
 ///   `DecoderRecognized` — see
-///   `crates/engine/src/engine/synthesis.rs::build_decoder_diagnostic`.
+///   `marque_capco::build_decoder_diagnostic`.
 fn template_for_rule(rule: RuleId) -> MessageTemplate {
     if rule == RULE_E002 {
         MessageTemplate::NonCanonicalOrder

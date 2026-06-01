@@ -4,8 +4,8 @@ use super::page_context::project_page_marking;
 #[cfg(feature = "decision-tracing")]
 use super::page_context::project_page_marking_with_sink;
 use super::page_context::{PageFinalizationContext, dispatch_page_finalization};
-use super::synthesis::build_decoder_diagnostic;
 use super::*;
+use marque_capco::build_decoder_diagnostic;
 
 pub(super) struct RecognizedCandidate {
     pub(super) attrs: marque_ism::CanonicalAttrs,
