@@ -97,18 +97,19 @@ where
     ///
     /// For qualifying violations the bridge:
     ///
-    /// 1. Constructs the `RuleId` 2-tuple `("capco",
-    ///    constraint_label)` — the catalog row's `constraint_label`
+    /// 1. Resolves the `RuleId` 2-tuple via
+    ///    [`MarkingScheme::constraint_rule_id`] (default
+    ///    `(scheme_id(), label)`) — the catalog row's `constraint_label`
     ///    IS the predicate id (no string folding, no legacy-id lookup
-    ///    table).
+    ///    table). For CapcoScheme this is `("capco", constraint_label)`.
     /// 2. Applies the user-configured severity override
     ///    (`emitted_id_overrides`) keyed on the resolved RuleId's
     ///    predicate id.
     /// 3. Synthesizes the optional [`FixIntent`] via
-    ///    [`CapcoScheme::fix_intent_by_name`] from the row name +
+    ///    [`ConstraintBridge::fix_intent_by_name`] from the row name +
     ///    `attrs` + candidate `MarkingType`.
     /// 4. Resolves the user-facing message via
-    ///    [`CapcoScheme::message_by_name`]; falls back to the generic
+    ///    [`ConstraintBridge::message_by_name`]; falls back to the generic
     ///    evaluator text from `ConstraintViolation.message` when the
     ///    scheme returns `None` for the row name.
     /// 5. Builds the [`Diagnostic`] with the resolved `message`
@@ -118,8 +119,9 @@ where
     /// [`ConstraintViolation`]: marque_scheme::ConstraintViolation
     /// [`Diagnostic`]: marque_rules::Diagnostic
     /// [`FixIntent`]: marque_rules::FixIntent
-    /// [`CapcoScheme::fix_intent_by_name`]: CapcoScheme::fix_intent_by_name
-    /// [`CapcoScheme::message_by_name`]: CapcoScheme::message_by_name
+    /// [`MarkingScheme::constraint_rule_id`]: marque_scheme::MarkingScheme::constraint_rule_id
+    /// [`ConstraintBridge::fix_intent_by_name`]: marque_rules::ConstraintBridge::fix_intent_by_name
+    /// [`ConstraintBridge::message_by_name`]: marque_rules::ConstraintBridge::message_by_name
     pub(super) fn bridge_constraint_diagnostic(
         &self,
         v: &marque_scheme::ConstraintViolation,
@@ -152,13 +154,18 @@ where
             }
         };
 
-        // The bridge is a no-op pass-through. The catalog row's
-        // `constraint_label` IS the predicate id, so we construct
-        // `RuleId::new("capco", constraint_label)` directly — no prefix
-        // recovery, no legacy-id lookup table. There is no translation
-        // layer between label and rule id, so the "label says one
-        // thing, rule id says another" drift surface does not exist.
-        let rule_id = RuleId::new("capco", v.constraint_label);
+        // The bridge is a no-op pass-through: the catalog row's
+        // `constraint_label` IS the predicate id, so the RuleId comes
+        // straight from the scheme's `constraint_rule_id` (default
+        // `(scheme_id(), label)`) — no prefix recovery, no legacy-id
+        // lookup table, no translation layer where "label says one thing,
+        // rule id says another" could drift. Routing through the scheme
+        // (rather than hardcoding the `"capco"` namespace) keeps the
+        // bridge correct for any scheme: a non-CAPCO scheme namespaces its
+        // own diagnostics, and severity overrides keyed by scheme id stay
+        // aligned. For CapcoScheme this resolves to `("capco", label)`.
+        let (rule_scheme, rule_predicate) = self.scheme.constraint_rule_id(v.constraint_label);
+        let rule_id = RuleId::new(rule_scheme, rule_predicate);
 
         let final_severity = self
             .emitted_id_overrides
