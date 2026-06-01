@@ -20,20 +20,20 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{Diagnostic, RuleSet};
 
-fn build_engine() -> Engine {
+fn build_engine() -> CapcoEngine {
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(Config::default(), rule_sets, CapcoScheme::new())
+    CapcoEngine::new(Config::default(), rule_sets, CapcoScheme::new())
         .expect("default CAPCO scheme constructs without rewrite cycles")
 }
 
-fn build_engine_with_corrections() -> Engine {
+fn build_engine_with_corrections() -> CapcoEngine {
     let mut config = Config::default();
     config.corrections.insert("SERCET".into(), "SECRET".into());
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(config, rule_sets, CapcoScheme::new())
+    CapcoEngine::new(config, rule_sets, CapcoScheme::new())
         .expect("default CAPCO scheme with corrections constructs without rewrite cycles")
 }
 

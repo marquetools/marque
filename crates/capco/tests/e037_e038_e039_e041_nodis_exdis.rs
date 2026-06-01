@@ -68,7 +68,7 @@
 use marque_capco::scheme::TOK_EXDIS;
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{Diagnostic, Severity};
 use marque_scheme::{FactRef, ReplacementIntent, Scope, SectionLetter, capco};
 
@@ -78,8 +78,8 @@ const E039_PREDICATE: &str = "page.dissem.nodis-exdis-clears-banner-rel-to";
 const E040_PREDICATE: &str = "banner.banner-rollup.non-ic-dissem-roll-up";
 const E041_PREDICATE: &str = "portion.dissem.nodis-supersedes-exdis-in-portion";
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

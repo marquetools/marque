@@ -22,13 +22,13 @@ use std::sync::Arc;
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_config::corpus_override::CorpusOverride;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use marque_rules::{FeatureId, FixSource};
 
-fn deep_scan_engine_without_override() -> Engine {
+fn deep_scan_engine_without_override() -> CapcoEngine {
     // The decoder fallback is the engine default; no explicit opt-in
     // is required.
-    Engine::new(
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -36,7 +36,7 @@ fn deep_scan_engine_without_override() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-fn deep_scan_engine_with_override() -> Engine {
+fn deep_scan_engine_with_override() -> CapcoEngine {
     deep_scan_engine_without_override()
         // Audit-marker-only override: every scoring section empty,
         // schema_version implicit. The flag is what this test checks.

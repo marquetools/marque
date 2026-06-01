@@ -12,7 +12,7 @@
 //! - **Prose precision**: zero diagnostics on clean prose
 
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use marque_test_utils::{
     corpus_root, invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
 };
@@ -40,8 +40,8 @@ use std::collections::HashMap;
 /// test's load-bearing role is the prose-precision gate against
 /// `tests/corpus/prose/article.txt`, NOT a strict-vs-decoder
 /// equivalence check).
-fn make_engine() -> Engine {
-    Engine::new(
+fn make_engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
@@ -436,7 +436,7 @@ fn c001_corrections_map_accuracy() {
 
     let mut config = Config::default();
     config.corrections = corrections;
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         config,
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),

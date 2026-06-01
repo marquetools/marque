@@ -31,14 +31,14 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixedClock};
+use marque_engine::{CapcoEngine, FixedClock};
 use marque_rules::Severity;
 use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 
-fn engine() -> Engine {
-    Engine::with_clock(
+fn engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

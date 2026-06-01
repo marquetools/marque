@@ -18,12 +18,12 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::Severity;
 
 /// Build an engine with the supplied (key, severity) `[rules]`
 /// overrides. Empty input gives default-configured engine.
-fn engine_with_overrides(overrides: &[(&str, &str)]) -> Engine {
+fn engine_with_overrides(overrides: &[(&str, &str)]) -> CapcoEngine {
     let mut config = Config::default();
     for (k, v) in overrides {
         config
@@ -31,7 +31,7 @@ fn engine_with_overrides(overrides: &[(&str, &str)]) -> Engine {
             .overrides
             .insert((*k).to_owned(), (*v).to_owned());
     }
-    Engine::new(
+    CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

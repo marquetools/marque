@@ -74,7 +74,7 @@
 
 use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixResult, FixedClock};
+use marque_engine::{CapcoEngine, FixMode, FixResult, FixedClock};
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
     EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, Recognition, RuleId,
@@ -106,7 +106,7 @@ const PROSE_SENTINELS: &[&str] = &[
     "enlightened statesmen",
 ];
 
-fn test_engine() -> Engine {
+fn test_engine() -> CapcoEngine {
     // `audit_v3_strict_path_invariants` asserts strict-shape
     // invariants on every produced `AppliedFix`. Pin the recognizer to
     // `StrictRecognizer` explicitly — the engine default
@@ -114,7 +114,7 @@ fn test_engine() -> Engine {
     // today's fixture set because no fixture trips the decoder, but a
     // future fixture that does would silently weaken the assertion if
     // we relied on the default.
-    Engine::with_clock(
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -125,7 +125,7 @@ fn test_engine() -> Engine {
     .with_recognizer(std::sync::Arc::new(marque_engine::StrictRecognizer::new()))
 }
 
-fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {
+fn run_fix(engine: &CapcoEngine, source: &[u8]) -> FixResult {
     engine.fix(source, FixMode::Apply)
 }
 
@@ -154,12 +154,12 @@ fn run_fix(engine: &Engine, source: &[u8]) -> FixResult {
 /// `threshold_override` from `fix_with_threshold`. So the override
 /// does not undo the lint downgrade — we have to lower the config
 /// threshold itself.
-fn deep_scan_engine_relaxed() -> Engine {
+fn deep_scan_engine_relaxed() -> CapcoEngine {
     let mut config = Config::default();
     config
         .set_confidence_threshold(0.80)
         .expect("0.80 is a valid confidence threshold");
-    Engine::with_clock(
+    CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -804,11 +804,11 @@ fn v1_records_parse_in_v2_consumer() {
 // default threshold; `#[allow(dead_code)]` suppresses the unused-function
 // warning rather than deleting the helper outright.
 #[allow(dead_code)]
-fn deep_scan_engine() -> Engine {
+fn deep_scan_engine() -> CapcoEngine {
     // The decoder fallback is the engine default (`Engine::new` /
     // `Engine::with_clock` install `StrictOrDecoderRecognizer`); no
     // explicit opt-in is required.
-    Engine::with_clock(
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

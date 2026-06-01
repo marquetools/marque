@@ -19,11 +19,11 @@
 //! takes) and the byte-identity of the `DocumentContent` route.
 
 use marque_capco::capco_rules;
-use marque_engine::{Engine, FixMode, FixOptions, InputContext, InputSource, LintOptions};
+use marque_engine::{CapcoEngine, FixMode, FixOptions, InputContext, InputSource, LintOptions};
 use secrecy::ExposeSecret as _;
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         marque_config::Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

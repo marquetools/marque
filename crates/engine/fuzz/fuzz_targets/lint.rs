@@ -17,14 +17,14 @@
 
 use libfuzzer_sys::fuzz_target;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, default_ruleset};
+use marque_engine::{CapcoEngine, FixMode, default_ruleset};
 use std::sync::OnceLock;
 
-static ENGINE: OnceLock<Engine> = OnceLock::new();
+static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
 
-fn get_engine() -> &'static Engine {
+fn get_engine() -> &'static CapcoEngine {
     ENGINE.get_or_init(|| {
-        Engine::new(
+        CapcoEngine::new(
             Config::default(),
             default_ruleset(),
             marque_engine::default_scheme(),

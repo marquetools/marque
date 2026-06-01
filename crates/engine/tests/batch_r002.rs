@@ -21,10 +21,10 @@
 use futures::StreamExt;
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{BatchEngine, BatchOptions, Engine};
+use marque_engine::{BatchEngine, BatchOptions, CapcoEngine};
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

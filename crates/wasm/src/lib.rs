@@ -44,7 +44,7 @@ compile_error!(
 );
 
 use marque_config::Config;
-use marque_engine::{Clock, Engine, Instant};
+use marque_engine::{CapcoEngine, Clock, Instant};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -410,7 +410,7 @@ fn stamp_deadline(duration: Option<Duration>) -> Result<Option<Instant>, String>
 // ---------------------------------------------------------------------------
 
 struct CachedEngine {
-    engine: Engine,
+    engine: CapcoEngine,
     /// The raw config JSON used to build this engine. Byte-equal comparison
     /// for cache invalidation. `None` = default config.
     config_key: Option<String>,
@@ -426,7 +426,7 @@ thread_local! {
 fn with_engine<T, F>(
     cache_key: &Option<String>,
     build_config: F,
-    f: impl FnOnce(&Engine) -> Result<T, String>,
+    f: impl FnOnce(&CapcoEngine) -> Result<T, String>,
 ) -> Result<T, String>
 where
     F: FnOnce() -> Result<Config, String>,
@@ -446,7 +446,7 @@ where
 
         if needs_rebuild {
             let config = build_config()?;
-            let engine = Engine::with_clock(
+            let engine = CapcoEngine::with_clock(
                 config,
                 marque_engine::default_ruleset(),
                 marque_engine::default_scheme(),

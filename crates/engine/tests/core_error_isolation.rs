@@ -64,7 +64,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_core::CoreError;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 
 /// A high-entropy ASCII run that cannot occur in any valid CAPCO/ISM
 /// marking: lowercase letters, digits, and hyphens combined into a
@@ -81,7 +81,7 @@ const CANARY: &str = "leak-canary-x9z7q3-content-bytes";
 /// engine to `StrictRecognizer` rather than relying on the default
 /// dispatcher (which would also exercise decoder-side leak channels —
 /// real but separately scoped issues, not the one this file gates).
-fn test_engine() -> Engine {
+fn test_engine() -> CapcoEngine {
     // No strict-recognizer pin is needed here (#257): the audit
     // content-ignorance canary at
     // `crates/engine/tests/audit_g13_canary.rs` structurally closes the
@@ -92,7 +92,7 @@ fn test_engine() -> Engine {
     // the audit-emit shape is wire-format-pinned to a closed JSON
     // projection. The dispatcher default (`StrictOrDecoderRecognizer`)
     // applies.
-    Engine::new(
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

@@ -356,7 +356,7 @@ const SAR_BANNER_MISSING_PROGRAM: &[u8] =
 /// walker emits one diagnostic with `Diagnostic.rule == "E035"`.
 const SCI_BANNER_MISSING_COMPARTMENT: &[u8] = b"(TS//SI-G//NF)\nTOP SECRET//SI//NOFORN";
 
-fn capco_engine_with_overrides(pairs: &[(&str, &str)]) -> Engine {
+fn capco_engine_with_overrides(pairs: &[(&str, &str)]) -> CapcoEngine {
     let mut config = Config::default();
     for (k, v) in pairs {
         config

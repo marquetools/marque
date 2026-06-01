@@ -46,7 +46,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use secrecy::ExposeSecret as _;
 
 /// Single-portion input that produces exactly one E054 strict-path fix.
@@ -65,8 +65,8 @@ const EXPECTED_FIXED_SOURCE: &[u8] = b"(S//NF)\n";
 /// 0.95 threshold so the fix auto-applies.
 const EXPECTED_CONFIDENCE: f32 = 1.0;
 
-fn build_engine() -> Engine {
-    Engine::new(
+fn build_engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
@@ -84,7 +84,7 @@ fn build_engine() -> Engine {
 ///
 /// Call once per benchmark function, **outside** the Criterion `b.iter`
 /// loop, before handing control to Criterion.
-fn assert_bench_invariants(engine: &Engine) {
+fn assert_bench_invariants(engine: &CapcoEngine) {
     let fix_result = engine.fix(SINGLE_FIX_INPUT, FixMode::Apply);
 
     // Exactly one fix applied total — extra fixes would change what the bench

@@ -13,18 +13,18 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::{DecoderRecognizer, Engine, StrictOrDecoderRecognizer, StrictRecognizer};
+use marque_engine::{CapcoEngine, DecoderRecognizer, StrictOrDecoderRecognizer, StrictRecognizer};
 use marque_rules::RuleSet;
 use marque_scheme::recognizer::Recognizer;
 
-fn build_engine() -> Engine {
+fn build_engine() -> CapcoEngine {
     let config = Config::default();
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(config, rule_sets, CapcoScheme::new())
+    CapcoEngine::new(config, rule_sets, CapcoScheme::new())
         .expect("engine construction should succeed on a stock CAPCO scheme")
 }
 
-fn build_strict_engine() -> Engine {
+fn build_strict_engine() -> CapcoEngine {
     // INTENTIONAL-STRICT: this helper exists specifically to construct an engine with the decoder suppressed; the test family asserts strict-path behavior in contrast to the default dispatcher
     build_engine().with_strict_recognizer()
 }

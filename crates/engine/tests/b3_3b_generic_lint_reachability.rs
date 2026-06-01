@@ -26,7 +26,7 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, LintOptions, LintResult};
+use marque_engine::{CapcoEngine, Engine, LintOptions, LintResult};
 use marque_rules::ConstraintBridge;
 use marque_scheme::MarkingScheme;
 use marque_scheme::recognizer::Recognizer;
@@ -65,7 +65,7 @@ const _STUB_LINT_REACHABLE: fn(
 /// result on empty input through the public API.
 #[test]
 fn capco_lint_through_generic_surface_is_clean_on_empty_input() {
-    let engine: Engine = Engine::new(
+    let engine: CapcoEngine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

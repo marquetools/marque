@@ -61,12 +61,13 @@ use std::path::{Path, PathBuf};
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{FixSource, RuleSet};
 
-fn build_engine() -> Engine {
+fn build_engine() -> CapcoEngine {
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(Config::default(), rule_sets, CapcoScheme::new()).expect("CAPCO engine constructs")
+    CapcoEngine::new(Config::default(), rule_sets, CapcoScheme::new())
+        .expect("CAPCO engine constructs")
 }
 
 /// Workspace-root-anchored corpus path so the fixture loads identically

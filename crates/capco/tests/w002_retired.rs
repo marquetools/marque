@@ -23,7 +23,7 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::RuleSet;
 use marque_scheme::{Citation, SectionLetter, capco};
 
@@ -37,9 +37,10 @@ use marque_scheme::{Citation, SectionLetter, capco};
 /// vacuously because no rule's `predicate_id()` is "W002".
 const W002_RETIRED_CITATION: Citation = capco(SectionLetter::H, 7, 124);
 
-fn engine() -> Engine {
+fn engine() -> CapcoEngine {
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(Config::default(), rule_sets, CapcoScheme::new()).expect("default CAPCO engine")
+    CapcoEngine::new(Config::default(), rule_sets, CapcoScheme::new())
+        .expect("default CAPCO engine")
 }
 
 /// CAPCO-2016 §H.7 p123 "Example Portion Mark (when sources are

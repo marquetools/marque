@@ -33,15 +33,15 @@
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use marque_rules::Severity;
 use secrecy::ExposeSecret as _;
 use std::sync::OnceLock;
 
-fn engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
+fn engine() -> &'static CapcoEngine {
+    static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
     ENGINE.get_or_init(|| {
-        Engine::new(
+        CapcoEngine::new(
             Config::default(),
             vec![Box::new(CapcoRuleSet::new())],
             marque_engine::default_scheme(),
@@ -54,10 +54,10 @@ fn engine() -> &'static Engine {
 /// exercise pass-0 (C001) text corrections. The map carries the
 /// canonical `SERCET → SECRET` typo fix — Constitution V permitted-
 /// identifier list (token canonical).
-fn engine_with_corrections() -> Engine {
+fn engine_with_corrections() -> CapcoEngine {
     let mut config = Config::default();
     config.corrections.insert("SERCET".into(), "SECRET".into());
-    Engine::new(
+    CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         marque_engine::default_scheme(),

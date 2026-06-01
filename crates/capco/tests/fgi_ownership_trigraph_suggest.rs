@@ -35,14 +35,14 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::Severity;
 
 const RULE_PREDICATE: &str = "portion.fgi.ownership-trigraph-suggest";
 const RULE_WIRE_STRING: &str = "capco:portion.fgi.ownership-trigraph-suggest";
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -50,13 +50,13 @@ fn engine() -> Engine {
     .expect("default CAPCO scheme must construct without rewrite cycles")
 }
 
-fn engine_with_rule_off() -> Engine {
+fn engine_with_rule_off() -> CapcoEngine {
     let mut config = Config::default();
     config
         .rules
         .overrides
         .insert(RULE_WIRE_STRING.to_owned(), "off".to_owned());
-    Engine::new(
+    CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

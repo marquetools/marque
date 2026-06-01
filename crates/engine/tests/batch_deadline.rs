@@ -20,11 +20,11 @@
 use futures::StreamExt;
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{BatchEngine, BatchError, BatchOptions, Engine, FixResult, LintResult};
+use marque_engine::{BatchEngine, BatchError, BatchOptions, CapcoEngine, FixResult, LintResult};
 use std::time::Duration;
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

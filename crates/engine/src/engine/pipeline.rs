@@ -377,7 +377,7 @@ where
                     if !existing_c001_spans.contains(&span) {
                         let _ = key;
                         diagnostics.push(Diagnostic::text_correction(
-                            RuleId::new("capco", "marking.correction.token-typo"),
+                            RuleId::new(self.scheme.scheme_id(), "marking.correction.token-typo"),
                             c001_severity,
                             span,
                             marque_rules::Message::new(

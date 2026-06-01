@@ -15,7 +15,7 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixedClock, SessionRoot, audit_line_to_ndjson};
+use marque_engine::{CapcoEngine, FixMode, FixedClock, SessionRoot, audit_line_to_ndjson};
 use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -24,12 +24,12 @@ use std::time::{Duration, UNIX_EPOCH};
 /// the module documents.
 const FIXED_TS: u64 = 1_700_000_000;
 
-fn test_engine() -> Engine {
+fn test_engine() -> CapcoEngine {
     engine_with_config(Config::default())
 }
 
-fn engine_with_config(config: Config) -> Engine {
-    Engine::with_clock(
+fn engine_with_config(config: Config) -> CapcoEngine {
+    CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -40,7 +40,7 @@ fn engine_with_config(config: Config) -> Engine {
 
 /// Serialize a fix result's audit lines exactly as the server does, then
 /// build the per-document session root over them.
-fn audit_log_and_root(engine: &Engine, source: &[u8]) -> (Vec<String>, SessionRoot) {
+fn audit_log_and_root(engine: &CapcoEngine, source: &[u8]) -> (Vec<String>, SessionRoot) {
     let result = engine.fix(source, FixMode::Apply);
     let scheme = engine.scheme();
     let lines: Vec<String> = result

@@ -44,7 +44,7 @@
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, capco_rules};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{Diagnostic, RuleSet, Severity};
 use marque_scheme::MarkingScheme;
 
@@ -53,8 +53,8 @@ use marque_scheme::MarkingScheme;
 // ---------------------------------------------------------------------------
 
 /// Build a default-configured `Engine` for SCI per-system lint tests.
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -749,7 +749,7 @@ fn sci_per_system_off_severity_suppresses_specific_row() {
         "capco:marking.sci.hcs-o-companions".to_owned(),
         "off".to_owned(),
     );
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -777,7 +777,7 @@ fn sci_per_system_off_does_not_leak_to_other_rows() {
         "capco:marking.sci.hcs-o-companions".to_owned(),
         "off".to_owned(),
     );
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -812,7 +812,7 @@ fn sci_per_system_off_all_five_rows_independently() {
             .overrides
             .insert(row.to_owned(), "off".to_owned());
     }
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

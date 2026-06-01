@@ -32,14 +32,14 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::Diagnostic;
 
 const E007_PREDICATE: &str = "portion.metadata.x-shorthand-date-pattern";
 const E008_PREDICATE: &str = "marking.metadata.unrecognized-token";
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

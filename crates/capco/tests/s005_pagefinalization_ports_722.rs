@@ -53,13 +53,13 @@
 use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::CapcoScheme;
 use marque_config::Config;
-use marque_engine::{Engine, FixedClock};
+use marque_engine::{CapcoEngine, FixedClock};
 use marque_rules::Diagnostic;
 
 const S005_PREDICATE_ID: &str = "page.dissem.rel-to-uncertain-reduction";
 
-fn engine() -> Engine {
-    Engine::with_clock(
+fn engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

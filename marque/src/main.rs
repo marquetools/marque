@@ -18,7 +18,7 @@ mod trace;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use marque_capco::capco_rules;
-use marque_engine::{Engine, EngineError, FixOptions, InterfaceCode, LintOptions};
+use marque_engine::{CapcoEngine, EngineError, FixOptions, InterfaceCode, LintOptions};
 use secrecy::ExposeSecret as _;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -455,9 +455,9 @@ fn load_config(
 /// passthrough.
 #[cfg_attr(not(feature = "corpus-override"), allow(unused_variables))]
 fn install_corpus_override(
-    engine: marque_engine::Engine,
+    engine: marque_engine::CapcoEngine,
     common: &CommonOptions,
-) -> Result<marque_engine::Engine, i32> {
+) -> Result<marque_engine::CapcoEngine, i32> {
     #[cfg(feature = "corpus-override")]
     {
         let Some(path) = common.corpus_override.as_ref() else {
@@ -575,7 +575,7 @@ fn run_check(cwd: &std::path::Path, common: CommonOptions, paths: Vec<PathBuf>) 
         return run_explain_config(&config);
     }
 
-    let engine = match Engine::new(
+    let engine = match CapcoEngine::new(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -778,14 +778,14 @@ fn run_fix(
                 return EX_USAGE;
             }
         };
-        Engine::with_clock(
+        CapcoEngine::with_clock(
             config,
             vec![Box::new(capco_rules())],
             marque_engine::default_scheme(),
             Box::new(marque_engine::FixedClock::new(ts)),
         )
     } else {
-        Engine::new(
+        CapcoEngine::new(
             config,
             vec![Box::new(capco_rules())],
             marque_engine::default_scheme(),

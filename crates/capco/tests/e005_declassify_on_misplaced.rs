@@ -34,14 +34,14 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::Diagnostic;
 use marque_scheme::{SectionLetter, capco};
 
 const E005_PREDICATE: &str = "portion.declassification.declassify-on-misplaced";
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

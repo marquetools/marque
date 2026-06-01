@@ -29,19 +29,19 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixedClock};
+use marque_engine::{CapcoEngine, FixMode, FixedClock};
 use secrecy::ExposeSecret as _;
 use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 
-fn make_engine_with_correction(from: &str, to: &str) -> Engine {
+fn make_engine_with_correction(from: &str, to: &str) -> CapcoEngine {
     let mut corrections: HashMap<String, String> = HashMap::new();
     corrections.insert(from.to_owned(), to.to_owned());
     let mut config = Config::default();
     config.corrections = corrections;
-    Engine::with_clock(
+    CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

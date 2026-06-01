@@ -18,7 +18,7 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, EngineError, FixMode, FixOptions, InterfaceCode};
+use marque_engine::{CapcoEngine, EngineError, FixMode, FixOptions, InterfaceCode};
 use marque_rules::audit::AuditLine;
 
 /// Input that reliably produces at least one applied fix (REL TO
@@ -26,8 +26,8 @@ use marque_rules::audit::AuditLine;
 /// canonicalizes).
 const FIXING_INPUT: &[u8] = b"SECRET//REL TO GBR\n";
 
-fn engine_with(config: Config) -> Engine {
-    Engine::new(
+fn engine_with(config: Config) -> CapcoEngine {
+    CapcoEngine::new(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

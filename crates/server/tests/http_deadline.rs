@@ -14,14 +14,14 @@ use axum::{
 };
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_server::{AppState, DEFAULT_DEADLINE_CAP_MS, build_app};
 use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceExt;
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

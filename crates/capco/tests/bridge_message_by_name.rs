@@ -34,7 +34,7 @@
 use marque_capco::scheme::{CAT_DISSEM, CAT_JOINT_CLASSIFICATION, CAT_NON_IC_DISSEM};
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::{Engine, FixedClock};
+use marque_engine::{CapcoEngine, FixedClock};
 use marque_ism::{CanonicalAttrs, MarkingType};
 use marque_rules::MessageTemplate;
 use marque_scheme::MarkingScheme;
@@ -43,8 +43,8 @@ use marque_scheme::MarkingScheme;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn engine() -> Engine {
-    Engine::with_clock(
+fn engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

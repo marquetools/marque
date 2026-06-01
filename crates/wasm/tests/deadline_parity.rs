@@ -32,13 +32,13 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use marque_config::Config;
-use marque_engine::{Engine, LintOptions};
+use marque_engine::{CapcoEngine, LintOptions};
 use marque_rules::{Diagnostic, RuleId};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),

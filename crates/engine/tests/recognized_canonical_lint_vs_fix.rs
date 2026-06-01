@@ -29,7 +29,7 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use marque_rules::FixSource;
 use marque_rules::MessageTemplate;
 use marque_rules::RuleSet;
@@ -37,13 +37,13 @@ use marque_rules::audit::{AuditLine, discriminant_from_source};
 use secrecy::ExposeSecret as _;
 use serde_json::json;
 
-fn build_engine_threshold_zero() -> Engine {
+fn build_engine_threshold_zero() -> CapcoEngine {
     let mut config = Config::default();
     config
         .set_confidence_threshold(0.0)
         .expect("0.0 is a valid threshold");
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(config, rule_sets, CapcoScheme::new())
+    CapcoEngine::new(config, rule_sets, CapcoScheme::new())
         .expect("default CAPCO scheme constructs without rewrite cycles")
 }
 

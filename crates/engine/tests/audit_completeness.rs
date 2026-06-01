@@ -10,7 +10,7 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixedClock};
+use marque_engine::{CapcoEngine, FixMode, FixedClock};
 use marque_rules::MessageTemplate;
 use marque_rules::audit::AuditLine;
 use std::collections::HashMap;
@@ -18,8 +18,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 
-fn test_engine() -> Engine {
-    Engine::with_clock(
+fn test_engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -150,7 +150,7 @@ fn applied_fixes_always_meet_configured_threshold() {
     // so the decoder fallback fires on the mangled input.
     let config = Config::default();
     let threshold = config.confidence_threshold();
-    let engine = Engine::with_clock(
+    let engine = CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -325,10 +325,10 @@ fn r002_does_not_mint_applied_fix() {
 // corrections map so the C001 path is exercisable alongside the
 // rule-emitting paths.
 
-fn engine_with_corrections(corrections: HashMap<String, String>) -> Engine {
+fn engine_with_corrections(corrections: HashMap<String, String>) -> CapcoEngine {
     let mut config = Config::default();
     config.corrections = corrections;
-    Engine::with_clock(
+    CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -602,7 +602,7 @@ fn r001_lint_and_applied_templates_agree() {
     config
         .set_confidence_threshold(0.0)
         .expect("0.0 is a valid threshold");
-    let engine = Engine::with_clock(
+    let engine = CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

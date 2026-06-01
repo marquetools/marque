@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex};
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_scheme::{DecisionEvent, DecisionKind, DecisionSink, RecordingSink};
 
 /// Sentinel substring embedded into the fixture's prose lines. Chosen
@@ -101,12 +101,12 @@ impl DecisionSink for Inspectable {
 
 /// Build a default-config engine with the CAPCO scheme + capture sink
 /// installed.
-fn build_engine_with_capture() -> (Engine, Arc<Mutex<Vec<DecisionEvent>>>) {
+fn build_engine_with_capture() -> (CapcoEngine, Arc<Mutex<Vec<DecisionEvent>>>) {
     let events: Arc<Mutex<Vec<DecisionEvent>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = Inspectable {
         events: events.clone(),
     };
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

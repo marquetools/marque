@@ -67,7 +67,7 @@ use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::CapcoScheme;
 use marque_config::Config;
 use marque_core::Parser;
-use marque_engine::{Engine, FixMode, FixedClock};
+use marque_engine::{CapcoEngine, FixMode, FixedClock};
 use marque_ism::{
     CapcoTokenSet, MarkingCandidate, MarkingClassification, MarkingType, NatoClassification,
     NatoSap, SciControlSystem, Span,
@@ -106,8 +106,8 @@ fn parse_with_kind(
     scheme.canonicalize(parsed.attrs)
 }
 
-fn engine_with_fixed_clock() -> Engine {
-    Engine::with_clock(
+fn engine_with_fixed_clock() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
