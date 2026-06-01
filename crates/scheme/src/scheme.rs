@@ -124,16 +124,17 @@ pub trait MarkingScheme {
     /// CAPCO binds this to `marque_ism::CanonicalAttrs`; future
     /// schemes bind to their own owned canonical shape.
     ///
-    /// The bound set is what the generic engine pipeline requires to
-    /// thread page state in canonical space: `Clone` (the per-candidate
-    /// accumulator clones recognized canonicals), `Default` (the
-    /// page-join accumulator seeds from the lattice bottom), `Debug`
-    /// (the read-only-attrs `debug_assert` sentinel), and `Send + Sync +
-    /// 'static` (`BatchEngine` threads canonical state across workers,
-    /// Constitution VI). `marque_ism::CanonicalAttrs` already satisfies
-    /// all five; test stubs binding `type Canonical = ()` satisfy them
-    /// trivially.
-    type Canonical: Clone + Default + core::fmt::Debug + Send + Sync + 'static;
+    /// Intentionally unbounded at the trait level — this keeps the trait
+    /// lift purely additive. The bounds the generic engine pipeline needs
+    /// to thread page state in canonical space (`Clone + Default + Debug +
+    /// Send + Sync + 'static`) are applied at the *use sites* that need
+    /// them: [`Self::canonical_page_join`]'s default body requires
+    /// `Clone + Default` (declared as a method `where`-clause), and the
+    /// generic engine impl adds the threading bounds as `where`-clauses on
+    /// its own block. A scheme whose canonical lacks those bounds is still
+    /// a valid `MarkingScheme`; it just cannot be driven through the
+    /// generic engine pipeline (or use the `canonical_page_join` default).
+    type Canonical;
 
     /// The page-roll-up projection shape banner/CAB rules consume via
     /// `RuleContext::page_marking`. The engine produces it from a
@@ -501,7 +502,15 @@ pub trait MarkingScheme {
     /// or the canonical bottom for an empty page) — the correct behavior
     /// for a scheme whose canonical carries no cross-portion composition.
     /// CapcoScheme overrides this with its per-axis lattice join.
-    fn canonical_page_join(&self, portions: &[Self::Canonical]) -> Self::Canonical {
+    ///
+    /// The `Clone + Default` bound lives on the method (not the associated
+    /// type) so the trait stays additive; a scheme whose canonical is
+    /// neither `Clone` nor `Default` simply cannot call the default and
+    /// must override.
+    fn canonical_page_join(&self, portions: &[Self::Canonical]) -> Self::Canonical
+    where
+        Self::Canonical: Clone + Default,
+    {
         portions.last().cloned().unwrap_or_default()
     }
 

@@ -74,12 +74,19 @@ fn canonical_page_join_matches_inherent_join_via_lattice() {
 #[test]
 fn project_canonical_matches_inherent_from_attrs_slice() {
     let scheme = CapcoScheme::new();
-    for attrs in sample_portions(&scheme) {
-        let slice = std::slice::from_ref(&attrs);
+    let portions = sample_portions(&scheme);
+    // Cover empty + single + multi-portion: the production projection
+    // pipeline is slice-based and joins all portions up front, so a
+    // delegation bug on empty or multi-portion pages must be caught.
+    for n in 0..=portions.len() {
+        let slice = &portions[..n];
         let via_trait = MarkingScheme::project_canonical(&scheme, slice);
         let via_inherent =
             marque_ism::ProjectedMarking::from_canonical(scheme.project_from_attrs_slice(slice));
-        assert_eq!(via_trait, via_inherent);
+        assert_eq!(
+            via_trait, via_inherent,
+            "project_canonical must match project_from_attrs_slice for {n} portion(s)",
+        );
     }
 }
 
@@ -176,15 +183,22 @@ fn constraint_bridge_sci_per_system_matches_inherent() {
 fn project_canonical_with_sink_matches_inherent() {
     use marque_scheme::NoopSink;
     let scheme = CapcoScheme::new();
-    for attrs in sample_portions(&scheme) {
-        let slice = std::slice::from_ref(&attrs);
+    let portions = sample_portions(&scheme);
+    // Same empty + single + multi-portion coverage as the non-sink test:
+    // page projection is slice-based, and multi-portion joins / page
+    // rewrites are the important production shape.
+    for n in 0..=portions.len() {
+        let slice = &portions[..n];
         let mut sink = NoopSink;
         let via_trait = MarkingScheme::project_canonical_with_sink(&scheme, slice, &mut sink);
         let mut sink2 = NoopSink;
         let via_inherent = marque_ism::ProjectedMarking::from_canonical(
             scheme.project_from_attrs_slice_with_sink(slice, &mut sink2),
         );
-        assert_eq!(via_trait, via_inherent);
+        assert_eq!(
+            via_trait, via_inherent,
+            "sink projection mismatch for {n} portion(s)"
+        );
         // And the sink-aware projection must equal the non-sink one.
         assert_eq!(via_trait, MarkingScheme::project_canonical(&scheme, slice));
     }
@@ -197,7 +211,10 @@ fn project_canonical_with_sink_matches_inherent() {
 /// Exercises `canonical_page_join` through the bare `MarkingScheme` bound
 /// (the only canonical-space op with a non-`unimplemented!()` default, so
 /// the only one callable on a scheme that does not canonicalize).
-fn join_through_bound<S: MarkingScheme>(scheme: &S, portions: &[S::Canonical]) -> S::Canonical {
+fn join_through_bound<S: MarkingScheme>(scheme: &S, portions: &[S::Canonical]) -> S::Canonical
+where
+    S::Canonical: Clone + Default,
+{
     scheme.canonical_page_join(portions)
 }
 

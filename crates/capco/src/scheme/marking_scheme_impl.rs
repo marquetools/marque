@@ -491,11 +491,12 @@ impl MarkingScheme for CapcoScheme {
         marque_ism::ProjectedMarking::from_canonical(self.project_from_attrs_slice(portions))
     }
 
-    /// Sink-aware canonical-space page projection. Compiled only under
-    /// the `decision-tracing` feature, mirroring [`Self::project_with_sink`];
-    /// tracing-off builds inherit the trait's `unimplemented!()` default,
-    /// which the engine never reaches (its sink call site is itself
-    /// `decision-tracing`-gated).
+    /// Sink-aware canonical-space page projection — emits per-stage
+    /// decision events. Compiled only under the `decision-tracing` feature,
+    /// mirroring [`Self::project_with_sink`]. Tracing-off builds inherit the
+    /// trait default, which safely delegates to `project_canonical` and
+    /// emits nothing (no panic); in practice the engine's sink call site is
+    /// itself `decision-tracing`-gated, so the default is never reached.
     #[cfg(feature = "decision-tracing")]
     fn project_canonical_with_sink(
         &self,

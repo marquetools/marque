@@ -23,14 +23,19 @@
 //! dependency graph. `marque_rules` is needed only for the empty
 //! [`ConstraintBridge`](marque_rules::ConstraintBridge) impl below — a
 //! generic `Engine<S>` instantiated with this fixture as its second
-//! scheme must satisfy that bound. Pulling in `marque-engine` /
-//! `marque-core` / `marque-ism`
-//! / `marque-capco` here remains forbidden: the engine/scanner crates
-//! would invert the graph, and `marque-ism` / `marque-capco` would drag in
-//! the CAPCO/ISM vocabulary this fixture exists to avoid.
-//! `marque-test-utils` is `publish=false` and consumed only under
-//! `[dev-dependencies]`, so these edges never reach a shipping crate's
-//! normal dep graph or the WASM artifact.
+//! scheme must satisfy that bound. `marque-ism` is now a *transitive*
+//! dependency (via `marque-rules`), and the inherited `ConstraintBridge`
+//! signatures mention `marque_ism::MarkingType` — the engine's
+//! scheme-neutral candidate-kind, used by every scheme's rule surface, not
+//! ISM vocabulary. What the fixture still avoids is a *direct* dependency
+//! on `marque-ism` or `marque-capco` and any ISM marking vocabulary (CVE
+//! enums, `CapcoScheme`). Pulling in `marque-engine` / `marque-core` /
+//! `marque-capco` here remains forbidden: the engine/scanner crates would
+//! invert the graph, and `marque-capco` would drag in the CAPCO/ISM
+//! vocabulary this fixture exists to avoid. `marque-test-utils` is
+//! `publish=false` and consumed only under `[dev-dependencies]`, so these
+//! edges never reach a shipping crate's normal dep graph or the WASM
+//! artifact.
 //!
 //! ## Not a real grammar
 //!
