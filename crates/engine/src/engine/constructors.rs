@@ -339,9 +339,9 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     /// builds therefore cannot observe a `true` here regardless of
     /// what any caller passes through other surfaces. Callers that
     /// need to thread the flag into audit-record construction (the
-    /// private `build_decoder_diagnostic` helper inside this module)
-    /// should go through this method rather than poking at the
-    /// field directly.
+    /// `build_decoder_diagnostic` helper in marque-capco, called
+    /// directly from the recognition path) should go through this
+    /// method rather than poking at the field directly.
     #[inline]
     pub fn corpus_override_active(&self) -> bool {
         #[cfg(feature = "corpus-override")]

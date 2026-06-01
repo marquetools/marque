@@ -18,8 +18,8 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    CORRECTIONS_MAP_CITATION, Diagnostic, EnginePromotionToken, FixIntent, FixSource, Phase,
-    Recognition, RuleId, RuleSet, Severity, SmallVec,
+    CORRECTIONS_MAP_CITATION, Diagnostic, EnginePromotionToken, FixSource, Phase, RuleId, RuleSet,
+    Severity, SmallVec,
 };
 use marque_scheme::Span;
 use marque_scheme::ambiguity::Parsed;
@@ -102,25 +102,6 @@ fn surrounding_lowercase_majority(source: &[u8], start: usize, end: usize) -> bo
     }
     lowercase >= LOWERCASE_MIN_COUNT && lowercase > uppercase
 }
-
-/// Synthetic rule identifier the engine attaches to decoder-path
-/// `FixSource::DecoderPosterior` diagnostics emitted from
-/// `Engine::lint`. This identifier lets the recognition-layer rewrite
-/// carry a real `RuleId` (rules and fixes share that requirement)
-/// without colliding with any CAPCO rule. The `"engine"` scheme is the
-/// reserved namespace for engine-minted diagnostics, and the predicate
-/// id describes the rewrite in plain English.
-const DECODER_RULE_ID: RuleId = RuleId::new("engine", "recognition.decoder-recognized");
-
-/// Citation attached to `R001 decoder-recognition` diagnostics. Points
-/// at CAPCO-2016 §A.6 — the canonical-marking-form section the decoder
-/// is enforcing. Per Constitution VIII the citation is verifiable: §A.6
-/// is "(U) Formatting" beginning on page 15 (table of contents,
-/// `crates/capco/docs/CAPCO-2016.md` line 49) and contains the
-/// canonical syntax for portion / banner / CAB markings the decoder
-/// canonicalizes input toward.
-const DECODER_CITATION_TYPED: marque_scheme::Citation =
-    marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15);
 
 /// Synthetic rule identifier for the post-pass-1 re-parse-failure
 /// sentinel. Emitted when the post-pass-1 buffer fails to re-parse —

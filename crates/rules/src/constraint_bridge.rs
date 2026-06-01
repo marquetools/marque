@@ -28,12 +28,42 @@ use marque_scheme::{MarkingScheme, Scope, Span};
 
 use crate::{Diagnostic, FixIntent, Message, Severity};
 
+/// What the engine learns from a recognized marking beyond the marking
+/// itself: whether the recognition came from a probabilistic
+/// (non-strict) recognizer, its posterior score when it did, and the
+/// optional synthetic diagnostic that records the recognition.
+///
+/// The engine's recognition boundary consumes the three fields
+/// independently — `is_decoder_path` gates the classification-rank floor
+/// (a probabilistic reading does not raise the floor), `recognition_score`
+/// gates the confidence threshold, and `diagnostic` is pushed when the
+/// recognizer rewrote the candidate into a different canonical form. A
+/// scheme whose recognizer is purely strict returns the default
+/// (strict-path, no score, no diagnostic).
+pub struct RecognitionOutcome<S: MarkingScheme> {
+    /// `true` when the marking carries recognizer side-channel state from
+    /// a probabilistic (non-strict) recognition; `false` for the strict
+    /// path. Strict recognitions raise the page rank floor; probabilistic
+    /// ones do not (they are themselves bounded by the existing floor).
+    pub is_decoder_path: bool,
+    /// The recognizer's posterior, present only on the probabilistic path.
+    /// `None` on the strict path (which is unconditionally accepted). The
+    /// engine rejects the candidate when the score is below its configured
+    /// confidence threshold.
+    pub recognition_score: Option<f32>,
+    /// The synthetic recognition diagnostic, when one should be surfaced
+    /// (a probabilistic recognition that rewrote the candidate into a
+    /// different canonical form). `None` on the strict path and on a
+    /// probabilistic recognition that preserved the bytes verbatim.
+    pub diagnostic: Option<Diagnostic<S>>,
+}
+
 /// Scheme hooks the engine's constraint bridge invokes to turn
 /// constraint-catalog evaluation into [`Diagnostic`]s.
 ///
 /// Every method has a default matching the "scheme declares no
 /// diagnostic constraints" behavior, so a minimal scheme implements this
-/// trait with an empty `impl` block. CAPCO overrides all four.
+/// trait with an empty `impl` block. CAPCO overrides all five.
 ///
 /// `Sized` is required because two methods return `FixIntent<Self>` /
 /// `Diagnostic<Self>` (both are `Sized` structs over the scheme). The
@@ -97,5 +127,38 @@ pub trait ConstraintBridge: MarkingScheme + Sized {
     ) -> Vec<Diagnostic<Self>> {
         let _ = (canonical, candidate_span, fix_scope, emitted_id_overrides);
         Vec::new()
+    }
+
+    /// Interpret a freshly recognized marking: report whether it came
+    /// from the probabilistic path, its posterior score, and the optional
+    /// synthetic recognition diagnostic.
+    ///
+    /// Intended to be invoked once per recognized candidate. The synthesis
+    /// of the diagnostic lives behind this hook (rather than in the
+    /// engine) because it reads scheme-private recognizer side-channel
+    /// state and produces a scheme-typed [`Diagnostic`] — neither of which
+    /// the engine can name generically. `original_bytes` is the candidate
+    /// slice, `kind` its scanner-emitted candidate kind, and
+    /// `corpus_override_active` whether an organizational corpus override
+    /// is in effect (recorded as an audit-trail feature on the
+    /// diagnostic).
+    ///
+    /// Default: the strict-path outcome (`is_decoder_path: false`, no
+    /// score, no diagnostic) — correct for any scheme whose recognizer is
+    /// purely strict.
+    fn recognition_outcome(
+        &self,
+        marking: &Self::Marking,
+        span: Span,
+        original_bytes: &[u8],
+        kind: MarkingType,
+        corpus_override_active: bool,
+    ) -> RecognitionOutcome<Self> {
+        let _ = (marking, span, original_bytes, kind, corpus_override_active);
+        RecognitionOutcome {
+            is_decoder_path: false,
+            recognition_score: None,
+            diagnostic: None,
+        }
     }
 }

@@ -4,16 +4,17 @@ use super::fix_impl::Pass1Result;
 #[cfg(debug_assertions)]
 use super::page_context::check_portions_unchanged;
 use super::synthesis::{
-    HEURISTIC_RECOGNITION_CAP, build_r002_diagnostic, find_containing_marking, lookup_marking,
-    sort_and_c1_dedup, span_is_within_marking, splice_fixes_forward,
+    build_r002_diagnostic, find_containing_marking, lookup_marking, sort_and_c1_dedup,
+    span_is_within_marking, splice_fixes_forward,
 };
 use super::*;
 use crate::clock::FixedClock;
+use marque_capco::HEURISTIC_RECOGNITION_CAP;
 use marque_ism::CanonicalAttrs;
 use marque_rules::audit::AppliedFix;
 use marque_rules::{
-    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule, RuleContext,
-    RuleId, RuleSet, Severity,
+    Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Recognition, Rule,
+    RuleContext, RuleId, RuleSet, Severity,
 };
 use marque_scheme::fix_intent::RecanonScope;
 use marque_scheme::{AuthoritativeSource, Citation, ReplacementIntent, SectionLetter, SectionRef};

@@ -74,7 +74,7 @@ pub use lattice::{
     NatoClassLattice, NatoDissemSet, RelToBlock, SarSet, SciSet, UcniKind,
 };
 pub use marque_ism::CapcoTokenSet;
-pub use provenance::DecoderProvenance;
+pub use provenance::{DecoderProvenance, HEURISTIC_RECOGNITION_CAP, build_decoder_diagnostic};
 pub use rules::CapcoRuleSet;
 pub use scheme::{CapcoMarking, CapcoOpenVocabRef, CapcoScheme};
 // Surface the active-sentinel-set count so integration

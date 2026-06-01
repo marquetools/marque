@@ -327,7 +327,7 @@ fn fix_accuracy_invalid_fixtures() {
 // because it is the only grammar form for a CONFIDENTIAL portion;
 // the null-hypothesis filter is deliberately bypassed for it. The
 // decoder produces a candidate, but `build_decoder_diagnostic` in
-// `engine.rs` returns `None` when observed bytes equal canonical
+// `marque-capco` returns `None` when observed bytes equal canonical
 // bytes (no-op rewrite — the canonical form for `(C)` is `(C)`), so
 // the synthetic R001 is never emitted. If a future change relaxes
 // the no-op-rewrite filter (for audit-verbosity, schema evolution,

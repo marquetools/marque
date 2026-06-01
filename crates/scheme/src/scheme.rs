@@ -579,6 +579,45 @@ pub trait MarkingScheme {
         )
     }
 
+    /// Project a marking back down into canonical space.
+    ///
+    /// The inverse of [`Self::marking_from_canonical`]: the recognizer
+    /// yields `Self::Marking`, but the page accumulator and the two-pass
+    /// reshape cache operate in `Self::Canonical`, so the pipeline crosses
+    /// from marking space back into canonical space here. Borrowing rather
+    /// than consuming lets a caller read the canonical while the marking
+    /// (with any recognizer side-channel) stays intact.
+    ///
+    /// The default is `unimplemented!()` (mirrors [`Self::canonicalize`] and
+    /// [`Self::marking_from_canonical`]): a generic marking→canonical
+    /// projection does not exist. Schemes whose marking carries (or wraps) a
+    /// canonical (CapcoScheme) override; test-stub schemes never reach this
+    /// path and inherit the default safely.
+    fn canonical_from_marking(&self, _marking: &Self::Marking) -> Self::Canonical {
+        unimplemented!(
+            "MarkingScheme::canonical_from_marking not overridden by this scheme. \
+             Schemes whose marking projects to canonical space (e.g. CapcoScheme) \
+             override it; test stub schemes never reach this path and inherit the \
+             default safely."
+        )
+    }
+
+    /// The scheme's monotone sensitivity rank for a canonical, when one
+    /// exists (CAPCO's effective classification level).
+    ///
+    /// The engine uses the rank as a recognition *floor*: once a portion of
+    /// rank N is recognized on a page, the per-candidate recognition context
+    /// for later candidates on that page carries N so a probabilistic
+    /// recognizer does not silently accept a lower-ranked reading. Schemes
+    /// with no monotone severity axis return `None` and the engine applies
+    /// no floor.
+    ///
+    /// Default: `None` (no rank axis). Additive — a scheme that does not
+    /// rank canonicals is behavior-unchanged.
+    fn canonical_rank(&self, _canonical: &Self::Canonical) -> Option<u8> {
+        None
+    }
+
     /// Cross-category rewrites applied after component-wise
     /// page-scope projection. CAPCO's canonical entry is
     /// NOFORN-clears-REL-TO.
