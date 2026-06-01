@@ -50,7 +50,7 @@
 
 use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::message::Blake3Hash;
 use marque_rules::{
@@ -144,8 +144,8 @@ const PERMITTED_VALUE_KEYS: &[&str] = &["replacement"];
 /// canary exercises BOTH the strict-path and the decoder-fallback
 /// emit channels. The #257 strict-recognizer masking pin retired
 /// concurrently with this canary's introduction in D8.
-fn test_engine() -> Engine {
-    Engine::new(
+fn test_engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

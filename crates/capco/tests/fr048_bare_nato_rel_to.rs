@@ -29,7 +29,7 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::{Config, RuleConfig};
-use marque_engine::{Engine, FixMode, FixedClock};
+use marque_engine::{CapcoEngine, FixMode, FixedClock};
 use marque_rules::Severity;
 use secrecy::ExposeSecret as _;
 use std::collections::HashMap;
@@ -37,8 +37,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 
-fn engine() -> Engine {
-    Engine::with_clock(
+fn engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -59,7 +59,7 @@ fn engine() -> Engine {
 /// override pattern (severity + threshold) the pre-PR-A version of
 /// this test exercised is retired — the severity override alone is
 /// sufficient.
-fn engine_with_s007_as_fix() -> Engine {
+fn engine_with_s007_as_fix() -> CapcoEngine {
     let mut overrides = HashMap::new();
     // Rule-override keys use the wire-string form.
     overrides.insert(
@@ -69,7 +69,7 @@ fn engine_with_s007_as_fix() -> Engine {
     let mut config = Config::default();
     config.rules = RuleConfig { overrides };
 
-    Engine::with_clock(
+    CapcoEngine::with_clock(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

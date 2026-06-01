@@ -24,10 +24,11 @@ where
     /// The passed `scheme` and `recognizer` become the engine's stored
     /// scheme and recognizer.
     ///
-    /// [`Engine::new`] / [`Engine::with_clock`] are the CAPCO-default
+    /// [`Engine::new`] / [`Engine::with_clock`] are the CAPCO
     /// conveniences over this: they fix `S = CapcoScheme`,
     /// `R = EngineRecognizer`, and supply [`EngineRecognizer::default`]
-    /// and [`SystemClock`] so existing call sites stay source-unchanged.
+    /// and [`SystemClock`], so a CAPCO caller names only the
+    /// [`CapcoEngine`] alias and never spells the type parameters.
     pub fn with_clock_and_recognizer(
         mut config: Config,
         rule_sets: Vec<Box<dyn RuleSet<S>>>,
@@ -164,14 +165,13 @@ where
     }
 }
 
-// CAPCO-default conveniences and recognizer/sink builders. Pinned to the
-// default `Engine<CapcoScheme, EngineRecognizer>` because the `new` /
-// `with_clock` conveniences supply `EngineRecognizer::default()`, and the
-// `with_recognizer` / `with_strict_recognizer` builders mutate that same
-// `EngineRecognizer`. A type-param default does not apply in impl
-// position, so the instantiation is spelled out explicitly. Generic
-// construction over an arbitrary scheme / recognizer goes through
-// [`Engine::with_clock_and_recognizer`] above.
+// CAPCO conveniences and recognizer/sink builders. Pinned to
+// `Engine<CapcoScheme, EngineRecognizer>` (the `CapcoEngine` alias)
+// because the `new` / `with_clock` conveniences supply
+// `EngineRecognizer::default()`, and the `with_recognizer` /
+// `with_strict_recognizer` builders mutate that same `EngineRecognizer`
+// — all CAPCO-bound. Generic construction over an arbitrary scheme /
+// recognizer goes through [`Engine::with_clock_and_recognizer`] above.
 impl Engine<CapcoScheme, EngineRecognizer> {
     /// Create a new engine with the given configuration, rule sets, and
     /// CAPCO marking scheme. Installs the default [`EngineRecognizer`]

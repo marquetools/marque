@@ -34,16 +34,16 @@
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use proptest::prelude::*;
 use secrecy::ExposeSecret as _;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-fn engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
+fn engine() -> &'static CapcoEngine {
+    static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
     ENGINE.get_or_init(|| {
-        Engine::new(
+        CapcoEngine::new(
             Config::default(),
             vec![Box::new(CapcoRuleSet::new())],
             marque_engine::default_scheme(),

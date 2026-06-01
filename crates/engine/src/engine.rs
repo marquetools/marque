@@ -205,28 +205,29 @@ pub trait SyncDecisionSink: marque_scheme::DecisionSink + Send + Sync {}
 #[cfg(feature = "decision-tracing")]
 impl<T: marque_scheme::DecisionSink + Send + Sync> SyncDecisionSink for T {}
 
-/// The fully-defaulted [`Engine`] — `Engine<CapcoScheme, EngineRecognizer>`
+/// The CAPCO instantiation of [`Engine`] — `Engine<CapcoScheme, EngineRecognizer>`
 /// spelled out.
 ///
-/// Type-parameter defaults do not apply in every position (impl blocks,
-/// some inference sites), so this alias gives the default instantiation a
-/// stable name. The `S = CapcoScheme` default still lets call sites write
-/// `Engine` / `Engine<CapcoScheme>` unchanged; `CapcoEngine` is purely an
-/// ergonomic spelling, not a different type.
+/// [`Engine`] has no type-parameter defaults: the core engine type is
+/// domain-neutral, so the CAPCO-ness must be named. This alias is the
+/// canonical name for the CAPCO instantiation — write `CapcoEngine`
+/// wherever the engine type appears in a CAPCO context (`-> CapcoEngine`,
+/// `Arc<CapcoEngine>`, `let e: CapcoEngine`). `Engine::new` and the other
+/// CAPCO conveniences resolve through it without naming the params.
 pub type CapcoEngine = Engine<CapcoScheme, EngineRecognizer>;
 
-/// A configured engine instance.
+/// A configured engine instance, generic over the marking scheme `S` and
+/// recognizer `R`.
 ///
-/// `R` is the recognizer type, defaulted to [`EngineRecognizer`] — the
-/// opaque CAPCO-bound recognizer that keeps default dispatch
-/// monomorphized (strict-first with a decoder fallback) while preserving
-/// a trait-object escape hatch. The default keeps every
-/// existing `Engine<CapcoScheme>` call site source-unchanged (the second
-/// param resolves to `EngineRecognizer`). `R` exists so a later second
-/// scheme can drive its own recognizer through the same `Engine` core;
-/// the default stays until then. See [`CapcoEngine`] for the spelled-out
-/// alias.
-pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecognizer> {
+/// Neither parameter is defaulted — the engine core is domain-neutral, so
+/// a CAPCO engine names its scheme via the [`CapcoEngine`] alias (or
+/// `Engine<CapcoScheme, EngineRecognizer>` spelled out). `R` is the
+/// recognizer type; for CAPCO it is [`EngineRecognizer`], the opaque
+/// CAPCO-bound recognizer that keeps default dispatch monomorphized
+/// (strict-first with a decoder fallback) while preserving a trait-object
+/// escape hatch. `R` exists so a second scheme can drive its own
+/// recognizer through the same `Engine` core.
+pub struct Engine<S: MarkingScheme, R: Recognizer<S>> {
     config: Config,
     rule_sets: Vec<Box<dyn RuleSet<S>>>,
     /// Scheme catalog held for constraint-bridge dispatch in
@@ -272,17 +273,18 @@ pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecog
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
-    /// a `CanonicalAttrs`. Typed as the generic `R`, which defaults to
-    /// [`EngineRecognizer`] — the opaque CAPCO-bound recognizer that
+    /// the scheme's canonical form. Typed as the generic `R`; for CAPCO it
+    /// is [`EngineRecognizer`] — the opaque CAPCO-bound recognizer that
     /// keeps default dispatch monomorphized (strict-first with a decoder
     /// fallback) while preserving the `with_recognizer(Arc<dyn
-    /// Recognizer<_>>)` trait-object escape hatch. Every
-    /// existing `Engine<CapcoScheme>` stores an `EngineRecognizer`
-    /// exactly as before; the generic parameter only opens the seam for
-    /// a future scheme's recognizer.
+    /// Recognizer<_>>)` trait-object escape hatch. A [`CapcoEngine`] stores
+    /// an `EngineRecognizer`; the generic parameter opens the seam for a
+    /// second scheme's recognizer.
     ///
-    /// Default: [`StrictOrDecoderRecognizer`] — strict-first dispatch
-    /// with a decoder fallback on strict-parse zero-candidate. The
+    /// Installed by [`Engine::new`]: [`StrictOrDecoderRecognizer`] —
+    /// strict-first dispatch with a decoder fallback on strict-parse
+    /// zero-candidate (the field carries no type-parameter default; this
+    /// is the recognizer the CAPCO constructor supplies). The
     /// decoder recovers mangled markings that are edit-distance-1/2,
     /// token-reordered, superseded, or case-mangled from a real
     /// CAPCO-2016 marking. Live-typing surfaces concerned with
@@ -684,12 +686,11 @@ impl marque_scheme::DecisionSink for StepRemappingSink<'_> {
 /// The engine's default recognizer — an opaque wrapper over the private
 /// dispatch enum.
 ///
-/// Public because it is the default for the `Engine<CapcoScheme, R>`
-/// recognizer type parameter and the second argument of the
-/// [`CapcoEngine`] alias — a private default on a public struct's type
-/// parameter would leak a private type through the public API (E0446).
-/// It is only a valid `R` when `S = CapcoScheme`, since it only
-/// implements `Recognizer<CapcoScheme>`.
+/// Public because it is the second type argument of the public
+/// [`CapcoEngine`] alias (`Engine<CapcoScheme, EngineRecognizer>`) — a
+/// private type named in a `pub type` alias would leak through the public
+/// API (E0446). It is only a valid `R` when `S = CapcoScheme`, since it
+/// only implements `Recognizer<CapcoScheme>`.
 ///
 /// The dispatch variants (strict, strict-first/decoder-fallback,
 /// trait-object escape hatch) are deliberately NOT part of the public

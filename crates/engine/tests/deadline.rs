@@ -19,12 +19,12 @@
 
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
-use marque_engine::{Engine, EngineError, FixMode, FixOptions, InvalidThreshold, LintOptions};
+use marque_engine::{CapcoEngine, EngineError, FixMode, FixOptions, InvalidThreshold, LintOptions};
 use secrecy::ExposeSecret as _;
 use std::time::{Duration, Instant};
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         marque_engine::default_scheme(),

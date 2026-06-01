@@ -30,7 +30,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{Diagnostic, RuleId};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -154,10 +154,10 @@ fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJs
     }
 }
 
-fn shared_engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
+fn shared_engine() -> &'static CapcoEngine {
+    static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
     ENGINE.get_or_init(|| {
-        Engine::new(
+        CapcoEngine::new(
             Config::default(),
             marque_engine::default_ruleset(),
             marque_engine::default_scheme(),

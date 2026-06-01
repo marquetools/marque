@@ -40,14 +40,14 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixedClock};
+use marque_engine::{CapcoEngine, FixMode, FixedClock};
 use marque_rules::Diagnostic;
 use secrecy::ExposeSecret as _;
 
 const E002_PREDICATE: &str = "portion.dissem.rel-to-missing-usa";
 
-fn engine() -> Engine {
-    Engine::with_clock(
+fn engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

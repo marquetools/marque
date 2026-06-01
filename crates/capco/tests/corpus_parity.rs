@@ -28,12 +28,12 @@
 use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::CapcoScheme;
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::RuleSet;
 use marque_scheme::MarkingScheme;
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

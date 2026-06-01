@@ -23,7 +23,7 @@
 
 use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_ism::CanonicalAttrs;
 use marque_rules::{
     Diagnostic, Message, MessageArgs, MessageTemplate, Rule, RuleContext, RuleId, RuleSet, Severity,
@@ -147,7 +147,7 @@ impl RuleSet<CapcoScheme> for TestRuleSet {
     }
 }
 
-fn engine_with(panicky: bool, with_fires: bool) -> Engine {
+fn engine_with(panicky: bool, with_fires: bool) -> CapcoEngine {
     let mut rules: Vec<Box<dyn Rule<CapcoScheme>>> = Vec::new();
     if panicky {
         rules.push(Box::new(AlwaysPanicsRule));
@@ -155,7 +155,7 @@ fn engine_with(panicky: bool, with_fires: bool) -> Engine {
     if with_fires {
         rules.push(Box::new(AlwaysFiresRule));
     }
-    Engine::new(
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(TestRuleSet::new(rules))],
         marque_engine::default_scheme(),
@@ -279,7 +279,7 @@ fn capco_rules_still_emit_diagnostics() {
     // known-bad input. `SECRET//SI//FOREIGN` is well-formed at the
     // scanner but `FOREIGN` isn't a recognized dissem control —
     // E008 (or similar) fires.
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

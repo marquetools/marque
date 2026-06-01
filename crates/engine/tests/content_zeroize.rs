@@ -33,12 +33,12 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixResult};
+use marque_engine::{CapcoEngine, FixMode, FixResult};
 use secrecy::{ExposeSecret as _, SecretSlice};
 use static_assertions::assert_type_eq_all;
 
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

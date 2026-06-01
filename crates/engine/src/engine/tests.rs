@@ -342,11 +342,11 @@ fn proposal_with_confidence(
     }
 }
 
-fn engine_with(proposals: Vec<StubProposal>) -> Engine {
+fn engine_with(proposals: Vec<StubProposal>) -> CapcoEngine {
     engine_with_config(Config::default(), proposals)
 }
 
-fn engine_with_config(config: Config, proposals: Vec<StubProposal>) -> Engine {
+fn engine_with_config(config: Config, proposals: Vec<StubProposal>) -> CapcoEngine {
     let stub = StubRule {
         id: "TEST",
         proposals,

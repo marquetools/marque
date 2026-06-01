@@ -42,7 +42,7 @@ use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_config::Config;
 use marque_core::Parser;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_ism::CanonicalAttrs;
 use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
@@ -123,9 +123,9 @@ fn classify_shape(source: &[u8]) -> FixtureShape {
 // Helpers
 // ===========================================================================
 
-fn engine() -> Engine {
+fn engine() -> CapcoEngine {
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
-    Engine::new(Config::default(), rule_sets, CapcoScheme::new())
+    CapcoEngine::new(Config::default(), rule_sets, CapcoScheme::new())
         .expect("default CAPCO scheme constructs without rewrite cycles")
 }
 

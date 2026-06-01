@@ -25,15 +25,15 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixedClock, LintResult};
+use marque_engine::{CapcoEngine, FixMode, FixedClock, LintResult};
 use secrecy::ExposeSecret as _;
 use std::time::{Duration, UNIX_EPOCH};
 
 /// Fixed timestamp for deterministic audit records.
 const FIXED_TS: u64 = 1_700_000_000; // 2023-11-14T22:13:20Z
 
-fn test_engine() -> Engine {
-    Engine::with_clock(
+fn test_engine() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -212,7 +212,7 @@ fn post_fix_relint_has_fewer_diagnostics() {
 fn classifier_id_propagated_when_configured() {
     let mut config = Config::default();
     config.user.classifier_id = Some("TEST-CLASSIFIER-42".to_owned());
-    let engine = Engine::with_clock(
+    let engine = CapcoEngine::with_clock(
         config,
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

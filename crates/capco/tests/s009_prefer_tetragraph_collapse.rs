@@ -21,18 +21,18 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::Severity;
 
 /// Build an engine with S009 enabled at `suggest` severity.
-fn engine_with_s009() -> Engine {
+fn engine_with_s009() -> CapcoEngine {
     let mut config = Config::default();
     config.rules.overrides.insert(
         // Rule-override key uses the wire-string form.
         "capco:page.dissem.prefer-tetragraph-collapse".to_string(),
         "suggest".to_string(),
     );
-    Engine::new(
+    CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -41,8 +41,8 @@ fn engine_with_s009() -> Engine {
 }
 
 /// Build an engine with S009 at default severity (Off).
-fn engine_default() -> Engine {
-    Engine::new(
+fn engine_default() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

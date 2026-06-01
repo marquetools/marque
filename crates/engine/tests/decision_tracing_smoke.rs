@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_scheme::{DecisionEvent, DecisionSink};
 use static_assertions::assert_impl_all;
 
@@ -30,7 +30,7 @@ use static_assertions::assert_impl_all;
 // `decision-tracing` feature so `BatchEngine` can keep sharing it
 // across Tokio workers. Pinning this here (rather than at the
 // definition site) because `static_assertions` is a `dev-dependency`.
-assert_impl_all!(Engine: Send, Sync);
+assert_impl_all!(CapcoEngine: Send, Sync);
 
 /// Test-only sink that retains a clone-of-events surface so the test
 /// can inspect what the engine emitted after the sink moved into
@@ -57,7 +57,7 @@ fn engine_emits_through_shared_sink() {
         events: events.clone(),
     };
 
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -93,7 +93,7 @@ fn step_counter_resets_between_lint_calls() {
         events: events.clone(),
     };
 
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -145,7 +145,7 @@ fn phase_d_emits_rewrite_scheduled_on_noforn_implying_input() {
         events: events.clone(),
     };
 
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
@@ -189,7 +189,7 @@ fn phase_d_emits_page_rewrite_events_on_noforn_rel_to_input() {
         events: events.clone(),
     };
 
-    let engine = Engine::new(
+    let engine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

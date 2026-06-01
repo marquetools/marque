@@ -16,7 +16,7 @@
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, JointSet};
 use marque_config::Config;
-use marque_engine::{Engine, FixedClock};
+use marque_engine::{CapcoEngine, FixedClock};
 use marque_ism::{
     CanonicalAttrs, Classification, CountryCode, JointClassification, MarkingClassification,
 };
@@ -158,8 +158,8 @@ fn joint_disunity_warn_diagnostic_carries_no_document_text() {
 // (mixed JOINT+US per §H.3 p57; pure-US pages; pure-JOINT-unanimous
 // pages).
 
-fn engine_with_fixed_clock() -> Engine {
-    Engine::with_clock(
+fn engine_with_fixed_clock() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

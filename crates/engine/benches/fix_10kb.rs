@@ -34,7 +34,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use std::hint::black_box;
 
 /// Build a ~10 KB input with only `Phase::WholeMarking`-eligible
@@ -107,8 +107,8 @@ fn build_two_pass_input(target_bytes: usize) -> Vec<u8> {
     input
 }
 
-fn build_engine_default() -> Engine {
-    Engine::new(
+fn build_engine_default() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
@@ -116,10 +116,10 @@ fn build_engine_default() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-fn build_engine_with_corrections() -> Engine {
+fn build_engine_with_corrections() -> CapcoEngine {
     let mut config = Config::default();
     config.corrections.insert("SERCET".into(), "SECRET".into());
-    Engine::new(
+    CapcoEngine::new(
         config,
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),

@@ -32,7 +32,7 @@
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, capco_rules};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{Diagnostic, RuleSet, Severity};
 use marque_scheme::MarkingScheme;
 
@@ -41,8 +41,8 @@ use marque_scheme::MarkingScheme;
 // ---------------------------------------------------------------------------
 
 /// Build a default-configured `Engine` for class-floor lint tests.
-fn engine() -> Engine {
-    Engine::new(
+fn engine() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -679,7 +679,7 @@ fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
         "capco:banner.aea.floor-cnwdi".to_string(),
         "off".to_string(),
     );
-    let engine_with_off = Engine::new(
+    let engine_with_off = CapcoEngine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

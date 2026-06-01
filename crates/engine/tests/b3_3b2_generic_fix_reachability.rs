@@ -28,7 +28,7 @@
 
 use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, FixOptions, FixResult};
+use marque_engine::{CapcoEngine, Engine, FixMode, FixOptions, FixResult};
 use marque_rules::ConstraintBridge;
 use marque_scheme::MarkingScheme;
 use marque_scheme::recognizer::Recognizer;
@@ -66,7 +66,7 @@ const _STUB_FIX_REACHABLE: fn(&Engine<StubScheme, StubRecognizer>, &[u8]) -> Fix
 /// empty input through the public API.
 #[test]
 fn capco_fix_through_generic_surface_is_clean_on_empty_input() {
-    let engine: Engine = Engine::new(
+    let engine: CapcoEngine = CapcoEngine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),

@@ -11,7 +11,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::{Diagnostic, RuleId};
 use secrecy::ExposeSecret as _;
 use serde::Serialize;
@@ -20,10 +20,10 @@ use std::sync::OnceLock;
 
 /// Shared engine instance — avoids reconstructing per-fixture.
 /// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses.
-fn shared_engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
+fn shared_engine() -> &'static CapcoEngine {
+    static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
     ENGINE.get_or_init(|| {
-        Engine::new(
+        CapcoEngine::new(
             Config::default(),
             marque_engine::default_ruleset(),
             marque_engine::default_scheme(),

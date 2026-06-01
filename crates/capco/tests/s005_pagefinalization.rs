@@ -46,12 +46,12 @@
 use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::CapcoScheme;
 use marque_config::{Config, RuleConfig};
-use marque_engine::{Engine, FixedClock};
+use marque_engine::{CapcoEngine, FixedClock};
 use marque_rules::Severity;
 use std::collections::HashMap;
 
-fn engine_with_fixed_clock() -> Engine {
-    Engine::with_clock(
+fn engine_with_fixed_clock() -> CapcoEngine {
+    CapcoEngine::with_clock(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
@@ -401,7 +401,7 @@ fn s005_severity_config_off_silences_rule() {
     );
     let mut config = Config::default();
     config.rules = RuleConfig { overrides };
-    let engine = Engine::with_clock(
+    let engine = CapcoEngine::with_clock(
         config,
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

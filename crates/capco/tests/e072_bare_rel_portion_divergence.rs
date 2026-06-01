@@ -34,12 +34,12 @@
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
-use marque_engine::Engine;
+use marque_engine::CapcoEngine;
 use marque_rules::Severity;
 
 /// Build an engine with default config (E072 is Warn by default).
-fn engine_default() -> Engine {
-    Engine::new(
+fn engine_default() -> CapcoEngine {
+    CapcoEngine::new(
         Config::default(),
         vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),

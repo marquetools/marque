@@ -24,7 +24,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use marque_config::Config;
-use marque_engine::{Engine, FixMode};
+use marque_engine::{CapcoEngine, FixMode};
 use marque_rules::audit::AppliedFix;
 use marque_rules::{Diagnostic, RuleId};
 use marque_wasm::{fix_native, lint_native};
@@ -41,10 +41,10 @@ use std::sync::OnceLock;
 /// `crates/engine/tests/decoder_dispatch.rs::default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input`.
 const MANGLED_INPUT: &[u8] = b"(SERCET//NF)";
 
-fn shared_native_engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
+fn shared_native_engine() -> &'static CapcoEngine {
+    static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
     ENGINE.get_or_init(|| {
-        Engine::new(
+        CapcoEngine::new(
             Config::default(),
             marque_engine::default_ruleset(),
             marque_engine::default_scheme(),
@@ -77,14 +77,14 @@ fn shared_native_engine() -> &'static Engine {
 /// `Config::confidence_threshold`, so we lower it for the parity
 /// test rather than relying on `fix_with_threshold`'s per-call
 /// override (which only takes effect after the lint downgrade).
-fn shared_relaxed_engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
+fn shared_relaxed_engine() -> &'static CapcoEngine {
+    static ENGINE: OnceLock<CapcoEngine> = OnceLock::new();
     ENGINE.get_or_init(|| {
         let mut config = Config::default();
         config
             .set_confidence_threshold(0.80)
             .expect("0.80 is a valid confidence threshold");
-        Engine::new(
+        CapcoEngine::new(
             config,
             marque_engine::default_ruleset(),
             marque_engine::default_scheme(),

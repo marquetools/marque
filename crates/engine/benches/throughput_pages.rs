@@ -92,7 +92,7 @@ use std::time::Instant;
 
 use futures::StreamExt;
 use marque_config::Config;
-use marque_engine::{BatchEngine, BatchOptions, Engine};
+use marque_engine::{BatchEngine, BatchOptions, CapcoEngine};
 use marque_test_utils::fixtures::{SINGLE_PAGE, SINGLE_PAGE_TO_FIX};
 
 /// Total pages processed per phase. Large enough to amortize tokio
@@ -115,14 +115,14 @@ const DEFAULT_PAGES_PER_DOC: usize = 16;
 /// threads spawned lazily, pages first faulted in, caches cold).
 const WARMUP_PAGES: usize = 2_000;
 
-fn build_engine() -> Engine {
+fn build_engine() -> CapcoEngine {
     // The `SERCET → SECRET` correction lets the fix phase exercise the full
     // two-pass pipeline on `SINGLE_PAGE_TO_FIX` (matching the `fix_single_page`
     // latency bench). The lint phase runs `SINGLE_PAGE`, which contains no
     // `SERCET`, so the correction is inert there — one engine serves both.
     let mut config = Config::default();
     config.corrections.insert("SERCET".into(), "SECRET".into());
-    Engine::new(
+    CapcoEngine::new(
         config,
         marque_engine::default_ruleset(),
         marque_engine::default_scheme(),
