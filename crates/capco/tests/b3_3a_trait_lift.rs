@@ -228,10 +228,12 @@ fn generic_bounds_callable_for_capco_scheme() {
 #[test]
 fn generic_bounds_callable_for_stub_scheme() {
     let scheme = StubScheme::new();
-    // StubScheme: Canonical = (). The page-join default folds to the last
-    // element (or the bottom for an empty page) — both `()` here.
-    assert_eq!(join_through_bound(&scheme, &[(), (), ()]), ());
-    assert_eq!(join_through_bound(&scheme, &[]), ());
+    // StubScheme: Canonical = (). Calling through the bare `MarkingScheme`
+    // bound is what proves reachability; the page-join default folds to the
+    // last element (or bottom for an empty page), and the return is unit, so
+    // there is nothing meaningful to assert on the value itself.
+    join_through_bound(&scheme, &[(), (), ()]);
+    join_through_bound(&scheme, &[]);
     // StubScheme inherits every ConstraintBridge no-op default.
     assert!(!bridge_through_bound(&scheme, &()));
 }

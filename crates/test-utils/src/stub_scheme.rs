@@ -361,8 +361,8 @@ impl Vocabulary<StubScheme> for StubScheme {
 /// set of [`ConstraintBridge`](marque_rules::ConstraintBridge) defaults
 /// (no constraints, no fix intents, no messages, no per-system
 /// diagnostics). The empty `impl` is what lets a generic
-/// `Engine<StubScheme>` bound on `S: ConstraintBridge` and observe the
-/// no-constraint behavior.
+/// `Engine<StubScheme>` satisfy an `S: ConstraintBridge` bound, so the
+/// engine can observe the no-constraint behavior against a second scheme.
 impl marque_rules::ConstraintBridge for StubScheme {}
 
 // ---------------------------------------------------------------------------

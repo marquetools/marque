@@ -532,20 +532,22 @@ pub trait MarkingScheme {
     /// installed; otherwise it calls the plain [`Self::project_canonical`]
     /// hot path.
     ///
-    /// The default is `unimplemented!()` for the same reason as
-    /// [`Self::project_canonical`]. Schemes that project override both.
+    /// The default delegates to [`Self::project_canonical`] and emits no
+    /// events — the zero-cost off-mode path, mirroring how
+    /// [`Self::project_with_sink`] defaults to [`Self::project`]. So any
+    /// scheme that implements `project_canonical` gets a correct (if
+    /// uninstrumented) sink method for free, and calling the public sink
+    /// method never panics on it. Schemes that want per-stage projection
+    /// events override this (CapcoScheme does, under its `decision-tracing`
+    /// gate).
     ///
     /// [`DecisionEvent`]: crate::DecisionEvent
     fn project_canonical_with_sink(
         &self,
-        _portions: &[Self::Canonical],
+        portions: &[Self::Canonical],
         _sink: &mut dyn crate::DecisionSink,
     ) -> Self::Projected {
-        unimplemented!(
-            "MarkingScheme::project_canonical_with_sink not overridden by this scheme. \
-             Schemes that project from canonical space (e.g. CapcoScheme) override it; \
-             test stub schemes never reach this path and inherit the default safely."
-        )
+        self.project_canonical(portions)
     }
 
     /// Convert an owned canonical into the scheme's marking
