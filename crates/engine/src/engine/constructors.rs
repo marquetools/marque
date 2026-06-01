@@ -341,7 +341,7 @@ impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
     /// need to thread the flag into audit-record construction (the
     /// `build_decoder_diagnostic` helper in marque-capco, reached by the
     /// recognition path through
-    /// [`ConstraintBridge::recognition_outcome`](marque_rules::ConstraintBridge::recognition_outcome))
+    /// [`ConstraintBridge::recognition_outcome`]
     /// should go through this method rather than poking at the field
     /// directly.
     #[inline]

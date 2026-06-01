@@ -467,12 +467,13 @@ pub(super) fn project_page_marking<S: MarkingScheme>(
 
 /// Sink-aware variant of [`project_page_marking`].
 ///
-/// Routes through [`CapcoScheme::project_from_attrs_slice_with_sink`]
-/// so per-stage [`marque_scheme::DecisionEvent`]s flow to the
-/// engine's sink (Phase D of the decision-tracing pipeline). Only
-/// compiled when the `decision-tracing` Cargo feature is on; the
-/// off-feature build keeps the original [`project_page_marking`]
-/// signature on every call site.
+/// Routes through [`MarkingScheme::project_canonical_with_sink`] so
+/// per-stage [`marque_scheme::DecisionEvent`]s flow to the engine's sink
+/// (Phase D of the decision-tracing pipeline). For `CapcoScheme` that
+/// delegates to its instrumented `project_from_attrs_slice_with_sink`; the
+/// engine names only the trait method. Only compiled when the
+/// `decision-tracing` Cargo feature is on; the off-feature build keeps the
+/// original [`project_page_marking`] signature on every call site.
 #[cfg(feature = "decision-tracing")]
 pub(super) fn project_page_marking_with_sink<S: MarkingScheme>(
     scheme: &S,
@@ -482,7 +483,7 @@ pub(super) fn project_page_marking_with_sink<S: MarkingScheme>(
     scheme.project_canonical_with_sink(std::slice::from_ref(page_join_acc), sink)
 }
 
-/// Compare two `CanonicalAttrs` slices for the PageFinalization
+/// Compare two `S::Canonical` slices for the PageFinalization
 /// read-only-attrs sentinel. Returns `Ok(())` on equality,
 /// `Err(msg)` with a content-ignorant diagnostic message on mismatch
 /// (counts + indices only — never portion content).
@@ -505,9 +506,9 @@ pub(super) fn project_page_marking_with_sink<S: MarkingScheme>(
 /// - The `rule_count` parameter (a `usize` count, not content)
 /// - The doc-cross-reference literal
 ///
-/// It MUST NOT contain any `CanonicalAttrs` field values, type
-/// names that imply field content (e.g., `"SciControl"`,
-/// `"Span"`), or any string formed from slice element content.
+/// It MUST NOT contain any `S::Canonical` field values, type
+/// names that imply field content (e.g., a token-set or country-list
+/// type), or any string formed from slice element content.
 /// `sentinel_tests::check_portions_unchanged_error_message_is_g13_compliant`
 /// pins this invariant with a synthetic distinctive-content
 /// fixture — modifying the format string MUST be done together

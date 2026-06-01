@@ -333,6 +333,52 @@ mod tests {
         assert!(!dirty_result.is_clean());
     }
 
+    /// The hand-written `Default` (bounded on `S: MarkingScheme`, not the
+    /// derive that would impose a spurious `S: Default`) zeroes every field:
+    /// empty diagnostics, not truncated, all counts at 0.
+    #[test]
+    fn default_zeroes_every_field() {
+        let result = LintResult::<CapcoScheme>::default();
+        assert!(result.diagnostics.is_empty());
+        assert!(!result.truncated);
+        assert_eq!(result.candidates_processed, 0);
+        assert_eq!(result.candidates_total, 0);
+        assert_eq!(result.recognized_marking_count, 0);
+    }
+
+    /// The hand-written `Clone` (bounded on `S: MarkingScheme`, mirroring
+    /// `Diagnostic<S>`) copies every field; mutating the clone does not
+    /// disturb the original (deep copy of the diagnostics vector).
+    #[test]
+    fn clone_copies_every_field_independently() {
+        let original: LintResult = LintResult {
+            diagnostics: vec![Diagnostic::new(
+                RuleId::new("test", "synthetic.clone-fixture"),
+                Severity::Warn,
+                Span::new(3, 7),
+                stub_message(),
+                stub_citation(),
+                None,
+            )],
+            truncated: true,
+            candidates_processed: 4,
+            candidates_total: 9,
+            recognized_marking_count: 2,
+        };
+
+        let mut cloned = original.clone();
+        assert_eq!(cloned.diagnostics.len(), original.diagnostics.len());
+        assert!(cloned.truncated);
+        assert_eq!(cloned.candidates_processed, 4);
+        assert_eq!(cloned.candidates_total, 9);
+        assert_eq!(cloned.recognized_marking_count, 2);
+
+        // The clone owns its own diagnostics vector — clearing it leaves the
+        // original intact.
+        cloned.diagnostics.clear();
+        assert_eq!(original.diagnostics.len(), 1);
+    }
+
     #[test]
     fn info_count_isolates_info_from_error_and_warn() {
         // `Severity::Info` diagnostics count in `info_count()`
