@@ -31,24 +31,9 @@ mod text_correction;
 pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use decoder::{DECODER_VERSION, DecoderRecognizer, StrictOrDecoderRecognizer};
-pub use engine::{Engine, FixMode, InvalidThreshold, R002_RULE_ID};
+pub use engine::{CapcoEngine, Engine, EngineRecognizer, FixMode, InvalidThreshold, R002_RULE_ID};
 pub use session::{InterfaceCode, SessionMetadata};
 
-/// Type alias marking the intentional CAPCO-pinning of [`Engine`].
-///
-/// [`Engine`] is currently NOT generic over the marking scheme — its
-/// internal recognizer dispatch, decoder paths, and provenance
-/// handling are CAPCO-typed. The output types (`Diagnostic<S>`,
-/// `AppliedFix<S>`, `FixIntent<S>`, `LintResult`, `FixResult`) ARE
-/// generic, so the rule-emission surface is scheme-neutral. Engine
-/// generification (`Engine<S>` / `BatchEngine<S>`) is future work.
-///
-/// `CapcoEngine` exists so that `Engine` call sites that conceptually
-/// "want a CapcoScheme engine" can express that intent in the type
-/// system today, and so that a future generification can land
-/// `Engine<S>` alongside `pub type CapcoEngine = Engine<CapcoScheme>;`
-/// without breaking any call site.
-pub type CapcoEngine = Engine;
 pub use audit_render::{audit_line_to_json_v1_0, audit_line_to_ndjson};
 pub use errors::{EngineConstructionError, EngineError};
 pub use marque_scheme::{InputContext, InputSource};

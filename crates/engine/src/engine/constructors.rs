@@ -3,7 +3,14 @@ use super::dispatch::{
 };
 use super::*;
 
-impl Engine<CapcoScheme> {
+// The constructors hard-wire `EngineRecognizer::default()` (and the
+// `with_recognizer` / `with_strict_recognizer` builders mutate the same
+// `EngineRecognizer`), so this block is pinned to the default
+// recognizer `R = EngineRecognizer`. A type-param default does not apply
+// in impl position, so the second argument is spelled out explicitly.
+// Recognizer-agnostic method blocks (lint / fix / dispatch) generalize
+// over `R` in their own modules.
+impl Engine<CapcoScheme, EngineRecognizer> {
     /// Create a new engine with the given configuration, rule sets, and
     /// marking scheme.
     ///
@@ -213,16 +220,6 @@ impl Engine<CapcoScheme> {
         })
     }
 
-    /// The topologically-sorted rewrite order computed by the scheduler
-    /// at construction time.
-    ///
-    /// Exposed for diagnostic / test inspection. Per-document lint does
-    /// not re-sort; this slice is the canonical order every page roll-up
-    /// walks.
-    pub fn scheduled_rewrites(&self) -> &[RewriteId] {
-        &self.scheduled_rewrites
-    }
-
     /// Override the engine's recognizer. The default installed by
     /// [`Engine::new`] is [`StrictOrDecoderRecognizer`] (strict-first,
     /// decoder fallback). Callers that need to install a custom
@@ -238,7 +235,7 @@ impl Engine<CapcoScheme> {
     /// ```
     #[must_use = "with_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_recognizer(mut self, recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
-        self.recognizer = EngineRecognizer::Dyn(recognizer);
+        self.recognizer = EngineRecognizer::dynamic(recognizer);
         self
     }
 
@@ -256,7 +253,7 @@ impl Engine<CapcoScheme> {
     /// ```
     #[must_use = "with_strict_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_strict_recognizer(mut self) -> Self {
-        self.recognizer = EngineRecognizer::Strict(StrictRecognizer::new());
+        self.recognizer = EngineRecognizer::strict();
         self
     }
 
@@ -270,7 +267,7 @@ impl Engine<CapcoScheme> {
     /// Only available when the engine is built with the
     /// `decision-tracing` Cargo feature. With the feature off the
     /// method does not exist and the engine carries no sink field —
-    /// Constitution Principle I (SC-001 16 ms p95) is preserved by
+    /// Constitution Principle I (SC-001 p95 ≤ 2 ms) is preserved by
     /// the absence of any per-call-site branch on the hot path.
     ///
     /// Returns the engine by value so callers can chain:
@@ -316,6 +313,23 @@ impl Engine<CapcoScheme> {
     ) -> Self {
         self.corpus_override = Some(override_data);
         self
+    }
+}
+
+// Recognizer-agnostic accessors. These read fields that do not depend on
+// the recognizer type, so they generalize over `R` and stay callable from
+// the `R`-generic lint pipeline (e.g. `lint_helpers` reads
+// `corpus_override_active`). Kept separate from the `EngineRecognizer`-
+// pinned constructor block so generic-`R` call sites resolve.
+impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
+    /// The topologically-sorted rewrite order computed by the scheduler
+    /// at construction time.
+    ///
+    /// Exposed for diagnostic / test inspection. Per-document lint does
+    /// not re-sort; this slice is the canonical order every page roll-up
+    /// walks.
+    pub fn scheduled_rewrites(&self) -> &[RewriteId] {
+        &self.scheduled_rewrites
     }
 
     /// Whether a corpus override is in effect for this engine.

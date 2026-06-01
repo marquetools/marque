@@ -14,8 +14,8 @@ pub(super) struct RecognizedCandidate {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn handle_page_break_candidate(
-    engine: &Engine<CapcoScheme>,
+pub(super) fn handle_page_break_candidate<R: Recognizer<CapcoScheme>>(
+    engine: &Engine<CapcoScheme, R>,
     candidate: &marque_ism::MarkingCandidate,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     deadline: Option<Instant>,
@@ -108,8 +108,8 @@ pub(super) fn handle_page_break_candidate(
     Ok(true)
 }
 
-pub(super) fn recognize_marking_candidate(
-    engine: &Engine,
+pub(super) fn recognize_marking_candidate<R: Recognizer<CapcoScheme>>(
+    engine: &Engine<CapcoScheme, R>,
     source: &[u8],
     candidate: &marque_ism::MarkingCandidate,
     diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
@@ -208,8 +208,8 @@ pub(super) fn recognize_marking_candidate(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn dispatch_rules_for_marking(
-    engine: &Engine,
+pub(super) fn dispatch_rules_for_marking<R: Recognizer<CapcoScheme>>(
+    engine: &Engine<CapcoScheme, R>,
     candidate: &marque_ism::MarkingCandidate,
     attrs: &marque_ism::CanonicalAttrs,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
