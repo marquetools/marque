@@ -850,3 +850,51 @@ impl CapcoScheme {
         out
     }
 }
+
+/// Generic constraint-bridge surface for the engine.
+///
+/// Each method delegates to the identically-named inherent method above.
+/// Method resolution prefers inherent methods over trait methods for
+/// `self.method(...)`, so these bodies call the inherent versions, not
+/// themselves — there is no recursion. The trait exists so the engine's
+/// constraint bridge can invoke these generically through an
+/// `S: ConstraintBridge` bound; the inherent methods stay as the concrete
+/// bodies the delegation targets.
+impl marque_rules::ConstraintBridge for CapcoScheme {
+    fn has_diagnostic_constraints(&self) -> bool {
+        self.has_diagnostic_constraints()
+    }
+
+    fn fix_intent_by_name(
+        &self,
+        name: &str,
+        canonical: &CanonicalAttrs,
+        marking_type: MarkingType,
+    ) -> Option<FixIntent<CapcoScheme>> {
+        self.fix_intent_by_name(name, canonical, marking_type)
+    }
+
+    fn message_by_name(
+        &self,
+        name: &str,
+        canonical: &CanonicalAttrs,
+        marking_type: MarkingType,
+    ) -> Option<Message> {
+        self.message_by_name(name, canonical, marking_type)
+    }
+
+    fn bridge_sci_per_system_diagnostics(
+        &self,
+        canonical: &CanonicalAttrs,
+        candidate_span: marque_scheme::Span,
+        fix_scope: Scope,
+        emitted_id_overrides: &std::collections::HashMap<&'static str, marque_rules::Severity>,
+    ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
+        self.bridge_sci_per_system_diagnostics(
+            canonical,
+            candidate_span,
+            fix_scope,
+            emitted_id_overrides,
+        )
+    }
+}

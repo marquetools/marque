@@ -16,13 +16,26 @@
 //!
 //! ## Self-containment (Constitution VII)
 //!
-//! This module imports only from `marque_scheme` and `std`. The
-//! WASM-safe leaf (`marque-scheme`) is the *only* marque dependency;
-//! pulling in `marque-engine` / `marque-core` / `marque-rules` /
-//! `marque-ism` / `marque-capco` here would invert the dependency graph
-//! and is forbidden. `marque-test-utils` is `publish=false` and consumed
-//! only under `[dev-dependencies]`, so this edge never reaches a shipping
-//! crate's normal dep graph or the WASM artifact.
+//! This module imports only from `marque_scheme`, `marque_rules`, and
+//! `std`. Both marque dependencies are domain-neutral WASM-safe crates
+//! that sit *below* `marque-test-utils` (`marque-rules` depends on
+//! `marque-scheme`, not the reverse), so neither edge inverts the
+//! dependency graph. `marque_rules` is needed only for the empty
+//! [`ConstraintBridge`](marque_rules::ConstraintBridge) impl below — a
+//! generic `Engine<S>` instantiated with this fixture as its second
+//! scheme must satisfy that bound. `marque-ism` is now a *transitive*
+//! dependency (via `marque-rules`), and the inherited `ConstraintBridge`
+//! signatures mention `marque_ism::MarkingType` — the engine's
+//! scheme-neutral candidate-kind, used by every scheme's rule surface, not
+//! ISM vocabulary. What the fixture still avoids is a *direct* dependency
+//! on `marque-ism` or `marque-capco` and any ISM marking vocabulary (CVE
+//! enums, `CapcoScheme`). Pulling in `marque-engine` / `marque-core` /
+//! `marque-capco` here remains forbidden: the engine/scanner crates would
+//! invert the graph, and `marque-capco` would drag in the CAPCO/ISM
+//! vocabulary this fixture exists to avoid. `marque-test-utils` is
+//! `publish=false` and consumed only under `[dev-dependencies]`, so these
+//! edges never reach a shipping crate's normal dep graph or the WASM
+//! artifact.
 //!
 //! ## Not a real grammar
 //!
@@ -344,6 +357,18 @@ impl Vocabulary<StubScheme> for StubScheme {
         false
     }
 }
+
+// ---------------------------------------------------------------------------
+// ConstraintBridge impl — empty body, inheriting every no-op default.
+// ---------------------------------------------------------------------------
+
+/// `StubScheme` declares no diagnostic constraints, so it takes the full
+/// set of [`ConstraintBridge`](marque_rules::ConstraintBridge) defaults
+/// (no constraints, no fix intents, no messages, no per-system
+/// diagnostics). The empty `impl` is what lets a generic
+/// `Engine<StubScheme>` satisfy an `S: ConstraintBridge` bound, so the
+/// engine can observe the no-constraint behavior against a second scheme.
+impl marque_rules::ConstraintBridge for StubScheme {}
 
 // ---------------------------------------------------------------------------
 // Recognizer impl — zero-candidate Ambiguous (the engine-safe answer).

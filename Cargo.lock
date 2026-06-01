@@ -1181,6 +1181,7 @@ dependencies = [
 name = "marque-test-utils"
 version = "0.2.0"
 dependencies = [
+ "marque-rules",
  "marque-scheme",
  "serde",
  "serde_json",

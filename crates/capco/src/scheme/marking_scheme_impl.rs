@@ -475,6 +475,47 @@ impl MarkingScheme for CapcoScheme {
         }
     }
 
+    /// Canonical-space page join (the engine's per-page accumulator
+    /// composition). Delegates to the per-axis lattice fold
+    /// [`CapcoMarking::join_via_lattice`]; see that method for the
+    /// axis-ordering and supersession rationale.
+    fn canonical_page_join(&self, portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        CapcoMarking::join_via_lattice(portions)
+    }
+
+    /// Canonical-space page projection (non-instrumented hot path).
+    /// Delegates to [`Self::project_from_attrs_slice`] — the same
+    /// shared `project_attrs_pipeline` body the engine's hot path uses —
+    /// and lifts the result into [`marque_ism::ProjectedMarking`].
+    fn project_canonical(&self, portions: &[CanonicalAttrs]) -> marque_ism::ProjectedMarking {
+        marque_ism::ProjectedMarking::from_canonical(self.project_from_attrs_slice(portions))
+    }
+
+    /// Sink-aware canonical-space page projection — emits per-stage
+    /// decision events. Compiled only under the `decision-tracing` feature,
+    /// mirroring [`Self::project_with_sink`]. Tracing-off builds inherit the
+    /// trait default, which safely delegates to `project_canonical` and
+    /// emits nothing (no panic); in practice the engine's sink call site is
+    /// itself `decision-tracing`-gated, so the default is never reached.
+    #[cfg(feature = "decision-tracing")]
+    fn project_canonical_with_sink(
+        &self,
+        portions: &[CanonicalAttrs],
+        sink: &mut dyn marque_scheme::DecisionSink,
+    ) -> marque_ism::ProjectedMarking {
+        marque_ism::ProjectedMarking::from_canonical(
+            self.project_attrs_pipeline_with_sink(portions, sink),
+        )
+    }
+
+    /// Lift an owned canonical into a [`CapcoMarking`] via the existing
+    /// `From<CanonicalAttrs>` conversion. The engine uses this to cross
+    /// from its canonical-space accumulator into marking space for
+    /// [`MarkingScheme::validate`].
+    fn marking_from_canonical(&self, canonical: CanonicalAttrs) -> CapcoMarking {
+        CapcoMarking::from(canonical)
+    }
+
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &self.page_rewrites
     }
