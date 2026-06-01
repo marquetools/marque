@@ -1,6 +1,6 @@
 # Phase B4 — Object-Safe Erasure + MultiGrammarEngine + Strip Defaults
 
-**Status:** DRAFT for sign-off · **Date:** 2026-06-01 · **Author:** oversight (007)
+**Status:** SIGNED OFF (2026-06-01) · **Date:** 2026-06-01 · **Author:** oversight (007)
 **Base:** `main` `af57e473` (post B3.4) · **Worktree:** `.worktrees/phase-b`
 
 ---

@@ -321,9 +321,12 @@ impl Default for BatchOptions {
     }
 }
 
-/// Wraps `Engine` for concurrent multi-document processing with backpressure.
+/// Wraps a [`CapcoEngine`] for concurrent multi-document processing with
+/// backpressure.
 ///
-/// The underlying `Engine` is shared via `Arc`; cloning `BatchEngine` is cheap.
+/// `BatchEngine` is CAPCO-specific (it holds an `Arc<CapcoEngine>`), not
+/// generic over schemes/recognizers. The underlying engine is shared via
+/// `Arc`; cloning `BatchEngine` is cheap.
 pub struct BatchEngine {
     engine: Arc<CapcoEngine>,
     controller: Arc<ConcurrencyController>,
