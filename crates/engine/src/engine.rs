@@ -14,12 +14,11 @@ use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
-use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    CORRECTIONS_MAP_CITATION, Diagnostic, EnginePromotionToken, FixSource, Phase, RuleId, RuleSet,
-    Severity, SmallVec,
+    CORRECTIONS_MAP_CITATION, ConstraintBridge, Diagnostic, EnginePromotionToken, FixSource, Phase,
+    RuleId, RuleSet, Severity, SmallVec,
 };
 use marque_scheme::Span;
 use marque_scheme::ambiguity::Parsed;
@@ -154,7 +153,7 @@ pub(crate) const DEFAULT_PORTIONS_CAPACITY: usize = 8;
 /// The `fresh_accumulator_uses_default_capacity` unit test below pins the
 /// capacity contract.
 #[inline]
-pub(crate) fn fresh_page_portions_accumulator() -> Vec<marque_ism::CanonicalAttrs> {
+pub(crate) fn fresh_page_portions_accumulator<S: MarkingScheme>() -> Vec<S::Canonical> {
     Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY)
 }
 
@@ -499,7 +498,7 @@ pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecog
 }
 
 #[cfg(feature = "decision-tracing")]
-impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
+impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
     /// Mint the next monotone step counter and record one
     /// [`DecisionEvent`](marque_scheme::DecisionEvent) on the engine's
     /// sink.

@@ -321,7 +321,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
 // the `R`-generic lint pipeline (e.g. `lint_helpers` reads
 // `corpus_override_active`). Kept separate from the `EngineRecognizer`-
 // pinned constructor block so generic-`R` call sites resolve.
-impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
+impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
     /// The topologically-sorted rewrite order computed by the scheduler
     /// at construction time.
     ///
@@ -339,9 +339,11 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     /// builds therefore cannot observe a `true` here regardless of
     /// what any caller passes through other surfaces. Callers that
     /// need to thread the flag into audit-record construction (the
-    /// `build_decoder_diagnostic` helper in marque-capco, called
-    /// directly from the recognition path) should go through this
-    /// method rather than poking at the field directly.
+    /// `build_decoder_diagnostic` helper in marque-capco, reached by the
+    /// recognition path through
+    /// [`ConstraintBridge::recognition_outcome`]
+    /// should go through this method rather than poking at the field
+    /// directly.
     #[inline]
     pub fn corpus_override_active(&self) -> bool {
         #[cfg(feature = "corpus-override")]
@@ -357,12 +359,12 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     /// Borrow the engine's active marking scheme.
     ///
     /// Used by the CLI / WASM audit-record renderers to project
-    /// [`AuditLine<CapcoScheme>`] values through the scheme's
+    /// `AuditLine<S>` values through the scheme's
     /// [`Vocabulary`](marque_scheme::Vocabulary) and
     /// [`MarkingScheme::categories`](marque_scheme::MarkingScheme::categories)
     /// surfaces for the audit JSON shape. Off the lint/scan
     /// hot path — purely a wire-format projection helper.
-    pub fn scheme(&self) -> &CapcoScheme {
+    pub fn scheme(&self) -> &S {
         &self.scheme
     }
 }
