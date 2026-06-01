@@ -118,7 +118,7 @@ fn stub_citation() -> Citation {
 /// `DEFAULT_PORTIONS_CAPACITY`.
 #[test]
 fn fresh_accumulator_uses_default_capacity() {
-    let v = fresh_page_portions_accumulator();
+    let v = fresh_page_portions_accumulator::<CapcoScheme>();
     assert!(
         v.is_empty(),
         "fresh accumulator must be empty, got len={}",

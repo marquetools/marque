@@ -469,10 +469,10 @@ pub(super) type PrePass1Cache = SmallVec<[(Span, marque_ism::CanonicalAttrs); 4]
 /// reads it, but the field stays plumbed for future consumers
 /// (D-7.22).
 #[inline]
-pub(super) fn pre_pass_1_attrs_for_span(
-    cache: &[(Span, marque_ism::CanonicalAttrs)],
+pub(super) fn pre_pass_1_attrs_for_span<S: MarkingScheme>(
+    cache: &[(Span, S::Canonical)],
     query_span: Span,
-) -> Option<&marque_ism::CanonicalAttrs> {
+) -> Option<&S::Canonical> {
     cache.iter().find_map(|(marking_span, attrs)| {
         if span_is_within_marking(query_span, *marking_span) {
             Some(attrs)

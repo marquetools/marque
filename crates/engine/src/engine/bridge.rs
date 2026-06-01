@@ -1,12 +1,16 @@
 use super::*;
 
-pub(super) fn apply_constraint_bridge_for_marking<R: Recognizer<CapcoScheme>>(
-    engine: &Engine<CapcoScheme, R>,
+pub(super) fn apply_constraint_bridge_for_marking<S, R>(
+    engine: &Engine<S, R>,
     candidate: &marque_ism::MarkingCandidate,
-    attrs: &marque_ism::CanonicalAttrs,
-    page_portions: &[marque_ism::CanonicalAttrs],
-    diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
-) {
+    attrs: &S::Canonical,
+    page_portions: &[S::Canonical],
+    diagnostics: &mut Vec<Diagnostic<S>>,
+) where
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone,
+    R: Recognizer<S>,
+{
     if !engine.scheme.has_diagnostic_constraints() {
         return;
     }
@@ -35,7 +39,7 @@ pub(super) fn apply_constraint_bridge_for_marking<R: Recognizer<CapcoScheme>>(
     #[cfg(not(feature = "decision-tracing"))]
     let _ = page_portions;
 
-    let marking = marque_capco::CapcoMarking::from(attrs.clone());
+    let marking = engine.scheme.marking_from_canonical(attrs.clone());
     for v in engine.scheme.validate(&marking) {
         // Phase C decision-tracing — `ConstraintFired` event per
         // emitted `ConstraintViolation`. The non-firing path
@@ -78,7 +82,11 @@ pub(super) fn apply_constraint_bridge_for_marking<R: Recognizer<CapcoScheme>>(
     ));
 }
 
-impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
+impl<S, R> Engine<S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    R: Recognizer<S>,
+{
     /// Translate a scheme-emitted [`ConstraintViolation`] into an
     /// engine-side [`Diagnostic`].
     ///
@@ -115,9 +123,9 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     pub(super) fn bridge_constraint_diagnostic(
         &self,
         v: &marque_scheme::ConstraintViolation,
-        attrs: &marque_ism::CanonicalAttrs,
+        attrs: &S::Canonical,
         candidate: &marque_ism::MarkingCandidate,
-    ) -> Option<marque_rules::Diagnostic<CapcoScheme>> {
+    ) -> Option<marque_rules::Diagnostic<S>> {
         use marque_rules::{Diagnostic, RuleId, Severity};
 
         let span = match v.span {

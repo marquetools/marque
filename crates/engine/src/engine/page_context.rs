@@ -28,7 +28,7 @@ use super::*;
 ///
 /// # Field choices
 ///
-/// - `portions` is `&'a [CanonicalAttrs]` (not `Arc<...>`), matching
+/// - `portions` is `&'a [S::Canonical]` (not `Arc<...>`), matching
 ///   the borrowed slice the dispatch already consumed before the
 ///   refactor; the dispatch lazily promotes it to `Arc<Box<[_]>>`
 ///   via `portions_arc.get_or_insert_with(...)` so consecutive
@@ -38,7 +38,7 @@ use super::*;
 ///   (PageFinalization rules expect populated Arcs) and the caller
 ///   threads the same Arcs to any subsequent same-page banner/CAB
 ///   candidate.
-/// - `join_acc` is `&'a CanonicalAttrs` (not `Arc<_>` and not
+/// - `join_acc` is `&'a S::Canonical` (not `Arc<_>` and not
 ///   `Cow<_>`) so the hot path's `std::mem::take(&mut page_join_acc)`
 ///   in `lint_inner` (the issue #306 / PR #674 O(N) accumulation
 ///   fix) stays a move, not a clone.
@@ -55,11 +55,11 @@ use super::*;
 ///   page-boundary candidate's zero-length span anchor (the
 ///   `candidate.span.start` of the trailing page-break candidate on
 ///   the PageBreak branch, or `source.len()` on the EOD flush).
-pub(super) struct PageFinalizationContext<'a> {
-    pub(crate) portions: &'a [marque_ism::CanonicalAttrs],
-    pub(crate) portions_arc: &'a mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
-    pub(crate) marking_arc: &'a mut Option<Arc<marque_ism::ProjectedMarking>>,
-    pub(crate) join_acc: &'a marque_ism::CanonicalAttrs,
+pub(super) struct PageFinalizationContext<'a, S: MarkingScheme> {
+    pub(crate) portions: &'a [S::Canonical],
+    pub(crate) portions_arc: &'a mut Option<Arc<Box<[S::Canonical]>>>,
+    pub(crate) marking_arc: &'a mut Option<Arc<S::Projected>>,
+    pub(crate) join_acc: &'a S::Canonical,
     pub(crate) banner_span: Option<Span>,
     pub(crate) boundary_offset: usize,
 }
@@ -153,17 +153,20 @@ pub(super) struct PageFinalizationContext<'a> {
 // is the right next step. The deferral is deliberate per #680's
 // scope contract.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn dispatch_page_finalization(
-    scheme: &CapcoScheme,
-    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+pub(super) fn dispatch_page_finalization<S: MarkingScheme>(
+    scheme: &S,
+    rule_sets: &[Box<dyn RuleSet<S>>],
     pass_finalization_rule_indices: &PassFinalizationIndices,
     fast_path_severities: &FastPathSeverities,
     emitted_id_overrides: &EmittedIdOverrides,
-    pf_ctx: PageFinalizationContext<'_>,
+    pf_ctx: PageFinalizationContext<'_, S>,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     deadline: Option<Instant>,
-    out_diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
-) -> Result<(), ()> {
+    out_diagnostics: &mut Vec<Diagnostic<S>>,
+) -> Result<(), ()>
+where
+    S::Canonical: Clone + Default + PartialEq,
+{
     use marque_ism::MarkingType;
     use marque_rules::RuleContext;
 
@@ -255,7 +258,7 @@ pub(super) fn dispatch_page_finalization(
     // dispatch loop; rules that try to introspect dummy attrs will
     // observe `Default` values (e.g., empty `Box<[T]>` collections)
     // — they would be misimplemented PageFinalization rules anyway.
-    let dummy_attrs = marque_ism::CanonicalAttrs::default();
+    let dummy_attrs = <S::Canonical>::default();
 
     // `pre_pass_1_attrs` is `None` because the synthetic boundary
     // span has no preceding-portion identity in the pre-pass-1
@@ -267,7 +270,7 @@ pub(super) fn dispatch_page_finalization(
     // (which observes the slice the rule actually reads via
     // `ctx.page_portions`). `Arc::clone` is a refcount bump, no
     // slice data is copied.
-    let ctx = RuleContext::<CapcoScheme>::new(MarkingType::PageFinalization, boundary_span)
+    let ctx = RuleContext::<S>::new(MarkingType::PageFinalization, boundary_span)
         .with_page_portions(Some(page_portions_arc.clone()))
         .with_page_marking(Some(page_mark_arc))
         // Issue #663: thread the closing page's most-recent banner span
@@ -327,7 +330,7 @@ pub(super) fn dispatch_page_finalization(
     // which auto-derefs to `&[CanonicalAttrs]`; `<[T]>::to_vec()`
     // then produces `Vec<CanonicalAttrs>` directly.
     #[cfg(debug_assertions)]
-    let portions_before: Vec<marque_ism::CanonicalAttrs> = page_portions_arc.as_ref().to_vec();
+    let portions_before: Vec<S::Canonical> = page_portions_arc.as_ref().to_vec();
 
     // Mirror the main candidate-loop dispatch shape: fast-path
     // Off-skip via `fast_path_severities[set_idx][rule_idx]`,
@@ -413,7 +416,7 @@ pub(super) fn dispatch_page_finalization(
     // attribution, switch to a per-iteration snapshot inside the
     // loop temporarily for debugging.
     #[cfg(debug_assertions)]
-    if let Err(msg) = check_portions_unchanged(
+    if let Err(msg) = check_portions_unchanged::<S>(
         portions_before.as_slice(),
         page_portions_arc.as_ref(),
         pass_finalization_rule_indices.len(),
@@ -424,14 +427,14 @@ pub(super) fn dispatch_page_finalization(
     Ok(())
 }
 
-/// Project the current per-page accumulator slice into a
-/// [`marque_ism::ProjectedMarking`] via the scheme's production
-/// page-projection path.
+/// Project the current per-page accumulator slice into the scheme's
+/// `S::Projected` via [`MarkingScheme::project_canonical`].
 ///
-/// The hot path runs `scheme.project(Scope::Page, ...)` (the lattice +
-/// closure + PageRewrite pipeline). The bridge from `CanonicalAttrs` to
-/// `ProjectedMarking` lives in `marque_ism::ProjectedMarking::from_canonical`
-/// so the scheme crate and the engine crate share one source of truth.
+/// `project_canonical` runs the scheme's canonical-space page projection
+/// (for `CapcoScheme`, the lattice + closure + PageRewrite pipeline,
+/// lifted into `marque_ism::ProjectedMarking` inside the impl). The engine
+/// reaches it only through the trait method — it does not name any
+/// scheme-specific projected type or conversion.
 ///
 /// This helper centralizes the projection-call shape shared by the
 /// primary lazy-init in `Engine::lint` (around the banner/CAB candidate
@@ -441,23 +444,25 @@ pub(super) fn dispatch_page_finalization(
 /// the closure capture minimal at each call site and avoids duplicating
 /// the per-portion conversion logic.
 ///
-/// The parameter is a `&[CanonicalAttrs]` so the caller does not need to
+/// The parameter is a `&S::Canonical` so the caller does not need to
 /// construct an intermediate accumulator type.
-pub(super) fn project_page_marking(
-    scheme: &CapcoScheme,
-    page_join_acc: &marque_ism::CanonicalAttrs,
-) -> marque_ism::ProjectedMarking {
-    // Route through `CapcoScheme::project_from_attrs_slice`, the engine
-    // fast-path that consumes the per-page accumulator slice directly.
+pub(super) fn project_page_marking<S: MarkingScheme>(
+    scheme: &S,
+    page_join_acc: &S::Canonical,
+) -> S::Projected {
+    // Route through the scheme's canonical-space page projection, the
+    // engine fast-path that consumes the per-page accumulator slice
+    // directly (`CapcoScheme::project_canonical` delegates to
+    // `project_from_attrs_slice` and lifts the result into
+    // `ProjectedMarking`).
     //
-    // Issue #306 (O(N²) fix): the caller now passes the pre-computed
+    // Issue #306 (O(N²) fix): the caller passes the pre-computed
     // incremental join accumulator (`page_join_acc`) rather than the
     // full `page_portions` slice. The accumulator is maintained by the
-    // portion-push site via `join_via_lattice([acc, new_portion])` so
+    // portion-push site via `canonical_page_join([acc, new_portion])` so
     // this call projects a single element (O(1)) instead of re-folding
     // all N portions on every banner/CAB candidate (O(N)).
-    let projected = scheme.project_from_attrs_slice(std::slice::from_ref(page_join_acc));
-    marque_ism::ProjectedMarking::from_canonical(projected)
+    scheme.project_canonical(std::slice::from_ref(page_join_acc))
 }
 
 /// Sink-aware variant of [`project_page_marking`].
@@ -469,14 +474,12 @@ pub(super) fn project_page_marking(
 /// off-feature build keeps the original [`project_page_marking`]
 /// signature on every call site.
 #[cfg(feature = "decision-tracing")]
-pub(super) fn project_page_marking_with_sink(
-    scheme: &CapcoScheme,
-    page_join_acc: &marque_ism::CanonicalAttrs,
+pub(super) fn project_page_marking_with_sink<S: MarkingScheme>(
+    scheme: &S,
+    page_join_acc: &S::Canonical,
     sink: &mut dyn marque_scheme::DecisionSink,
-) -> marque_ism::ProjectedMarking {
-    let projected =
-        scheme.project_from_attrs_slice_with_sink(std::slice::from_ref(page_join_acc), sink);
-    marque_ism::ProjectedMarking::from_canonical(projected)
+) -> S::Projected {
+    scheme.project_canonical_with_sink(std::slice::from_ref(page_join_acc), sink)
 }
 
 /// Compare two `CanonicalAttrs` slices for the PageFinalization
@@ -510,11 +513,14 @@ pub(super) fn project_page_marking_with_sink(
 /// fixture — modifying the format string MUST be done together
 /// with re-running that test.
 #[cfg(debug_assertions)]
-pub(crate) fn check_portions_unchanged(
-    before: &[marque_ism::CanonicalAttrs],
-    after: &[marque_ism::CanonicalAttrs],
+pub(crate) fn check_portions_unchanged<S: MarkingScheme>(
+    before: &[S::Canonical],
+    after: &[S::Canonical],
     rule_count: usize,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    S::Canonical: PartialEq,
+{
     if before == after {
         Ok(())
     } else {

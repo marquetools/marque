@@ -235,6 +235,7 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
 #[cfg(all(test, debug_assertions))]
 mod sentinel_tests {
     use super::check_portions_unchanged;
+    use marque_capco::CapcoScheme;
     use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
 
     /// Construct a default `CanonicalAttrs`. `CanonicalAttrs` is
@@ -267,13 +268,13 @@ mod sentinel_tests {
     #[test]
     fn check_portions_unchanged_returns_ok_on_equal_slices() {
         // Empty + empty — the typical no-portion dispatch shape.
-        assert!(check_portions_unchanged(&[], &[], 0).is_ok());
+        assert!(check_portions_unchanged::<CapcoScheme>(&[], &[], 0).is_ok());
 
         // Single portion, cloned — Vec clone proves the comparison
         // is value-equality, not pointer-equality.
         let portions = vec![secret_attrs()];
         let cloned = portions.clone();
-        assert!(check_portions_unchanged(&portions, &cloned, 1).is_ok());
+        assert!(check_portions_unchanged::<CapcoScheme>(&portions, &cloned, 1).is_ok());
     }
 
     /// Test 2 — mismatched lengths return `Err`, error string
@@ -289,7 +290,7 @@ mod sentinel_tests {
         let before = vec![secret_attrs()];
         let after: Vec<CanonicalAttrs> = vec![];
 
-        let err = check_portions_unchanged(&before, &after, 7)
+        let err = check_portions_unchanged::<CapcoScheme>(&before, &after, 7)
             .expect_err("length mismatch must surface as Err");
 
         // Counts present.
@@ -335,7 +336,7 @@ mod sentinel_tests {
         let before = vec![empty_attrs()];
         let after = vec![secret_attrs()];
 
-        let err = check_portions_unchanged(&before, &after, 1)
+        let err = check_portions_unchanged::<CapcoScheme>(&before, &after, 1)
             .expect_err("content mismatch must surface as Err");
 
         // Counts: both sides are length-1, so the count phrasing
@@ -390,7 +391,7 @@ mod sentinel_tests {
         let before = vec![attrs_with_canary];
         let after: Vec<CanonicalAttrs> = vec![];
 
-        let err = check_portions_unchanged(&before, &after, 1)
+        let err = check_portions_unchanged::<CapcoScheme>(&before, &after, 1)
             .expect_err("mismatch must surface as Err for the content-ignorance check");
 
         // The load-bearing assertion: the distinctive sentinel

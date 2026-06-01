@@ -5,29 +5,41 @@ use super::page_context::project_page_marking;
 use super::page_context::project_page_marking_with_sink;
 use super::page_context::{PageFinalizationContext, dispatch_page_finalization};
 use super::*;
-use marque_capco::build_decoder_diagnostic;
 
-pub(super) struct RecognizedCandidate {
-    pub(super) attrs: marque_ism::CanonicalAttrs,
-    pub(super) provenance: Option<DecoderProvenance>,
+/// A scanner candidate the recognizer resolved to a marking.
+///
+/// Holds the recognized `S::Marking` whole (so the lint→fix cache keeps the
+/// recognizer's full output, including any scheme-private recognition
+/// side-channel) alongside the canonical projection the rule loop and page
+/// accumulator consume. `attrs` is `scheme.canonical_from_marking(&marking)` —
+/// computed once here (recognition already needs it for the rank floor) and
+/// reused by the caller rather than re-derived.
+pub(super) struct RecognizedCandidate<S: MarkingScheme> {
+    pub(super) marking: S::Marking,
+    pub(super) attrs: S::Canonical,
     pub(super) diagnostics_pre_candidate: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn handle_page_break_candidate<R: Recognizer<CapcoScheme>>(
-    engine: &Engine<CapcoScheme, R>,
+pub(super) fn handle_page_break_candidate<S, R>(
+    engine: &Engine<S, R>,
     candidate: &marque_ism::MarkingCandidate,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     deadline: Option<Instant>,
-    diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
-    page_portions: &mut Vec<marque_ism::CanonicalAttrs>,
-    page_portions_arc: &mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
-    page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
-    page_join_acc: &mut marque_ism::CanonicalAttrs,
+    diagnostics: &mut Vec<Diagnostic<S>>,
+    page_portions: &mut Vec<S::Canonical>,
+    page_portions_arc: &mut Option<Arc<Box<[S::Canonical]>>>,
+    page_marking_arc: &mut Option<Arc<S::Projected>>,
+    page_join_acc: &mut S::Canonical,
     page_banner_span: &mut Option<Span>,
     rank_floor: &mut Option<u8>,
     render_scratch: &mut String,
-) -> Result<bool, ()> {
+) -> Result<bool, ()>
+where
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone + Default + PartialEq,
+    R: Recognizer<S>,
+{
     use marque_ism::MarkingType;
 
     if candidate.kind != MarkingType::PageBreak {
@@ -98,8 +110,8 @@ pub(super) fn handle_page_break_candidate<R: Recognizer<CapcoScheme>>(
         return Err(());
     }
 
-    *page_portions = fresh_page_portions_accumulator();
-    *page_join_acc = marque_ism::CanonicalAttrs::default();
+    *page_portions = fresh_page_portions_accumulator::<S>();
+    *page_join_acc = <S::Canonical>::default();
     *page_portions_arc = None;
     *page_banner_span = None;
     *page_marking_arc = None;
@@ -108,15 +120,19 @@ pub(super) fn handle_page_break_candidate<R: Recognizer<CapcoScheme>>(
     Ok(true)
 }
 
-pub(super) fn recognize_marking_candidate<R: Recognizer<CapcoScheme>>(
-    engine: &Engine<CapcoScheme, R>,
+pub(super) fn recognize_marking_candidate<S, R>(
+    engine: &Engine<S, R>,
     source: &[u8],
     candidate: &marque_ism::MarkingCandidate,
-    diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
+    diagnostics: &mut Vec<Diagnostic<S>>,
     recognized_marking_count: &mut usize,
     rank_floor: &mut Option<u8>,
     input_source: marque_scheme::InputSource,
-) -> Option<RecognizedCandidate> {
+) -> Option<RecognizedCandidate<S>>
+where
+    S: MarkingScheme + ConstraintBridge,
+    R: Recognizer<S>,
+{
     let span_start = candidate.span.start.min(source.len());
     let span_end = candidate.span.end.min(source.len());
     let preceded_by_whitespace = match span_start.checked_sub(1) {
@@ -167,13 +183,31 @@ pub(super) fn recognize_marking_candidate<R: Recognizer<CapcoScheme>>(
     };
     *recognized_marking_count += 1;
     let diagnostics_pre_candidate = diagnostics.len();
-    let attrs = marking.0;
 
-    if marking.1.is_none()
-        && let Some(level) = attrs
-            .classification
-            .as_ref()
-            .map(|c| c.effective_level() as u8)
+    // Canonical projection of the recognized marking. Computed once here
+    // (the rank floor below reads it, and the caller reuses it for the page
+    // accumulator) so the marking can be moved whole into the lint→fix
+    // cache without re-deriving its canonical.
+    let attrs = engine.scheme.canonical_from_marking(&marking);
+
+    // What the recognition tells the engine beyond the marking itself:
+    // strict vs. probabilistic path, posterior score, and the optional
+    // synthetic recognition diagnostic. For a strict recognizer this is the
+    // inert default; the CAPCO decoder fills it from the recognizer's
+    // side-channel and synthesizes the diagnostic internally.
+    let outcome = engine.scheme.recognition_outcome(
+        &marking,
+        Span::new(start, end),
+        bytes,
+        candidate.kind,
+        engine.corpus_override_active(),
+    );
+
+    // Strict recognitions raise the page rank floor by the scheme's monotone
+    // sensitivity rank; probabilistic ones do not (they are bounded by the
+    // existing floor).
+    if !outcome.is_decoder_path
+        && let Some(level) = engine.scheme.canonical_rank(&attrs)
     {
         *rank_floor = Some(match *rank_floor {
             Some(prev) => prev.max(level),
@@ -181,45 +215,42 @@ pub(super) fn recognize_marking_candidate<R: Recognizer<CapcoScheme>>(
         });
     }
 
-    if let Some(prov) = marking.1.as_ref() {
-        let span = Span::new(start, end);
-        if let Some(diagnostic) = build_decoder_diagnostic(
-            span,
-            bytes,
-            prov,
-            candidate.kind,
-            engine.corpus_override_active(),
-        ) {
-            diagnostics.push(diagnostic);
-        }
+    if let Some(diagnostic) = outcome.diagnostic {
+        diagnostics.push(diagnostic);
     }
 
-    if let Some(prov) = marking.1.as_ref()
-        && prov.recognition_score() < engine.config.confidence_threshold()
+    // Reject a probabilistic recognition whose posterior is below the
+    // configured confidence threshold. The strict path carries no score and
+    // is unconditionally accepted.
+    if let Some(score) = outcome.recognition_score
+        && score < engine.config.confidence_threshold()
     {
         return None;
     }
 
     Some(RecognizedCandidate {
+        marking,
         attrs,
-        provenance: marking.1,
         diagnostics_pre_candidate,
     })
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn dispatch_rules_for_marking<R: Recognizer<CapcoScheme>>(
-    engine: &Engine<CapcoScheme, R>,
+pub(super) fn dispatch_rules_for_marking<S, R>(
+    engine: &Engine<S, R>,
     candidate: &marque_ism::MarkingCandidate,
-    attrs: &marque_ism::CanonicalAttrs,
+    attrs: &S::Canonical,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
-    pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
-    page_portions: &[marque_ism::CanonicalAttrs],
-    page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
-    page_join_acc: &marque_ism::CanonicalAttrs,
+    pre_pass_1_cache: Option<&[(Span, S::Canonical)]>,
+    page_portions: &[S::Canonical],
+    page_marking_arc: &mut Option<Arc<S::Projected>>,
+    page_join_acc: &S::Canonical,
     page_banner_span: &mut Option<Span>,
-    diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
-) {
+    diagnostics: &mut Vec<Diagnostic<S>>,
+) where
+    S: MarkingScheme + ConstraintBridge,
+    R: Recognizer<S>,
+{
     use marque_ism::MarkingType;
     use marque_rules::RuleContext;
 
@@ -245,7 +276,7 @@ pub(super) fn dispatch_rules_for_marking<R: Recognizer<CapcoScheme>>(
         _ => marque_scheme::DecisionSite::Document,
     };
 
-    let ctx_page_portions: Option<Arc<Box<[marque_ism::CanonicalAttrs]>>> = None;
+    let ctx_page_portions: Option<Arc<Box<[S::Canonical]>>> = None;
     let ctx_page_marking = if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
         Some(
             page_marking_arc
@@ -286,11 +317,11 @@ pub(super) fn dispatch_rules_for_marking<R: Recognizer<CapcoScheme>>(
         None
     };
     let pre_pass_1_attrs =
-        pre_pass_1_cache.and_then(|cache| pre_pass_1_attrs_for_span(cache, candidate.span));
+        pre_pass_1_cache.and_then(|cache| pre_pass_1_attrs_for_span::<S>(cache, candidate.span));
     if candidate.kind == MarkingType::Banner {
         *page_banner_span = Some(candidate.span);
     }
-    let ctx = RuleContext::<CapcoScheme>::new(candidate.kind, candidate.span)
+    let ctx = RuleContext::<S>::new(candidate.kind, candidate.span)
         .with_page_portions(ctx_page_portions)
         .with_page_marking(ctx_page_marking)
         .with_page_banner_span(None)

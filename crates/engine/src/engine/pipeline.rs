@@ -5,7 +5,21 @@ use super::lint_helpers::{
 use super::page_context::{PageFinalizationContext, dispatch_page_finalization};
 use super::*;
 
-impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
+// The lint pipeline drives the scheme through the canonical-space trait
+// surface: `canonical_from_marking` (per recognized candidate),
+// `canonical_page_join` (per portion push), `project_canonical` (per page),
+// and the `ConstraintBridge` hooks. Those `MarkingScheme` methods carry
+// `unimplemented!()` defaults, so a scheme that reaches this pipeline MUST
+// override them — today only `CapcoScheme` does, and it is the only scheme
+// the (still scheme-pinned) constructors can produce. A future scheme made
+// constructible here without those overrides would panic on the first
+// recognized candidate, not miscompile.
+impl<S, R> Engine<S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    S::Canonical: Clone + Default + PartialEq,
+    R: Recognizer<S>,
+{
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
     ///
     /// Back-compat shim over [`Engine::lint_with_options`] — calling
@@ -13,12 +27,12 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
     /// `lint_with_options(src, &LintOptions::default())`. New code that
     /// needs a deadline (spec 005 §R3) should call the `_with_options`
     /// variant directly.
-    pub fn lint(&self, source: &[u8]) -> LintResult {
+    pub fn lint(&self, source: &[u8]) -> LintResult<S> {
         self.lint_with_options(source, &LintOptions::default())
     }
 
     /// Lint with per-call options (spec 005 §R2).
-    pub fn lint_with_options(&self, source: &[u8], opts: &LintOptions) -> LintResult {
+    pub fn lint_with_options(&self, source: &[u8], opts: &LintOptions) -> LintResult<S> {
         self.lint_with_options_internal(source, opts).0
     }
 
@@ -51,7 +65,7 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
         source: &[u8],
         opts: &LintOptions,
         input_cx: &marque_scheme::InputContext<'_>,
-    ) -> LintResult {
+    ) -> LintResult<S> {
         match input_cx.source {
             // Byte-identical to the pre-#176 path.
             marque_scheme::InputSource::DocumentContent => self.lint_with_options(source, opts),
@@ -87,7 +101,7 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
         &self,
         source: &[u8],
         opts: &LintOptions,
-    ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
+    ) -> (LintResult<S>, Vec<(Span, S::Marking)>) {
         self.lint_with_options_internal_with_cache(source, opts, None)
     }
 
@@ -95,8 +109,8 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
         &self,
         source: &[u8],
         opts: &LintOptions,
-        pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
-    ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
+        pre_pass_1_cache: Option<&[(Span, S::Canonical)]>,
+    ) -> (LintResult<S>, Vec<(Span, S::Marking)>) {
         // Existing callers (the byte-identical raw-text path) recognize
         // as DocumentContent.
         self.lint_with_options_internal_with_source(
@@ -111,9 +125,9 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
         &self,
         source: &[u8],
         opts: &LintOptions,
-        pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
+        pre_pass_1_cache: Option<&[(Span, S::Canonical)]>,
         input_source: marque_scheme::InputSource,
-    ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
+    ) -> (LintResult<S>, Vec<(Span, S::Marking)>) {
         use marque_core::Scanner;
         use marque_ism::MarkingType;
 
@@ -138,13 +152,13 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
         let candidates_total = candidates.len();
         let mut candidates_processed: usize = 0;
         let mut recognized_marking_count: usize = 0;
-        let mut parsed_markings: Vec<(Span, marque_capco::CapcoMarking)> = Vec::new();
+        let mut parsed_markings: Vec<(Span, S::Marking)> = Vec::new();
         let corrections_arc = self.corrections_arc.clone();
         let mut diagnostics = Vec::new();
-        let mut page_portions: Vec<marque_ism::CanonicalAttrs> = fresh_page_portions_accumulator();
-        let mut page_portions_arc: Option<Arc<Box<[marque_ism::CanonicalAttrs]>>> = None;
-        let mut page_marking_arc: Option<Arc<marque_ism::ProjectedMarking>> = None;
-        let mut page_join_acc: marque_ism::CanonicalAttrs = marque_ism::CanonicalAttrs::default();
+        let mut page_portions: Vec<S::Canonical> = fresh_page_portions_accumulator::<S>();
+        let mut page_portions_arc: Option<Arc<Box<[S::Canonical]>>> = None;
+        let mut page_marking_arc: Option<Arc<S::Projected>> = None;
+        let mut page_join_acc: S::Canonical = <S::Canonical>::default();
         let mut page_banner_span: Option<Span> = None;
         let mut rank_floor: Option<u8> = None;
         let mut render_scratch = String::new();
@@ -244,16 +258,16 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
                 if page_portions.is_empty() {
                     page_join_acc = recognized.attrs.clone();
                 } else {
-                    page_join_acc = marque_capco::CapcoMarking::join_via_lattice(&[
+                    page_join_acc = self.scheme.canonical_page_join(&[
                         std::mem::take(&mut page_join_acc),
                         recognized.attrs.clone(),
                     ]);
                 }
+                // The whole marking carries into the lint→fix cache (it
+                // preserves the recognizer's full output); the separately
+                // extracted canonical feeds the page accumulator.
                 if intent_emitted {
-                    parsed_markings.push((
-                        candidate.span,
-                        marque_capco::CapcoMarking(recognized.attrs.clone(), recognized.provenance),
-                    ));
+                    parsed_markings.push((candidate.span, recognized.marking));
                     page_portions.push(recognized.attrs);
                 } else {
                     page_portions.push(recognized.attrs);
@@ -261,10 +275,7 @@ impl<R: Recognizer<CapcoScheme>> Engine<CapcoScheme, R> {
                 page_portions_arc = None;
                 page_marking_arc = None;
             } else if intent_emitted {
-                parsed_markings.push((
-                    candidate.span,
-                    marque_capco::CapcoMarking(recognized.attrs, recognized.provenance),
-                ));
+                parsed_markings.push((candidate.span, recognized.marking));
             }
         }
 
