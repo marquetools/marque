@@ -182,7 +182,7 @@ impl<S: MarkingScheme> LintResult<S> {
 /// additively without breaking external brace constructions.
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct FixResult {
+pub struct FixResult<S: MarkingScheme = CapcoScheme> {
     /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
     ///
@@ -196,16 +196,16 @@ pub struct FixResult {
     /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
-    /// Audit stream. A single [`AuditLine<CapcoScheme>`] stream preserves the
+    /// Audit stream. A single [`AuditLine<S>`] stream preserves the
     /// confidence-then-span promotion-order invariant across the
     /// marking-fix channel (`AuditLine::AppliedFix`) and the
     /// text-correction channel (`AuditLine::TextCorrection`). The
     /// renderer projects each line to its NDJSON record type. This is
     /// the sole audit-output channel.
-    pub audit_lines: Vec<AuditLine<CapcoScheme>>,
+    pub audit_lines: Vec<AuditLine<S>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
-    pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
+    pub remaining_diagnostics: Vec<Diagnostic<S>>,
     /// `true` when pass-1 re-parse failed and the engine emitted an
     /// `R002` synthetic diagnostic. When set:
     ///
@@ -238,7 +238,7 @@ pub struct FixResult {
     pub session_metadata: SessionMetadata,
 }
 
-impl FixResult {
+impl<S: MarkingScheme> FixResult<S> {
     /// Iterate marking-side audit lines (zero-alloc filter view).
     ///
     /// The sole audit-output channel is [`Self::audit_lines`]: a
@@ -249,14 +249,14 @@ impl FixResult {
     ///
     /// # Zero-alloc
     ///
-    /// Returns `impl Iterator<Item = &AppliedFix<CapcoScheme>>` —
+    /// Returns `impl Iterator<Item = &AppliedFix<S>>` —
     /// each invocation walks [`Self::audit_lines`] lazily without
     /// allocating an intermediate `Vec`. Callers that need `.len()`
     /// or `.is_empty()` use `.count()` / `.next().is_none()`
     /// respectively (or `Iterator::collect` into a local `Vec` when
     /// the same fixes need to be visited twice).
     #[inline]
-    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<CapcoScheme>> {
+    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<S>> {
         self.audit_lines.iter().filter_map(|line| match line {
             AuditLine::AppliedFix(f) => Some(f),
             _ => None,

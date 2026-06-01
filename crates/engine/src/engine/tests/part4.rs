@@ -317,7 +317,7 @@ fn sort_and_c1_dedup_tiebreaks_lex_min_rule_then_replacement() {
 
 #[test]
 fn sort_and_c1_dedup_empty_input_returns_empty() {
-    let kept = super::sort_and_c1_dedup(Vec::new());
+    let kept = super::sort_and_c1_dedup::<CapcoScheme>(Vec::new());
     assert!(kept.is_empty());
 }
 
@@ -339,7 +339,7 @@ fn splice_fixes_forward_splices_in_reverse_order() {
 #[test]
 fn splice_fixes_forward_with_empty_fixes_returns_source_clone() {
     let source = b"SECRET//NOFORN";
-    let out = super::splice_fixes_forward(source, &[]);
+    let out = super::splice_fixes_forward::<CapcoScheme>(source, &[]);
     assert_eq!(out, source);
 }
 
@@ -391,7 +391,7 @@ fn find_containing_marking_returns_some_when_span_inside() {
     )];
     // A sub-span inside marking_span resolves to marking_span.
     let sub = Span::new(marking_span.start, marking_span.start + 1);
-    let found = super::find_containing_marking(&markings, sub);
+    let found = super::find_containing_marking::<CapcoScheme>(&markings, sub);
     assert_eq!(found, Some(marking_span));
 }
 
@@ -403,7 +403,7 @@ fn find_containing_marking_returns_none_when_no_marking_contains() {
     )];
     // Way past the inserted marking span — no marking contains it.
     let far = Span::new(10_000, 10_001);
-    let found = super::find_containing_marking(&markings, far);
+    let found = super::find_containing_marking::<CapcoScheme>(&markings, far);
     assert!(found.is_none());
 }
 
@@ -425,17 +425,17 @@ fn lookup_marking_finds_exact_span() {
         ),
     ];
 
-    assert!(super::lookup_marking(&markings, span_a).is_some());
-    assert!(super::lookup_marking(&markings, span_b).is_some());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, span_a).is_some());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, span_b).is_some());
     // Same start, different end — does NOT match.
-    assert!(super::lookup_marking(&markings, Span::new(0, 12)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(0, 12)).is_none());
     // Start not in the table — does NOT match.
-    assert!(super::lookup_marking(&markings, Span::new(5, 10)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(5, 10)).is_none());
     // Between two entries — binary search lands on an adjacent
     // entry, the equality post-check rejects. Pins the case that
     // would silently regress if the search key changed from
     // `s.start` to something else.
-    assert!(super::lookup_marking(&markings, Span::new(14, 19)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(14, 19)).is_none());
 }
 
 #[test]
@@ -471,10 +471,10 @@ fn lookup_marking_walks_duplicate_start_run() {
     // The walk finds the exact target regardless of which entry
     // the binary search initially landed on (criterion would
     // otherwise be non-deterministic across implementations).
-    assert!(super::lookup_marking(&markings, target).is_some());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, target).is_some());
     // A start-matching but end-mismatching probe across the same
     // run still returns None.
-    assert!(super::lookup_marking(&markings, Span::new(50, 80)).is_none());
+    assert!(super::lookup_marking::<CapcoScheme>(&markings, Span::new(50, 80)).is_none());
 }
 
 // -------------------------------------------------------------------
