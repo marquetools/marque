@@ -230,21 +230,12 @@ pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecog
     config: Config,
     rule_sets: Vec<Box<dyn RuleSet<S>>>,
     /// Scheme catalog held for constraint-bridge dispatch in
-    /// `lint_inner`. The struct is generic — `Engine<S>` — but the
-    /// constructors are pinned to `S = CapcoScheme` (their `impl` block
-    /// is `impl Engine<CapcoScheme>`), so this field always stores a
-    /// fresh `CapcoScheme::new()` built at construction time. The
-    /// generic-`S` parameter on the `new<S>` / `with_clock<S>`
-    /// constructors is only used to extract `page_rewrites()` for
-    /// scheduling — the scheduler test in
-    /// `crates/engine/tests/scheduler.rs` passes a stub scheme through
-    /// that surface, but every production call site passes
-    /// `CapcoScheme::new()` and the bridge fires only against the
-    /// default catalog. Generifying the struct shape is PR-B2 of the
-    /// 007 Phase B engine-generification work; storing the
-    /// user-supplied `S` into this field (rather than discarding it for
-    /// `CapcoScheme::new()`) closes in PR-B3 when the recognizer and
-    /// dispatch layers generify.
+    /// `lint_inner`. Stores the scheme passed to the constructor:
+    /// [`Engine::with_clock_and_recognizer`] takes an arbitrary
+    /// `scheme: S` and stores it directly, and the CAPCO conveniences
+    /// ([`Engine::new`] / [`Engine::with_clock`]) pass the caller's
+    /// `CapcoScheme` through unchanged. The constraint-catalog bridge in
+    /// `lint_inner` fires against this stored scheme's catalog.
     ///
     /// # Bridge diagnostic population
     ///

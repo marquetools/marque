@@ -81,6 +81,19 @@ pub trait ConstraintBridge: MarkingScheme + Sized {
         false
     }
 
+    /// Rule IDs the engine's constraint-catalog bridge emits that
+    /// correspond to no registered `Rule::id()`. Each entry is a
+    /// `(wire_string, descriptive_alias)` pair the engine's
+    /// `canonicalize_rule_overrides` validator folds into the known-key
+    /// map, so `.marque.toml [rules] <id-or-name> = "off"` references to
+    /// bridge-emitted IDs resolve instead of failing as unknown keys.
+    ///
+    /// Default: empty — a scheme with no bridge-emitted diagnostics
+    /// contributes no extra config keys.
+    fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
+
     /// Synthesize the optional [`FixIntent`] for a fired constraint,
     /// keyed by the catalog row's name (= predicate id).
     ///

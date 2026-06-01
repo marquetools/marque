@@ -13,18 +13,18 @@
 //! silently retained a `CapcoScheme` / `CapcoMarking` / `CanonicalAttrs`
 //! assumption.
 //!
-//! The proof is a compile-time monomorphization, not a run: the engine
-//! constructors are still pinned to `Engine<CapcoScheme, EngineRecognizer>`, so
-//! an `Engine<StubScheme, _>` is not yet constructible. What we *can* do — and
-//! what catches a regression — is force the compiler to type-check every
-//! generic fix entry point against a second, non-CAPCO scheme (`StubScheme`,
-//! whose `Canonical = ()`). If a future edit pins any fix method back to
-//! `CapcoScheme`, the monomorphization below stops compiling.
+//! The proof here is a compile-time monomorphization, not a run: it forces the
+//! compiler to type-check every generic fix entry point against a second,
+//! non-CAPCO scheme (`StubScheme`, whose `Canonical = ()`). If a future edit
+//! pins any fix method back to `CapcoScheme`, the monomorphization below stops
+//! compiling — a guard a *runtime* test cannot give, since a value leak that
+//! type-checks would still pass.
 //!
-//! A *live* run of the fix pipeline through `StubScheme` is deferred to the
-//! phase that generifies the engine constructors (once an `Engine<StubScheme>`
-//! can be built); this compile-time guard is the strongest check available
-//! while construction stays scheme-pinned.
+//! B3.4 closed the constructor scheme-discard, so an
+//! `Engine<StubScheme, StubRecognizer>` is now constructible and the *live*
+//! second-scheme lint/fix run lives in
+//! `b3_4_second_scheme_construction.rs`. This file is retained as the
+//! type-level half of the pair.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
