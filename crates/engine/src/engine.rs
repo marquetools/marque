@@ -238,9 +238,9 @@ pub type CapcoEngine = Engine<CapcoScheme, EngineRecognizer>;
 /// A configured engine instance.
 ///
 /// `R` is the recognizer type, defaulted to [`EngineRecognizer`] — the
-/// CAPCO-bound enum whose `Strict` / `StrictOrDecoder` arms keep default
-/// dispatch monomorphized and whose `Dyn` arm preserves the
-/// caller-supplied trait-object escape hatch. The default keeps every
+/// opaque CAPCO-bound recognizer that keeps default dispatch
+/// monomorphized (strict-first with a decoder fallback) while preserving
+/// a trait-object escape hatch. The default keeps every
 /// existing `Engine<CapcoScheme>` call site source-unchanged (the second
 /// param resolves to `EngineRecognizer`). `R` exists so a later second
 /// scheme can drive its own recognizer through the same `Engine` core;
@@ -300,10 +300,10 @@ pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecog
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
     /// a `CanonicalAttrs`. Typed as the generic `R`, which defaults to
-    /// [`EngineRecognizer`] — the CAPCO-bound dispatch enum whose
-    /// `Strict` / `StrictOrDecoder` arms keep default dispatch
-    /// monomorphized and whose `Dyn` arm preserves the
-    /// `with_recognizer(Arc<dyn Recognizer<_>>)` escape hatch. Every
+    /// [`EngineRecognizer`] — the opaque CAPCO-bound recognizer that
+    /// keeps default dispatch monomorphized (strict-first with a decoder
+    /// fallback) while preserving the `with_recognizer(Arc<dyn
+    /// Recognizer<_>>)` trait-object escape hatch. Every
     /// existing `Engine<CapcoScheme>` stores an `EngineRecognizer`
     /// exactly as before; the generic parameter only opens the seam for
     /// a future scheme's recognizer.
@@ -708,8 +708,6 @@ impl marque_scheme::DecisionSink for StepRemappingSink<'_> {
 // `static_assertions::assert_impl_all!(Engine: Send, Sync)` (kept
 // test-only because `static_assertions` is a `dev-dependency`).
 
-/// The engine's default recognizer dispatch enum.
-///
 /// The engine's default recognizer — an opaque wrapper over the private
 /// dispatch enum.
 ///

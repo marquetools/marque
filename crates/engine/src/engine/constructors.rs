@@ -5,7 +5,7 @@ use super::*;
 
 // The constructors hard-wire `EngineRecognizer::default()` (and the
 // `with_recognizer` / `with_strict_recognizer` builders mutate the same
-// `EngineRecognizer` enum), so this block is pinned to the default
+// `EngineRecognizer`), so this block is pinned to the default
 // recognizer `R = EngineRecognizer`. A type-param default does not apply
 // in impl position, so the second argument is spelled out explicitly.
 // Recognizer-agnostic method blocks (lint / fix / dispatch) generalize
