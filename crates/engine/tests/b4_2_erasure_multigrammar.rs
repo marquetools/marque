@@ -19,9 +19,14 @@
 //!    each box for the whole run; lint is one vtable dispatch per grammar).
 //! 5. `fix_erased` pre-renders the audit stream to NDJSON for any scheme.
 
+use std::collections::HashMap;
+
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
-use marque_engine::{CapcoEngine, Engine, ErasedEngine, FixMode, MultiGrammarEngine, SystemClock};
+use marque_engine::{
+    CapcoEngine, Engine, ErasedDiagnostic, ErasedEngine, ErasedFixResult, ErasedLintResult,
+    FixMode, MultiGrammarEngine, SystemClock,
+};
 use marque_rules::RuleSet;
 use marque_scheme::{InputContext, InputSource, MarkingScheme};
 use marque_test_utils::stub_scheme::{StubRecognizer, StubScheme};
@@ -29,6 +34,15 @@ use marque_test_utils::stub_scheme::{StubRecognizer, StubScheme};
 // `ErasedEngine` must be object-safe — the whole co-residence design rests on
 // `Box<dyn ErasedEngine>` being a valid type.
 static_assertions::assert_obj_safe!(ErasedEngine);
+
+// The registry and every erased output type cross thread boundaries (the engine
+// is `Send + Sync` per Constitution VI; `BatchEngine` already requires it). Pin
+// it so a future non-`Send` field on any of them fails at compile time, not at
+// the first thread hop.
+static_assertions::assert_impl_all!(MultiGrammarEngine: Send, Sync);
+static_assertions::assert_impl_all!(ErasedLintResult: Send, Sync);
+static_assertions::assert_impl_all!(ErasedFixResult: Send, Sync);
+static_assertions::assert_impl_all!(ErasedDiagnostic: Send, Sync);
 
 /// A live CAPCO engine with the full rule set (produces real diagnostics).
 fn capco_engine() -> CapcoEngine {
@@ -166,4 +180,49 @@ fn fix_erased_works_for_non_capco_scheme() {
     assert_eq!(result.grammar_id, "stub");
     assert!(result.audit_ndjson.is_empty());
     assert!(result.remaining_diagnostics.is_empty());
+}
+
+/// `fix_erased` on an input that genuinely produces an applied fix exercises
+/// the NDJSON render loop end-to-end and confirms the erased audit surface is
+/// content-ignorant (Constitution Principle V / G13). The clean-input tests
+/// above never render a non-empty stream; this one does.
+///
+/// `(TS//SERCET//NF)` with a `SERCET → SECRET` corrections map deterministically
+/// fires the C001 corrections-map fix (`marking.correction.token-typo`), so the
+/// erased `audit_ndjson` carries exactly one rendered record.
+#[test]
+fn fix_erased_audit_ndjson_is_content_ignorant() {
+    let mut config = Config::default();
+    config.corrections = HashMap::from([("SERCET".to_owned(), "SECRET".to_owned())]);
+    let engine = CapcoEngine::new(
+        config,
+        vec![Box::new(CapcoRuleSet::new())],
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+    let boxed: Box<dyn ErasedEngine> = Box::new(engine);
+
+    let result = boxed.fix_erased(b"(TS//SERCET//NF)", FixMode::Apply);
+    assert_eq!(result.grammar_id, "capco");
+
+    // The render loop actually ran (vacuity guard): the C001 correction
+    // produced at least one NDJSON record.
+    assert!(
+        !result.audit_ndjson.is_empty(),
+        "C001 corrections-map fix must produce an audit record"
+    );
+
+    // G13: the rendered NDJSON carries only permitted audit identifiers —
+    // token canonicals, category IDs, span offsets, digests, posteriors,
+    // enumerated labels. The canonical corrected token `SECRET` legitimately
+    // appears (it is a token canonical, a permitted identifier), but no
+    // document-content fragment may. `SERCET` is the corpus-content typo the
+    // user wrote; it is a digest input, never a verbatim audit field.
+    for record in &result.audit_ndjson {
+        assert!(
+            !record.contains("SERCET"),
+            "content-ignorance violation: the document's typo text `SERCET` \
+             leaked verbatim into an erased audit NDJSON record:\n{record}"
+        );
+    }
 }

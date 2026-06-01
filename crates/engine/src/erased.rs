@@ -141,6 +141,24 @@ impl ErasedLintResult {
             .count()
     }
 
+    /// Count of `Severity::Info` diagnostics. Mirrors
+    /// [`LintResult::info_count`].
+    pub fn info_count(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .count()
+    }
+
+    /// Count of `Severity::Suggest` diagnostics (the suggest-don't-fix
+    /// channel). Mirrors [`LintResult::suggest_count`].
+    pub fn suggest_count(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Suggest)
+            .count()
+    }
+
     /// Count of `Severity::Fix` diagnostics carrying an actionable payload —
     /// either a (now-erased) `FixIntent` ([`ErasedDiagnostic::has_fix`]) or a
     /// `text_correction`. Mirrors [`LintResult::fix_count`] faithfully: the
@@ -161,6 +179,9 @@ impl ErasedLintResult {
 /// and projects the diagnostics to [`ErasedDiagnostic`]. `source`,
 /// `r002_fired`, and `session_metadata` are already scheme-agnostic and carry
 /// over verbatim (`source` is **moved**, never cloned — Principle II).
+/// `session_metadata` carries the resolved audit identity (`classifier_id` /
+/// `classification_authority`) — these are Principle-V-permitted audit
+/// identifiers, not document content.
 ///
 /// `#[non_exhaustive]` so future [`FixResult`] fields land additively.
 #[non_exhaustive]
@@ -187,6 +208,10 @@ impl ErasedFixResult {
         grammar_id: &'static str,
         typed: FixResult<S>,
     ) -> Self {
+        // Borrow (`.iter()`) rather than drain: `AuditLine<S>` holds digests
+        // and canonical-token references, not raw content `SecretSlice`s, so
+        // rendering by reference duplicates no content (Principle II). The
+        // borrowed `audit_lines` drop with `typed` at end of scope.
         let audit_ndjson = typed
             .audit_lines
             .iter()
@@ -222,9 +247,11 @@ pub trait ErasedEngine: Send + Sync {
     /// call = one scheme = one [`ErasedLintResult::grammar_id`].
     fn lint_erased(&self, input: &[u8], ctx: &InputContext<'_>) -> ErasedLintResult;
 
-    /// Fix `input` (infallible default-options path) and return a
-    /// grammar-tagged scheme-agnostic result with the audit stream
-    /// pre-rendered to NDJSON.
+    /// Fix `input` under `mode` and return a grammar-tagged scheme-agnostic
+    /// result with the audit stream pre-rendered to NDJSON. Infallible —
+    /// always returns an [`ErasedFixResult`] (the blanket impl routes through
+    /// the infallible [`Engine::fix`], whose default options carry no deadline
+    /// and a pre-validated threshold, so no error arm is reachable).
     fn fix_erased(&self, input: &[u8], mode: FixMode) -> ErasedFixResult;
 }
 
