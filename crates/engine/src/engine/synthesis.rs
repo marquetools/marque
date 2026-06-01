@@ -94,12 +94,20 @@ pub(super) fn apply_fr023_and_i18<S: MarkingScheme>(
 /// slice) whose byte range contains `fix_span`. `O(log N)`
 /// `partition_point` binary search.
 ///
-/// The slice is sorted by `Span.start` because the scanner emits
-/// disjoint non-overlapping candidates in source order. The search
-/// relies on that order: `partition_point` against `start <=
-/// fix_span.start` gives the first index past `fix_span.start`, so the
-/// only candidate that can contain `fix_span` is the entry just before
-/// it (index − 1), confirmed with a containment check.
+/// Correctness assumes the cached markings are **non-overlapping**
+/// (no nesting) with strictly-increasing `Span.start` — the same
+/// invariant `lookup_marking` documents. `Scanner::scan` only
+/// *orders* candidates (`(start, kind_priority)`); the cache
+/// construction is what establishes the assumption (PageBreak
+/// candidates filtered out, push-site `debug_assert!` on increasing
+/// starts), and the scanner emits flat, non-nesting candidates so
+/// non-overlap holds in practice. Under non-overlap the only entry
+/// that can contain `fix_span` is the one with the greatest `start <=
+/// fix_span.start`: `partition_point` against `start <= fix_span.start`
+/// yields the first index past it, so that entry is at index − 1,
+/// confirmed with a containment check. (If markings ever nested, an
+/// outer marking with an earlier start could be missed — that case
+/// does not arise from the scanner's flat emission.)
 pub(super) fn find_containing_marking<S: MarkingScheme>(
     parsed_markings: &[(Span, S::Marking)],
     fix_span: Span,
