@@ -242,9 +242,11 @@ pub struct Engine<S: MarkingScheme = CapcoScheme, R: Recognizer<S> = EngineRecog
     /// The engine bridge uses row names from the `Constraint` catalog
     /// to populate `Diagnostic.rule`. The bridge is a **no-op
     /// pass-through**: the catalog row's `constraint_label` IS the
-    /// predicate id; the bridge constructs `RuleId::new("capco",
-    /// constraint_label)` with no string manipulation. Every catalog
-    /// row gets its own predicate id at the row level.
+    /// predicate id; the bridge constructs the `RuleId` from
+    /// [`MarkingScheme::constraint_rule_id`], whose default namespaces
+    /// the predicate under the scheme's own `scheme_id()` (`"capco"` for
+    /// `CapcoScheme`) with no string manipulation. Every catalog row
+    /// gets its own predicate id at the row level.
     ///
     /// The bridge code lives in
     /// [`Engine::bridge_constraint_diagnostic`].

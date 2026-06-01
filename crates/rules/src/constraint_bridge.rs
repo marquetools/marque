@@ -83,7 +83,7 @@ pub trait ConstraintBridge: MarkingScheme + Sized {
 
     /// Rule IDs the engine's constraint-catalog bridge emits that
     /// correspond to no registered `Rule::id()`. Each entry is a
-    /// `(wire_string, descriptive_alias)` pair the engine's
+    /// `(wire_string, name)` pair the engine's
     /// `canonicalize_rule_overrides` validator folds into the known-key
     /// map, so `.marque.toml [rules] <id-or-name> = "off"` references to
     /// bridge-emitted IDs resolve instead of failing as unknown keys.

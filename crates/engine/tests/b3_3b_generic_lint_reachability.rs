@@ -33,9 +33,11 @@ use marque_scheme::recognizer::Recognizer;
 use marque_test_utils::stub_scheme::{StubRecognizer, StubScheme};
 
 /// Type-checks the public lint surface for an arbitrary scheme meeting the
-/// B3.3b bounds. The body never runs against `StubScheme` (no constructor
-/// exists yet); its purpose is the type-check of `lint` / `lint_with_options`
-/// resolving generically.
+/// B3.3b bounds. This `#[allow(dead_code)]` function is never *called*; its
+/// purpose is the type-check of `lint` / `lint_with_options` resolving
+/// generically. The live second-scheme lint run (now that
+/// `Engine<StubScheme, StubRecognizer>` is constructible, B3.4) lives in
+/// `b3_4_second_scheme_construction.rs`.
 #[allow(dead_code)]
 fn lint_surface_is_generic_over_scheme<S, R>(engine: &Engine<S, R>, source: &[u8]) -> LintResult<S>
 where

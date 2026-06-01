@@ -35,9 +35,11 @@ use marque_scheme::recognizer::Recognizer;
 use marque_test_utils::stub_scheme::{StubRecognizer, StubScheme};
 
 /// Type-checks the public fix surface for an arbitrary scheme meeting the
-/// B3.3b.2 bounds. The body never runs against `StubScheme` (no constructor
-/// exists yet); its purpose is the type-check of `fix` / `fix_with_options` /
-/// `fix_with_threshold` resolving generically.
+/// B3.3b.2 bounds. This `#[allow(dead_code)]` function is never *called*; its
+/// purpose is the type-check of `fix` / `fix_with_options` /
+/// `fix_with_threshold` resolving generically. The live second-scheme fix run
+/// (now that `Engine<StubScheme, StubRecognizer>` is constructible, B3.4) lives
+/// in `b3_4_second_scheme_construction.rs`.
 #[allow(dead_code)]
 fn fix_surface_is_generic_over_scheme<S, R>(engine: &Engine<S, R>, source: &[u8]) -> FixResult<S>
 where
