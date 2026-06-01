@@ -81,8 +81,8 @@ pub(super) type EmittedIdOverrides = HashMap<&'static str, Severity>;
 /// PageFinalization rule emits a fix) by the corresponding pass-2
 /// path at fix time. Today's consumers (W004 from issue #461; S005
 /// from issue #488) emit no fix.
-pub(super) fn partition_rules_by_phase(
-    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+pub(super) fn partition_rules_by_phase<S: MarkingScheme>(
+    rule_sets: &[Box<dyn RuleSet<S>>],
 ) -> (Pass1Indices, Pass2Indices, PassFinalizationIndices) {
     let mut pass1: Pass1Indices = SmallVec::new();
     let mut pass2: Pass2Indices = SmallVec::new();
@@ -110,8 +110,8 @@ pub(super) fn partition_rules_by_phase(
     (pass1, pass2, pass_finalization)
 }
 
-pub(super) fn build_severity_tables(
-    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+pub(super) fn build_severity_tables<S: MarkingScheme>(
+    rule_sets: &[Box<dyn RuleSet<S>>],
     overrides: &HashMap<String, String>,
     bridge_rule_ids: &'static [(&'static str, &'static str)],
 ) -> (FastPathSeverities, EmittedIdOverrides) {
@@ -264,10 +264,10 @@ pub(super) fn wire_string_of(id: marque_rules::RuleId) -> &'static str {
     Box::leak(format!("{}", id).into_boxed_str())
 }
 
-pub(super) fn canonicalize_rule_overrides(
+pub(super) fn canonicalize_rule_overrides<S: ConstraintBridge>(
     config: &mut Config,
-    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
-    scheme: &CapcoScheme,
+    rule_sets: &[Box<dyn RuleSet<S>>],
+    scheme: &S,
 ) -> Result<(), EngineConstructionError> {
     if config.rules.overrides.is_empty() {
         return Ok(());

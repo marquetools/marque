@@ -3,53 +3,46 @@ use super::dispatch::{
 };
 use super::*;
 
-// The constructors hard-wire `EngineRecognizer::default()` (and the
-// `with_recognizer` / `with_strict_recognizer` builders mutate the same
-// `EngineRecognizer`), so this block is pinned to the default
-// recognizer `R = EngineRecognizer`. A type-param default does not apply
-// in impl position, so the second argument is spelled out explicitly.
-// Recognizer-agnostic method blocks (lint / fix / dispatch) generalize
-// over `R` in their own modules.
-impl Engine<CapcoScheme, EngineRecognizer> {
-    /// Create a new engine with the given configuration, rule sets, and
-    /// marking scheme.
+// Generic construction core. Unlike the CAPCO-default conveniences
+// below, this block is generic over the scheme `S` and recognizer `R`:
+// it stores the user-supplied `scheme` and `recognizer` directly — no
+// discard, no fresh `CapcoScheme::new()`. The heavy construction body
+// monomorphizes once per `(scheme, recognizer)` pair actually built
+// (the CAPCO path, plus any test stub), not per call site.
+impl<S, R> Engine<S, R>
+where
+    S: MarkingScheme + ConstraintBridge,
+    R: Recognizer<S>,
+{
+    /// Create an engine over an arbitrary scheme and recognizer with a
+    /// custom clock — the generic construction core.
     ///
     /// Runs the page-rewrite scheduler (Kahn's algorithm over the
     /// scheme's declared `reads` / `writes` axes) once at construction
     /// time. Cycles and unannotated `Custom` rewrites fail closed with
     /// [`EngineConstructionError`] rather than degrading at lint time.
+    /// The passed `scheme` and `recognizer` become the engine's stored
+    /// scheme and recognizer.
     ///
-    /// Use [`Engine::with_clock`] for deterministic-timestamp testing.
-    pub fn new<S: MarkingScheme>(
-        config: Config,
-        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
-        scheme: S,
-    ) -> Result<Self, EngineConstructionError> {
-        Self::with_clock(config, rule_sets, scheme, Box::new(SystemClock))
-    }
-
-    /// Create an engine with a custom clock (for deterministic tests).
-    pub fn with_clock<S: MarkingScheme>(
+    /// [`Engine::new`] / [`Engine::with_clock`] are the CAPCO-default
+    /// conveniences over this: they fix `S = CapcoScheme`,
+    /// `R = EngineRecognizer`, and supply [`EngineRecognizer::default`]
+    /// and [`SystemClock`] so existing call sites stay source-unchanged.
+    pub fn with_clock_and_recognizer(
         mut config: Config,
-        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        rule_sets: Vec<Box<dyn RuleSet<S>>>,
         scheme: S,
+        recognizer: R,
         clock: Box<dyn Clock>,
     ) -> Result<Self, EngineConstructionError> {
-        // Instantiate the constraint-catalog bridge's `CapcoScheme`
-        // up front so the override canonicalizer can consult its
-        // `bridge_emitted_rule_ids()` for IDs the engine emits without
-        // a registered `Rule`. The user-supplied generic `scheme: S`
-        // is `drop()`-ped below the corrections-map setup and
-        // `bridge_scheme` becomes the engine's stored scheme (the
-        // `let scheme = bridge_scheme;` step).
-        let bridge_scheme = CapcoScheme::new();
-
         // Canonicalize [rules] overrides against the registered rule
         // set: accept the wire-string rule ID, its predicate-id half,
         // or the rule's descriptive name, resolve all to the canonical
         // predicate id before the engine stores the map, and hard-fail
-        // on any unknown key. See `canonicalize_rule_overrides`.
-        canonicalize_rule_overrides(&mut config, &rule_sets, &bridge_scheme)?;
+        // on any unknown key. Consults `scheme.bridge_emitted_rule_ids()`
+        // (a `ConstraintBridge` method) for IDs the engine emits without
+        // a registered `Rule`. See `canonicalize_rule_overrides`.
+        canonicalize_rule_overrides(&mut config, &rule_sets, &scheme)?;
 
         // Validate every `CategoryAction::Intent` payload BEFORE
         // scheduling. Reordering
@@ -64,55 +57,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         // the first page that triggers the rewrite.
         validate_intent_rewrites(&scheme, scheme.page_rewrites())?;
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
-        // Drop the user-supplied scheme after page-rewrite extraction;
-        // the constraint-catalog bridge in `lint_inner` uses a fresh
-        // `CapcoScheme::new()` (see the `scheme` field doc above for
-        // the design rationale).
-        //
-        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
-        // that passes a configured `CapcoScheme` (custom catalog,
-        // runtime-amended constraint rows, alternative rewrite axis
-        // beyond what we already extracted) loses every customization
-        // here. No compile-time guard — the `S: MarkingScheme` bound
-        // permits any scheme because the scheduler test
-        // (`crates/engine/tests/scheduler.rs`) deliberately exercises
-        // that flexibility with a `StubScheme`. Every production call
-        // site today passes `CapcoScheme::new()` (the default), so the
-        // discard is currently lossless.
-        //
-        // PR-B2 of the 007 Phase B engine-generification work made the
-        // *struct* generic (`Engine<S>`), but these constructors stay
-        // pinned to `S = CapcoScheme` (their `impl` block is
-        // `impl Engine<CapcoScheme>`), so the stored `scheme` field is
-        // still `CapcoScheme::new()` and this discard remains. The
-        // discard closes in PR-B3, when the recognizer and dispatch
-        // layers generify and the constructors can store the
-        // user-supplied `S` into the now-generic field. The
-        // `tracing::debug!` below makes the silent drop observable to a
-        // developer running with `MARQUE_LOG=marque=debug` (off by
-        // default in production).
-        tracing::debug!(
-            target: "marque_engine::scheme_discard",
-            "user-supplied scheme dropped; constraint-catalog bridge uses default \
-             CapcoScheme::new() (PR-B3 of 007 Phase B closes this)"
-        );
-        drop(scheme);
-        Self::with_clock_prepared(config, rule_sets, clock, bridge_scheme, scheduled_rewrites)
-    }
 
-    /// Non-generic tail of [`Engine::with_clock`].
-    ///
-    /// Keeping the heavy construction path behind a concrete signature
-    /// avoids monomorphizing the full constructor body for every `S`
-    /// used at call sites; only the rewrite-validation/scheduling front
-    /// edge remains generic.
-    fn with_clock_prepared(
-        mut config: Config,
-        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
-        clock: Box<dyn Clock>,
-        bridge_scheme: CapcoScheme,
-        scheduled_rewrites: Box<[RewriteId]>,
-    ) -> Result<Self, EngineConstructionError> {
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
         let corrections_arc = if config.corrections.is_empty() {
@@ -150,8 +95,6 @@ impl Engine<CapcoScheme, EngineRecognizer> {
             }
         });
 
-        let scheme = bridge_scheme;
-
         // Phase-partition walk. Read every registered rule's declared
         // `Phase` and partition the rule set into a
         // pass-1 (Localized) list, a pass-2 (WholeMarking) list, and
@@ -186,7 +129,7 @@ impl Engine<CapcoScheme, EngineRecognizer> {
             corrections_arc,
             corrections_ac,
             scheduled_rewrites,
-            recognizer: EngineRecognizer::default(),
+            recognizer,
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
             pass1_rule_indices,
@@ -218,6 +161,53 @@ impl Engine<CapcoScheme, EngineRecognizer> {
             #[cfg(feature = "decision-tracing")]
             next_step: std::sync::atomic::AtomicU32::new(0),
         })
+    }
+}
+
+// CAPCO-default conveniences and recognizer/sink builders. Pinned to the
+// default `Engine<CapcoScheme, EngineRecognizer>` because the `new` /
+// `with_clock` conveniences supply `EngineRecognizer::default()`, and the
+// `with_recognizer` / `with_strict_recognizer` builders mutate that same
+// `EngineRecognizer`. A type-param default does not apply in impl
+// position, so the instantiation is spelled out explicitly. Generic
+// construction over an arbitrary scheme / recognizer goes through
+// [`Engine::with_clock_and_recognizer`] above.
+impl Engine<CapcoScheme, EngineRecognizer> {
+    /// Create a new engine with the given configuration, rule sets, and
+    /// CAPCO marking scheme. Installs the default [`EngineRecognizer`]
+    /// (strict-first with a decoder fallback).
+    ///
+    /// Runs the page-rewrite scheduler (Kahn's algorithm over the
+    /// scheme's declared `reads` / `writes` axes) once at construction
+    /// time. Cycles and unannotated `Custom` rewrites fail closed with
+    /// [`EngineConstructionError`] rather than degrading at lint time.
+    ///
+    /// Use [`Engine::with_clock`] for deterministic-timestamp testing,
+    /// or [`Engine::with_clock_and_recognizer`] to drive a non-CAPCO
+    /// scheme / custom recognizer.
+    pub fn new(
+        config: Config,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        scheme: CapcoScheme,
+    ) -> Result<Self, EngineConstructionError> {
+        Self::with_clock(config, rule_sets, scheme, Box::new(SystemClock))
+    }
+
+    /// Create a CAPCO engine with a custom clock (for deterministic
+    /// tests). Installs the default [`EngineRecognizer`].
+    pub fn with_clock(
+        config: Config,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        scheme: CapcoScheme,
+        clock: Box<dyn Clock>,
+    ) -> Result<Self, EngineConstructionError> {
+        Self::with_clock_and_recognizer(
+            config,
+            rule_sets,
+            scheme,
+            EngineRecognizer::default(),
+            clock,
+        )
     }
 
     /// Override the engine's recognizer. The default installed by

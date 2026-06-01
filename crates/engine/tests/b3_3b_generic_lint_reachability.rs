@@ -11,19 +11,18 @@
 //! is genuinely generic over the scheme and has not silently retained a
 //! `CapcoScheme` assumption.
 //!
-//! The proof is a compile-time monomorphization, not a run: the engine
-//! constructors are still pinned to `Engine<CapcoScheme, EngineRecognizer>`, so
-//! an `Engine<StubScheme, _>` is not yet constructible. What we *can* do — and
-//! what catches a regression — is force the compiler to type-check every
-//! generic lint entry point against a second, non-CAPCO scheme (`StubScheme`,
-//! whose `Canonical = ()`). If a future edit pins any lint method back to
-//! `CapcoScheme` or `CanonicalAttrs`, the monomorphization below stops
-//! compiling.
+//! The proof here is a compile-time monomorphization, not a run: it forces the
+//! compiler to type-check every generic lint entry point against a second,
+//! non-CAPCO scheme (`StubScheme`, whose `Canonical = ()`). If a future edit
+//! pins any lint method back to `CapcoScheme` or `CanonicalAttrs`, the
+//! monomorphization below stops compiling — a guard a *runtime* test cannot
+//! give, since a value leak that type-checks would still pass.
 //!
-//! A *live* run of the lint pipeline through `StubScheme` is deferred to the
-//! phase that generifies the engine constructors (once an `Engine<StubScheme>`
-//! can be built); this compile-time guard is the strongest check available
-//! while construction stays scheme-pinned.
+//! B3.4 closed the constructor scheme-discard, so an
+//! `Engine<StubScheme, StubRecognizer>` is now constructible and the *live*
+//! second-scheme lint/fix run lives in
+//! `b3_4_second_scheme_construction.rs`. This file is retained as the
+//! type-level half of the pair.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -34,9 +33,11 @@ use marque_scheme::recognizer::Recognizer;
 use marque_test_utils::stub_scheme::{StubRecognizer, StubScheme};
 
 /// Type-checks the public lint surface for an arbitrary scheme meeting the
-/// B3.3b bounds. The body never runs against `StubScheme` (no constructor
-/// exists yet); its purpose is the type-check of `lint` / `lint_with_options`
-/// resolving generically.
+/// B3.3b bounds. This `#[allow(dead_code)]` function is never *called*; its
+/// purpose is the type-check of `lint` / `lint_with_options` resolving
+/// generically. The live second-scheme lint run (now that
+/// `Engine<StubScheme, StubRecognizer>` is constructible, B3.4) lives in
+/// `b3_4_second_scheme_construction.rs`.
 #[allow(dead_code)]
 fn lint_surface_is_generic_over_scheme<S, R>(engine: &Engine<S, R>, source: &[u8]) -> LintResult<S>
 where

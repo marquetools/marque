@@ -865,6 +865,10 @@ impl marque_rules::ConstraintBridge for CapcoScheme {
         self.has_diagnostic_constraints()
     }
 
+    fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
+        self.bridge_emitted_rule_ids()
+    }
+
     fn fix_intent_by_name(
         &self,
         name: &str,
