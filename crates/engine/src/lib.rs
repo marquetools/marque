@@ -17,8 +17,10 @@ pub mod batch;
 pub mod clock;
 pub mod decoder;
 pub mod engine;
+pub mod erased;
 pub mod errors;
 pub mod merkle;
+pub mod multi_grammar;
 pub mod options;
 pub mod output;
 pub mod pipeline;
@@ -35,9 +37,11 @@ pub use engine::{CapcoEngine, Engine, EngineRecognizer, FixMode, InvalidThreshol
 pub use session::{InterfaceCode, SessionMetadata};
 
 pub use audit_render::{audit_line_to_json_v1_0, audit_line_to_ndjson};
+pub use erased::{ErasedDiagnostic, ErasedEngine, ErasedFixResult, ErasedLintResult};
 pub use errors::{EngineConstructionError, EngineError};
 pub use marque_scheme::{InputContext, InputSource};
 pub use merkle::{SessionRoot, merkle_root};
+pub use multi_grammar::MultiGrammarEngine;
 pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
 pub use pipeline::{Sink, Source, SourceError, TextChunk};

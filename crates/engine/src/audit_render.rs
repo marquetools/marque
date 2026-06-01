@@ -32,10 +32,9 @@
 //! the empirical guard.
 
 use crate::AUDIT_SCHEMA_VERSION;
-use marque_capco::CapcoScheme;
 use marque_rules::RuleId;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine, discriminant_from_source};
-use marque_scheme::{Canonical, CategoryId, TokenSource, Vocabulary};
+use marque_scheme::{Canonical, CategoryId, MarkingScheme, TokenId, TokenSource, Vocabulary};
 use serde::Serialize;
 
 /// 2-tuple `RuleId` projection (`{ scheme, predicate_id }`).
@@ -61,7 +60,7 @@ pub struct SpanJson {
     pub end: usize,
 }
 
-/// `AppliedFix<CapcoScheme>` projection.
+/// `AppliedFix<S>` projection.
 #[derive(Debug, Serialize)]
 pub struct AuditRecordJsonV1_0<'a> {
     #[serde(rename = "type")]
@@ -171,8 +170,7 @@ fn format_timestamp(ts: std::time::SystemTime) -> String {
     humantime::format_rfc3339(ts).to_string()
 }
 
-fn category_label(scheme: &CapcoScheme, category_id: CategoryId) -> &'static str {
-    use marque_scheme::MarkingScheme;
+fn category_label<S: MarkingScheme>(scheme: &S, category_id: CategoryId) -> &'static str {
     if category_id == CategoryId::MARKING {
         return "Marking";
     }
@@ -184,16 +182,15 @@ fn category_label(scheme: &CapcoScheme, category_id: CategoryId) -> &'static str
         .unwrap_or("unknown")
 }
 
-fn project_canonical_to_json<'a>(
-    scheme: &'a CapcoScheme,
-    canonical: &Canonical<CapcoScheme>,
+fn project_canonical_to_json<'a, S: MarkingScheme<Token = TokenId> + Vocabulary<S>>(
+    scheme: &'a S,
+    canonical: &Canonical<S>,
     precomputed_bytes_digest: &blake3::Hash,
 ) -> AuditCanonicalJson<'a> {
     let digest = blake3_audit_string(precomputed_bytes_digest);
     match canonical.source() {
         TokenSource::Cve(token_id) => {
-            let label =
-                <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, token_id);
+            let label = <S as Vocabulary<S>>::qualified_token_label(scheme, token_id);
             AuditCanonicalJson {
                 source: "cve",
                 token_id: Some(label),
@@ -234,15 +231,14 @@ fn project_confidence_to_json(confidence: &marque_rules::Recognition) -> AuditCo
     }
 }
 
-fn project_message_to_json<'a>(
-    scheme: &'a CapcoScheme,
+fn project_message_to_json<'a, S: MarkingScheme<Token = TokenId> + Vocabulary<S>>(
+    scheme: &'a S,
     message: &marque_rules::Message,
 ) -> AuditMessageJson<'a> {
     let mut args = serde_json::Map::new();
     let m = message.args();
     if let Some(token_id) = m.token {
-        let label =
-            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &token_id);
+        let label = <S as Vocabulary<S>>::qualified_token_label(scheme, &token_id);
         args.insert(
             "token".to_owned(),
             serde_json::Value::String(label.into_owned()),
@@ -274,18 +270,14 @@ fn project_message_to_json<'a>(
         );
     }
     if let Some(expected_token) = m.expected_token {
-        let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-            scheme,
-            &expected_token,
-        );
+        let label = <S as Vocabulary<S>>::qualified_token_label(scheme, &expected_token);
         args.insert(
             "expected_token".to_owned(),
             serde_json::Value::String(label.into_owned()),
         );
     }
     if let Some(actual_token) = m.actual_token {
-        let label =
-            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &actual_token);
+        let label = <S as Vocabulary<S>>::qualified_token_label(scheme, &actual_token);
         args.insert(
             "actual_token".to_owned(),
             serde_json::Value::String(label.into_owned()),
@@ -320,10 +312,10 @@ fn project_message_to_json<'a>(
     }
 }
 
-/// Project an `AppliedFix<CapcoScheme>` into the audit JSON shape.
-pub fn applied_fix_to_audit_json_v1_0<'a>(
-    scheme: &'a CapcoScheme,
-    fix: &'a marque_rules::audit::AppliedFix<CapcoScheme>,
+/// Project an `AppliedFix<S>` into the audit JSON shape.
+pub fn applied_fix_to_audit_json_v1_0<'a, S: MarkingScheme<Token = TokenId> + Vocabulary<S>>(
+    scheme: &'a S,
+    fix: &'a marque_rules::audit::AppliedFix<S>,
 ) -> AuditRecordJsonV1_0<'a> {
     let replacement = AuditReplacementJson {
         discriminant: discriminant_from_source(fix.source).as_str(),
@@ -361,8 +353,8 @@ pub fn applied_fix_to_audit_json_v1_0<'a>(
 }
 
 /// Project an `AppliedTextCorrection` into the text-correction JSON shape.
-pub fn text_correction_to_audit_json_v1_0<'a>(
-    scheme: &'a CapcoScheme,
+pub fn text_correction_to_audit_json_v1_0<'a, S: MarkingScheme<Token = TokenId> + Vocabulary<S>>(
+    scheme: &'a S,
     tc: &'a AppliedTextCorrection,
 ) -> TextCorrectionRecordJsonV1_0<'a> {
     TextCorrectionRecordJsonV1_0 {
@@ -388,9 +380,9 @@ pub fn text_correction_to_audit_json_v1_0<'a>(
 }
 
 /// Dispatch an [`AuditLine`] to its `serde_json::Value` projection.
-pub fn audit_line_to_json_v1_0(
-    scheme: &CapcoScheme,
-    line: &AuditLine<CapcoScheme>,
+pub fn audit_line_to_json_v1_0<S: MarkingScheme<Token = TokenId> + Vocabulary<S>>(
+    scheme: &S,
+    line: &AuditLine<S>,
 ) -> serde_json::Value {
     match line {
         AuditLine::AppliedFix(fix) => {
@@ -415,6 +407,9 @@ pub fn audit_line_to_json_v1_0(
 /// server emits each record via this function AND computes the root over
 /// the same strings, so a verifier re-hashing the emitted `audit_log`
 /// always reproduces the published root.
-pub fn audit_line_to_ndjson(scheme: &CapcoScheme, line: &AuditLine<CapcoScheme>) -> String {
+pub fn audit_line_to_ndjson<S: MarkingScheme<Token = TokenId> + Vocabulary<S>>(
+    scheme: &S,
+    line: &AuditLine<S>,
+) -> String {
     serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).unwrap_or_default()
 }

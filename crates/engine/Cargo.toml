@@ -83,6 +83,12 @@ name = "profile_project"
 harness = false
 name = "closure_pass"
 
+# Erasure-dispatch overhead smoke bench (Phase B4.2). Informational only —
+# not gated by scripts/bench-check.sh, no baseline.json entry.
+[[bench]]
+harness = false
+name = "multi_grammar"
+
 # Full-machine pages-per-minute throughput harness (BatchEngine). Requires
 # the `batch` feature (default-on); advisory, run weekly via
 # .github/workflows/throughput-weekly.yml.
