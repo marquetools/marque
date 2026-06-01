@@ -91,17 +91,15 @@ pub(super) fn apply_fr023_and_i18<S: MarkingScheme>(
 }
 
 /// Find the marking span (a key in the sorted `parsed_markings`
-/// slice) whose byte range contains `fix_span`. Linear scan over the
-/// markings table — typical documents have <100 markings and this is
-/// the defect path (a well-behaved Localized rule emits sub-token
-/// spans by construction), so no binary-search optimization is
-/// justified.
+/// slice) whose byte range contains `fix_span`. `O(log N)`
+/// `partition_point` binary search.
 ///
 /// The slice is sorted by `Span.start` because the scanner emits
-/// disjoint non-overlapping candidates in source order; this function
-/// does not rely on that order for correctness, but a future
-/// containment-scan optimization could (e.g., `partition_point`
-/// against `start <= fix_span.start`).
+/// disjoint non-overlapping candidates in source order. The search
+/// relies on that order: `partition_point` against `start <=
+/// fix_span.start` gives the first index past `fix_span.start`, so the
+/// only candidate that can contain `fix_span` is the entry just before
+/// it (index − 1), confirmed with a containment check.
 pub(super) fn find_containing_marking<S: MarkingScheme>(
     parsed_markings: &[(Span, S::Marking)],
     fix_span: Span,

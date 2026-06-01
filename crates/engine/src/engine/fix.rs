@@ -40,7 +40,7 @@ where
     /// deployment under `require_signature` must drive fixes through
     /// `fix_with_options`. Bypassing the gate here keeps this
     /// convenience entry point (and the test suite that leans on it)
-    /// total and panic-free. The `expect` is sound: default options
+    /// total and panic-free. The error arm is sound: default options
     /// carry no deadline so `EngineError::DeadlineExceeded` cannot
     /// fire, and the config threshold is pre-validated at load time so
     /// `EngineError::InvalidThreshold` cannot fire.
@@ -51,7 +51,9 @@ where
         // options carry no deadline (so `DeadlineExceeded` cannot fire)
         // and the config threshold is pre-validated at load time (so
         // `InvalidThreshold` cannot fire); `require_signature` is
-        // bypassed because this calls `fix_inner` directly.
+        // bypassed because this calls `fix_inner` directly. The error is
+        // surfaced via `Display` (available for any `S: MarkingScheme`,
+        // unlike `Debug`) so an impossible failure is still diagnosable.
         match self.fix_inner(
             source,
             mode,
@@ -59,8 +61,9 @@ where
             &FixOptions::default(),
         ) {
             Ok(result) => result,
-            Err(_) => unreachable!(
-                "fix() default options cannot fail: no deadline + pre-validated config threshold"
+            Err(e) => unreachable!(
+                "fix() default options cannot fail: no deadline + pre-validated config threshold; \
+                 got: {e}"
             ),
         }
     }
