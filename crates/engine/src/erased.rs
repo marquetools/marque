@@ -190,9 +190,17 @@ pub struct ErasedFixResult {
     pub grammar_id: &'static str,
     /// Fixed source bytes (moved from the typed result; wipes on drop).
     pub source: secrecy::SecretSlice<u8>,
-    /// Audit stream pre-rendered to canonical NDJSON record strings (one per
-    /// `AuditLine<S>`, no trailing newline) — scheme-agnostic, the same wire
+    /// Per-`AuditLine` records pre-rendered to canonical NDJSON strings (one
+    /// per line, no trailing newline) — byte-identical to the per-record wire
     /// form the CLI / server / WASM emit.
+    ///
+    /// **Does NOT include the leading `session_metadata` record.** A complete
+    /// audit stream prepends [`SessionMetadata::to_ndjson`] (from
+    /// [`Self::session_metadata`]) as its first line when the stream is
+    /// non-empty, and folds it into the [`crate::SessionRoot`] Merkle root. A
+    /// caller emitting only `audit_ndjson` produces an incomplete stream and
+    /// computes the wrong root; prepend `self.session_metadata.to_ndjson()`
+    /// first.
     pub audit_ndjson: Vec<String>,
     pub remaining_diagnostics: Vec<ErasedDiagnostic>,
     pub r002_fired: bool,
@@ -252,6 +260,18 @@ pub trait ErasedEngine: Send + Sync {
     /// always returns an [`ErasedFixResult`] (the blanket impl routes through
     /// the infallible [`Engine::fix`], whose default options carry no deadline
     /// and a pre-validated threshold, so no error arm is reachable).
+    ///
+    /// # `require_signature` is NOT enforced
+    ///
+    /// Routing through [`Engine::fix`] means this method **bypasses the
+    /// `require_signature` audit-policy gate** (that gate lives on the
+    /// fallible [`Engine::fix_with_options`], which has a `signature`
+    /// parameter; the infallible `fix` path has none). A deployment that sets
+    /// `[audit] require_signature = true` MUST drive policy-enforced fixes
+    /// through the typed `Engine::fix_with_options` path — the erased fix
+    /// surface carries no signature channel and cannot honor the gate. This
+    /// mirrors the same caveat on [`Engine::fix`] and `BatchEngine`. An
+    /// options-bearing erased fix is a future-phase addition.
     fn fix_erased(&self, input: &[u8], mode: FixMode) -> ErasedFixResult;
 }
 
