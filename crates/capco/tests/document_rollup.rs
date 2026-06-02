@@ -23,10 +23,14 @@
 //! `§G.1 Table 4 p37` for the max-classification test. That is a
 //! misattribution — Table 4 (p36) is the *Register of Authorized
 //! Classification and Control Markings* (the marking-ordering register),
-//! not the classification-*level* ladder. The authority for "the banner
-//! takes the highest classification level of all portions" is §H.1
-//! (U.S. CLASSIFICATION MARKINGS, pp47-54), which is what the in-tree
-//! `ClassificationLattice` already cites. Corrected below.
+//! not the banner roll-up rule. The authority for "the banner takes the
+//! highest classification level of all portions" is §D.2 p28 ("Banner
+//! Line 'Roll-Up' Rules": *"Taking the highest classification level of
+//! all the portions and using that as the banner line classification
+//! marking"*), which is also what the in-tree `ClassificationLattice`
+//! cites for the roll-up rule (`classification.rs`). §H.1 pp47-54
+//! governs only how each level's banner is *formed*, not the roll-up
+//! aggregation. Corrected below; verified against CAPCO-2016.md.
 
 use marque_capco::scheme::CapcoScheme;
 use marque_ism::CanonicalAttrs;
@@ -72,7 +76,7 @@ fn has_dissem(a: &CanonicalAttrs, ctrl: DissemControl) -> bool {
 /// The document banner takes the highest classification level of all
 /// portions across all pages (OrdMax over the level ladder).
 ///
-/// Authority: CAPCO-2016 §H.1 pp47-54 (U.S. classification level chain;
+/// Authority: CAPCO-2016 §D.2 p28 ("Banner Line 'Roll-Up' Rules":
 /// "Taking the highest classification level of all the portions and using
 /// that as the banner line classification marking"). Verified against
 /// `crates/capco/docs/CAPCO-2016.md`.
@@ -178,12 +182,18 @@ fn noforn_supersession_survives_page_to_doc_fold() {
         &scheme,
         &[us_portion(Classification::Secret, &[DissemControl::Nf])],
     );
-    // Page B carries RELIDO + EYES (dominated FD&R controls).
+    // Page B carries RELIDO + EYES + DISPLAY ONLY (all dominated FD&R
+    // controls named in the §H.8 p145 list), so the assertion covers
+    // every token the citation enumerates.
     let page_fdr = page_rollup(
         &scheme,
         &[us_portion(
             Classification::Secret,
-            &[DissemControl::Relido, DissemControl::Eyes],
+            &[
+                DissemControl::Relido,
+                DissemControl::Eyes,
+                DissemControl::Displayonly,
+            ],
         )],
     );
 
@@ -196,6 +206,7 @@ fn noforn_supersession_survives_page_to_doc_fold() {
     assert!(
         !has_dissem(&doc, DissemControl::Relido)
             && !has_dissem(&doc, DissemControl::Eyes)
+            && !has_dissem(&doc, DissemControl::Displayonly)
             && !has_dissem(&doc, DissemControl::Rel),
         "NOFORN must strip dominated FD&R controls at the document banner; \
          dissem_us = {:?}",
@@ -267,9 +278,12 @@ fn empty_document_is_lattice_bottom() {
 }
 
 /// A single-page document folds to exactly that page (join identity
-/// `join(x) = x`), including a guard-tripping `Conflict` classification
-/// that forces the `join_via_lattice` body (not the single-portion
-/// fast-path) so the identity holds even on the normalizing path.
+/// `join(x) = x`). The second case starts from a `Conflict` portion: the
+/// *page* rollup trips the `join_via_lattice` body path (the single-portion
+/// fast-path bails on `Conflict`, normalizing it to `Us(..)`), and the
+/// *document* fold of that already-normalized page rollup must still be
+/// identity. (The document fold itself receives the normalized value, not
+/// a `Conflict` — the body-path coverage is on the page rollup.)
 ///
 /// Authority: join identity law.
 #[test]
@@ -287,10 +301,10 @@ fn single_page_fold_is_identity() {
         "a single-page document must equal that page (join identity)",
     );
 
-    // Guard-tripping case: a Conflict classification forces the body path
-    // in join_via_lattice (the single-portion fast-path bails on
-    // Conflict). The document fold of one such page rollup must still be
-    // identity.
+    // Body-path case: a Conflict classification makes the PAGE rollup take
+    // the join_via_lattice body path (the single-portion fast-path bails on
+    // Conflict, normalizing it to Us(..)). The document fold then receives
+    // the already-normalized page rollup; identity must hold on it.
     let mut conflict = CanonicalAttrs::default();
     conflict.classification = Some(MarkingClassification::Conflict {
         us: Classification::Secret,
@@ -302,7 +316,7 @@ fn single_page_fold_is_identity() {
     let conflict_doc = document_rollup(&scheme, std::slice::from_ref(&conflict_page));
     assert_eq!(
         conflict_doc, conflict_page,
-        "single-page identity must hold on the Conflict (body) path too",
+        "single-page identity must hold on the normalized post-Conflict page rollup",
     );
 }
 

@@ -299,9 +299,11 @@ mod tests {
 
     #[test]
     fn from_pages_routes_through_canonical_document_join() {
-        // The default fold-to-last delegation means a multi-page slice
-        // resolves to the last page's rollup — confirms `from_pages` calls
-        // `canonical_document_join` rather than e.g. taking pages[0].
+        // With this stub's default (last-element) fold, a multi-page slice
+        // resolves to the last page's rollup — confirms `from_pages` routes
+        // through `canonical_document_join` and not, e.g., `pages[0]`. The
+        // semantic lattice-join coverage lives in the CAPCO algebra tests
+        // (`crates/capco/tests/document_rollup.rs`); this only pins wiring.
         let scheme = DocStubScheme;
         let ctx = DocumentContext::from_pages(&scheme, &[1, 2, 3]);
         assert_eq!(ctx.rollup, 3);
