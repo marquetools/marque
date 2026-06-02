@@ -114,8 +114,9 @@ where
     // Fold the closing page's canonical rollup into the document
     // accumulator before the per-page reset below. The page join is a
     // genuine semilattice join for lattice schemes (CapcoScheme), so the
-    // page→document fold is order-independent (research D12 / LV3); the
-    // default scheme gets last-page-wins. Sits before the unconditional
+    // page→document fold is order-independent (associative + commutative
+    // + idempotent join); the default scheme gets last-page-wins. Sits
+    // before the unconditional
     // reset so a malformed page-break that still reached this branch folds
     // page N and resets for N+1 (#799).
     if !page_portions.is_empty() {
