@@ -455,6 +455,7 @@ mod tests {
         assert_eq!(kind_label(DecisionKind::RewriteApplied), "RewriteApplied");
         assert_eq!(kind_label(DecisionKind::ClosureFired), "ClosureFired");
         assert_eq!(kind_label(DecisionKind::Recanonicalized), "Recanonicalized");
+        assert_eq!(kind_label(DecisionKind::Derived), "Derived");
     }
 
     #[test]
@@ -492,6 +493,10 @@ mod tests {
         assert_eq!(
             source_label(DecisionSource::RuleCheck("r.x")),
             "rule-check:r.x"
+        );
+        assert_eq!(
+            source_label(DecisionSource::Derivation("d.x")),
+            "derivation:d.x"
         );
     }
 
