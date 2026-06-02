@@ -93,15 +93,19 @@ impl DeclassifyOnLattice {
     /// calculated-fallback marker. The engine node (PR-D3) mints them
     /// from derived edges.
     pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
-        let folded = portions.iter().fold(None::<OrdMax<DeclassInstruction>>, |acc, p| {
-            match instruction_from_attrs(p.declassify_on.clone(), p.declass_exemption) {
-                None => acc,
-                Some(instr) => match acc {
-                    None => Some(OrdMax(instr)),
-                    Some(a) => Some(a.join(&OrdMax(instr))),
+        let folded = portions
+            .iter()
+            .fold(
+                None::<OrdMax<DeclassInstruction>>,
+                |acc, p| match instruction_from_attrs(p.declassify_on.clone(), p.declass_exemption)
+                {
+                    None => acc,
+                    Some(instr) => match acc {
+                        None => Some(OrdMax(instr)),
+                        Some(a) => Some(a.join(&OrdMax(instr))),
+                    },
                 },
-            }
-        });
+            );
         Self(folded)
     }
 
@@ -165,9 +169,7 @@ fn instruction_from_attrs(
         }
         // Tier 2 — 50X beyond-50-year family (dateless by source).
         Some(
-            c @ (DeclassExemption::X50x1Hum
-            | DeclassExemption::X50x2Wmd
-            | DeclassExemption::X75x),
+            c @ (DeclassExemption::X50x1Hum | DeclassExemption::X50x2Wmd | DeclassExemption::X75x),
         ) => Some(DeclassInstruction::Exempt50xBeyond { code: c }),
         // Tier 3 / undated-50X — other 50X exemptions.
         Some(
@@ -292,10 +294,7 @@ mod tests {
     #[test]
     fn empty_equals_default_and_bottom() {
         assert_eq!(DeclassifyOnLattice::empty(), DeclassifyOnLattice::default());
-        assert_eq!(
-            DeclassifyOnLattice::empty(),
-            DeclassifyOnLattice::bottom()
-        );
+        assert_eq!(DeclassifyOnLattice::empty(), DeclassifyOnLattice::bottom());
         assert_eq!(DeclassifyOnLattice::empty().as_inner(), None);
     }
 
@@ -325,10 +324,8 @@ mod tests {
     #[test]
     fn from_attrs_iter_bare_date_is_specific_date_tier_7() {
         // §E.3 p33.
-        let l = DeclassifyOnLattice::from_attrs_iter(&[portion(
-            Some(IsmDate::Date(2030, 1, 1)),
-            None,
-        )]);
+        let l =
+            DeclassifyOnLattice::from_attrs_iter(&[portion(Some(IsmDate::Date(2030, 1, 1)), None)]);
         assert_eq!(
             l.as_inner(),
             Some(&DeclassInstruction::SpecificDate {
@@ -367,10 +364,8 @@ mod tests {
     #[test]
     fn from_attrs_iter_undated_50x_is_exempt50x_undated() {
         // §E.3-structure inference for an undated non-HUM/WMD 50X.
-        let l = DeclassifyOnLattice::from_attrs_iter(&[portion(
-            None,
-            Some(DeclassExemption::X50x3),
-        )]);
+        let l =
+            DeclassifyOnLattice::from_attrs_iter(&[portion(None, Some(DeclassExemption::X50x3))]);
         assert_eq!(
             l.as_inner(),
             Some(&DeclassInstruction::Exempt50xUndated {

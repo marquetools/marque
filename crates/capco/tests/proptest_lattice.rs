@@ -982,24 +982,24 @@ fn arb_declass_exemption() -> impl Strategy<Value = DeclassExemption> {
 fn arb_ism_date() -> impl Strategy<Value = IsmDate> {
     prop_oneof![
         (2020i32..2050).prop_map(IsmDate::Year),
-        (2020i32..2050, 1u8..=12, 1u8..=28)
-            .prop_map(|(y, m, d)| IsmDate::Date(y, m, d)),
+        (2020i32..2050, 1u8..=12, 1u8..=28).prop_map(|(y, m, d)| IsmDate::Date(y, m, d)),
     ]
 }
 
 fn arb_declass_instruction() -> impl Strategy<Value = DeclassInstruction> {
     prop_oneof![
         Just(DeclassInstruction::NaSeeSourceList),
-        arb_declass_exemption()
-            .prop_map(|code| DeclassInstruction::Exempt50xBeyond { code }),
+        arb_declass_exemption().prop_map(|code| DeclassInstruction::Exempt50xBeyond { code }),
         (arb_declass_exemption(), arb_ism_date())
             .prop_map(|(code, date)| DeclassInstruction::Exempt50xDated { code, date }),
-        arb_declass_exemption()
-            .prop_map(|code| DeclassInstruction::Exempt50xUndated { code }),
+        arb_declass_exemption().prop_map(|code| DeclassInstruction::Exempt50xUndated { code }),
         Just(DeclassInstruction::Eo12951),
         (arb_declass_exemption(), arb_ism_date())
             .prop_map(|(code, date)| DeclassInstruction::Exempt25xDated { code, date }),
-        (arb_declass_exemption(), proptest::option::of(arb_ism_date()))
+        (
+            arb_declass_exemption(),
+            proptest::option::of(arb_ism_date())
+        )
             .prop_map(|(code, date)| DeclassInstruction::Exempt25xUndated { code, date }),
         arb_ism_date().prop_map(|date| DeclassInstruction::SpecificDate { date }),
         Just(DeclassInstruction::EventUnder10Year),
@@ -1009,8 +1009,7 @@ fn arb_declass_instruction() -> impl Strategy<Value = DeclassInstruction> {
 }
 
 fn arb_declassify_on() -> impl Strategy<Value = DeclassifyOnLattice> {
-    proptest::option::of(arb_declass_instruction())
-        .prop_map(DeclassifyOnLattice::new)
+    proptest::option::of(arb_declass_instruction()).prop_map(DeclassifyOnLattice::new)
 }
 
 proptest! {

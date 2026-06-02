@@ -85,7 +85,10 @@ pub enum DeclassInstruction {
     },
 
     /// Tier 5 — 25X1–25X9 with a date or event (§E.3 p33).
-    Exempt25xDated { code: DeclassExemption, date: IsmDate },
+    Exempt25xDated {
+        code: DeclassExemption,
+        date: IsmDate,
+    },
 
     /// Tier 4 — "25X1, EO 12951", D/NGA imagery only (§E.3 p33 line
     /// 672). Dateless singleton ([`DeclassExemption::X25x1Eo12951`]).
@@ -105,7 +108,10 @@ pub enum DeclassInstruction {
     Exempt50xUndated { code: DeclassExemption },
 
     /// Tier 3 — 50X1–50X9 with a date or event (§E.3 p32).
-    Exempt50xDated { code: DeclassExemption, date: IsmDate },
+    Exempt50xDated {
+        code: DeclassExemption,
+        date: IsmDate,
+    },
 
     /// Tier 2 — 50X1-HUM / 50X2-WMD / ISOO >50yr designator (75X)
     /// (§E.3 p32). Dateless. `code` retained for the
@@ -271,7 +277,8 @@ impl Ord for DeclassInstruction {
         //    restrictive, so compare the negated rank (larger negated
         //    value = lower number = higher precedence). Code-less
         //    variants share `None` and so compare equal here.
-        let neg = |c: Option<DeclassExemption>| c.map(|c| u16::MAX - exemption_rank(c)).unwrap_or(0);
+        let neg =
+            |c: Option<DeclassExemption>| c.map(|c| u16::MAX - exemption_rank(c)).unwrap_or(0);
         neg(self.code()).cmp(&neg(other.code()))
     }
 }
