@@ -514,6 +514,33 @@ pub trait MarkingScheme {
         portions.last().cloned().unwrap_or_default()
     }
 
+    /// Join a slice of per-*page* canonical rollups into a single
+    /// *document* rollup — [`Self::canonical_page_join`] one scope up
+    /// (pages, not portions).
+    ///
+    /// The default delegates to [`Self::canonical_page_join`]: page→document
+    /// is the identical semilattice join (research D12 / LV3 — `join` is
+    /// associative + commutative + idempotent, so a fold of page-joins
+    /// equals a flat fold over all portions; order and grouping do not
+    /// matter), so a scheme that does not distinguish the two scopes
+    /// inherits correct behavior. CAPCO does **not** override —
+    /// `CapcoMarking::join_via_lattice` is scope-agnostic over
+    /// `&[CanonicalAttrs]`, so routing per-page accumulators through it
+    /// preserves DissemSet RELIDO-unanimity, JointSet disunity collapse,
+    /// and NOFORN supersession across the page→document fold.
+    ///
+    /// The `Clone + Default` bound is on the **method** (not the associated
+    /// type) so the trait stays additive, exactly as
+    /// [`Self::canonical_page_join`] does; a scheme whose canonical is
+    /// neither `Clone` nor `Default` simply cannot call the default and
+    /// must override.
+    fn canonical_document_join(&self, pages: &[Self::Canonical]) -> Self::Canonical
+    where
+        Self::Canonical: Clone + Default,
+    {
+        self.canonical_page_join(pages)
+    }
+
     /// Project a slice of canonicals into the page projection shape, in
     /// **canonical space** (the non-instrumented hot path).
     ///
