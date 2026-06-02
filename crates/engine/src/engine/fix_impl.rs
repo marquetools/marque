@@ -100,8 +100,10 @@ where
             _ => marque_scheme::InputSource::DocumentContent,
         };
 
-        // Pass-0: lint original + apply text corrections.
-        let (lint1, parsed_markings1) = self.engine.lint_with_options_internal_with_source(
+        // Pass-0: lint original + apply text corrections. The document-
+        // scope rollup (#799) is not consumed on the fix path yet; discard
+        // it here.
+        let (lint1, parsed_markings1, _doc) = self.engine.lint_with_options_internal_with_source(
             self.source,
             &lint_opts,
             None,
@@ -121,12 +123,15 @@ where
         // markings)` pair so synthesis can consume `parsed_markings`
         // without an explicit clone.
         let (lint, parsed_markings) = if !pass0.audit_lines.is_empty() {
-            self.engine.lint_with_options_internal_with_source(
+            // Discard the document-scope rollup (#799); both arms produce
+            // the same `(lint, markings)` pair.
+            let (relint, remarkings, _doc) = self.engine.lint_with_options_internal_with_source(
                 &pass0.effective_source,
                 &lint_opts,
                 None,
                 input_source,
-            )
+            );
+            (relint, remarkings)
         } else {
             (lint1, parsed_markings1)
         };
@@ -266,12 +271,15 @@ where
                 // overlaps a pass-1-reshaped marking. The field is the
                 // architectural two-pass-reshape signal kept for future
                 // rule consumers.
-                let (relint, new_markings) = self.engine.lint_with_options_internal_with_source(
-                    &pass1.post_buffer,
-                    &lint_opts,
-                    Some(&pre_pass_1_cache),
-                    input_source,
-                );
+                // Discard the document-scope rollup (#799) — the fix path
+                // does not consume it yet.
+                let (relint, new_markings, _doc) =
+                    self.engine.lint_with_options_internal_with_source(
+                        &pass1.post_buffer,
+                        &lint_opts,
+                        Some(&pre_pass_1_cache),
+                        input_source,
+                    );
                 // R002 trigger: pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
                 // parsed markings. Marque's recognizer is total — it

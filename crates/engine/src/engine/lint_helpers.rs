@@ -31,6 +31,7 @@ pub(super) fn handle_page_break_candidate<S, R>(
     page_portions_arc: &mut Option<Arc<Box<[S::Canonical]>>>,
     page_marking_arc: &mut Option<Arc<S::Projected>>,
     page_join_acc: &mut S::Canonical,
+    doc_join_acc: &mut S::Canonical,
     page_banner_span: &mut Option<Span>,
     rank_floor: &mut Option<u8>,
     render_scratch: &mut String,
@@ -108,6 +109,19 @@ where
         .is_err()
     {
         return Err(());
+    }
+
+    // Fold the closing page's canonical rollup into the document
+    // accumulator before the per-page reset below. The page join is a
+    // genuine semilattice join for lattice schemes (CapcoScheme), so the
+    // page→document fold is order-independent (research D12 / LV3); the
+    // default scheme gets last-page-wins. Sits before the unconditional
+    // reset so a malformed page-break that still reached this branch folds
+    // page N and resets for N+1 (#799).
+    if !page_portions.is_empty() {
+        *doc_join_acc = engine
+            .scheme
+            .canonical_document_join(&[std::mem::take(doc_join_acc), page_join_acc.clone()]);
     }
 
     *page_portions = fresh_page_portions_accumulator::<S>();

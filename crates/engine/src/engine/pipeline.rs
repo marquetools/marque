@@ -112,22 +112,30 @@ where
         pre_pass_1_cache: Option<&[(Span, S::Canonical)]>,
     ) -> (LintResult<S>, Vec<(Span, S::Marking)>) {
         // Existing callers (the byte-identical raw-text path) recognize
-        // as DocumentContent.
-        self.lint_with_options_internal_with_source(
+        // as DocumentContent. The document-scope rollup is not consumed on
+        // this path yet (#799), so the third element is discarded here.
+        let (r, m, _) = self.lint_with_options_internal_with_source(
             source,
             opts,
             pre_pass_1_cache,
             marque_scheme::InputSource::DocumentContent,
-        )
+        );
+        (r, m)
     }
 
+    // The 3-tuple return (lint result + parsed-markings cache +
+    // document-scope rollup, #799) trips `type_complexity`; the shape is
+    // the natural multi-output of one pipeline pass, and a type alias would
+    // obscure it more than it clarifies — matching the existing
+    // `synthesis.rs` precedent.
+    #[allow(clippy::type_complexity)]
     pub(super) fn lint_with_options_internal_with_source(
         &self,
         source: &[u8],
         opts: &LintOptions,
         pre_pass_1_cache: Option<&[(Span, S::Canonical)]>,
         input_source: marque_scheme::InputSource,
-    ) -> (LintResult<S>, Vec<(Span, S::Marking)>) {
+    ) -> (LintResult<S>, Vec<(Span, S::Marking)>, S::Canonical) {
         use marque_core::Scanner;
         use marque_ism::MarkingType;
 
@@ -139,12 +147,15 @@ where
         self.reset_decision_step_counter();
 
         if deadline_expired(opts.deadline) {
+            // Pre-init guard: `doc_join_acc` does not exist yet, so the
+            // partial rollup is the canonical bottom.
             return (
                 LintResult {
                     truncated: true,
                     ..Default::default()
                 },
                 Vec::new(),
+                <S::Canonical>::default(),
             );
         }
 
@@ -159,6 +170,11 @@ where
         let mut page_portions_arc: Option<Arc<Box<[S::Canonical]>>> = None;
         let mut page_marking_arc: Option<Arc<S::Projected>> = None;
         let mut page_join_acc: S::Canonical = <S::Canonical>::default();
+        // Document-scope rollup accumulator (#799): a running canonical
+        // folded from each closing page's `page_join_acc` at every page
+        // boundary and at end-of-document. Fresh `Default` per call is the
+        // fresh-per-input guarantee (Constitution VI).
+        let mut doc_join_acc: S::Canonical = <S::Canonical>::default();
         let mut page_banner_span: Option<Span> = None;
         let mut rank_floor: Option<u8> = None;
         let mut render_scratch = String::new();
@@ -175,6 +191,7 @@ where
                         ..Default::default()
                     },
                     parsed_markings,
+                    std::mem::take(&mut doc_join_acc),
                 );
             }
             candidates_processed += 1;
@@ -189,6 +206,7 @@ where
                 &mut page_portions_arc,
                 &mut page_marking_arc,
                 &mut page_join_acc,
+                &mut doc_join_acc,
                 &mut page_banner_span,
                 &mut rank_floor,
                 &mut render_scratch,
@@ -206,6 +224,7 @@ where
                             ..Default::default()
                         },
                         parsed_markings,
+                        std::mem::take(&mut doc_join_acc),
                     );
                 }
             }
@@ -356,7 +375,20 @@ where
                     ..Default::default()
                 },
                 parsed_markings,
+                std::mem::take(&mut doc_join_acc),
             );
+        }
+
+        // Fold the final (un-page-broken) page rollup into the document
+        // accumulator — catches trailing portions that never reached a
+        // PageBreak boundary. Guarded on non-empty portions exactly as the
+        // EOD finalization dispatch above is. `page_join_acc` is not reset
+        // at EOD (the document is ending), so the clone is the only way to
+        // feed the fold (#799).
+        if !page_portions.is_empty() {
+            doc_join_acc = self
+                .scheme
+                .canonical_document_join(&[std::mem::take(&mut doc_join_acc), page_join_acc.clone()]);
         }
 
         if let Some(cached) = &self.corrections_ac {
@@ -419,6 +451,7 @@ where
                 ..Default::default()
             },
             parsed_markings,
+            doc_join_acc,
         )
     }
 }
