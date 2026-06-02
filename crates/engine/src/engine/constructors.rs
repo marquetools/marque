@@ -551,3 +551,87 @@ where
         ResolvedDocument::new(artifacts.into_boxed_slice())
     }
 }
+
+// Reverse validation (#799). Compares a document's declared "classified up
+// to" front marking against the rollup of every page's markings and reports
+// divergence. Caller-supplied operands (the engine does not auto-extract a
+// front marking yet) are projected into canonical space, where the join +
+// equality comparison lives — `S::Marking` carries no `Eq`, so the comparison
+// cannot happen in marking space. Needs `S::Canonical: Clone + Default + Eq`,
+// so it sits in its own block.
+impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R>
+where
+    S::Canonical: Clone + Default + Eq,
+{
+    /// Reverse-validate a document's "classified up to" front marking against
+    /// the rollup of all its pages' markings.
+    ///
+    /// Consumes a [`DiffInput`](marque_scheme::DiffInput) at
+    /// [`Scope::Document`](marque_scheme::Scope::Document) — the same diff
+    /// mechanism the banner-vs-portions case
+    /// ([`DiffRelation::BannerOverPortions`](marque_scheme::DiffRelation::BannerOverPortions))
+    /// uses, one scope up. Each operand is projected into canonical space and
+    /// the [`Divergence`](marque_scheme::Divergence) verdict is computed from
+    /// the canonical join + equality. The returned
+    /// [`ReverseValidation`](marque_scheme::ReverseValidation) also carries the
+    /// resolved front-marking node so a caller sees its fixability.
+    ///
+    /// The front marking is caller-supplied: the engine does not yet
+    /// auto-extract a front line from the document, so this is an entry point
+    /// the caller drives (the same posture as every other `DiffInput`
+    /// consumer). An operand the recognizer read ambiguously yields
+    /// [`Divergence::Unresolved`](marque_scheme::Divergence::Unresolved)
+    /// rather than a guessed verdict. `diff.relation` is recorded provenance,
+    /// not a gate.
+    ///
+    /// A scheme that declares no
+    /// [`FrontMarking`](marque_scheme::ArtifactKind::FrontMarking) artifact
+    /// (CAPCO today) still computes the verdict; its front node is synthesized
+    /// flag-only (no derivation edge can populate it).
+    pub fn reverse_validate(
+        &self,
+        diff: &marque_scheme::DiffInput<S::Marking>,
+    ) -> marque_scheme::ReverseValidation<S> {
+        use marque_scheme::{
+            ArtifactKind, Divergence, Fixability, Parsed, ResolvedArtifact, ReverseValidation,
+        };
+
+        // Project a Parsed operand into canonical space; an ambiguous reading
+        // cannot be compared and drops to `None`.
+        let to_canonical = |p: &Parsed<S::Marking>| match p {
+            Parsed::Unambiguous(m) => Some(self.scheme.canonical_from_marking(m)),
+            Parsed::Ambiguous { .. } => None,
+        };
+        let front_c = to_canonical(&diff.from);
+        let rollup_c = to_canonical(&diff.to);
+
+        let divergence = match (&front_c, &rollup_c) {
+            (Some(front), Some(rollup)) => marque_scheme::divergence(&self.scheme, front, rollup),
+            _ => Divergence::Unresolved,
+        };
+
+        // Resolve the front-marking node through the forward path so
+        // fixability follows derivability uniformly. A scheme declaring no
+        // FrontMarking artifact resolves to an empty document, so the node is
+        // synthesized flag-only.
+        let front = match &rollup_c {
+            Some(rollup) => {
+                let resolved = self.resolve_document(rollup);
+                resolved
+                    .artifacts()
+                    .iter()
+                    .find(|a| a.kind == ArtifactKind::FrontMarking)
+                    .cloned()
+            }
+            None => None,
+        }
+        .unwrap_or_else(|| ResolvedArtifact {
+            kind: ArtifactKind::FrontMarking,
+            fixability: Fixability::FlagOnly,
+            derived_value: None,
+            fired_edges: Box::new([]),
+        });
+
+        ReverseValidation { divergence, front }
+    }
+}
