@@ -100,9 +100,11 @@ not submission order — correlate by the echoed `id`.
 Marque ships no persistent on-disk result cache. An earlier v0.2 plan for an
 opt-in LMDB-backed incremental `LintResult` cache was descoped (constitution
 v1.8.0): a cold lint is already under the 2 ms ceiling, the cache key no
-longer captured every output-determining input, `LintResult` carries a
-`secrecy::SecretSlice` content field that must not be persisted, and no
-workload showed a meaningful hit rate. In-memory dedup / change-detection uses
+longer captured every output-determining input, the `Diagnostic` values a
+`LintResult` holds carry a content-bearing `secrecy::SecretSlice<u8>` field
+(`recognized_canonical`, populated on the lint path for decoder recognitions)
+that must not be persisted to disk, and no workload showed a meaningful hit
+rate. In-memory dedup / change-detection uses
 the BLAKE3 `Fingerprint` (`marque-utils`) without persisting derived results.
 
 ## WASM compatibility
