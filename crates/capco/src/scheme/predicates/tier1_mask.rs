@@ -504,7 +504,7 @@ mod tests {
         // synthetic `AeaMarking`-kind `TokenSpan` to verify the lookup
         // arm itself resolves; byte-precise span verification against
         // real input bytes lives in the corpus fixture at
-        // `tests/corpus/invalid/e070_frd_tfni_precedence.txt`.
+        // `tests/corpus/capco/invalid/e070_frd_tfni_precedence.txt`.
         use marque_ism::{Span, TokenSpan};
 
         let mut attrs = classified_us_secret();

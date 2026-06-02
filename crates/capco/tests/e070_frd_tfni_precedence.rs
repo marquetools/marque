@@ -19,7 +19,7 @@
 //! These tests exercise the predicate independently of the engine
 //! bridge — see `crates/capco/src/scheme/predicates/tier1_mask.rs`
 //! unit tests for the in-helper span/severity shape pinning, and
-//! `tests/corpus/invalid/e070_frd_tfni_precedence.{txt,expected.json}`
+//! `tests/corpus/capco/invalid/e070_frd_tfni_precedence.{txt,expected.json}`
 //! for the end-to-end engine emission contract.
 //!
 //! Authority: CAPCO-2016 §H.6 p120 (TFNI subsection precedence rules

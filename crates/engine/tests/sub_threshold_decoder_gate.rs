@@ -83,6 +83,7 @@ fn corpus_documents_root() -> PathBuf {
         .map(|root| {
             root.join("tests")
                 .join("corpus")
+                .join("capco")
                 .join("documents")
                 .join("marked")
         })

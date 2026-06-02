@@ -4,15 +4,15 @@
 
 //! Lattice corpus regression runner.
 //!
-//! Drives the 5 worked-example fixtures under `tests/corpus/lattice/`
+//! Drives the 5 worked-example fixtures under `tests/corpus/capco/lattice/`
 //! through `CapcoScheme::project(Scope::Page, ...)` and asserts byte-
 //! identity against `.expected.json` sidecars. Dispatches on fixture
 //! structural shape (CAB-commingling vs portions+banner) per the
-//! `tests/corpus/lattice/README.md` contract.
+//! `tests/corpus/capco/lattice/README.md` contract.
 //!
 //! Also hosts the manual probe (`probe_documents_lint_clean`) as an
 //! `#[ignore]`-gated diagnostic for the 40 CIA CREST documents under
-//! `tests/corpus/documents/marked/`, a regression replay surface.
+//! `tests/corpus/capco/documents/marked/`, a regression replay surface.
 //!
 //! # Sidecar shape (parallel to `marque_test_utils::ExpectedFixture`)
 //!
@@ -234,13 +234,13 @@ fn load_lattice_expected(fixture_path: &Path) -> LatticeExpectedFixture {
 }
 
 /// Load-bearing test: every fixture under
-/// `tests/corpus/lattice/` MUST round-trip through
+/// `tests/corpus/capco/lattice/` MUST round-trip through
 /// `CapcoScheme::project(Scope::Page, ...)` + `scheme.render_summary(...)`,
 /// with the rendered banner asserted **byte-identical** to the sidecar's
 /// `expected_banner` field. `Engine::lint(...)` diagnostics are matched
 /// against the sidecar's `diagnostics` array by **rule-id occurrence
 /// count only** (spans + messages intentionally not enforced) per the
-/// loose-ground-truth contract established by `tests/corpus/foreign/`.
+/// loose-ground-truth contract established by `tests/corpus/capco/foreign/`.
 /// The two assertion granularities are deliberate: banners are precise
 /// CAPCO §A.6 / §G.1 byte forms (any drift is a renderer bug); per-rule
 /// diagnostic counts are robust to incidental span shifts as the rule
@@ -256,7 +256,7 @@ fn lattice_corpus_fixtures_match_expected() {
     let fixtures = fixtures_in("lattice");
     assert!(
         !fixtures.is_empty(),
-        "no lattice fixtures found — expected 5 under tests/corpus/lattice/"
+        "no lattice fixtures found — expected 5 under tests/corpus/capco/lattice/"
     );
 
     for path in &fixtures {
@@ -352,7 +352,7 @@ fn lattice_corpus_fixtures_match_expected() {
 // ===========================================================================
 
 /// Manual probe: lint every rendered CIA CREST document under
-/// `tests/corpus/documents/marked/*.md` and print per-document
+/// `tests/corpus/capco/documents/marked/*.md` and print per-document
 /// diagnostic counts to stdout, sorted by descending count.
 ///
 /// The 40 marked-document fixtures have ground-truth sidecars claiming
@@ -387,7 +387,7 @@ fn lattice_corpus_fixtures_match_expected() {
 /// invariant that no document content appears in engine output
 /// streams. For full triage of a specific document, run the engine
 /// directly on the file (e.g.,
-/// `cargo run -p marque -- check tests/corpus/documents/marked/<file>`)
+/// `cargo run -p marque -- check tests/corpus/capco/documents/marked/<file>`)
 /// rather than reaching for the message field here.
 ///
 /// Run with:
@@ -403,7 +403,7 @@ fn probe_documents_lint_clean() {
     let fixtures: Vec<PathBuf> = marked_document_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no marked-document fixtures found under tests/corpus/documents/marked/"
+        "no marked-document fixtures found under tests/corpus/capco/documents/marked/"
     );
 
     let mut counts: Vec<(String, usize, Vec<String>)> = Vec::new();

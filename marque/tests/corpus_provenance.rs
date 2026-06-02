@@ -5,7 +5,7 @@
 //! Corpus provenance scan.
 //!
 //! Validates corpus integrity:
-//! (a) Every file under `tests/corpus/` matches a registered path pattern
+//! (a) Every file under `tests/corpus/capco/` matches a registered path pattern
 //! (b) `CORPUS_PROVENANCE.md` exists and contains a reviewer line
 //! (c) No fixture contains classifier-id-shaped strings
 //! (d) Fixture token strings are drawn from known CVE enumerations
@@ -33,7 +33,7 @@ fn walkdir(dir: &Path) -> Vec<PathBuf> {
     result
 }
 
-/// Registered path patterns for files under tests/corpus/.
+/// Registered path patterns for files under tests/corpus/capco/.
 fn is_registered_pattern(relative: &str) -> bool {
     let patterns = [
         // invalid fixtures
@@ -46,18 +46,18 @@ fn is_registered_pattern(relative: &str) -> bool {
         // prose fixtures (future)
         ("prose/", ".txt"),
         // mangled-fixture configuration (commit f99dbdab added
-        // tests/corpus/mangled/threshold.toml; the registered-
+        // tests/corpus/capco/mangled/threshold.toml; the registered-
         // pattern check was not updated in the same commit)
         ("mangled/", ".toml"),
         // lattice fixtures: cross-axis dominance worked examples. The
         // property-test runner and `.expected.json` sidecars are wired
-        // separately. See tests/corpus/lattice/README.md.
+        // separately. See tests/corpus/capco/lattice/README.md.
         ("lattice/", ".txt"),
         ("lattice/", ".expected.json"),
         ("lattice/", ".md"),
         // documents/: end-to-end multi-page synthetic-positive document
         // fixtures rendered from CIA CREST declassified prose with
-        // synthetic CAPCO markings. See tests/corpus/documents/README.md.
+        // synthetic CAPCO markings. See tests/corpus/capco/documents/README.md.
         ("documents/", ".expected.json"),
         ("documents/marked/", ".md"),
         ("documents/specs/", ".md"),
@@ -96,8 +96,11 @@ fn is_registered_pattern(relative: &str) -> bool {
 
 #[test]
 fn sc002a_every_corpus_file_matches_registered_pattern() {
-    let corpus_dir = workspace_root().join("tests").join("corpus");
-    assert!(corpus_dir.exists(), "tests/corpus/ directory must exist");
+    let corpus_dir = workspace_root().join("tests").join("corpus").join("capco");
+    assert!(
+        corpus_dir.exists(),
+        "tests/corpus/capco/ directory must exist"
+    );
 
     let files = walkdir(&corpus_dir);
     let mut violations = Vec::new();
@@ -116,7 +119,7 @@ fn sc002a_every_corpus_file_matches_registered_pattern() {
 
     assert!(
         violations.is_empty(),
-        "{} file(s) under tests/corpus/ don't match registered patterns:\n{}",
+        "{} file(s) under tests/corpus/capco/ don't match registered patterns:\n{}",
         violations.len(),
         violations.join("\n")
     );
@@ -127,6 +130,7 @@ fn sc002a_corpus_provenance_exists_and_has_reviewer() {
     let provenance = workspace_root()
         .join("tests")
         .join("corpus")
+        .join("capco")
         .join("CORPUS_PROVENANCE.md");
     assert!(provenance.exists(), "CORPUS_PROVENANCE.md must exist");
 
@@ -143,7 +147,7 @@ fn sc002a_corpus_provenance_exists_and_has_reviewer() {
 
 #[test]
 fn sc002a_no_classifier_id_in_corpus_fixtures() {
-    let corpus_dir = workspace_root().join("tests").join("corpus");
+    let corpus_dir = workspace_root().join("tests").join("corpus").join("capco");
     let files = walkdir(&corpus_dir);
 
     let max_threads = std::thread::available_parallelism()
@@ -388,7 +392,11 @@ fn is_structural_sci_token(token: &str) -> bool {
 fn sc002a_fixture_tokens_within_known_vocabulary() {
     // Only validate valid/ fixtures — invalid/ fixtures intentionally
     // contain non-CVE tokens to exercise error-detection rules.
-    let corpus_dir = workspace_root().join("tests").join("corpus").join("valid");
+    let corpus_dir = workspace_root()
+        .join("tests")
+        .join("corpus")
+        .join("capco")
+        .join("valid");
     if !corpus_dir.exists() {
         return; // no valid fixtures yet
     }
@@ -517,7 +525,7 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
 // mangling glyphs the generator can produce. They MUST NOT contain
 // surrounding prose or classifier-id-shaped digit runs; the
 // source-narrowing invariant in `tests/fixtures/mangled/README.md`
-// keeps the generator pinned to `tests/corpus/valid/`, but a
+// keeps the generator pinned to `tests/corpus/capco/valid/`, but a
 // regression in the generator (or a manual edit that didn't get
 // regenerated) would silently leak prose into the harness fixtures
 // and from there into decoder telemetry.
@@ -536,13 +544,13 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
 //
 // This is intentionally narrow — it does NOT enforce vocabulary
 // membership the way `sc002a_fixture_tokens_within_known_vocabulary`
-// does for `tests/corpus/valid/`, because mangled fixtures
+// does for `tests/corpus/capco/valid/`, because mangled fixtures
 // deliberately contain typos / superseded tokens / wrong-case forms
 // that are out-of-vocabulary by design. The check is "no prose got
 // in", not "every token is canonical".
 
 const MANGLED_PROSE_SENTINELS: &[&str] = &[
-    // Drawn from `tests/corpus/prose/article.txt` — multi-word English
+    // Drawn from `tests/corpus/capco/prose/article.txt` — multi-word English
     // fragments that cannot appear in any valid CAPCO/ISM marking and
     // therefore cannot legitimately appear in `observed` / `expected`.
     // Kept in sync with `crates/engine/tests/audit.rs::PROSE_SENTINELS`

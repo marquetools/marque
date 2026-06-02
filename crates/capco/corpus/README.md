@@ -31,7 +31,7 @@ Priors are produced by the Python analysis tool. Issue #258 split the
 corpus into two strata so the decoder can compute the per-token
 "marking-y" score `log P(token|marking) − log P(token|prose)`:
 
-- **Marking stratum** — `tests/corpus/valid/` (committed banner /
+- **Marking stratum** — `tests/corpus/capco/valid/` (committed banner /
   portion / CAB fixtures) plus any future mock-classified corpus
   produced by the project owner. Supplies `token_base_rates` and
   `country_code_base_rates`.
@@ -41,7 +41,7 @@ corpus into two strata so the decoder can compute the per-token
   hits). Supplies `token_prose_base_rates` and
   `country_code_prose_base_rates`.
 
-Default regeneration uses `tests/corpus/valid/` for marking and Enron
+Default regeneration uses `tests/corpus/capco/valid/` for marking and Enron
 for prose:
 
 ```bash
@@ -65,8 +65,8 @@ Re-run whenever the corpus contents change or the decoder's scoring
 shape changes.
 
 **Marking-stratum coverage.** The marking stratum is the union of
-`tests/corpus/valid/` (~34 short per-rule fixtures) and
-`tests/corpus/documents/marked/` (40 synthetic-positive multi-page
+`tests/corpus/capco/valid/` (~34 short per-rule fixtures) and
+`tests/corpus/capco/documents/marked/` (40 synthetic-positive multi-page
 documents derived from declassified CIA CREST prose with synthetic
 CAPCO markings overlaid). The documents stratum supplies the
 banner + CAB + portion-marked paragraph distributions a per-rule

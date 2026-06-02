@@ -38,7 +38,7 @@ use std::collections::HashMap;
 /// against; do NOT unpin to "Strict" without the same null-hypothesis
 /// gate landing first (per Constitution §VIII source-fidelity, this
 /// test's load-bearing role is the prose-precision gate against
-/// `tests/corpus/prose/article.txt`, NOT a strict-vs-decoder
+/// `tests/corpus/capco/prose/article.txt`, NOT a strict-vs-decoder
 /// equivalence check).
 fn make_engine() -> CapcoEngine {
     CapcoEngine::new(
@@ -538,7 +538,7 @@ fn valid_fixtures_zero_diagnostics() {
 }
 
 /// Per-rule diagnostic count expectation for a single document fixture
-/// in `tests/corpus/documents/marked/`.
+/// in `tests/corpus/capco/documents/marked/`.
 ///
 /// The allowlist is currently empty: the documents corpus produces
 /// zero diagnostics across all 40 fixtures. New entries should only

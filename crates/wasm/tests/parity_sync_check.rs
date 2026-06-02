@@ -219,7 +219,7 @@ fn artifact_path() -> PathBuf {
 }
 
 fn corpus_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus/capco")
 }
 
 fn txt_files_in(dir: &Path) -> Vec<PathBuf> {
