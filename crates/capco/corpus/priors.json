@@ -1774,8 +1774,8 @@
   "metadata": {
     "vocabulary_file": "tools/corpus-analysis/tokens/capco.json",
     "marking_corpus_paths": [
-      "tests/corpus/valid",
-      "tests/corpus/documents/marked"
+      "tests/corpus/capco/valid",
+      "tests/corpus/capco/documents/marked"
     ],
     "prose_corpus_paths": [
       "enron_mail"

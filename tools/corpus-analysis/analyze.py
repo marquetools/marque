@@ -1358,7 +1358,7 @@ def derive_priors(
     Reshape stratified analysis results into the priors.json schema.
 
     Issue #258 split the corpus into two strata: marking-bearing
-    material (``tests/corpus/valid/`` plus future mock-classified
+    material (``tests/corpus/capco/valid/`` plus future mock-classified
     fixtures) and prose-only material (Enron, CIA CREST declassified,
     Congressional Record, GAO reports — all confirmed prose-dominant
     with effectively zero portion-marking hits per project owner). The
@@ -2017,7 +2017,7 @@ def generate_mangled_fixtures(
 
     # Distribute across classes. Each (canonical, class) pair is
     # sampled up to ``SAMPLES_PER_CLASS_PER_CANONICAL`` times per seed.
-    # Because the curated canonical source (``tests/corpus/valid/``) is
+    # Because the curated canonical source (``tests/corpus/capco/valid/``) is
     # small (~10 extractable shapes) and we want ≥200 fixtures for the
     # accuracy gate, per-pair resampling multiplies coverage without
     # broadening the source. The RNG state advances on every call, so
@@ -2165,7 +2165,7 @@ def main():
         help=(
             "Stratum tag for --corpus (default: marking). The natural use "
             "case for --corpus is pointing at the marking-bearing fixtures "
-            "in tests/corpus/valid/, so 'marking' is the default. Use "
+            "in tests/corpus/capco/valid/, so 'marking' is the default. Use "
             "'prose' for an external prose corpus."
         ),
     )
@@ -2212,7 +2212,7 @@ def main():
             "owner confirmation: effectively zero portion-marking hits) "
             "and go in the prose stratum. "
             "Default for --mode priors when no source given: "
-            "tests/corpus/valid/ + tests/corpus/documents/marked/ "
+            "tests/corpus/capco/valid/ + tests/corpus/capco/documents/marked/ "
             "(marking) + Enron (prose). "
             "crest: CIA CREST declassified documents from Internet Archive — "
             "recommended for --mode mangled (real classification marking artifacts)."
@@ -2368,8 +2368,8 @@ def main():
     #   3. --corpus-source (named auto-download — all prose stratum per
     #      issue #258 owner confirmation that all four sources are
     #      prose-dominant with effectively zero portion-marking hits)
-    #   4. Default for --mode priors: tests/corpus/valid/ +
-    #      tests/corpus/documents/marked/ (marking) + Enron (prose)
+    #   4. Default for --mode priors: tests/corpus/capco/valid/ +
+    #      tests/corpus/capco/documents/marked/ (marking) + Enron (prose)
     #      so a developer regen does not require flags. The documents
     #      stratum supplies multi-page banner+CAB+portion-marked
     #      content (~1700 lines across 40 synthetic-positive
@@ -2444,7 +2444,7 @@ def main():
 
     # Per-mode defaults when no source flags are supplied:
     # - `--mode priors` needs both strata, so it pulls the marking
-    #   stratum from `tests/corpus/valid/` plus `tests/corpus/documents/marked/`
+    #   stratum from `tests/corpus/capco/valid/` plus `tests/corpus/capco/documents/marked/`
     #   (the synthetic-positive multi-page document corpus — full
     #   banner + CAB + portion-marked paragraph distributions, ~1700
     #   lines across 40 documents). Prose stratum defaults to Enron.
@@ -2514,8 +2514,8 @@ def main():
                 "  Provide --marking-corpus PATH and --prose-corpus PATH, or\n"
                 "  --corpus PATH (defaults to marking) plus a prose source\n"
                 "  via --corpus-source enron|congressional-record|gao|crest, or\n"
-                "  run with no source args to use tests/corpus/valid/ +\n"
-                "  tests/corpus/documents/marked/ + Enron.",
+                "  run with no source args to use tests/corpus/capco/valid/ +\n"
+                "  tests/corpus/capco/documents/marked/ + Enron.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -2579,7 +2579,7 @@ def main():
         # `priors.json` is mechanically reproducible across worktrees
         # and developers — flagged in PR #312 review. Repo-relative
         # paths still identify which corpus directories produced this
-        # artifact (e.g., `tests/corpus/valid` for the marking
+        # artifact (e.g., `tests/corpus/capco/valid` for the marking
         # stratum) without leaking absolute filesystem paths like
         # `/home/<user>/...`. The download-cache paths used by the
         # named sources (Enron / GovInfo / GAO / CREST under

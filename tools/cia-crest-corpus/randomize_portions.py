@@ -36,7 +36,7 @@ from pathlib import Path
 TOOL_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = TOOL_ROOT.parents[1]
 PORTIONS_TOML = TOOL_ROOT / "portions.toml"
-DEFAULT_SPECS = REPO_ROOT / "tests" / "corpus" / "documents" / "specs"
+DEFAULT_SPECS = REPO_ROOT / "tests" / "corpus" / "capco" / "documents" / "specs"
 
 # Match `(anything-not-paren) <whitespace>`, capturing the trailing space we keep.
 PORTION_LINE_RE = re.compile(r"^(\([^)\n]+\))(\s+)(\S.*)$")
@@ -148,7 +148,7 @@ def main() -> int:
         "--specs",
         type=Path,
         default=DEFAULT_SPECS,
-        help="path to the specs directory (default: tests/corpus/documents/specs)",
+        help="path to the specs directory (default: tests/corpus/capco/documents/specs)",
     )
     args = ap.parse_args()
 

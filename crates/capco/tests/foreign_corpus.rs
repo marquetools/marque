@@ -4,7 +4,7 @@
 
 //! Foreign-banner correctness corpus.
 //!
-//! Loads `tests/corpus/foreign/*.txt` fixtures and asserts the
+//! Loads `tests/corpus/capco/foreign/*.txt` fixtures and asserts the
 //! engine-level behavioral invariants tracked under #276:
 //!
 //! - **`pure_foreign_banner.txt`**: #276 Case 1 — pure-foreign

@@ -165,7 +165,7 @@ fn engine_lint_to_ndjson(source: &[u8]) -> String {
 
 fn corpus_dir() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest.join("../../tests/corpus")
+    manifest.join("../../tests/corpus/capco")
 }
 
 fn load_fixture(path: &std::path::Path) -> Vec<u8> {
@@ -292,7 +292,7 @@ fn lint_parity_prose_fixtures() {
     let prose_dir = corpus_dir().join("prose");
     assert!(
         prose_dir.is_dir(),
-        "tests/corpus/prose/ missing — required for prose parity"
+        "tests/corpus/capco/prose/ missing — required for prose parity"
     );
     let txt_files = txt_files_in(&prose_dir);
     assert!(

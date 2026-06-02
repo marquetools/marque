@@ -20,7 +20,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn fixture(rel: &str) -> PathBuf {
-    workspace_root().join("tests/corpus").join(rel)
+    workspace_root().join("tests/corpus/capco").join(rel)
 }
 
 fn marque() -> Command {

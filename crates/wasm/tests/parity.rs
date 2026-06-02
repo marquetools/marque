@@ -28,7 +28,7 @@
 //!
 //! ## Why prose is not in the artifact
 //!
-//! Prose corpus (`tests/corpus/prose/article.txt`, ~125KB) would
+//! Prose corpus (`tests/corpus/capco/prose/article.txt`, ~125KB) would
 //! dominate the artifact size. The native parity harness
 //! (`native_parity.rs::lint_parity_prose_fixtures`) covers prose
 //! parity natively, which exercises the same lint codepath through

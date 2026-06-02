@@ -7,8 +7,8 @@
 
 //! Shared test utilities for the marque workspace.
 //!
-//! Provides uniform access to `tests/corpus/` fixtures from any crate's test suite.
-//! Add this crate as a `[dev-dependencies]` path dependency.
+//! Provides uniform access to `tests/corpus/capco/` fixtures from any crate's
+//! test suite. Add this crate as a `[dev-dependencies]` path dependency.
 
 pub mod fixtures;
 
@@ -20,16 +20,19 @@ pub mod stub_scheme;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-/// Root of the test corpus relative to the workspace root.
+/// Root of the per-grammar test corpus, relative to the workspace root.
+/// Each subdirectory under it is one marking grammar's fixture corpus.
 const CORPUS_REL: &str = "tests/corpus";
 
-/// Returns the absolute path to the corpus root directory.
+/// Default grammar backing the [`corpus_root`] shorthand.
+const DEFAULT_GRAMMAR: &str = "capco";
+
+/// Absolute path to the corpus namespace root (`<workspace>/tests/corpus`).
 ///
-/// Resolves relative to `CARGO_MANIFEST_DIR`'s ancestor that contains `tests/corpus/`.
-/// Works from any crate in the workspace.
-pub fn corpus_root() -> PathBuf {
-    // Walk up from CARGO_MANIFEST_DIR until we find the workspace root
-    // (identified by the presence of tests/corpus/).
+/// Walks up from `CARGO_MANIFEST_DIR` to the workspace root, identified
+/// by the always-present `tests/corpus/` directory. Private: callers use
+/// [`grammar_corpus_root`] or [`corpus_root`].
+fn corpus_namespace_root() -> PathBuf {
     let manifest_dir =
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set — run via cargo");
     let mut dir = PathBuf::from(&manifest_dir);
@@ -41,10 +44,32 @@ pub fn corpus_root() -> PathBuf {
         if !dir.pop() {
             panic!(
                 "could not find {CORPUS_REL}/ in any ancestor of {manifest_dir}; \
-                 is the workspace root missing tests/corpus/?"
+                 is the workspace root missing {CORPUS_REL}/?"
             );
         }
     }
+}
+
+/// Absolute path to one grammar's corpus root, e.g.
+/// `<workspace>/tests/corpus/capco`.
+///
+/// The namespace walk anchors on `tests/corpus/` (always present), then
+/// joins the grammar segment, so requesting a grammar whose fixtures have
+/// not landed yet returns a well-defined path that simply does not exist
+/// — downstream `is_dir()` guards yield an empty fixture list rather than
+/// panicking. Works from any crate in the workspace.
+pub fn grammar_corpus_root(grammar: &str) -> PathBuf {
+    debug_assert!(
+        !grammar.is_empty() && grammar.bytes().all(|b| b.is_ascii_lowercase() || b == b'-'),
+        "grammar must be a non-empty lowercase identifier, got {grammar:?}"
+    );
+    corpus_namespace_root().join(grammar)
+}
+
+/// CAPCO grammar's corpus root — shorthand over
+/// [`grammar_corpus_root`] for the workspace's CAPCO-only consumers.
+pub fn corpus_root() -> PathBuf {
+    grammar_corpus_root(DEFAULT_GRAMMAR)
 }
 
 /// Returns paths to all `.txt` fixture files under the given corpus subdirectory.
@@ -119,7 +144,7 @@ pub struct ExpectedSpan {
 /// Expected diagnostics loaded from a `.expected.json` file.
 ///
 /// `ground_truth` is populated for document fixtures (under
-/// `tests/corpus/documents/`) and absent for the per-rule micro-fixtures
+/// `tests/corpus/capco/documents/`) and absent for the per-rule micro-fixtures
 /// under `valid/` and `invalid/`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExpectedFixture {
@@ -129,7 +154,7 @@ pub struct ExpectedFixture {
 }
 
 /// Structural ground truth for a document fixture under
-/// `tests/corpus/documents/`. Mirrors the schema produced by
+/// `tests/corpus/capco/documents/`. Mirrors the schema produced by
 /// `tools/cia-crest-corpus/render_corpus.py::truth_record`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DocumentGroundTruth {
@@ -184,8 +209,8 @@ pub struct ParagraphGroundTruth {
 
 /// Load the `.expected.json` sidecar for a given fixture path.
 ///
-/// Given `tests/corpus/invalid/banner_abbrev.txt`, loads
-/// `tests/corpus/invalid/banner_abbrev.expected.json`.
+/// Given `tests/corpus/capco/invalid/banner_abbrev.txt`, loads
+/// `tests/corpus/capco/invalid/banner_abbrev.expected.json`.
 pub fn load_expected(fixture_path: &Path) -> ExpectedFixture {
     let json_path = fixture_path.with_extension("expected.json");
     if !json_path.exists() {
@@ -207,9 +232,9 @@ pub fn load_fixture(path: &Path) -> Vec<u8> {
 }
 
 /// Returns paths to every rendered marked-document fixture under
-/// `tests/corpus/documents/marked/*.md`, sorted by file name.
+/// `tests/corpus/capco/documents/marked/*.md`, sorted by file name.
 ///
-/// Each path's sibling `tests/corpus/documents/<stem>.expected.json`
+/// Each path's sibling `tests/corpus/capco/documents/<stem>.expected.json`
 /// carries the structural ground truth (banner per page, mark per
 /// paragraph, CAB) via [`ExpectedFixture::ground_truth`].
 pub fn marked_document_fixtures() -> Vec<PathBuf> {
@@ -228,7 +253,7 @@ pub fn marked_document_fixtures() -> Vec<PathBuf> {
 }
 
 /// Load the per-document ground-truth fixture (`<stem>.expected.json`)
-/// for a marked document path under `tests/corpus/documents/marked/`.
+/// for a marked document path under `tests/corpus/capco/documents/marked/`.
 ///
 /// Panics if the sidecar is missing, malformed, or lacks the
 /// `ground_truth` field — the documents corpus contract requires
@@ -262,6 +287,12 @@ pub fn load_document_ground_truth(marked_path: &Path) -> (ExpectedFixture, Docum
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corpus_root_resolves_under_capco_namespace() {
+        assert!(corpus_root().ends_with("tests/corpus/capco"));
+        assert!(grammar_corpus_root("capco").ends_with("tests/corpus/capco"));
+    }
 
     #[test]
     fn expected_rule_id_round_trips_through_json() {

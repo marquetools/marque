@@ -14,7 +14,7 @@
 //! input like `TOP SECRET//SI/TALENT KEYHOLE//FOREIGN GOVERNMENT
 //! INFORMATION GBR NZL//NOFORN` surfaced as `Unknown` spans and the
 //! rule layer emitted spurious E008 errors. Real-world IC content in
-//! `tests/corpus/documents/marked/CIA-RDP09T00207R001000100002-2.md`
+//! `tests/corpus/capco/documents/marked/CIA-RDP09T00207R001000100002-2.md`
 //! exercised this gap (two E008 hits on a single banner line).
 //!
 //! This test pins the long-form admission contract:
@@ -147,7 +147,7 @@ fn fgi_long_form_acknowledged_with_list_resolves_to_acknowledged() {
     // CAPCO-2016 §H.7 p123: "Authorized Banner Line Marking Title
     // (when source is acknowledged): FOREIGN GOVERNMENT INFORMATION
     // [LIST]". Real-world fixture:
-    // tests/corpus/documents/marked/CIA-RDP09T00207R001000100002-2.md
+    // tests/corpus/capco/documents/marked/CIA-RDP09T00207R001000100002-2.md
     // banner uses `FOREIGN GOVERNMENT INFORMATION GBR NZL`.
     let attrs = parse_banner("SECRET//FOREIGN GOVERNMENT INFORMATION GBR NZL//NOFORN");
     let unknown = unknown_spans(&attrs);

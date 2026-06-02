@@ -121,7 +121,7 @@ fn round_trip_idempotent() {
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "valid corpus is empty; check tests/corpus/valid/ scaffold",
+        "valid corpus is empty; check tests/corpus/capco/valid/ scaffold",
     );
 
     let mut exercised = 0;

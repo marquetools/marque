@@ -31,7 +31,7 @@ extend-exclude = [
   # files contain axis-name codes (e.g. `wdth`) that are valid font
   # metadata, not spelling errors.
   "demo/assets/fonts/",
-  "tests/corpus/documents/",
+  "tests/corpus/capco/documents/",
   # OCR cleanup script: every regex pattern in this file encodes a known
   # CAPCO-2016 OCR corruption (e.g. `r'clas sification'` → "classification",
   # `r'di sc l os ure'` → "disclosure", `r'elemenTheads'` → "element heads")
