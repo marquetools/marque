@@ -181,10 +181,7 @@ impl CountryCode {
         // route through `try_new` in const context. Both paths
         // require every active byte to be ASCII uppercase, ASCII
         // digit, or underscore. ASCII is a subset of valid UTF-8.
-        #[allow(unsafe_code)]
-        unsafe {
-            std::str::from_utf8_unchecked(self.as_bytes())
-        }
+        std::str::from_utf8(self.as_bytes()).unwrap()
     }
 
     /// Active byte slice (excludes the zero padding).
