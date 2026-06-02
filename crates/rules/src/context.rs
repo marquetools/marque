@@ -234,10 +234,9 @@ pub struct RuleContext<'a, S: MarkingScheme> {
     /// on `pre_pass_1_attrs.is_some()`. No current rule consumes the
     /// signal — it is plumbed through every rule's `check` signature
     /// so future consumers can read it without re-threading the
-    /// lifetime parameter. A future evolution replaces this borrow
-    /// with `Arc<S::Canonical>` when the parse cache adopts
-    /// refcount-shared attrs alongside the v0.2 LMDB incremental
-    /// cache.
+    /// lifetime parameter. A future evolution could replace this
+    /// borrow with `Arc<S::Canonical>` if the in-pass parse store
+    /// adopts refcount-shared attrs.
     pub pre_pass_1_attrs: Option<&'a S::Canonical>,
 }
 

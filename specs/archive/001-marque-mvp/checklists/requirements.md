@@ -42,4 +42,4 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
   spec deliberately abstracts those out — they belong in `plan.md`, not here.
 - The MVP slice intentionally excludes file-format extraction, the REST server, the
   LMDB cache, Office add-ins, and metadata sanitization. Each is a candidate for a
-  follow-up feature spec.
+  follow-up feature spec. **[Superseded: the LMDB cache was later descoped entirely — constitution v1.8.0; Marque persists no derived result to disk.]**

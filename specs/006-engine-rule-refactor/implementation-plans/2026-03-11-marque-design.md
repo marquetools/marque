@@ -115,6 +115,8 @@ Backpressure is natural. Large batch jobs apply the same pipeline with a file-li
 
 ## 5. Incremental Batch Cache
 
+> **[Superseded — descoped.]** The persistent LMDB (`heed`) / `rmp_serde` `LintResult` cache designed in this section was **descoped** (constitution v1.8.0, 2026-06-02). A cold re-lint is already under the 2 ms ceiling; the planned key no longer captured every output-determining input (decoder priors fingerprint, `confidence_threshold`, closure-rule overrides, recognizer/decoder version, active grammar set); the `Diagnostic` values a `LintResult` holds carry a content-bearing `secrecy::SecretSlice<u8>` field (`recognized_canonical`, populated on the lint path for decoder recognitions) that must not be persisted to disk; and no workload showed a meaningful hit rate. Marque persists no derived result to disk — in-memory dedup / change-detection uses the BLAKE3 `Fingerprint` (`marque-utils`). The text below is preserved as a point-in-time record of the original design.
+
 Large archival corpora (millions of documents) are re-processed repeatedly: schema updates, rule changes, corrections map tuning. Without a cache, every run is a full scan. With a cache, unchanged documents are instant.
 
 ### Design
@@ -470,8 +472,8 @@ Any IC technical specification with CVE + Schematron can become a rules crate wi
 | Format extraction + metadata | Kreuzberg | Rust-core, 75+ formats, streaming, OCR, SIMD |
 | Config parsing | toml + serde | Ecosystem standard |
 | Schematron→Rust | build.rs code generation | Compile-time, WASM-safe, no runtime interpreter |
-| Incremental cache store | heed (LMDB) | Embedded, memory-mapped, ACID; no server process |
-| Cache serialization | rmp_serde (MessagePack) | Compact binary; 2–5× smaller than JSON for diagnostic lists |
+| Incremental cache store | ~~heed (LMDB)~~ | **[Superseded — cache descoped, constitution v1.8.0]** Embedded, memory-mapped, ACID; no server process |
+| Cache serialization | ~~rmp_serde (MessagePack)~~ | **[Superseded — cache descoped, constitution v1.8.0]** Compact binary; 2–5× smaller than JSON for diagnostic lists |
 | Batch concurrency control | recoco-utils (concur_control) | Row + byte semaphores for backpressure |
 
 ---
@@ -513,7 +515,7 @@ The FOUO rules gap (a small number of non-public CAPCO rules whose classificatio
 - `marque check file.docx`
 - `marque fix --batch *.pdf`
 - Metadata reporting
-- Incremental batch cache (`--cache` flag, LMDB-backed, opt-in)
+- Incremental batch cache (`--cache` flag, LMDB-backed, opt-in) — **[Superseded: descoped, constitution v1.8.0]**
 
 **v0.3**: Browser extension
 

@@ -123,8 +123,9 @@ processing via `BatchEngine` with concurrency control. Criterion benchmarks
 validate p95 ≤2ms on 10KB inputs.
 
 Not yet built: `marque-extract` (extraction from a wide range of media), the
-`metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth
-middleware.
+`metadata` CLI subcommand, server auth middleware. (The v0.2 incremental LMDB
+cache was descoped — see constitution v1.8.0; Marque persists no derived
+result to disk.)
 
 ## License
 

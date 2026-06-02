@@ -271,7 +271,7 @@ default and is not built by the MVP CLI or the WASM target.
 Linear-scaling SC-005 can be verified at the single-document loop level without
 pulling in a concurrency controller. Deferring the batch path keeps the
 constitution Principle VII dependency graph minimal for the MVP and leaves the
-LMDB cache + batch surface as a clean v0.2 feature slice.
+LMDB cache + batch surface as a clean v0.2 feature slice. **[Superseded: the LMDB cache was later descoped entirely — constitution v1.8.0. The batch surface shipped; the persistent cache did not.]**
 
 **Alternatives considered**:
 - *Wire `BatchEngine` in but leave it untested*: rejected. Untested code on

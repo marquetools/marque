@@ -18,7 +18,7 @@ project/local/env/CLI configuration; and exposes the same lint and fix capabilit
 through a CLI binary (file paths + stdin) and a WASM web-worker build, with
 byte-identical diagnostics across both. The slice deliberately excludes file-format
 extraction, the REST server, the LMDB cache, Office add-ins, and metadata
-sanitization — those are tracked as future feature slices.
+sanitization — those are tracked as future feature slices. **[Superseded: the LMDB cache was later descoped entirely — constitution v1.8.0.]**
 
 The crate skeleton already exists in the workspace. The principal work for this
 slice is (a) introducing a new `marque-ism` crate to own the ISM vocabulary types
@@ -42,7 +42,7 @@ criteria.
 deferred to v0.2 for server), `wasm-bindgen` + `wasm-pack` (WASM target),
 `clap` (CLI), `tracing` (structured logging via `MARQUE_LOG`).
 **Storage**: None for the MVP. The LMDB incremental cache is explicitly out of
-scope. Diagnostic and audit output goes to stdout/stderr or to a caller-provided
+scope. **[Superseded: the LMDB cache was later descoped entirely — constitution v1.8.0; Marque persists no derived result to disk.]** Diagnostic and audit output goes to stdout/stderr or to a caller-provided
 sink. Configuration is read from TOML files on disk; the spec's FR-013 forbids
 retaining document content beyond the processing pass.
 **Testing**: `cargo test` for unit and integration tests inside each crate;
