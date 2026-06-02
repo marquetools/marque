@@ -151,7 +151,7 @@ cargo clippy --workspace --benches -- -D warnings
 
 ## NOT Building
 
-- Incremental LMDB cache (v0.2 scope)
+- Incremental LMDB cache (v0.2 scope) — **[Superseded: descoped entirely, constitution v1.8.0]**
 - `marque-extract` Kreuzberg integration (separate phase)
 - Metadata CLI subcommand implementation (depends on extract)
 - CI pipeline YAML (scripts only; CI wiring is ops, not code)

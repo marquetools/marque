@@ -220,7 +220,7 @@ on dense documents).
 **Future evolution (deferred)**: Rust reviewer §8.3 notes that when
 the parse cache adopts `Arc<CanonicalAttrs>` (likely with the v0.2
 LMDB incremental cache), this becomes a refcount bump instead of a
-value copy. Architect Regret #4 names the future `PreRewriteAttrs`
+value copy. **[Superseded note: the v0.2 LMDB cache was later descoped — constitution v1.8.0. An `Arc<CanonicalAttrs>` parse store could still land independently, but no longer "alongside the LMDB cache."]** Architect Regret #4 names the future `PreRewriteAttrs`
 wrapper type. Both are deferred to a follow-up PR; PR 7 ships the
 raw `Option<&'a CanonicalAttrs>` with a doc comment naming the
 future evolution.
@@ -371,7 +371,7 @@ Documented here so the implementer does NOT pull them in opportunistically.
 | Centralize R001 + R002 const into `marque-rules` | Plan §9.4 explicitly: "separate refactor not in scope" | Architect Regret #2 |
 | `Rule::phase_companion()` method for paired rules | No current rule needs both phases; architect's defer | Architect Regret #3 |
 | `PreRewriteAttrs` named-type wrapper around `Option<&'a CanonicalAttrs>` | Mechanical refactor; defer to PR 8+ | Architect Regret #4 |
-| `Arc<CanonicalAttrs>` parse-cache shape | Pre-supposes v0.2 LMDB cache; not yet built | Rust reviewer §8.3 |
+| `Arc<CanonicalAttrs>` parse-cache shape | Pre-supposes v0.2 LMDB cache; not yet built — **[Superseded: LMDB cache descoped, constitution v1.8.0]** | Rust reviewer §8.3 |
 | (Scheme, predicate-id) `RuleId` 2-tuple migration | FR-049 freeze begins at PR 10 merge | D-7.4 above |
 | `DECODER_RULE_ID` migration from `&'static str` to `RuleId::new()` | Out of scope; flagged in code comment | D-7.4 above |
 

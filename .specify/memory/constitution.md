@@ -400,8 +400,16 @@ heap allocation on the hot path.
   eliminate over-allocation after parsing completes.
 - The scanner phase MUST produce zero heap allocations per candidate span
   detected (validated by `--features count-allocs` harness where applicable).
-- Cached `LintResult` spans MUST remain valid via fingerprint guarantee; no span
-  re-computation on cache hit is permitted.
+- Marque ships no persistent on-disk result cache. Change-detection and
+  deduplication MUST use the in-memory BLAKE3 `Fingerprint` (`marque-utils`)
+  without persisting any derived result (diagnostics, spans, resolution) to
+  disk. Any in-memory reuse of a `LintResult` MUST be keyed on a content
+  fingerprint and held only for process lifetime; spans reused this way
+  remain valid because the keyed content is byte-identical, so no span
+  re-computation is performed. (The earlier v0.2 persistent LMDB `LintResult`
+  cache was descoped — see constitution v1.8.0. A persistent artifact of
+  classification-derived state on disk conflicts with the wipe-on-drop
+  posture below.)
 - Content-bearing buffers Marque owns MUST wipe on drop. This applies to the
   public output surface (`FixResult.source`) and to internal scratch buffers
   (e.g., `Engine::fix_inner`'s splice buffers) — every `Vec<u8>` or equivalent
@@ -560,7 +568,12 @@ non-negotiable in the IC/DoD compliance context.
 - User identity (classifier ID, classification authority) MUST NEVER appear in
   committed configuration. It MUST live only in `.marque.local.toml`
   (gitignored) or environment variables.
-- `FixResult` MUST NOT be cached. Only `LintResult` may be cached.
+- Derived results MUST NOT be persisted to disk. `FixResult` MUST NEVER be
+  reused across documents. Any in-memory reuse of a `LintResult` (e.g.
+  batch-local deduplication) MUST be keyed on a content fingerprint and held
+  only for process lifetime. (The earlier "only `LintResult` may be cached"
+  rule presupposed the v0.2 persistent LMDB cache, now descoped — see
+  constitution v1.8.0.)
 - `--dry-run` MUST always produce full audit output without writing changes.
 - Audit records MUST be content-ignorant. No document content, document
   metadata field values, or subject-claim free-form text MAY appear in an
@@ -791,9 +804,7 @@ require a constitution amendment with migration rationale.
 | Schema parsing (build.rs) | quick-xml | CVE/XSD/Schematron at compile time |
 | Format extraction | Kreuzberg | 75+ formats, streaming, OCR, SIMD |
 | Config parsing | toml + serde | Ecosystem standard |
-| Incremental cache store (v0.2) | heed (LMDB) | Embedded, memory-mapped, ACID |
-| Cache serialization (v0.2) | rmp_serde (MessagePack) | Compact binary; 2–5× smaller than JSON |
-| Document fingerprint | blake3 | Speed; already in dep tree |
+| Document fingerprint | blake3 | Speed; already in dep tree; dedup / change-detection key |
 | Sensitive-content access | secrecy | Type-level `expose_secret()` gate, redacted Debug, blocks Clone — auditable readout sites on Marque-owned content (Principle II) |
 | Memory wipe | zeroize | Volatile-write memset compilers cannot elide; RustCrypto, audited — Marque-owned content wipes on drop (Principle II) |
 | WASM packaging | wasm-pack | Best-in-class Rust→WASM compilation |
@@ -908,4 +919,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.7.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-30
+**Version**: 1.8.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-06-02
