@@ -28,9 +28,9 @@ use crate::scheme::MarkingScheme;
 
 /// Whether a resolved artifact node can be fixed automatically.
 ///
-/// Fixability follows derivability: a node an inbound firing
+/// Fixability follows derivability: a node that an inbound firing
 /// value-producing edge can populate is [`Fixable`](Self::Fixable); a node
-/// nothing produces is [`FlagOnly`](Self::FlagOnly) — the engine can
+/// that no edge produces is [`FlagOnly`](Self::FlagOnly) — the engine can
 /// surface it but cannot derive a value to fill it.
 ///
 /// `#[non_exhaustive]` reserves grow-path (e.g. a future partial-fix tier).

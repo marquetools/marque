@@ -465,15 +465,26 @@ where
             return ResolvedDocument::default();
         }
 
+        // Index the declared edges once so the scheduled-order walk is
+        // O(steps + edges), not O(steps * edges).
+        let edges = self.scheme.derivation_edges();
+        let edge_by_id: std::collections::HashMap<&'static str, &marque_scheme::DerivationEdge> =
+            edges.iter().map(|e| (e.id, e)).collect();
+
         // Collect the firing edges in scheduled order (writers before
         // readers). A `WhenMode` edge that does not fire this run is
-        // skipped — the topology is unchanged, only firing is gated.
-        let edges = self.scheme.derivation_edges();
+        // skipped — the topology is unchanged, only firing is gated. Every
+        // scheduled `DerivationEdge` resolves: `scheduled_steps` is built
+        // from `derivation_edges()` at `Engine::new`, so a miss is a
+        // construction-time invariant break, surfaced rather than masked.
         let firing_edges: Vec<&marque_scheme::DerivationEdge> = self
             .scheduled_steps()
             .iter()
             .filter_map(|step| match step {
-                ScheduledStep::DerivationEdge(id) => edges.iter().find(|e| e.id == *id),
+                ScheduledStep::DerivationEdge(id) => Some(*edge_by_id.get(id).expect(
+                    "scheduled derivation edge resolves to a declared edge \
+                         (scheduled_steps is built from derivation_edges() at Engine::new)",
+                )),
                 ScheduledStep::PageRewrite(_) => None,
             })
             .filter(|edge| self.firing_active(edge.firing))
