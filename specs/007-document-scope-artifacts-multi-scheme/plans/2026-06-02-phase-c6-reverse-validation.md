@@ -34,7 +34,7 @@ else if lub == front      -> FrontOverClaims              // front strictly domi
 else                      -> FrontUnderClaims             // body exceeds front somewhere (incl. incomparable) — the security case
 ```
 `(TS//SI-G//OC)` front vs `(TS//SI-G//OC/RELIDO)` body: `lub == body != front` ⇒ `FrontUnderClaims` — fires. ✓
-An `Ambiguous` operand (DiffInput holds `Parsed<M>`) is uncomparable ⇒ `Unresolved` (honest; never a false Match/Under).
+An `Ambiguous` operand (DiffInput holds `Parsed<M>`) is incomparable ⇒ `Unresolved` (honest; never a false Match/Under).
 
 ## Deliverables
 
