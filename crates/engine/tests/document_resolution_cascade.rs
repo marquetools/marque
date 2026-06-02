@@ -229,6 +229,7 @@ const READS_X: &[CategoryId] = &[CAT_X];
 const READS_Y: &[CategoryId] = &[CAT_Y];
 const READS_YZ: &[CategoryId] = &[CAT_Y, CAT_Z];
 const WRITES_X: &[CategoryId] = &[CAT_X];
+const WRITES_XY: &[CategoryId] = &[CAT_X, CAT_Y];
 const WRITES_Y: &[CategoryId] = &[CAT_Y];
 const WRITES_Z: &[CategoryId] = &[CAT_Z];
 const WRITES_W: &[CategoryId] = &[CAT_W];
@@ -243,9 +244,12 @@ struct Inspectable {
 
 impl DecisionSink for Inspectable {
     fn record(&mut self, event: DecisionEvent) {
-        if let Ok(mut events) = self.events.lock() {
-            events.push(event);
-        }
+        // Fail fast on a poisoned mutex: poisoning means an earlier panic, and
+        // silently dropping events would mask the real failure downstream.
+        self.events
+            .lock()
+            .expect("capture sink mutex not poisoned")
+            .push(event);
     }
 }
 
@@ -364,6 +368,28 @@ fn sc007_diamond_attributes_to_latest_dependency() {
         Some(c.step),
         "a diamond reader attributes to its latest-arriving dependency (C)",
     );
+}
+
+#[test]
+fn sc007_multi_write_edge_uses_marking_sentinel() {
+    // An edge writing more than one category cannot honestly name a single
+    // category, so its event carries the `MARKING` multi-category sentinel
+    // rather than an arbitrary first write.
+    let edges = vec![chained_edge("stub/edge-multi", READS_NONE, WRITES_XY)];
+
+    let events: Arc<Mutex<Vec<DecisionEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let engine = build(StubScheme::with_edges(edges))
+        .expect("acyclic edge set builds")
+        .with_decision_sink(Inspectable {
+            events: events.clone(),
+        });
+
+    let _ = engine.lint(b"text with no markings\n");
+
+    let derived = derived_events(&events);
+    assert_eq!(derived.len(), 1, "the single multi-write edge emits once");
+    let e = event_for(&derived, "stub/edge-multi");
+    assert_eq!(e.category, CategoryId::MARKING);
 }
 
 #[test]

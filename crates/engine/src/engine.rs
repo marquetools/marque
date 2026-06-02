@@ -633,10 +633,17 @@ impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
                 let step = self
                     .next_step
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // A single-write edge names its category; an edge writing zero
+                // or several categories uses the `MARKING` multi-category
+                // sentinel so per-category aggregations are not misattributed.
+                let category = match edge.writes {
+                    [c] => *c,
+                    _ => CategoryId::MARKING,
+                };
                 sink.record(DecisionEvent {
                     step,
                     site: DecisionSite::Document,
-                    category: edge.writes.first().copied().unwrap_or(CategoryId::MARKING),
+                    category,
                     kind: DecisionKind::Derived,
                     source: DecisionSource::Derivation(edge.id),
                     triggered_by,
