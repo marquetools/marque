@@ -10,7 +10,7 @@ use crate::errors::{EngineConstructionError, EngineError};
 use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
 use crate::recognizer::StrictRecognizer;
-use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
+use crate::scheduler::{ScheduledStep, project_rewrites, schedule_steps, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
@@ -271,7 +271,19 @@ pub struct Engine<S: MarkingScheme, R: Recognizer<S>> {
     /// between them, the scheduler breaks the tie by declaration
     /// order (Kahn's algorithm seeded in declaration order). Empty
     /// when the scheme declares no rewrites.
+    ///
+    /// Derived from [`Self::scheduled_steps`] by projecting out the
+    /// page-rewrite steps, so the two orders cannot disagree.
     scheduled_rewrites: Box<[RewriteId]>,
+    /// Topologically-sorted union of page-rewrite and derivation-edge
+    /// steps, computed once at construction time from the scheme's
+    /// `page_rewrites()` and `derivation_edges()` declarations. The
+    /// combined order is the schedule downstream document-scope
+    /// resolution consumes; the cycle and ambiguous-co-writer guards
+    /// covering it run once at construction. For a scheme that declares
+    /// no edges this is the same sequence as `scheduled_rewrites`,
+    /// tagged as `PageRewrite` steps.
+    scheduled_steps: Box<[ScheduledStep]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
     /// the scheme's canonical form. Typed as the generic `R`; for CAPCO it
     /// is [`EngineRecognizer`] — the opaque CAPCO-bound recognizer that
