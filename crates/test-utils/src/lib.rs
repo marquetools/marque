@@ -72,9 +72,14 @@ pub fn corpus_root() -> PathBuf {
     grammar_corpus_root(DEFAULT_GRAMMAR)
 }
 
-/// Returns paths to all `.txt` fixture files under the given corpus subdirectory.
-pub fn fixtures_in(subdir: &str) -> Vec<PathBuf> {
-    let dir = corpus_root().join(subdir);
+/// Returns paths to all `.txt` fixture files under the given grammar's
+/// corpus subdirectory (e.g. `tests/corpus/<grammar>/invalid`).
+///
+/// Grammar-aware primitive backing [`fixtures_in`] and the
+/// `*_fixtures_for` helpers. A grammar whose fixtures have not landed
+/// yet yields an empty `Vec` (the subdir does not exist), not a panic.
+pub fn fixtures_in_grammar(grammar: &str, subdir: &str) -> Vec<PathBuf> {
+    let dir = grammar_corpus_root(grammar).join(subdir);
     if !dir.is_dir() {
         return Vec::new();
     }
@@ -88,19 +93,43 @@ pub fn fixtures_in(subdir: &str) -> Vec<PathBuf> {
     paths
 }
 
-/// Returns all invalid (known-bad) fixture paths.
+/// Returns all invalid (known-bad) fixture paths for the given grammar.
+pub fn invalid_fixtures_for(grammar: &str) -> Vec<PathBuf> {
+    fixtures_in_grammar(grammar, "invalid")
+}
+
+/// Returns all valid (known-good) fixture paths for the given grammar.
+pub fn valid_fixtures_for(grammar: &str) -> Vec<PathBuf> {
+    fixtures_in_grammar(grammar, "valid")
+}
+
+/// Returns all prose corpus fixture paths for the given grammar.
+pub fn prose_fixtures_for(grammar: &str) -> Vec<PathBuf> {
+    fixtures_in_grammar(grammar, "prose")
+}
+
+/// Returns paths to all `.txt` fixture files under the given corpus
+/// subdirectory — CAPCO shorthand over [`fixtures_in_grammar`].
+pub fn fixtures_in(subdir: &str) -> Vec<PathBuf> {
+    fixtures_in_grammar(DEFAULT_GRAMMAR, subdir)
+}
+
+/// Returns all invalid (known-bad) fixture paths — CAPCO shorthand over
+/// [`invalid_fixtures_for`].
 pub fn invalid_fixtures() -> Vec<PathBuf> {
-    fixtures_in("invalid")
+    invalid_fixtures_for(DEFAULT_GRAMMAR)
 }
 
-/// Returns all valid (known-good) fixture paths.
+/// Returns all valid (known-good) fixture paths — CAPCO shorthand over
+/// [`valid_fixtures_for`].
 pub fn valid_fixtures() -> Vec<PathBuf> {
-    fixtures_in("valid")
+    valid_fixtures_for(DEFAULT_GRAMMAR)
 }
 
-/// Returns all prose corpus fixture paths.
+/// Returns all prose corpus fixture paths — CAPCO shorthand over
+/// [`prose_fixtures_for`].
 pub fn prose_fixtures() -> Vec<PathBuf> {
-    fixtures_in("prose")
+    prose_fixtures_for(DEFAULT_GRAMMAR)
 }
 
 /// Expected rule identifier from a `.expected.json` sidecar file.
@@ -292,6 +321,29 @@ mod tests {
     fn corpus_root_resolves_under_capco_namespace() {
         assert!(corpus_root().ends_with("tests/corpus/capco"));
         assert!(grammar_corpus_root("capco").ends_with("tests/corpus/capco"));
+    }
+
+    #[test]
+    fn capco_shorthand_matches_grammar_parameterized_variant() {
+        // The zero-arg shorthands must resolve to exactly the CAPCO
+        // grammar's fixtures — the back-compat contract for every
+        // existing `invalid_fixtures()` / `fixtures_in(..)` caller.
+        assert_eq!(invalid_fixtures(), invalid_fixtures_for("capco"));
+        assert_eq!(valid_fixtures(), valid_fixtures_for("capco"));
+        assert_eq!(prose_fixtures(), prose_fixtures_for("capco"));
+        assert_eq!(
+            fixtures_in("invalid"),
+            fixtures_in_grammar("capco", "invalid")
+        );
+    }
+
+    #[test]
+    fn unlanded_grammar_yields_empty_fixture_list() {
+        // A grammar whose corpus subtree has not landed resolves to a
+        // non-existent path; the `is_dir()` guard returns an empty list
+        // rather than panicking, so a second grammar can be wired up
+        // before its fixtures exist.
+        assert!(fixtures_in_grammar("not-a-grammar", "invalid").is_empty());
     }
 
     #[test]
