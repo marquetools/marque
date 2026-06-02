@@ -35,7 +35,7 @@ fn noop_sink_is_zero_sized() {
 fn counting_sink_accumulates_totals_by_kind_category_and_portion() {
     let mut sink = CountingSink::new();
 
-    // Inject 1000 events with rotating kinds, categories, and
+    // Inject 900 events with rotating kinds, categories, and
     // portion indices.
     let kinds = [
         DecisionKind::Evaluated,
@@ -46,6 +46,7 @@ fn counting_sink_accumulates_totals_by_kind_category_and_portion() {
         DecisionKind::RewriteApplied,
         DecisionKind::ClosureFired,
         DecisionKind::Recanonicalized,
+        DecisionKind::Derived,
     ];
 
     let categories = [
@@ -58,9 +59,11 @@ fn counting_sink_accumulates_totals_by_kind_category_and_portion() {
 
     // portion_count and category/kind divisors all divide
     // total_events evenly so the per-bucket assertions can use
-    // exact equality.
+    // exact equality. LCM(9 kinds, 5 categories, 10 portions) = 90;
+    // 900 is the smallest multiple of 90 in the same magnitude as the
+    // original count (900/9 = 100, 900/5 = 180, 900/10 = 90).
     let portion_count: u32 = 10;
-    let total_events: u32 = 1000;
+    let total_events: u32 = 900;
 
     for step in 0..total_events {
         let kind = kinds[step as usize % kinds.len()];
@@ -80,7 +83,7 @@ fn counting_sink_accumulates_totals_by_kind_category_and_portion() {
 
     assert_eq!(report.total, u64::from(total_events));
 
-    // Every kind appears exactly 1000 / 8 = 125 times.
+    // Every kind appears exactly 900 / 9 = 100 times.
     let per_kind = u64::from(total_events) / kinds.len() as u64;
     for kind in kinds {
         assert_eq!(
@@ -90,7 +93,7 @@ fn counting_sink_accumulates_totals_by_kind_category_and_portion() {
         );
     }
 
-    // Every category appears 1000 / 5 = 200 times.
+    // Every category appears 900 / 5 = 180 times.
     let per_category = u64::from(total_events) / categories.len() as u64;
     for category in categories {
         assert_eq!(

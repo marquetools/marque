@@ -356,6 +356,7 @@ fn kind_label(k: DecisionKind) -> &'static str {
         DecisionKind::RewriteApplied => "RewriteApplied",
         DecisionKind::ClosureFired => "ClosureFired",
         DecisionKind::Recanonicalized => "Recanonicalized",
+        DecisionKind::Derived => "Derived",
     }
 }
 
@@ -378,6 +379,7 @@ fn source_label(s: DecisionSource) -> String {
         DecisionSource::Supersession(name) => format!("supersession:{name}"),
         DecisionSource::BannerRollup => "banner-rollup".to_owned(),
         DecisionSource::RuleCheck(name) => format!("rule-check:{name}"),
+        DecisionSource::Derivation(name) => format!("derivation:{name}"),
     }
 }
 

@@ -19,7 +19,7 @@ use crate::decision::{DecisionEvent, DecisionKind, DecisionSink};
 /// MUST stay in sync with the [`DecisionKind`] enum definition. Adding a
 /// variant requires bumping this constant and extending
 /// [`discriminant_index`].
-const DECISION_KIND_COUNT: usize = 8;
+const DECISION_KIND_COUNT: usize = 9;
 
 /// Map a [`DecisionKind`] to a dense `usize` index in `0..DECISION_KIND_COUNT`.
 ///
@@ -38,6 +38,7 @@ const fn discriminant_index(k: DecisionKind) -> usize {
         DecisionKind::RewriteApplied => 5,
         DecisionKind::ClosureFired => 6,
         DecisionKind::Recanonicalized => 7,
+        DecisionKind::Derived => 8,
     }
 }
 
@@ -53,6 +54,7 @@ const KIND_ORDER: [DecisionKind; DECISION_KIND_COUNT] = [
     DecisionKind::RewriteApplied,
     DecisionKind::ClosureFired,
     DecisionKind::Recanonicalized,
+    DecisionKind::Derived,
 ];
 
 /// Zero-sized [`DecisionSink`] that discards every event.
@@ -363,5 +365,20 @@ impl Default for RecordingSink {
 impl DecisionSink for RecordingSink {
     fn record(&mut self, event: DecisionEvent) {
         self.events.push(event);
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod sink_index_tests {
+    use super::{DECISION_KIND_COUNT, KIND_ORDER, discriminant_index};
+    use crate::decision::DecisionKind;
+
+    #[test]
+    fn derived_kind_indexes_consistently() {
+        assert_eq!(discriminant_index(DecisionKind::Derived), 8);
+        assert_eq!(KIND_ORDER[8], DecisionKind::Derived);
+        assert_eq!(KIND_ORDER.len(), DECISION_KIND_COUNT);
+        assert_eq!(DECISION_KIND_COUNT, 9);
     }
 }
