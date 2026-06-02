@@ -84,7 +84,7 @@ mock-classified corpus remains follow-up work.
 
 ```json
 {
-  "schema_version": "marque-priors-3",
+  "schema_version": "capco-priors-3",
   "generated_at": "2026-04-21T08:00:00+00:00",
   "corpus_fingerprint": "sha512:…",
   "marking_corpus_fingerprint": "sha512:…",
@@ -124,7 +124,7 @@ Field contract (what `build.rs` expects):
 
 - `schema_version` — opaque string; bumped when the shape changes.
   `build.rs` refuses an unknown version rather than silently parsing a
-  mismatched shape. The current version is `marque-priors-3` (issue
+  mismatched shape. The current version is `capco-priors-3` (issue
   #258 added `token_prose_base_rates` and
   `country_code_prose_base_rates`; #233 added the marking-side
   `country_code_base_rates`).

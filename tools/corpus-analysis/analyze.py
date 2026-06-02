@@ -620,6 +620,102 @@ def extract_body(raw: bytes, min_length: int = 20) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+def load_grammar_profile(name: str) -> dict:
+    """Load a per-grammar analyzer profile from ``grammars/<name>.json``.
+
+    A profile declares the grammar's token vocabulary, the priors schema
+    namespace (``priors_schema_prefix`` + ``priors_schema_generation``,
+    composed into ``<prefix>-priors-<generation>``), and the default
+    marking-corpus / prose-source the ``--mode priors`` regen uses when
+    no corpus flags are supplied. Splitting these out of the analyzer
+    body lets a future grammar add a profile JSON without forking
+    ``analyze.py``.
+
+    Fails closed: a missing profile is a clear error and a nonzero exit,
+    not a silent fallback.
+    """
+    profile_path = Path(__file__).parent / "grammars" / f"{name}.json"
+    # `is_file()` (not `exists()`): a directory at this path would pass
+    # `exists()` and then blow up in `open()` with a stack trace,
+    # violating the fail-closed contract.
+    if not profile_path.is_file():
+        print(
+            f"Error: grammar profile {profile_path} does not exist "
+            "(or is not a regular file). "
+            f"Expected grammars/{name}.json — see grammars/capco.json for the "
+            "shape (grammar, description, tokens, priors_schema_prefix, "
+            "priors_schema_generation, default_marking_corpus, "
+            "default_prose_source).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    with open(profile_path) as f:
+        profile = json.load(f)
+
+    # Fail closed on a malformed profile too, not just a missing one: a
+    # future grammar author who omits a required key gets a clear error
+    # naming the gap rather than a KeyError stack trace deep in main().
+    required_keys = (
+        "grammar",
+        "description",
+        "tokens",
+        "priors_schema_prefix",
+        "priors_schema_generation",
+        "default_marking_corpus",
+        "default_prose_source",
+    )
+    missing = [k for k in required_keys if k not in profile]
+    if missing:
+        print(
+            f"Error: grammar profile {profile_path} is missing required "
+            f"key(s): {', '.join(missing)}. See grammars/capco.json for the "
+            "expected shape.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Validate field types here so a malformed profile fails closed with
+    # a clear, field-named error instead of a TypeError stack trace deep
+    # in main(): `tokens` feeds a Path join, `default_prose_source` feeds
+    # a str compare, the prefix/generation compose the priors schema
+    # version, and `default_marking_corpus` is iterated as path strings
+    # (a bare string would iterate character-by-character).
+    type_errors: list[str] = []
+    for key, want in (
+        ("grammar", str),
+        ("description", str),
+        ("tokens", str),
+        ("priors_schema_prefix", str),
+        ("priors_schema_generation", int),
+        ("default_prose_source", str),
+    ):
+        # bool is an int subclass; reject it explicitly for int fields.
+        if not isinstance(profile[key], want) or (
+            want is int and isinstance(profile[key], bool)
+        ):
+            type_errors.append(
+                f"`{key}` must be {want.__name__}, got "
+                f"{type(profile[key]).__name__}"
+            )
+    marking_corpus = profile["default_marking_corpus"]
+    if not isinstance(marking_corpus, list) or not all(
+        isinstance(p, str) for p in marking_corpus
+    ):
+        type_errors.append(
+            "`default_marking_corpus` must be a list of path strings, got "
+            f"{type(marking_corpus).__name__}"
+        )
+    if type_errors:
+        print(
+            f"Error: grammar profile {profile_path} has malformed "
+            f"field(s): {'; '.join(type_errors)}. See grammars/capco.json "
+            "for the expected shape.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return profile
+
+
 def load_tokens(token_path: Path) -> dict:
     """Load a token vocabulary JSON file. Returns {category: [tokens]}."""
     with open(token_path) as f:
@@ -1105,7 +1201,13 @@ def run_analysis(
 # Corpus-derived priors output
 # ---------------------------------------------------------------------------
 
-PRIORS_SCHEMA_VERSION = "marque-priors-3"
+# The priors schema version is composed per-grammar from the active
+# grammar profile (`grammars/<grammar>.json` →
+# `<priors_schema_prefix>-priors-<priors_schema_generation>`), not a
+# module-global constant. For the CAPCO profile this yields
+# `capco-priors-3`. `main()` resolves it and threads it into
+# `derive_priors`; `crates/capco/build.rs` accepts it via
+# `SUPPORTED_PRIORS_SCHEMA_VERSIONS`.
 
 # REL TO trigraph baseline counts, in REL TO blocks per million such
 # blocks. The Phase-D decoder uses these to break fuzzy ties between
@@ -1250,6 +1352,7 @@ def derive_priors(
     marking_analysis: dict,
     prose_analysis: dict,
     tokens_by_category: dict,
+    schema_version: str,
 ) -> dict:
     """
     Reshape stratified analysis results into the priors.json schema.
@@ -1389,7 +1492,7 @@ def derive_priors(
     )
 
     return {
-        "schema_version": PRIORS_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "token_base_rates": token_base_rates,
         "token_prose_base_rates": token_prose_base_rates,
@@ -2016,10 +2119,20 @@ def main():
         ),
     )
     parser.add_argument(
+        "--grammar",
+        type=str,
+        default="capco",
+        help="Grammar profile name (loads grammars/<name>.json). Default: capco.",
+    )
+    parser.add_argument(
         "--tokens",
         type=Path,
-        default=Path(__file__).parent / "tokens" / "capco.json",
-        help="Path to token vocabulary JSON (default: tokens/capco.json)",
+        default=None,
+        help=(
+            "Path to token vocabulary JSON. Defaults to the active grammar "
+            "profile's `tokens` field (e.g., tokens/capco.json for --grammar "
+            "capco). An explicit --tokens overrides the profile."
+        ),
     )
 
     # ---- corpus source arguments ----
@@ -2210,6 +2323,27 @@ def main():
     )
     args = parser.parse_args()
 
+    # Load the per-grammar profile. It supplies the token vocabulary
+    # default, the priors schema namespace, and the --mode priors
+    # default corpus paths so adding a grammar is a profile JSON, not a
+    # fork of this tool.
+    profile = load_grammar_profile(args.grammar)
+
+    # Resolve the token vocabulary: an explicit --tokens overrides the
+    # profile; otherwise use the profile's `tokens` field resolved
+    # against this tool's directory.
+    if args.tokens is None:
+        args.tokens = Path(__file__).parent / profile["tokens"]
+
+    # Compose the priors schema version from the profile namespace —
+    # `<prefix>-priors-<generation>` (e.g., `capco-priors-3`). Threaded
+    # into `derive_priors`; `crates/capco/build.rs` accepts it via
+    # `SUPPORTED_PRIORS_SCHEMA_VERSIONS`.
+    priors_schema_version = (
+        f"{profile['priors_schema_prefix']}-priors-"
+        f"{profile['priors_schema_generation']}"
+    )
+
     # Load tokens
     tokens_by_category = load_tokens(args.tokens)
     flat_tokens = all_tokens_flat(tokens_by_category)
@@ -2319,19 +2453,40 @@ def main():
     #   irrelevant for these modes — they iterate `corpus_paths`,
     #   the combined list, and don't separate marking from prose).
     repo_root = Path(__file__).resolve().parents[2]
+    # Default corpus paths come from the active grammar profile so a new
+    # grammar declares its own defaults without editing this tool. The
+    # marking paths are resolved against the repo root; the prose source
+    # is a named auto-download source (currently only "enron" is wired).
     default_marking_paths = [
-        repo_root / "tests" / "corpus" / "valid",
-        repo_root / "tests" / "corpus" / "documents" / "marked",
+        repo_root / Path(rel) for rel in profile["default_marking_corpus"]
     ]
+    default_prose_source = profile["default_prose_source"]
+    _PROSE_SOURCE_DOWNLOADERS = {
+        "enron": download_enron,
+    }
+
+    def _download_default_prose() -> Path:
+        downloader = _PROSE_SOURCE_DOWNLOADERS.get(default_prose_source)
+        if downloader is None:
+            print(
+                f"Error: grammar profile {args.grammar} declares "
+                f"default_prose_source {default_prose_source!r}, which is not a "
+                f"known auto-download source ({sorted(_PROSE_SOURCE_DOWNLOADERS)}). "
+                "Supply --prose-corpus PATH or --corpus-source explicitly.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return downloader()
+
     if not marking_paths and not prose_paths and not args.corpus_sources and not args.corpus:
         if args.mode == "priors":
             for p in default_marking_paths:
                 if p.exists():
                     marking_paths.append(p)
-            prose_paths.append(download_enron())
+            prose_paths.append(_download_default_prose())
         else:
             # baseline / mangled / heuristic-frequency
-            prose_paths.append(download_enron())
+            prose_paths.append(_download_default_prose())
 
     corpus_paths: list[Path] = list(marking_paths) + list(prose_paths)
     missing = [p for p in corpus_paths if not p.exists()]
@@ -2414,7 +2569,9 @@ def main():
 
         prose_results = run_analysis(prose_paths, tokens_by_category, prose_max)
 
-        priors = derive_priors(marking_results, prose_results, tokens_by_category)
+        priors = derive_priors(
+            marking_results, prose_results, tokens_by_category, priors_schema_version
+        )
         priors["corpus_fingerprint"] = _combined_fp(corpus_paths)
         priors["marking_corpus_fingerprint"] = _combined_fp(marking_paths)
         priors["prose_corpus_fingerprint"] = _combined_fp(prose_paths)

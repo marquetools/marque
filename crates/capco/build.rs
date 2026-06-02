@@ -33,7 +33,14 @@ use std::path::Path;
 #[path = "src/build_inputs.rs"]
 mod build_inputs;
 
-const SUPPORTED_PRIORS_SCHEMA_VERSION: &str = "marque-priors-3";
+// Per-grammar prefix so a future grammar's generator emits priors under
+// its own namespace (`<grammar>-priors-N`) and a new generation slots in
+// additively rather than replacing the accepted value. Generation 3 =
+// issues #233 (country codes) + #258 (prose strata); the namespace rename
+// (`marque-priors-*` → `capco-priors-*`) does not reset the counter. No
+// `marque-priors-*` legacy name is retained — marque is pre-users, so the
+// rename is clean (no alias).
+const SUPPORTED_PRIORS_SCHEMA_VERSIONS: &[&str] = &["capco-priors-3"];
 
 fn main() {
     // Constitution VIII / authoritative-source-fidelity build pin:
@@ -90,14 +97,14 @@ fn main() {
 
 fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     let schema_version = require_str(parsed, "schema_version", priors_path);
-    if schema_version != SUPPORTED_PRIORS_SCHEMA_VERSION {
+    if !SUPPORTED_PRIORS_SCHEMA_VERSIONS.contains(&schema_version) {
         panic!(
             "marque-capco build failed: {} has schema_version {:?}, but this \
-             build only supports {:?}. Regenerate priors.json with a matching \
+             build only accepts {:?}. Regenerate priors.json with a matching \
              tool version.",
             priors_path.display(),
             schema_version,
-            SUPPORTED_PRIORS_SCHEMA_VERSION,
+            SUPPORTED_PRIORS_SCHEMA_VERSIONS,
         );
     }
     let corpus_fingerprint = require_str(parsed, "corpus_fingerprint", priors_path);
@@ -111,7 +118,7 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
         .unwrap_or("");
 
     let token_base_rates = require_object(parsed, "token_base_rates", priors_path);
-    // Token prose base rates land in marque-priors-3 (issue #258). Same
+    // Token prose base rates land in capco-priors-3 (issue #258). Same
     // shape as token_base_rates: ``{token, count, log_prior}``. The
     // decoder consumes this in parallel with the marking-side
     // ``TOKEN_BASE_RATES`` to compute the per-token "marking-y" score
@@ -122,7 +129,7 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     // candidate input — the regression that motivated #258.
     let token_prose_base_rates = require_object(parsed, "token_prose_base_rates", priors_path);
     let template_base_rates = require_object(parsed, "template_base_rates", priors_path);
-    // Country-code base rates land in marque-priors-2 (issue #233). Same
+    // Country-code base rates landed in priors generation 2 (issue #233). Same
     // shape as token_base_rates: ``{token, count, log_prior}``. The
     // decoder consumes this at score time so REL TO fuzzy candidates
     // are weighted by real-world country-code frequency rather than
@@ -134,7 +141,7 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     // the prior name ``trigraph_*`` was load-bearing-narrower than
     // the data it carried.
     let country_code_base_rates = require_object(parsed, "country_code_base_rates", priors_path);
-    // Country-code prose base rates land in marque-priors-3 (issue
+    // Country-code prose base rates land in capco-priors-3 (issue
     // #258). Counts come from the prose stratum only, with no
     // ``_REL_TO_COUNTRY_CODE_BASELINE`` mixin — the marking-side
     // baseline encodes ratios derived from REL-TO frequencies, which

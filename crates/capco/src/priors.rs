@@ -69,18 +69,20 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 /// schema.
 ///
 /// `build.rs` already rejects any `schema_version` mismatch on the
-/// producer side (see `crates/capco/build.rs:73-82` — it accepts only
-/// the single `marque-priors-3` value today). This const block is the
+/// producer side via an accept-list (see `crates/capco/build.rs`
+/// `SUPPORTED_PRIORS_SCHEMA_VERSIONS` — it accepts the single
+/// `capco-priors-3` value today, but the membership form lets a new
+/// generation slot in additively). This const block is the
 /// consumer-side counterpart kept as an explicit source pin and
 /// defense-in-depth check that the generated `SCHEMA_VERSION` still
 /// matches the version this crate is wired to consume — the value
 /// fences the runtime tests below at the build-time tier so a CI lane
 /// that happens to skip this crate's tests still catches a regression.
 /// It also forces the consumer-side expectation to be a visible source
-/// declaration, so a future PR that bumps `build.rs` to accept a new
-/// schema version has to update this pin in the same edit.
+/// declaration, so a future PR that adds a schema version to the
+/// `build.rs` accept-list has to update this pin in the same edit.
 ///
-/// `marque-priors-3` (issue #258) added the `token_prose_base_rates`
+/// `capco-priors-3` (issue #258) added the `token_prose_base_rates`
 /// and `country_code_prose_base_rates` tables alongside the existing
 /// marking-side rates so the decoder can compute the per-token
 /// "marking-y" score `log P(token|marking) − log P(token|prose)` and
@@ -88,14 +90,14 @@ include!(concat!(env!("OUT_DIR"), "/priors.rs"));
 /// during recognition.
 const _: () = {
     let actual = SCHEMA_VERSION.as_bytes();
-    let expected = b"marque-priors-3";
+    let expected = b"capco-priors-3";
     if actual.len() != expected.len() {
-        panic!("SCHEMA_VERSION length does not match \"marque-priors-3\"");
+        panic!("SCHEMA_VERSION length does not match \"capco-priors-3\"");
     }
     let mut i = 0;
     while i < actual.len() {
         if actual[i] != expected[i] {
-            panic!("SCHEMA_VERSION does not equal \"marque-priors-3\"");
+            panic!("SCHEMA_VERSION does not equal \"capco-priors-3\"");
         }
         i += 1;
     }
@@ -249,7 +251,19 @@ mod tests {
         // serves as a redundant tripwire that surfaces the problem in
         // test reports too (a build failure can be missed by a CI lane
         // that doesn't compile this crate; the test suite always does).
-        assert_eq!(SCHEMA_VERSION, "marque-priors-3");
+        assert_eq!(SCHEMA_VERSION, "capco-priors-3");
+    }
+
+    #[test]
+    fn schema_version_uses_capco_priors_namespace() {
+        // T082: priors schema names are per-grammar (`capco-priors-N`),
+        // not the retired cross-grammar `marque-priors-N`. Pins the
+        // namespace so a regenerated priors.json reverting to the old
+        // prefix fails even if its generation number matches.
+        assert!(
+            SCHEMA_VERSION.starts_with("capco-priors-"),
+            "priors SCHEMA_VERSION must use the capco-priors- namespace, got {SCHEMA_VERSION:?}"
+        );
     }
 
     #[test]
