@@ -13,8 +13,10 @@
 
 use marque_config::Config;
 use marque_engine::{CapcoEngine, FixMode};
+use marque_rules::Severity;
 use marque_test_utils::{
-    corpus_root, invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
+    corpus_root, invalid_fixtures_for, load_expected, load_fixture, prose_fixtures_for,
+    valid_fixtures_for,
 };
 use secrecy::ExposeSecret as _;
 use std::collections::HashMap;
@@ -49,101 +51,378 @@ fn make_engine() -> CapcoEngine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
+/// SC-002 / SC-003 corpus-accuracy bar. Held per-grammar and NOT
+/// relaxed: every grammar's lint and fix accuracy must clear this same
+/// threshold.
+const ACCURACY_THRESHOLD: f64 = 0.95;
+
+/// Which corpus-accuracy metric [`run_corpus_accuracy`] evaluates.
+enum AccuracyMetric {
+    /// Lint accuracy on invalid fixtures (>=95% per-rule and overall).
+    LintInvalid,
+    /// Fix accuracy on invalid fixtures (>=95% per-rule zero-remaining).
+    FixInvalid,
+    /// Zero hard diagnostics on clean prose (precision gate).
+    ProsePrecision,
+    /// Zero hard diagnostics on valid fixtures.
+    ValidZero,
+}
+
+/// Parameterized corpus-accuracy harness shared across marking grammars.
+///
+/// Resolves fixtures from `tests/corpus/<grammar>/` and evaluates one
+/// [`AccuracyMetric`] against the supplied engine, asserting on the
+/// per-grammar [`ACCURACY_THRESHOLD`]. A second grammar's accuracy
+/// suite calls this with its own engine + grammar string; the metric
+/// logic does not change per grammar.
+fn run_corpus_accuracy(engine: &CapcoEngine, grammar: &str, metric: AccuracyMetric) {
+    match metric {
+        AccuracyMetric::LintInvalid => {
+            let fixtures = invalid_fixtures_for(grammar);
+            assert!(
+                !fixtures.is_empty(),
+                "no invalid fixtures found in {grammar} corpus — cannot validate lint accuracy"
+            );
+
+            // Per-rule tracking: rule_id -> (matched, expected_total)
+            let mut per_rule: HashMap<String, (usize, usize)> = HashMap::new();
+            let mut total_expected = 0usize;
+            let mut total_matched = 0usize;
+
+            for path in &fixtures {
+                // C001 fixtures require a corrections config — tested
+                // separately in c001_corrections_map_accuracy. The
+                // filename filter is CAPCO-specific but harmless for
+                // other grammars (no such fixtures in their corpus).
+                let fname = path.file_name().unwrap().to_string_lossy();
+                if fname.starts_with("corrections_map_typo") {
+                    continue;
+                }
+
+                let source = load_fixture(path);
+                let expected = load_expected(path);
+                let result = engine.lint(&source);
+
+                for exp in &expected.diagnostics {
+                    // W034 (sci-custom-control-info) ships Severity::Off by
+                    // default; the engine correctly skips it in the rule
+                    // loop, so it cannot fire here. The rules_us1 harness
+                    // exercises W034 directly by bypassing severity gating.
+                    // Skip it from the engine harness. `exp.rule` is the
+                    // structured `ExpectedRuleId`; W034's predicate id is
+                    // `portion.sci.unpublished-custom-control`. CAPCO-specific
+                    // but harmless for grammars without that predicate.
+                    if exp.rule.predicate_id == "portion.sci.unpublished-custom-control" {
+                        continue;
+                    }
+                    total_expected += 1;
+                    let entry = per_rule
+                        .entry(exp.rule.predicate_id.clone())
+                        .or_insert((0, 0));
+                    entry.1 += 1;
+
+                    // Match: same rule ID AND same span
+                    let matched = result.diagnostics.iter().any(|d| {
+                        d.rule.scheme() == exp.rule.scheme
+                            && d.rule.predicate_id() == exp.rule.predicate_id
+                            && d.span.start == exp.span.start
+                            && d.span.end == exp.span.end
+                    });
+
+                    if matched {
+                        total_matched += 1;
+                        entry.0 += 1;
+                    }
+                }
+            }
+
+            // Report per-rule accuracy
+            let mut failures = Vec::new();
+            for (rule, (matched, total)) in &per_rule {
+                let accuracy = if *total == 0 {
+                    1.0
+                } else {
+                    *matched as f64 / *total as f64
+                };
+                if accuracy < ACCURACY_THRESHOLD {
+                    failures.push(format!(
+                        "  {rule}: {matched}/{total} = {:.1}% (need >=95%)",
+                        accuracy * 100.0
+                    ));
+                }
+            }
+
+            let overall = if total_expected == 0 {
+                1.0
+            } else {
+                total_matched as f64 / total_expected as f64
+            };
+
+            assert!(
+                failures.is_empty() && overall >= ACCURACY_THRESHOLD,
+                "lint accuracy FAILED ({grammar})\n\
+                 Overall: {total_matched}/{total_expected} = {:.1}%\n\
+                 Per-rule failures:\n{}",
+                overall * 100.0,
+                if failures.is_empty() {
+                    "  (none — overall below threshold)".to_string()
+                } else {
+                    failures.join("\n")
+                }
+            );
+        }
+
+        AccuracyMetric::FixInvalid => {
+            let fixtures = invalid_fixtures_for(grammar);
+            let threshold = Config::default().confidence_threshold();
+            assert!(
+                !fixtures.is_empty(),
+                "no invalid fixtures found in {grammar} corpus — cannot validate fix accuracy"
+            );
+
+            // Per-rule tracking: rule_id -> (fixed_clean, total_fixtures_with_fixable_rule)
+            // Only count rules that produce at least one fix proposal with confidence >= threshold.
+            // Some rules intentionally don't auto-fix (no fix proposal, or a
+            // confidence below threshold) and should not count against fix accuracy.
+            //
+            // NOTE: `total_fixable` / `total_fixed_clean` count at fixture level — a fixture
+            // is "fixed clean" only if ALL its fixable rules were resolved. This is stricter
+            // than per-rule aggregation: a multi-rule fixture where one rule fails pulls the
+            // overall metric down even if 9/10 rules pass individually.
+            let mut per_rule: HashMap<String, (usize, usize)> = HashMap::new();
+            let mut total_fixable = 0usize;
+            let mut total_fixed_clean = 0usize;
+
+            for path in &fixtures {
+                let source = load_fixture(path);
+                let expected = load_expected(path);
+                if expected.diagnostics.is_empty() {
+                    continue;
+                }
+
+                // Lint first to discover which rules are fixable — i.e., the
+                // rule's fix clears the engine's auto-apply gate
+                // (`Severity::is_promote_eligible` AND combined-confidence
+                // ≥ threshold).
+                //
+                // `Severity::Suggest` is a hard exclusion from auto-apply
+                // regardless of confidence (engine's `is_promote_eligible`
+                // returns false for Suggest). The severity gate is the
+                // load-bearing channel discriminator for "is this an
+                // auto-applied fix?"; strict-path emissions pin
+                // `recognition = 1.0` so the confidence gate only blocks
+                // sub-1.0 decoder-path candidates.
+                //
+                // "Recognition" here is the scalar `Recognition::combined()`
+                // (= `recognition`, post-PR-B) that the engine applies at the
+                // promotion boundary. `Recognition` carries additional decoder
+                // provenance (`runner_up_ratio`, feature contributions) for
+                // audit but this harness and every threshold-gated consumer
+                // compare on `.combined()` only.
+                let lint_result = engine.lint(&source);
+                let fixable_rules: std::collections::HashSet<String> = lint_result
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.severity.is_promote_eligible())
+                    .filter(|d| {
+                        d.fix
+                            .as_ref()
+                            .is_some_and(|f| f.confidence.combined() >= threshold)
+                    })
+                    .map(|d| d.rule.predicate_id().to_owned())
+                    .collect();
+
+                if fixable_rules.is_empty() {
+                    continue; // No auto-fixable diagnostics in this fixture
+                }
+
+                total_fixable += 1;
+
+                // Fix the source
+                let fix_result = engine.fix(&source, FixMode::Apply);
+
+                // Re-lint the fixed output
+                let relint = engine.lint(fix_result.source.expose_secret());
+
+                // Check which fixable rules still have violations
+                let remaining_rules: std::collections::HashSet<&str> = relint
+                    .diagnostics
+                    .iter()
+                    .map(|d| d.rule.predicate_id())
+                    .collect();
+
+                // A fixture counts as "fixed clean" if no fixable rules remain
+                let all_fixable_resolved = fixable_rules
+                    .iter()
+                    .all(|r| !remaining_rules.contains(r.as_str()));
+
+                if all_fixable_resolved {
+                    total_fixed_clean += 1;
+                }
+
+                for rule in &fixable_rules {
+                    let entry = per_rule.entry(rule.clone()).or_insert((0, 0));
+                    entry.1 += 1;
+                    if !remaining_rules.contains(rule.as_str()) {
+                        entry.0 += 1;
+                    }
+                }
+            }
+
+            // Report per-rule fix accuracy
+            let mut failures = Vec::new();
+            for (rule, (fixed, total)) in &per_rule {
+                let accuracy = if *total == 0 {
+                    1.0
+                } else {
+                    *fixed as f64 / *total as f64
+                };
+                if accuracy < ACCURACY_THRESHOLD {
+                    failures.push(format!(
+                        "  {rule}: {fixed}/{total} = {:.1}% (need >=95%)",
+                        accuracy * 100.0
+                    ));
+                }
+            }
+
+            let overall = if total_fixable == 0 {
+                1.0
+            } else {
+                total_fixed_clean as f64 / total_fixable as f64
+            };
+
+            assert!(
+                failures.is_empty() && overall >= ACCURACY_THRESHOLD,
+                "fix accuracy FAILED ({grammar})\n\
+                 Overall: {total_fixed_clean}/{total_fixable} = {:.1}%\n\
+                 Per-rule failures:\n{}",
+                overall * 100.0,
+                if failures.is_empty() {
+                    "  (none — overall below threshold)".to_string()
+                } else {
+                    failures.join("\n")
+                }
+            );
+        }
+
+        AccuracyMetric::ProsePrecision => {
+            let fixtures = prose_fixtures_for(grammar);
+            assert!(
+                !fixtures.is_empty(),
+                "no prose fixtures found in {grammar} corpus — cannot validate the precision gate"
+            );
+
+            for path in &fixtures {
+                let source = load_fixture(path);
+                let result = engine.lint(&source);
+
+                // Filter out `Severity::Suggest` diagnostics: style / advisory
+                // rules (S004, S008, etc.) may surface low-confidence hints
+                // even on prose-shaped inputs that the strict parser
+                // tentatively recognized as markings. These don't violate
+                // the precision gate (which targets precision on hard error / warn
+                // signals); the closure-driven Suggest channel is a separate
+                // surface and any prose noise it produces is by design opt-out
+                // via the per-rule `"off"` severity.
+                //
+                // #559 (2026-05-19): added explicit Suggest-tier
+                // filter after the Suggest-tier rule began surfacing the prose-vs-marking
+                // ambiguity in `article.txt` where `(S) same advantage which a
+                // republic` was tentatively parsed as a US Secret portion. The
+                // root false-positive (parser accepting `(S)` glued to a word
+                // boundary) is tracked separately; filtering at the precision
+                // gate keeps the load-bearing hard-error precision
+                // pin intact without absorbing the unrelated parser concern.
+                let hard_diagnostics: Vec<_> = result
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.severity != Severity::Suggest)
+                    .collect();
+
+                assert!(
+                    hard_diagnostics.is_empty(),
+                    "precision failure on {}: expected zero hard \
+                     (Error/Warn/Fix/Info) diagnostics, got {}:\n{}",
+                    path.file_name().unwrap().to_string_lossy(),
+                    hard_diagnostics.len(),
+                    hard_diagnostics
+                        .iter()
+                        .map(|d| format!(
+                            "  {} {:?} at {}..{}: {:?}",
+                            d.rule.predicate_id(),
+                            d.severity,
+                            d.span.start,
+                            d.span.end,
+                            d.message
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+            }
+        }
+
+        AccuracyMetric::ValidZero => {
+            let fixtures = valid_fixtures_for(grammar);
+            assert!(
+                !fixtures.is_empty(),
+                "no valid fixtures found in {grammar} corpus"
+            );
+
+            for path in &fixtures {
+                let source = load_fixture(path);
+                let result = engine.lint(&source);
+
+                // Filter out `Severity::Suggest` diagnostics from the strict-zero
+                // assertion. Suggest-tier style rules (S004 / S008 / etc.) are
+                // advisory by default and ship at confidences calibrated to
+                // never auto-apply under the default threshold (S008 = 0.85;
+                // S004 = 0.5); they're opt-up surfaces, not "this fixture has
+                // a defect" signals. The "valid" bucket asserts hard-error
+                // cleanliness — Error/Warn/Fix/Info severities — not "no rule
+                // could possibly say anything about this." #559 close-out C1
+                // (2026-05-19) added the filter after S008's closure-driven
+                // Suggest surface began firing on classified-without-FD&R
+                // valid fixtures like `(TS//SI)` (the closure injects RELIDO
+                // at the lattice layer; S008 surfaces that to the user as a
+                // suggested edit — correct behavior, but not a defect
+                // signal for the fixture).
+                let hard_diagnostics: Vec<_> = result
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.severity != Severity::Suggest)
+                    .collect();
+
+                assert!(
+                    hard_diagnostics.is_empty(),
+                    "valid fixture {} produced {} unexpected hard \
+                     (Error/Warn/Fix/Info) diagnostics:\n{}",
+                    path.file_name().unwrap().to_string_lossy(),
+                    hard_diagnostics.len(),
+                    hard_diagnostics
+                        .iter()
+                        .map(|d| format!(
+                            "  {} {:?} at {}..{}: {:?}",
+                            d.rule.predicate_id(),
+                            d.severity,
+                            d.span.start,
+                            d.span.end,
+                            d.message
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Lint accuracy on invalid fixtures (>=95% per-rule and overall)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn lint_accuracy_invalid_fixtures() {
-    let engine = make_engine();
-    let fixtures = invalid_fixtures();
-    assert!(
-        !fixtures.is_empty(),
-        "no invalid fixtures found in corpus — cannot validate lint accuracy"
-    );
-
-    // Per-rule tracking: rule_id -> (matched, expected_total)
-    let mut per_rule: HashMap<String, (usize, usize)> = HashMap::new();
-    let mut total_expected = 0usize;
-    let mut total_matched = 0usize;
-
-    for path in &fixtures {
-        // C001 fixtures require a corrections config — tested separately
-        // in c001_corrections_map_accuracy.
-        let fname = path.file_name().unwrap().to_string_lossy();
-        if fname.starts_with("corrections_map_typo") {
-            continue;
-        }
-
-        let source = load_fixture(path);
-        let expected = load_expected(path);
-        let result = engine.lint(&source);
-
-        for exp in &expected.diagnostics {
-            // W034 (sci-custom-control-info) ships Severity::Off by default;
-            // the engine correctly skips it in the rule loop, so it cannot
-            // fire here. The rules_us1 harness exercises W034 directly by
-            // bypassing severity gating. Skip it from the engine harness.
-            // `exp.rule` is the structured `ExpectedRuleId`; W034's
-            // predicate id is `portion.sci.unpublished-custom-control`.
-            if exp.rule.predicate_id == "portion.sci.unpublished-custom-control" {
-                continue;
-            }
-            total_expected += 1;
-            let entry = per_rule
-                .entry(exp.rule.predicate_id.clone())
-                .or_insert((0, 0));
-            entry.1 += 1;
-
-            // Match: same rule ID AND same span
-            let matched = result.diagnostics.iter().any(|d| {
-                d.rule.scheme() == exp.rule.scheme
-                    && d.rule.predicate_id() == exp.rule.predicate_id
-                    && d.span.start == exp.span.start
-                    && d.span.end == exp.span.end
-            });
-
-            if matched {
-                total_matched += 1;
-                entry.0 += 1;
-            }
-        }
-    }
-
-    // Report per-rule accuracy
-    let mut failures = Vec::new();
-    for (rule, (matched, total)) in &per_rule {
-        let accuracy = if *total == 0 {
-            1.0
-        } else {
-            *matched as f64 / *total as f64
-        };
-        if accuracy < 0.95 {
-            failures.push(format!(
-                "  {rule}: {matched}/{total} = {:.1}% (need >=95%)",
-                accuracy * 100.0
-            ));
-        }
-    }
-
-    let overall = if total_expected == 0 {
-        1.0
-    } else {
-        total_matched as f64 / total_expected as f64
-    };
-
-    assert!(
-        failures.is_empty() && overall >= 0.95,
-        "lint accuracy FAILED\n\
-         Overall: {total_matched}/{total_expected} = {:.1}%\n\
-         Per-rule failures:\n{}",
-        overall * 100.0,
-        if failures.is_empty() {
-            "  (none — overall below threshold)".to_string()
-        } else {
-            failures.join("\n")
-        }
-    );
+    run_corpus_accuracy(&make_engine(), "capco", AccuracyMetric::LintInvalid);
 }
 
 // ---------------------------------------------------------------------------
@@ -152,137 +431,7 @@ fn lint_accuracy_invalid_fixtures() {
 
 #[test]
 fn fix_accuracy_invalid_fixtures() {
-    let engine = make_engine();
-    let fixtures = invalid_fixtures();
-    let threshold = Config::default().confidence_threshold();
-    assert!(
-        !fixtures.is_empty(),
-        "no invalid fixtures found in corpus — cannot validate fix accuracy"
-    );
-
-    // Per-rule tracking: rule_id -> (fixed_clean, total_fixtures_with_fixable_rule)
-    // Only count rules that produce at least one fix proposal with confidence >= threshold.
-    // Some rules intentionally don't auto-fix (no fix proposal, or a
-    // confidence below threshold) and should not count against fix accuracy.
-    //
-    // NOTE: `total_fixable` / `total_fixed_clean` count at fixture level — a fixture
-    // is "fixed clean" only if ALL its fixable rules were resolved. This is stricter
-    // than per-rule aggregation: a multi-rule fixture where one rule fails pulls the
-    // overall metric down even if 9/10 rules pass individually.
-    let mut per_rule: HashMap<String, (usize, usize)> = HashMap::new();
-    let mut total_fixable = 0usize;
-    let mut total_fixed_clean = 0usize;
-
-    for path in &fixtures {
-        let source = load_fixture(path);
-        let expected = load_expected(path);
-        if expected.diagnostics.is_empty() {
-            continue;
-        }
-
-        // Lint first to discover which rules are fixable — i.e., the
-        // rule's fix clears the engine's auto-apply gate
-        // (`Severity::is_promote_eligible` AND combined-confidence
-        // ≥ threshold).
-        //
-        // `Severity::Suggest` is a hard exclusion from auto-apply
-        // regardless of confidence (engine's `is_promote_eligible`
-        // returns false for Suggest). The severity gate is the
-        // load-bearing channel discriminator for "is this an
-        // auto-applied fix?"; strict-path emissions pin
-        // `recognition = 1.0` so the confidence gate only blocks
-        // sub-1.0 decoder-path candidates.
-        //
-        // "Recognition" here is the scalar `Recognition::combined()`
-        // (= `recognition`, post-PR-B) that the engine applies at the
-        // promotion boundary. `Recognition` carries additional decoder
-        // provenance (`runner_up_ratio`, feature contributions) for
-        // audit but this harness and every threshold-gated consumer
-        // compare on `.combined()` only.
-        let lint_result = engine.lint(&source);
-        let fixable_rules: std::collections::HashSet<String> = lint_result
-            .diagnostics
-            .iter()
-            .filter(|d| d.severity.is_promote_eligible())
-            .filter(|d| {
-                d.fix
-                    .as_ref()
-                    .is_some_and(|f| f.confidence.combined() >= threshold)
-            })
-            .map(|d| d.rule.predicate_id().to_owned())
-            .collect();
-
-        if fixable_rules.is_empty() {
-            continue; // No auto-fixable diagnostics in this fixture
-        }
-
-        total_fixable += 1;
-
-        // Fix the source
-        let fix_result = engine.fix(&source, FixMode::Apply);
-
-        // Re-lint the fixed output
-        let relint = engine.lint(fix_result.source.expose_secret());
-
-        // Check which fixable rules still have violations
-        let remaining_rules: std::collections::HashSet<&str> = relint
-            .diagnostics
-            .iter()
-            .map(|d| d.rule.predicate_id())
-            .collect();
-
-        // A fixture counts as "fixed clean" if no fixable rules remain
-        let all_fixable_resolved = fixable_rules
-            .iter()
-            .all(|r| !remaining_rules.contains(r.as_str()));
-
-        if all_fixable_resolved {
-            total_fixed_clean += 1;
-        }
-
-        for rule in &fixable_rules {
-            let entry = per_rule.entry(rule.clone()).or_insert((0, 0));
-            entry.1 += 1;
-            if !remaining_rules.contains(rule.as_str()) {
-                entry.0 += 1;
-            }
-        }
-    }
-
-    // Report per-rule fix accuracy
-    let mut failures = Vec::new();
-    for (rule, (fixed, total)) in &per_rule {
-        let accuracy = if *total == 0 {
-            1.0
-        } else {
-            *fixed as f64 / *total as f64
-        };
-        if accuracy < 0.95 {
-            failures.push(format!(
-                "  {rule}: {fixed}/{total} = {:.1}% (need >=95%)",
-                accuracy * 100.0
-            ));
-        }
-    }
-
-    let overall = if total_fixable == 0 {
-        1.0
-    } else {
-        total_fixed_clean as f64 / total_fixable as f64
-    };
-
-    assert!(
-        failures.is_empty() && overall >= 0.95,
-        "fix accuracy FAILED\n\
-         Overall: {total_fixed_clean}/{total_fixable} = {:.1}%\n\
-         Per-rule failures:\n{}",
-        overall * 100.0,
-        if failures.is_empty() {
-            "  (none — overall below threshold)".to_string()
-        } else {
-            failures.join("\n")
-        }
-    );
+    run_corpus_accuracy(&make_engine(), "capco", AccuracyMetric::FixInvalid);
 }
 
 // ---------------------------------------------------------------------------
@@ -340,62 +489,7 @@ fn fix_accuracy_invalid_fixtures() {
 
 #[test]
 fn precision_prose_zero_diagnostics() {
-    use marque_rules::Severity;
-
-    let engine = make_engine();
-    let fixtures = prose_fixtures();
-    assert!(
-        !fixtures.is_empty(),
-        "no prose fixtures found in corpus — cannot validate the precision gate"
-    );
-
-    for path in &fixtures {
-        let source = load_fixture(path);
-        let result = engine.lint(&source);
-
-        // Filter out `Severity::Suggest` diagnostics: style / advisory
-        // rules (S004, S008, etc.) may surface low-confidence hints
-        // even on prose-shaped inputs that the strict parser
-        // tentatively recognized as markings. These don't violate
-        // the precision gate (which targets precision on hard error / warn
-        // signals); the closure-driven Suggest channel is a separate
-        // surface and any prose noise it produces is by design opt-out
-        // via the per-rule `"off"` severity.
-        //
-        // #559 (2026-05-19): added explicit Suggest-tier
-        // filter after the Suggest-tier rule began surfacing the prose-vs-marking
-        // ambiguity in `article.txt` where `(S) same advantage which a
-        // republic` was tentatively parsed as a US Secret portion. The
-        // root false-positive (parser accepting `(S)` glued to a word
-        // boundary) is tracked separately; filtering at the precision
-        // gate keeps the load-bearing hard-error precision
-        // pin intact without absorbing the unrelated parser concern.
-        let hard_diagnostics: Vec<_> = result
-            .diagnostics
-            .iter()
-            .filter(|d| d.severity != Severity::Suggest)
-            .collect();
-
-        assert!(
-            hard_diagnostics.is_empty(),
-            "precision failure on {}: expected zero hard \
-             (Error/Warn/Fix/Info) diagnostics, got {}:\n{}",
-            path.file_name().unwrap().to_string_lossy(),
-            hard_diagnostics.len(),
-            hard_diagnostics
-                .iter()
-                .map(|d| format!(
-                    "  {} {:?} at {}..{}: {:?}",
-                    d.rule.predicate_id(),
-                    d.severity,
-                    d.span.start,
-                    d.span.end,
-                    d.message
-                ))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
+    run_corpus_accuracy(&make_engine(), "capco", AccuracyMetric::ProsePrecision);
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +503,10 @@ fn precision_prose_zero_diagnostics() {
 /// There is no warning-severity vocabulary-deprecation rule: CAPCO-2016
 /// §F treats legacy markings as unauthorized (an error category), not
 /// "deprecated but still legal."
+///
+/// CAPCO-local: not parameterized through `run_corpus_accuracy` — the
+/// corrections map (SERCET/NOFORM/GBER) and the `marking.correction.token-typo`
+/// predicate are CAPCO vocabulary, not a grammar-neutral metric.
 #[test]
 fn c001_corrections_map_accuracy() {
     let c001_fixtures: Vec<_> = marque_test_utils::fixtures_in("invalid")
@@ -473,7 +571,7 @@ fn c001_corrections_map_accuracy() {
     );
     let accuracy = matched as f64 / total as f64;
     assert!(
-        accuracy >= 0.95,
+        accuracy >= ACCURACY_THRESHOLD,
         "C001 accuracy: {matched}/{total} = {:.1}% (need >=95%)",
         accuracy * 100.0
     );
@@ -485,56 +583,7 @@ fn c001_corrections_map_accuracy() {
 
 #[test]
 fn valid_fixtures_zero_diagnostics() {
-    use marque_rules::Severity;
-
-    let engine = make_engine();
-    let fixtures = valid_fixtures();
-    assert!(!fixtures.is_empty(), "no valid fixtures found in corpus");
-
-    for path in &fixtures {
-        let source = load_fixture(path);
-        let result = engine.lint(&source);
-
-        // Filter out `Severity::Suggest` diagnostics from the strict-zero
-        // assertion. Suggest-tier style rules (S004 / S008 / etc.) are
-        // advisory by default and ship at confidences calibrated to
-        // never auto-apply under the default threshold (S008 = 0.85;
-        // S004 = 0.5); they're opt-up surfaces, not "this fixture has
-        // a defect" signals. The "valid" bucket asserts hard-error
-        // cleanliness — Error/Warn/Fix/Info severities — not "no rule
-        // could possibly say anything about this." #559 close-out C1
-        // (2026-05-19) added the filter after S008's closure-driven
-        // Suggest surface began firing on classified-without-FD&R
-        // valid fixtures like `(TS//SI)` (the closure injects RELIDO
-        // at the lattice layer; S008 surfaces that to the user as a
-        // suggested edit — correct behavior, but not a defect
-        // signal for the fixture).
-        let hard_diagnostics: Vec<_> = result
-            .diagnostics
-            .iter()
-            .filter(|d| d.severity != Severity::Suggest)
-            .collect();
-
-        assert!(
-            hard_diagnostics.is_empty(),
-            "valid fixture {} produced {} unexpected hard \
-             (Error/Warn/Fix/Info) diagnostics:\n{}",
-            path.file_name().unwrap().to_string_lossy(),
-            hard_diagnostics.len(),
-            hard_diagnostics
-                .iter()
-                .map(|d| format!(
-                    "  {} {:?} at {}..{}: {:?}",
-                    d.rule.predicate_id(),
-                    d.severity,
-                    d.span.start,
-                    d.span.end,
-                    d.message
-                ))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
+    run_corpus_accuracy(&make_engine(), "capco", AccuracyMetric::ValidZero);
 }
 
 /// Per-rule diagnostic count expectation for a single document fixture
@@ -652,6 +701,10 @@ fn assert_expected_diagnostics_stems_unique() {
 ///
 /// Every failure is batched and reported together so a single regression
 /// doesn't mask other drift.
+///
+/// CAPCO-local: not parameterized through `run_corpus_accuracy` — the
+/// `EXPECTED_DOCUMENT_DIAGNOSTICS` allowlist pins CAPCO predicate IDs and
+/// §-citations, so the per-document expectations are per-grammar data.
 #[test]
 fn document_fixtures_lint_against_expected() {
     let engine = make_engine();
