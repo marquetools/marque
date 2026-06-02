@@ -5,12 +5,14 @@
 
 """Tests for the per-grammar analyzer profile (T081).
 
-These tests deliberately avoid ``import analyze``: ``analyze.py`` declares
-``requests`` as a uv-script dependency and imports it at module load, so a
-bare ``import analyze`` would fail in an environment without that optional
-dep. The pure-JSON test reads the profile directly; the fail-closed test
-invokes ``analyze.py`` as a subprocess (preferring ``uv run``) and is
-skipped gracefully when no runtime is available. No network is required.
+The pure-JSON tests read the profile directly (zero deps). The fail-closed
+test exercises the CLI's `sys.exit` path end-to-end, so it invokes
+``analyze.py`` as a subprocess rather than importing it. It prefers
+``uv run`` (which resolves the inline-script deps for a full analysis run)
+and otherwise falls back to the current interpreter — safe because
+``analyze.py`` imports ``requests`` lazily inside the corpus downloaders,
+and the missing-grammar run exits during profile loading before any
+downloader runs. No network is required.
 """
 
 import json
@@ -18,8 +20,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 TOOL_DIR = Path(__file__).resolve().parent.parent
 GRAMMARS_DIR = TOOL_DIR / "grammars"
@@ -62,16 +62,14 @@ def test_capco_profile_tokens_path_resolves_to_existing_file():
 
 
 def _analyze_runner():
-    """Return an argv prefix that can run analyze.py, or None if no
-    runtime is available. Prefers `uv run` (handles the inline script
-    deps); falls back to the current interpreter only if `requests` is
-    importable so the module-level import does not blow up."""
+    """Return an argv prefix that runs analyze.py. Prefers `uv run`
+    (resolves the inline-script deps for a full analysis run); otherwise
+    falls back to the current interpreter. The fallback is safe for the
+    missing-grammar test because analyze.py imports `requests` lazily
+    inside the corpus downloaders, and that run exits during profile
+    loading before any downloader executes."""
     if shutil.which("uv"):
         return ["uv", "run", str(ANALYZE_PY)]
-    try:
-        import requests  # noqa: F401
-    except Exception:
-        return None
     return [sys.executable, str(ANALYZE_PY)]
 
 
@@ -82,9 +80,6 @@ def test_missing_grammar_profile_fails_closed():
     profile load happens before any corpus work, so this exits before
     touching the network."""
     runner = _analyze_runner()
-    if runner is None:
-        pytest.skip("no analyze.py runtime available (no `uv`, `requests` not importable)")
-
     result = subprocess.run(
         runner
         + ["--grammar", "__nonexistent__", "--mode", "baseline", "--max-docs", "0"],

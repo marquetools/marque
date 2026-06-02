@@ -635,9 +635,13 @@ def load_grammar_profile(name: str) -> dict:
     not a silent fallback.
     """
     profile_path = Path(__file__).parent / "grammars" / f"{name}.json"
-    if not profile_path.exists():
+    # `is_file()` (not `exists()`): a directory at this path would pass
+    # `exists()` and then blow up in `open()` with a stack trace,
+    # violating the fail-closed contract.
+    if not profile_path.is_file():
         print(
-            f"Error: grammar profile {profile_path} does not exist. "
+            f"Error: grammar profile {profile_path} does not exist "
+            "(or is not a regular file). "
             f"Expected grammars/{name}.json — see grammars/capco.json for the "
             "shape (grammar, description, tokens, priors_schema_prefix, "
             "priors_schema_generation, default_marking_corpus, "
@@ -666,6 +670,23 @@ def load_grammar_profile(name: str) -> dict:
             f"Error: grammar profile {profile_path} is missing required "
             f"key(s): {', '.join(missing)}. See grammars/capco.json for the "
             "expected shape.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # `default_marking_corpus` is consumed as a list of relative path
+    # strings. A profile that sets it to a bare string would iterate
+    # character-by-character downstream and surface confusing "corpus
+    # path does not exist" errors; validate the type here so the
+    # failure names the real problem.
+    marking_corpus = profile["default_marking_corpus"]
+    if not isinstance(marking_corpus, list) or not all(
+        isinstance(p, str) for p in marking_corpus
+    ):
+        print(
+            f"Error: grammar profile {profile_path} field "
+            "`default_marking_corpus` must be a list of path strings, got "
+            f"{type(marking_corpus).__name__}.",
             file=sys.stderr,
         )
         sys.exit(1)
