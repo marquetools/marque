@@ -70,8 +70,8 @@ pub mod vocab;
 mod vocabulary;
 
 pub use lattice::{
-    AeaPrimary, AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet, JointSet,
-    NatoClassLattice, NatoDissemSet, RelToBlock, SarSet, SciSet, UcniKind,
+    AeaPrimary, AeaSet, ClassificationLattice, DeclassInstruction, DeclassifyOnLattice, DissemSet,
+    FgiSet, JointSet, NatoClassLattice, NatoDissemSet, RelToBlock, SarSet, SciSet, UcniKind,
 };
 pub use marque_ism::CapcoTokenSet;
 pub use provenance::{DecoderProvenance, HEURISTIC_RECOGNITION_CAP, build_decoder_diagnostic};

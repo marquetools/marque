@@ -72,12 +72,22 @@ assert_impl_all!(DeclassifyOnLattice: JoinSemilattice, MeetSemilattice);
 
 // --- Bounded types ---
 //
-// Only `ClassificationLattice` and `NatoClassLattice` are bounded.
-// Both halves of `BoundedJoinSemilattice` / `BoundedMeetSemilattice`
-// hold because the five-level classification chain (Unclassified ≤
-// Restricted ≤ Confidential ≤ Secret ≤ TopSecret) has lawful top
-// and bottom elements. The other lattice types are deliberately
-// unbounded because SCI / SAR / FGI / dissem / declassify-on are
+// `ClassificationLattice` and `NatoClassLattice` are bounded on both
+// halves: the five-level classification chain (Unclassified ≤
+// Restricted ≤ Confidential ≤ Secret ≤ TopSecret) has lawful top and
+// bottom elements.
+//
+// `DeclassifyOnLattice` is bounded on the JOIN side only. Its bottom is
+// absence of any declassification instruction (the join identity), so
+// it implements `BoundedJoinSemilattice` (PR-D1 / T043). The §E.3 chain
+// has a genuine maximum element — `DeclassInstruction::NaSeeSourceList`,
+// which "takes precedence over all other declassification
+// instructions" (CAPCO-2016 §E.3 p32 line 663) — but that maximum is a
+// property of the `DeclassInstruction` `Ord` (tier rank), NOT a
+// `meet`-identity, so the type is deliberately NOT
+// `BoundedMeetSemilattice` (the dates/exemptions below the top form an
+// open space with no lawful finite meet-top). The remaining lattice
+// types (SCI / SAR / FGI / dissem) are unbounded on both halves —
 // open-vocab axes with no lawful finite top.
 
 assert_impl_all!(
@@ -94,12 +104,17 @@ assert_impl_all!(
     BoundedJoinSemilattice,
     BoundedMeetSemilattice
 );
+assert_impl_all!(DeclassifyOnLattice: BoundedJoinSemilattice);
+assert_not_impl_any!(DeclassifyOnLattice: BoundedMeetSemilattice);
 
-// Negative locks for the 10 non-bounded types. Without these,
-// accidentally adding `BoundedJoinSemilattice` (e.g., declaring a
-// `top()` value for `SciSet` that doesn't actually bound the open-
-// vocabulary axis) would compile cleanly and silently weaken the
-// "open-vocab has no lawful finite top" invariant that grounds the
+// Negative locks for the 9 fully-unbounded types (both halves).
+// `DeclassifyOnLattice` is locked separately above — it IS
+// `BoundedJoinSemilattice` (bottom = absence) but NOT
+// `BoundedMeetSemilattice`. Without these locks, accidentally adding
+// `BoundedJoinSemilattice` (e.g., declaring a `top()` value for
+// `SciSet` that doesn't actually bound the open-vocabulary axis) would
+// compile cleanly and silently weaken the "open-vocab has no lawful
+// finite top" invariant that grounds the
 // observational-state-vs-bounded distinction. The positive
 // `assert_impl_all!` block above is asymmetric with the Join-only
 // negative locks below; this block closes the symmetry.
@@ -110,7 +125,6 @@ assert_not_impl_any!(FgiSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(AeaSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(NatoDissemSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(RelToBlock: BoundedJoinSemilattice, BoundedMeetSemilattice);
-assert_not_impl_any!(DeclassifyOnLattice: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(DissemSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(JointSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
 assert_not_impl_any!(DisplayOnlyBlock: BoundedJoinSemilattice, BoundedMeetSemilattice);

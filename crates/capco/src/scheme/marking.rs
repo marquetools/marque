@@ -621,12 +621,16 @@ impl CapcoMarking {
         // `DisplayOnlyBlock::from_attrs_iter` borrows `rel_to_block`
         // for the row-27 banner-REL-TO subtraction — see below.
 
-        // Axis 9: declassify_on. `declass_exemption` rides as
-        // last-observed via the `DeclassExemptionAccumulator::from_attrs_iter`
-        // helper; the duration-aware comparator (§E.3 pp 32-33 "longest
-        // period of protection") is queued on the accumulator type's
-        // doc-comment.
-        out.declassify_on = DeclassifyOnLattice::from_attrs_iter(portions).into_inner();
+        // Axis 9: declassify_on. The lattice now folds each portion's
+        // (declassify_on, declass_exemption) pair into a single §E.3
+        // `DeclassInstruction` (CAPCO-2016 §E.3 p32-33 nine-tier
+        // "longest period of protection" precedence) and joins across
+        // portions; the resolved date is projected back onto the
+        // (still date-only) pivot field via `.into_date()`. The full
+        // instruction tier is realized at the engine node in PR-D3.
+        // `declass_exemption` continues to ride as last-observed via
+        // `DeclassExemptionAccumulator` until that node retires it.
+        out.declassify_on = DeclassifyOnLattice::from_attrs_iter(portions).into_date();
         out.declass_exemption = DeclassExemptionAccumulator::from_attrs_iter(portions).into_inner();
 
         // Axis 10: non_ic_dissem — classification-gated SBU-NF /

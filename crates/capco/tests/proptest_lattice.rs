@@ -29,14 +29,17 @@
 //! each type.
 
 use marque_capco::lattice::{
-    DisplayOnlyBlock, DissemSet, FgiSet, JointSet, RelToBlock, SarSet, SciSet,
+    DeclassInstruction, DeclassifyOnLattice, DisplayOnlyBlock, DissemSet, FgiSet, JointSet,
+    RelToBlock, SarSet, SciSet,
 };
 use marque_ism::{
-    CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker, MarkingClassification,
-    SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlBare,
-    SciControlSystem, SciMarking,
+    CanonicalAttrs, Classification, CountryCode, DeclassExemption, DissemControl, FgiMarker,
+    IsmDate, MarkingClassification, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    SciCompartment, SciControlBare, SciControlSystem, SciMarking,
 };
-use marque_scheme::{JoinSemilattice, MeetSemilattice, SupersessionSet};
+use marque_scheme::{
+    BoundedJoinSemilattice, JoinSemilattice, MeetSemilattice, OrdMax, SupersessionSet,
+};
 use proptest::prelude::*;
 use smol_str::SmolStr;
 use std::collections::BTreeSet;
@@ -947,5 +950,154 @@ proptest! {
         let empty = SupersessionSet::new(TEST_SUPERSESSION);
         prop_assert_eq!(a.join(&empty), a.clone());
         prop_assert_eq!(empty.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeclassInstruction — §E.3 nine-tier precedence Ord totality + OrdMax laws.
+//
+// CAPCO-2016 §E.3 p32-33 lines 663-677 (re-verified 2026-06-02). The
+// hand-written `Ord` on `DeclassInstruction` is precedence-equivalence,
+// not structural; these laws guard against an accidental structural
+// `derive` (which would disagree with `cmp` on Year/end-of-Date
+// collisions) and against an `Ord`-totality regression.
+// ---------------------------------------------------------------------------
+
+fn arb_declass_exemption() -> impl Strategy<Value = DeclassExemption> {
+    prop_oneof![
+        Just(DeclassExemption::X50x1Hum),
+        Just(DeclassExemption::X50x2Wmd),
+        Just(DeclassExemption::X75x),
+        Just(DeclassExemption::X50x1),
+        Just(DeclassExemption::X50x3),
+        Just(DeclassExemption::X50x9),
+        Just(DeclassExemption::X25x1),
+        Just(DeclassExemption::X25x3),
+        Just(DeclassExemption::X25x9),
+        Just(DeclassExemption::X25x1Eo12951),
+        Just(DeclassExemption::Aea),
+    ]
+}
+
+fn arb_ism_date() -> impl Strategy<Value = IsmDate> {
+    prop_oneof![
+        (2020i32..2050).prop_map(IsmDate::Year),
+        (2020i32..2050, 1u8..=12, 1u8..=28)
+            .prop_map(|(y, m, d)| IsmDate::Date(y, m, d)),
+    ]
+}
+
+fn arb_declass_instruction() -> impl Strategy<Value = DeclassInstruction> {
+    prop_oneof![
+        Just(DeclassInstruction::NaSeeSourceList),
+        arb_declass_exemption()
+            .prop_map(|code| DeclassInstruction::Exempt50xBeyond { code }),
+        (arb_declass_exemption(), arb_ism_date())
+            .prop_map(|(code, date)| DeclassInstruction::Exempt50xDated { code, date }),
+        arb_declass_exemption()
+            .prop_map(|code| DeclassInstruction::Exempt50xUndated { code }),
+        Just(DeclassInstruction::Eo12951),
+        (arb_declass_exemption(), arb_ism_date())
+            .prop_map(|(code, date)| DeclassInstruction::Exempt25xDated { code, date }),
+        (arb_declass_exemption(), proptest::option::of(arb_ism_date()))
+            .prop_map(|(code, date)| DeclassInstruction::Exempt25xUndated { code, date }),
+        arb_ism_date().prop_map(|date| DeclassInstruction::SpecificDate { date }),
+        Just(DeclassInstruction::EventUnder10Year),
+        proptest::option::of(arb_ism_date())
+            .prop_map(|date| DeclassInstruction::Calculated25Year { date }),
+    ]
+}
+
+fn arb_declassify_on() -> impl Strategy<Value = DeclassifyOnLattice> {
+    proptest::option::of(arb_declass_instruction())
+        .prop_map(DeclassifyOnLattice::new)
+}
+
+proptest! {
+    // --- DeclassInstruction Ord totality / consistency ---
+
+    /// Trichotomy: exactly one of `<`, `==`, `>` holds, and `==` agrees
+    /// with `cmp == Equal` (the precedence-equivalence contract).
+    #[test]
+    fn declass_instruction_ord_trichotomy(
+        a in arb_declass_instruction(),
+        b in arb_declass_instruction(),
+    ) {
+        let ord = a.cmp(&b);
+        let count = (ord == core::cmp::Ordering::Less) as u8
+            + (ord == core::cmp::Ordering::Equal) as u8
+            + (ord == core::cmp::Ordering::Greater) as u8;
+        prop_assert_eq!(count, 1);
+        prop_assert_eq!(a == b, ord == core::cmp::Ordering::Equal);
+        prop_assert_eq!(a.cmp(&b), b.cmp(&a).reverse(), "antisymmetric");
+    }
+
+    #[test]
+    fn declass_instruction_ord_transitive(
+        a in arb_declass_instruction(),
+        b in arb_declass_instruction(),
+        c in arb_declass_instruction(),
+    ) {
+        if a <= b && b <= c {
+            prop_assert!(a <= c);
+        }
+    }
+
+    // --- OrdMax<DeclassInstruction> semilattice laws ---
+
+    #[test]
+    fn ordmax_declass_idempotent(a in arb_declass_instruction()) {
+        let x = OrdMax(a);
+        prop_assert_eq!(x.join(&x), x.clone());
+        prop_assert_eq!(x.meet(&x), x);
+    }
+
+    #[test]
+    fn ordmax_declass_commutative(
+        a in arb_declass_instruction(),
+        b in arb_declass_instruction(),
+    ) {
+        let (x, y) = (OrdMax(a), OrdMax(b));
+        prop_assert_eq!(x.join(&y), y.join(&x));
+        prop_assert_eq!(x.meet(&y), y.meet(&x));
+    }
+
+    #[test]
+    fn ordmax_declass_associative(
+        a in arb_declass_instruction(),
+        b in arb_declass_instruction(),
+        c in arb_declass_instruction(),
+    ) {
+        let (x, y, z) = (OrdMax(a), OrdMax(b), OrdMax(c));
+        prop_assert_eq!(x.join(&y).join(&z), x.join(&y.join(&z)));
+        prop_assert_eq!(x.meet(&y).meet(&z), x.meet(&y.meet(&z)));
+    }
+
+    // --- DeclassifyOnLattice newtype laws ---
+
+    #[test]
+    fn declassify_on_bottom_identity(a in arb_declassify_on()) {
+        let bottom = DeclassifyOnLattice::bottom();
+        prop_assert_eq!(bottom.join(&a), a.clone());
+        prop_assert_eq!(a.join(&bottom), a);
+    }
+
+    /// `NaSeeSourceList` wrapped ⊔ anything == `NaSeeSourceList` — §E.3 p32
+    /// "takes precedence over all".
+    #[test]
+    fn declassify_on_na_see_source_list_absorbs(a in arb_declassify_on()) {
+        let top = DeclassifyOnLattice::new(Some(DeclassInstruction::NaSeeSourceList));
+        prop_assert_eq!(top.join(&a), top.clone());
+        prop_assert_eq!(a.join(&top), top);
+    }
+
+    /// Absorption (total order ⇒ both laws hold).
+    #[test]
+    fn declassify_on_absorption(
+        a in arb_declassify_on(),
+        b in arb_declassify_on(),
+    ) {
+        prop_assert_eq!(a.join(&a.meet(&b)), a.clone());
+        prop_assert_eq!(a.meet(&a.join(&b)), a);
     }
 }
