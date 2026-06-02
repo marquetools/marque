@@ -1188,18 +1188,26 @@ mod nato_class_lattice {
 // ===========================================================================
 // DeclassifyOnLattice
 // ===========================================================================
-// CAPCO-2016 §H.6 p104 (most-restrictive date wins). Verified 2026-05-15.
+// CAPCO-2016 §E.3 p32 (Multiple Sources and the Declassify On Line
+// Hierarchy — "single declassification value that provides the longest
+// classification duration of any of the sources"). NOT §H.6 p104, which
+// governs RD/FRD/TFNI banner roll-up and forbids declass dates on RD
+// documents entirely. Re-verified 2026-06-02 against CAPCO-2016.md
+// lines 660-677 (Constitution VIII: propagation requires re-verification).
 
 mod declassify_on_lattice {
     use marque_capco::DeclassifyOnLattice;
     use marque_ism::IsmDate;
     use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
+    // Bare dates lift into the tier-7 `SpecificDate` instruction via
+    // `from_date` (§E.3 p33). The assoc/comm/idem/absorption
+    // laws exercise the date sub-key within that tier.
     fn d(y: i32, m: u8, day: u8) -> DeclassifyOnLattice {
-        DeclassifyOnLattice::new(Some(IsmDate::Date(y, m, day)))
+        DeclassifyOnLattice::from_date(Some(IsmDate::Date(y, m, day)))
     }
     fn y(year: i32) -> DeclassifyOnLattice {
-        DeclassifyOnLattice::new(Some(IsmDate::Year(year)))
+        DeclassifyOnLattice::from_date(Some(IsmDate::Year(year)))
     }
     fn bottom() -> DeclassifyOnLattice {
         DeclassifyOnLattice::empty()
@@ -1235,8 +1243,8 @@ mod declassify_on_lattice {
         // Absorption pin: 3-state cube over a total-order semilattice.
         // For a total order, both laws hold by algebra: a⊔(a⊓b)=a and
         // a⊓(a⊔b)=a. No current defect here; pin guards future regressions.
-        // §H.6 p104 (most-restrictive declassification date wins = max).
-        // Verified 2026-05-16 against CAPCO-2016.md.
+        // §E.3 p32 (most-restrictive declassification value wins = max).
+        // Re-verified 2026-06-02 against CAPCO-2016.md lines 660-677.
         let all_states = [bottom(), d(2025, 6, 15), y(2030)];
         for x in &all_states {
             for yy in &all_states {
@@ -1254,6 +1262,134 @@ mod declassify_on_lattice {
                 );
             }
         }
+    }
+}
+
+// ===========================================================================
+// DeclassInstruction — §E.3 nine-tier precedence oracle fixtures (T043)
+// ===========================================================================
+// Each fixture cites the §E.3 p32/p33 passage it encodes. Source
+// re-verified 2026-06-02 against CAPCO-2016.md lines 660-677
+// (Constitution VIII). The join (`OrdMax` over `DeclassInstruction`)
+// picks the most-restrictive / longest-protection instruction.
+
+mod declass_instruction_e3 {
+    use marque_capco::{DeclassInstruction, DeclassifyOnLattice};
+    use marque_ism::{DeclassExemption, IsmDate};
+    use marque_scheme::{BoundedJoinSemilattice, JoinSemilattice};
+
+    fn wrap(i: DeclassInstruction) -> DeclassifyOnLattice {
+        DeclassifyOnLattice::new(Some(i))
+    }
+    fn date(y: i32, m: u8, d: u8) -> IsmDate {
+        IsmDate::Date(y, m, d)
+    }
+
+    #[test]
+    fn na_see_source_list_dominates() {
+        // §E.3 p32: "takes precedence over all other
+        // declassification instructions."
+        let top = wrap(DeclassInstruction::NaSeeSourceList);
+        let others = [
+            wrap(DeclassInstruction::Exempt50xBeyond {
+                code: DeclassExemption::X50x1Hum,
+            }),
+            wrap(DeclassInstruction::SpecificDate {
+                date: date(2030, 1, 1),
+            }),
+            DeclassifyOnLattice::bottom(),
+        ];
+        for x in others {
+            assert_eq!(top.join(&x), top, "NaSeeSourceList must dominate {x:?}");
+            assert_eq!(x.join(&top), top, "join is commutative");
+        }
+    }
+
+    #[test]
+    fn bottom_is_join_identity() {
+        // §E.3 p32 join identity: absence does not restrict.
+        let samples = [
+            wrap(DeclassInstruction::NaSeeSourceList),
+            wrap(DeclassInstruction::Exempt25xDated {
+                code: DeclassExemption::X25x1,
+                date: date(2040, 1, 1),
+            }),
+            wrap(DeclassInstruction::SpecificDate {
+                date: date(2030, 1, 1),
+            }),
+        ];
+        let bottom = DeclassifyOnLattice::bottom();
+        for x in samples {
+            assert_eq!(bottom.join(&x), x);
+            assert_eq!(x.join(&bottom), x);
+        }
+    }
+
+    #[test]
+    fn hum_beats_dated_25x() {
+        // §E.3 p32 (tier 2) vs p33 (tier 5).
+        let hum = wrap(DeclassInstruction::Exempt50xBeyond {
+            code: DeclassExemption::X50x1Hum,
+        });
+        let dated_25x = wrap(DeclassInstruction::Exempt25xDated {
+            code: DeclassExemption::X25x1,
+            date: date(2030, 1, 1),
+        });
+        assert_eq!(hum.join(&dated_25x), hum);
+    }
+
+    #[test]
+    fn hum_beats_wmd_lowest_number() {
+        // §E.3 p32: "apply 50X1-HUM as the exemption with the
+        // lowest number."
+        let hum = wrap(DeclassInstruction::Exempt50xBeyond {
+            code: DeclassExemption::X50x1Hum,
+        });
+        let wmd = wrap(DeclassInstruction::Exempt50xBeyond {
+            code: DeclassExemption::X50x2Wmd,
+        });
+        assert_eq!(hum.join(&wmd), hum);
+    }
+
+    #[test]
+    fn same_50x_tier_later_date_wins() {
+        // §E.3 p32: "the date or event that provides the
+        // longest period of protection."
+        let earlier = wrap(DeclassInstruction::Exempt50xDated {
+            code: DeclassExemption::X50x3,
+            date: date(2040, 1, 1),
+        });
+        let later = wrap(DeclassInstruction::Exempt50xDated {
+            code: DeclassExemption::X50x3,
+            date: date(2050, 1, 1),
+        });
+        assert_eq!(earlier.join(&later), later);
+    }
+
+    #[test]
+    fn specific_date_beats_event() {
+        // §E.3 p33 (tier 7) vs p33 (tier 8).
+        let specific = wrap(DeclassInstruction::SpecificDate {
+            date: date(2040, 1, 1),
+        });
+        let event = wrap(DeclassInstruction::EventUnder10Year);
+        assert_eq!(specific.join(&event), specific);
+    }
+
+    #[test]
+    fn eo12951_between_50x_and_25x() {
+        // §E.3 p33 (tier 4): below tier 3, above tier 5.
+        let eo = wrap(DeclassInstruction::Eo12951);
+        let dated_25x = wrap(DeclassInstruction::Exempt25xDated {
+            code: DeclassExemption::X25x1,
+            date: date(2030, 1, 1),
+        });
+        let dated_50x = wrap(DeclassInstruction::Exempt50xDated {
+            code: DeclassExemption::X50x9,
+            date: date(2030, 1, 1),
+        });
+        assert_eq!(eo.join(&dated_25x), eo, "tier 4 > tier 5");
+        assert_eq!(dated_50x.join(&eo), dated_50x, "tier 3 > tier 4");
     }
 }
 
