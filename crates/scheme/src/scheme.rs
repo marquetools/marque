@@ -689,6 +689,28 @@ pub trait MarkingScheme {
         &[]
     }
 
+    /// The [`CategoryId`] a document artifact of the given [`ArtifactKind`]
+    /// populates — the join key between [`Self::document_artifacts`] and
+    /// [`Self::derivation_edges`].
+    ///
+    /// A derivation edge produces a node of `kind` exactly when the edge's
+    /// `writes` axis (see [`crate::DerivationEdge::writes`]) contains the
+    /// category this method returns for `kind`. Document-scope resolution
+    /// uses this association to decide which firing edges feed which
+    /// artifact node: an absent node whose category is written by a firing
+    /// value-producing edge is derivable (and therefore fixable); an absent
+    /// node no firing edge writes is flag-only.
+    ///
+    /// Returns `None` when the scheme has no category mapping for `kind`
+    /// (the default for every kind), in which case resolution treats the
+    /// node as having no producing edge.
+    ///
+    /// Default: `None` for every kind. Additive — a scheme that does not
+    /// map artifact kinds to categories is behavior-unchanged.
+    fn artifact_category(&self, _kind: ArtifactKind) -> Option<CategoryId> {
+        None
+    }
+
     /// Declared closure rules for this scheme.
     ///
     /// Closure rules implement implicit-fact propagation. They
@@ -1142,3 +1164,95 @@ impl fmt::Display for ApplyIntentError {
 }
 
 impl core::error::Error for ApplyIntentError {}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::ambiguity::Parsed;
+    use crate::artifact::ArtifactKind;
+    use crate::category::{Category, TokenId};
+    use crate::constraint::ConstraintViolation;
+    use crate::lattice::{JoinSemilattice, MeetSemilattice};
+    use crate::scope::Scope;
+    use crate::template::Template;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct StubMarking;
+
+    impl JoinSemilattice for StubMarking {
+        fn join(&self, _: &Self) -> Self {
+            Self
+        }
+    }
+
+    impl MeetSemilattice for StubMarking {
+        fn meet(&self, _: &Self) -> Self {
+            Self
+        }
+    }
+
+    // A scheme that overrides nothing artifact-related, so it inherits the
+    // defaulted `artifact_category` (returns `None` for every kind).
+    struct BareScheme;
+
+    impl MarkingScheme for BareScheme {
+        type Token = TokenId;
+        type Marking = StubMarking;
+        type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
+        type Projected = ();
+
+        fn name(&self) -> &str {
+            "bare"
+        }
+        fn schema_version(&self) -> &str {
+            "v0"
+        }
+        fn categories(&self) -> &[Category] {
+            &[]
+        }
+        fn constraints(&self) -> &[Constraint] {
+            &[]
+        }
+        fn templates(&self) -> &[Template] {
+            &[]
+        }
+        fn parse(&self, _: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+            Err(())
+        }
+        fn validate(&self, _: &Self::Marking) -> Vec<ConstraintViolation> {
+            vec![]
+        }
+        fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
+            StubMarking
+        }
+        fn render_canonical(
+            &self,
+            _: &Self::Marking,
+            _: &RenderContext,
+            _: &mut dyn fmt::Write,
+        ) -> fmt::Result {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn artifact_category_defaults_to_none_for_every_kind() {
+        // The defaulted join key returns `None` for every artifact kind
+        // until a scheme overrides it. A scheme that does not map kinds to
+        // categories is behavior-unchanged.
+        let scheme = BareScheme;
+        for kind in [
+            ArtifactKind::AuthorityBlock,
+            ArtifactKind::DeclassifyInstruction,
+            ArtifactKind::Notice,
+            ArtifactKind::CaveatLayer,
+            ArtifactKind::FrontMarking,
+        ] {
+            assert_eq!(scheme.artifact_category(kind), None);
+        }
+    }
+}

@@ -278,7 +278,6 @@ impl std::error::Error for EngineConstructionError {}
 /// because a partial `FixResult` would commit half a fix to the
 /// audit stream (Constitution V Principle V).
 #[non_exhaustive]
-#[derive(Debug)]
 pub enum EngineError<S: MarkingScheme = CapcoScheme> {
     /// `fix_with_options` aborted before applying every fix because
     /// the call's deadline expired. `partial_lint` is the
@@ -309,6 +308,26 @@ pub enum EngineError<S: MarkingScheme = CapcoScheme> {
     SignatureRequired,
 }
 
+// Manual `Debug` — the `DeadlineExceeded` variant holds a `LintResult<S>`,
+// whose own `Debug` is bounded `where S::Canonical: Debug` (#799), and a
+// `#[derive(Debug)]` would only add `S: Debug` for the type parameter. Both
+// bounds are needed; every scheme driven through the engine satisfies them.
+impl<S: MarkingScheme + std::fmt::Debug> std::fmt::Debug for EngineError<S>
+where
+    S::Canonical: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DeadlineExceeded { partial_lint } => f
+                .debug_struct("DeadlineExceeded")
+                .field("partial_lint", partial_lint)
+                .finish(),
+            Self::InvalidThreshold(t) => f.debug_tuple("InvalidThreshold").field(t).finish(),
+            Self::SignatureRequired => f.write_str("SignatureRequired"),
+        }
+    }
+}
+
 impl<S: MarkingScheme> std::fmt::Display for EngineError<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -326,7 +345,10 @@ impl<S: MarkingScheme> std::fmt::Display for EngineError<S> {
     }
 }
 
-impl<S: MarkingScheme + std::fmt::Debug> std::error::Error for EngineError<S> {
+impl<S: MarkingScheme + std::fmt::Debug> std::error::Error for EngineError<S>
+where
+    S::Canonical: std::fmt::Debug,
+{
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             // `DeadlineExceeded` is not caused by an inner error — it
@@ -649,5 +671,26 @@ mod tests {
             }
             other => panic!("expected InvalidThreshold variant, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn debug_covers_every_variant() {
+        // Exercises the hand-written `Debug` impl (bounded
+        // `where S::Canonical: Debug`, #799) across all three variants —
+        // the derive was replaced because `DeadlineExceeded` holds a
+        // `LintResult<S>` whose own `Debug` needs the `S::Canonical` bound.
+        let deadline = EngineError::DeadlineExceeded {
+            partial_lint: lint_result_with_counts(3, 5),
+        };
+        let d = format!("{deadline:?}");
+        assert!(d.contains("DeadlineExceeded"), "got: {d}");
+        assert!(d.contains("partial_lint"), "got: {d}");
+
+        let invalid = EngineError::<CapcoScheme>::InvalidThreshold(InvalidThreshold(1.5));
+        let i = format!("{invalid:?}");
+        assert!(i.contains("InvalidThreshold"), "got: {i}");
+
+        let signature = EngineError::<CapcoScheme>::SignatureRequired;
+        assert_eq!(format!("{signature:?}"), "SignatureRequired");
     }
 }

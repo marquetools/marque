@@ -135,6 +135,10 @@ where
             corrections_ac,
             scheduled_rewrites,
             scheduled_steps,
+            // No modes active by default (#799). The mode taxonomy and a
+            // public setter arrive in a later phase (#645); until then a
+            // `WhenMode` derivation edge never fires.
+            active_modes: std::collections::BTreeSet::new(),
             recognizer,
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
@@ -372,5 +376,163 @@ impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
     /// hot path — purely a wire-format projection helper.
     pub fn scheme(&self) -> &S {
         &self.scheme
+    }
+
+    /// The engine modes currently active.
+    ///
+    /// Empty by default (#799); no public setter ships yet. Document-scope
+    /// resolution consults these to decide whether a
+    /// [`FiringPredicate::WhenMode`](marque_scheme::FiringPredicate::WhenMode)
+    /// derivation edge fires.
+    pub fn active_modes(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.active_modes.iter().copied()
+    }
+
+    /// Whether an edge with the given firing predicate fires this run.
+    ///
+    /// [`Always`](marque_scheme::FiringPredicate::Always) always fires;
+    /// [`WhenMode(m)`](marque_scheme::FiringPredicate::WhenMode) fires only
+    /// when `m` is in [`Self::active_modes`] — so with the default empty
+    /// set a `WhenMode` edge never fires. The edge is never removed from
+    /// the construction-time DAG; only its firing is gated here (#799).
+    pub(crate) fn firing_active(&self, fp: marque_scheme::FiringPredicate) -> bool {
+        match fp {
+            marque_scheme::FiringPredicate::Always => true,
+            marque_scheme::FiringPredicate::WhenMode(m) => self.active_modes.contains(m),
+            // `FiringPredicate` is `#[non_exhaustive]`. A future firing
+            // predicate this engine version does not understand defaults to
+            // not-firing — the conservative choice (it never produces an
+            // unintended derived value).
+            _ => false,
+        }
+    }
+
+    /// Crate-internal: set the active modes. Exists only for the
+    /// engine-internal unit test that exercises the positive
+    /// `WhenMode`-fires path; no public mode-setter ships (#799).
+    #[cfg(test)]
+    pub(crate) fn set_active_modes_for_test<I>(&mut self, modes: I)
+    where
+        I: IntoIterator<Item = &'static str>,
+    {
+        self.active_modes = modes.into_iter().collect();
+    }
+}
+
+// Document-scope resolution (#799). Decoupled from fixing: this runs on
+// every lint pass and classifies each document-scoped artifact the scheme
+// declares as derivable-and-fixable or flag-only, without applying any
+// change. Needs `S::Canonical: Clone` to hand the document rollup back as a
+// derived value, so it sits in its own block rather than the bare-accessor
+// block above.
+impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R>
+where
+    S::Canonical: Clone,
+{
+    /// Resolve the scheme's document-scoped artifacts against the document
+    /// rollup and the firing derivation edges.
+    ///
+    /// For each artifact kind the scheme declares
+    /// ([`MarkingScheme::document_artifacts`]), this associates the firing
+    /// derivation edges that write the kind's category
+    /// ([`MarkingScheme::artifact_category`]) and classifies the node:
+    ///
+    /// - **Fixable** when at least one firing value-producing edge
+    ///   (currently [`DerivationRelation::Rollup`]) writes the category;
+    ///   the derived value is the document rollup.
+    /// - **Flag-only** otherwise.
+    ///
+    /// The walk follows [`Self::scheduled_steps`] (writers-before-readers),
+    /// so a `WhenMode` edge that does not fire this run is skipped here —
+    /// it is never removed from the construction-time DAG (#799). A scheme
+    /// that declares no document artifacts resolves to the empty document
+    /// (the CAPCO no-op).
+    ///
+    /// Pure: takes `&self`, mutates nothing, emits no diagnostics. The
+    /// engine surfaces the result on its lint output so a fixing-off lint
+    /// still carries the resolution.
+    pub fn resolve_document(
+        &self,
+        doc_rollup: &S::Canonical,
+    ) -> marque_scheme::ResolvedDocument<S> {
+        use marque_scheme::{DerivationRelation, Fixability, ResolvedArtifact, ResolvedDocument};
+
+        let kinds = self.scheme.document_artifacts();
+        if kinds.is_empty() {
+            // No document artifacts declared — nothing to resolve. This is
+            // the CAPCO path: an O(1) empty-slice return off the
+            // per-candidate hot path.
+            return ResolvedDocument::default();
+        }
+
+        // Index the declared edges once so the scheduled-order walk is
+        // O(steps + edges), not O(steps * edges).
+        let edges = self.scheme.derivation_edges();
+        let edge_by_id: std::collections::HashMap<&'static str, &marque_scheme::DerivationEdge> =
+            edges.iter().map(|e| (e.id, e)).collect();
+
+        // Collect the firing edges in scheduled order (writers before
+        // readers). A `WhenMode` edge that does not fire this run is
+        // skipped — the topology is unchanged, only firing is gated. Every
+        // scheduled `DerivationEdge` resolves: `scheduled_steps` is built
+        // from `derivation_edges()` at `Engine::new`, so a miss is a
+        // construction-time invariant break, surfaced rather than masked.
+        let firing_edges: Vec<&marque_scheme::DerivationEdge> = self
+            .scheduled_steps()
+            .iter()
+            .filter_map(|step| match step {
+                ScheduledStep::DerivationEdge(id) => Some(*edge_by_id.get(id).expect(
+                    "scheduled derivation edge resolves to a declared edge \
+                         (scheduled_steps is built from derivation_edges() at Engine::new)",
+                )),
+                ScheduledStep::PageRewrite(_) => None,
+            })
+            .filter(|edge| self.firing_active(edge.firing))
+            .collect();
+
+        let mut artifacts: Vec<ResolvedArtifact<S>> = Vec::with_capacity(kinds.len());
+        for &kind in kinds {
+            // Without a category mapping the node has no producing edge.
+            let Some(cat) = self.scheme.artifact_category(kind) else {
+                artifacts.push(ResolvedArtifact {
+                    kind,
+                    fixability: Fixability::FlagOnly,
+                    derived_value: None,
+                    fired_edges: Box::new([]),
+                });
+                continue;
+            };
+
+            // Firing edges that write this kind's category produce the node.
+            let producing: Vec<&marque_scheme::DerivationEdge> = firing_edges
+                .iter()
+                .copied()
+                .filter(|edge| edge.writes.contains(&cat))
+                .collect();
+
+            // A value-producing relation makes the node derivable. C4 wires
+            // `Rollup`; `CannedString` / `Passthrough` join in a later phase,
+            // and `SourceDerived` is #823-deferred.
+            let has_rollup = producing
+                .iter()
+                .any(|edge| edge.relation == DerivationRelation::Rollup);
+
+            let fired_edges: Box<[_]> = producing.iter().map(|edge| edge.id).collect();
+
+            let (fixability, derived_value) = if has_rollup {
+                (Fixability::Fixable, Some(doc_rollup.clone()))
+            } else {
+                (Fixability::FlagOnly, None)
+            };
+
+            artifacts.push(ResolvedArtifact {
+                kind,
+                fixability,
+                derived_value,
+                fired_edges,
+            });
+        }
+
+        ResolvedDocument::new(artifacts.into_boxed_slice())
     }
 }

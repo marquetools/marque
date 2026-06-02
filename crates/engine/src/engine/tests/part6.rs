@@ -14,6 +14,7 @@
 use super::*;
 use marque_ism::CanonicalAttrs;
 use marque_ism::attrs::Classification;
+use marque_scheme::FiringPredicate;
 use marque_scheme::document_context::DocumentContext;
 
 /// Build a strict-recognizer CAPCO engine with no extra rules — the
@@ -220,5 +221,69 @@ fn empty_document_yields_default_rollup() {
         roll_text,
         CanonicalAttrs::default(),
         "marking-free document rollup must stay at the canonical bottom",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Mode placeholder + firing-predicate gating (#799).
+// ---------------------------------------------------------------------------
+
+/// A fresh engine has no active modes.
+#[test]
+fn active_modes_default_empty() {
+    let engine = doc_rollup_engine();
+    assert_eq!(engine.active_modes().count(), 0);
+}
+
+/// `firing_active(Always)` is always true; `firing_active(WhenMode(m))` is
+/// false by default (no modes active), then true once `m` is activated.
+/// The positive half is the engine-internal exercise of the mode-gated
+/// firing path; it uses the crate-internal `set_active_modes_for_test`
+/// setter (no public mode-setter ships, #799).
+#[test]
+fn firing_active_gates_when_mode_on_active_modes() {
+    let mut engine = doc_rollup_engine();
+
+    // Always fires regardless of active modes.
+    assert!(engine.firing_active(FiringPredicate::Always));
+
+    // WhenMode does not fire while its mode is inactive (the default).
+    assert!(!engine.firing_active(FiringPredicate::WhenMode("derivative")));
+
+    // Activate the mode; now the WhenMode edge fires.
+    engine.set_active_modes_for_test(["derivative"]);
+    assert!(engine.firing_active(FiringPredicate::WhenMode("derivative")));
+    assert!(engine.active_modes().any(|m| m == "derivative"));
+
+    // A different, still-inactive mode does not fire.
+    assert!(!engine.firing_active(FiringPredicate::WhenMode("other")));
+}
+
+// ---------------------------------------------------------------------------
+// CAPCO document-scope resolution is an empty no-op (#799 regression).
+// ---------------------------------------------------------------------------
+
+/// CAPCO declares no document artifacts, so `resolve_document` is an
+/// empty-slice no-op and a CAPCO `lint()` carries an empty resolution.
+/// This is the positive regression assertion that C4 leaks no resolution
+/// behavior into the CAPCO path.
+#[test]
+fn capco_produces_empty_resolved_document() {
+    let engine = doc_rollup_engine();
+
+    // Direct: resolving any rollup yields the empty document.
+    let rollup = engine_doc_rollup(&engine, b"(S) page one\n");
+    let resolved = engine.resolve_document(&rollup);
+    assert!(
+        resolved.is_empty(),
+        "CAPCO declares no document artifacts; resolution must be empty",
+    );
+
+    // Through the lint pipeline: a completed CAPCO lint surfaces the empty
+    // resolution on its LintResult.
+    let result = engine.lint(b"(S) page one\n");
+    assert!(
+        result.resolved_document.is_empty(),
+        "CAPCO lint must carry an empty resolved_document",
     );
 }

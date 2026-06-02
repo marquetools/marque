@@ -7,7 +7,7 @@
 use marque_capco::CapcoScheme;
 use marque_rules::Diagnostic;
 use marque_rules::audit::{AppliedFix, AppliedTextCorrection, AuditLine};
-use marque_scheme::MarkingScheme;
+use marque_scheme::{MarkingScheme, ResolvedDocument};
 use secrecy::SecretSlice;
 
 use crate::session::SessionMetadata;
@@ -37,7 +37,6 @@ use crate::session::SessionMetadata;
 /// produces `truncated: true` with
 /// `0 < candidates_processed < candidates_total`.
 #[non_exhaustive]
-#[derive(Debug)]
 pub struct LintResult<S: MarkingScheme = CapcoScheme> {
     pub diagnostics: Vec<Diagnostic<S>>,
     /// `true` when the lint pass aborted before processing every
@@ -76,6 +75,14 @@ pub struct LintResult<S: MarkingScheme = CapcoScheme> {
     /// gated on `d.fix.is_some()` and so does not reflect every
     /// recognized marking.
     pub recognized_marking_count: usize,
+    /// Document-scope resolution of the scheme's declared document
+    /// artifacts (issue #799). Decoupled from fixing: it is computed on
+    /// every completed lint pass — including a fixing-off `lint()` call —
+    /// so the resolution-classification is observable through the normal
+    /// lint flow. Empty (default) for a scheme that declares no document
+    /// artifacts (the CAPCO case) and for a truncated pass (a truncated
+    /// lint has no complete document rollup to resolve against).
+    pub resolved_document: ResolvedDocument<S>,
 }
 
 // Hand-written `Default` / `Clone` bounded only on `S: MarkingScheme` — a
@@ -85,6 +92,27 @@ pub struct LintResult<S: MarkingScheme = CapcoScheme> {
 // `Diagnostic<S>` itself hand-writes `Clone` for the same reason; `Vec` /
 // `bool` / `usize` carry the rest. (Same rationale as `Diagnostic<S>` and
 // `RuleContext<'_, S>`.)
+// Manual `Debug` bounded `where S::Canonical: Debug` — a `#[derive(Debug)]`
+// would only add `S: Debug` for the type parameter and would not reach the
+// `S::Canonical: Debug` bound the `resolved_document` field needs (the
+// `Diagnostic<S>` field's own `Debug` is bounded only on `S`). Every scheme
+// driven through the engine satisfies `S::Canonical: Debug`.
+impl<S: MarkingScheme + core::fmt::Debug> core::fmt::Debug for LintResult<S>
+where
+    S::Canonical: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("LintResult")
+            .field("diagnostics", &self.diagnostics)
+            .field("truncated", &self.truncated)
+            .field("candidates_processed", &self.candidates_processed)
+            .field("candidates_total", &self.candidates_total)
+            .field("recognized_marking_count", &self.recognized_marking_count)
+            .field("resolved_document", &self.resolved_document)
+            .finish()
+    }
+}
+
 impl<S: MarkingScheme> Default for LintResult<S> {
     fn default() -> Self {
         Self {
@@ -93,11 +121,21 @@ impl<S: MarkingScheme> Default for LintResult<S> {
             candidates_processed: 0,
             candidates_total: 0,
             recognized_marking_count: 0,
+            resolved_document: ResolvedDocument::default(),
         }
     }
 }
 
-impl<S: MarkingScheme> Clone for LintResult<S> {
+// `Clone` adds a `where S::Canonical: Clone` clause that `Default` does not:
+// cloning the `resolved_document` field clones each `S::Canonical` derived
+// value it carries, so the bound is genuinely needed here (and only here).
+// Every scheme driven through the engine pipeline already satisfies it (the
+// pipeline block bounds `S::Canonical: Clone`), so no real consumer loses
+// the impl.
+impl<S: MarkingScheme> Clone for LintResult<S>
+where
+    S::Canonical: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             diagnostics: self.diagnostics.clone(),
@@ -105,6 +143,7 @@ impl<S: MarkingScheme> Clone for LintResult<S> {
             candidates_processed: self.candidates_processed,
             candidates_total: self.candidates_total,
             recognized_marking_count: self.recognized_marking_count,
+            resolved_document: self.resolved_document.clone(),
         }
     }
 }
@@ -344,6 +383,7 @@ mod tests {
         assert_eq!(result.candidates_processed, 0);
         assert_eq!(result.candidates_total, 0);
         assert_eq!(result.recognized_marking_count, 0);
+        assert!(result.resolved_document.is_empty());
     }
 
     /// The hand-written `Clone` (bounded on `S: MarkingScheme`, mirroring
@@ -364,6 +404,7 @@ mod tests {
             candidates_processed: 4,
             candidates_total: 9,
             recognized_marking_count: 2,
+            ..Default::default()
         };
 
         let mut cloned = original.clone();
@@ -377,6 +418,40 @@ mod tests {
         // original intact.
         cloned.diagnostics.clear();
         assert_eq!(original.diagnostics.len(), 1);
+    }
+
+    /// Exercises the hand-written `Debug` impl (bounded
+    /// `where S::Canonical: Debug`, #799) — every field name must appear so
+    /// a field dropped from the impl is caught.
+    #[test]
+    fn debug_renders_every_field() {
+        let result = LintResult::<CapcoScheme> {
+            diagnostics: vec![Diagnostic::new(
+                RuleId::new("test", "synthetic.debug-fixture"),
+                Severity::Warn,
+                Span::new(0, 4),
+                stub_message(),
+                stub_citation(),
+                None,
+            )],
+            truncated: true,
+            candidates_processed: 1,
+            candidates_total: 2,
+            recognized_marking_count: 1,
+            ..Default::default()
+        };
+        let d = format!("{result:?}");
+        assert!(d.contains("LintResult"), "got: {d}");
+        for field in [
+            "diagnostics",
+            "truncated",
+            "candidates_processed",
+            "candidates_total",
+            "recognized_marking_count",
+            "resolved_document",
+        ] {
+            assert!(d.contains(field), "Debug missing field {field}: {d}");
+        }
     }
 
     #[test]
