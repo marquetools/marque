@@ -28,6 +28,14 @@ required-features = ["decision-tracing"]
 name = "decision_tracing"
 required-features = ["decision-tracing"]
 
+# Document-scope derivation cascade test (#799). Pins one
+# content-ignorant Derived event per firing edge with `triggered_by`
+# threading, plus the CAPCO no-op guard. Same gating shape as the
+# decision-tracing tests above.
+[[test]]
+name = "document_resolution_cascade"
+required-features = ["decision-tracing"]
+
 [[bench]]
 harness = false
 name = "lint_latency"

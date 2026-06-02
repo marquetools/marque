@@ -161,6 +161,12 @@ pub enum DecisionKind {
     /// The marking was re-rendered to its canonical form
     /// (recanonicalization fix path).
     Recanonicalized,
+    /// A declared [`crate::derivation::DerivationEdge`] fired during
+    /// document-scope resolution; cascade-recorded via
+    /// [`DecisionEvent::triggered_by`]. Distinct from
+    /// [`DecisionKind::Mutated`] — resolution is decoupled from fixing, so
+    /// no value mutates.
+    Derived,
 }
 
 /// Which subsystem produced a decision.
@@ -170,8 +176,8 @@ pub enum DecisionKind {
 /// `"capco:banner.classification.usa-trigraph"`). The string is the
 /// same `&'static` label that already appears in
 /// [`crate::citation::Citation`] / [`crate::closure::ClosureRuleMetadata`]
-/// / [`crate::page_rewrite::RewriteId`] — content-neutral by
-/// construction.
+/// / [`crate::page_rewrite::RewriteId`] / [`crate::derivation::EdgeId`] —
+/// content-neutral by construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum DecisionSource {
@@ -199,6 +205,11 @@ pub enum DecisionSource {
     /// A `Rule::check` body produced a diagnostic. Argument is the
     /// rule's stable predicate ID.
     RuleCheck(&'static str),
+    /// A declared [`crate::derivation::DerivationEdge`] fired during
+    /// document-scope resolution. Argument is the edge's
+    /// [`EdgeId`](crate::derivation::EdgeId) — the same content-neutral
+    /// stable-label class as the other `&'static str`-bearing variants.
+    Derivation(&'static str),
 }
 
 pub use report::{CascadeChain, DecisionReport};

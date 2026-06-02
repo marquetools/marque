@@ -594,6 +594,67 @@ impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
         }
     }
 
+    /// Record one [`DecisionEvent`](marque_scheme::DecisionEvent) per
+    /// firing document-derivation edge, threading the cascade through
+    /// [`triggered_by`](marque_scheme::DecisionEvent::triggered_by).
+    ///
+    /// `firing_edges` arrives in scheduled order (writers before readers),
+    /// so a numeric `max()` over the last-writer steps of an edge's read
+    /// categories is the most-recently-arriving dependency. That single
+    /// parent makes the recorded cascade a spanning tree of the derivation
+    /// DAG: every edge still emits its own firing record, but an edge that
+    /// reads from several writers attributes to the latest one only.
+    ///
+    /// The step counter is the document's running monotone sequence (no
+    /// reset here — resolution runs at end-of-document after every
+    /// per-portion / per-page emit, so a reset would orphan earlier steps).
+    /// `last_writer` is per-invocation scratch (Constitution VI).
+    #[inline]
+    fn record_derivation_cascade(&self, firing_edges: &[&marque_scheme::DerivationEdge]) {
+        use marque_scheme::category::CategoryId;
+        use marque_scheme::{DecisionEvent, DecisionKind, DecisionSite, DecisionSource};
+
+        if !self.tracing_active() {
+            return;
+        }
+        let mut last_writer: std::collections::HashMap<CategoryId, u32> =
+            std::collections::HashMap::new();
+        self.with_sink(|sink| {
+            for edge in firing_edges {
+                // Trigger = most-recent edge that wrote a category THIS edge
+                // reads. Computed BEFORE inserting this edge's own writes, so
+                // an edge that both reads and writes a category never points
+                // at itself.
+                let triggered_by = edge
+                    .reads
+                    .iter()
+                    .filter_map(|c| last_writer.get(c).copied())
+                    .max();
+                let step = self
+                    .next_step
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // A single-write edge names its category; an edge writing zero
+                // or several categories uses the `MARKING` multi-category
+                // sentinel so per-category aggregations are not misattributed.
+                let category = match edge.writes {
+                    [c] => *c,
+                    _ => CategoryId::MARKING,
+                };
+                sink.record(DecisionEvent {
+                    step,
+                    site: DecisionSite::Document,
+                    category,
+                    kind: DecisionKind::Derived,
+                    source: DecisionSource::Derivation(edge.id),
+                    triggered_by,
+                });
+                for &w in edge.writes {
+                    last_writer.insert(w, step);
+                }
+            }
+        });
+    }
+
     /// Reset the per-document step counter to zero.
     ///
     /// Called at the top of every public lint entry point so that

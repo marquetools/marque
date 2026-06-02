@@ -256,42 +256,6 @@ impl Engine<CapcoScheme, EngineRecognizer> {
         self
     }
 
-    /// Install a [`DecisionSink`](marque_scheme::DecisionSink) on the
-    /// engine. Every instrumented decision point (per-rule dispatch,
-    /// constraint firing, banner roll-up, scheme-side
-    /// `project_with_sink` / `closure_with_sink`) emits one
-    /// [`DecisionEvent`](marque_scheme::DecisionEvent) through this
-    /// sink during a subsequent [`Engine::lint`] call.
-    ///
-    /// Only available when the engine is built with the
-    /// `decision-tracing` Cargo feature. With the feature off the
-    /// method does not exist and the engine carries no sink field —
-    /// Constitution Principle I (SC-001 p95 ≤ 2 ms) is preserved by
-    /// the absence of any per-call-site branch on the hot path.
-    ///
-    /// Returns the engine by value so callers can chain:
-    ///
-    /// ```ignore
-    /// let sink = marque_scheme::RecordingSink::new();
-    /// let engine = Engine::new(config, rules, scheme)?
-    ///     .with_decision_sink(sink);
-    /// ```
-    ///
-    /// Replacing the sink resets the per-document step counter to
-    /// zero — events recorded after this call start a fresh cascade
-    /// graph.
-    #[cfg(feature = "decision-tracing")]
-    #[must_use = "with_decision_sink returns a new Engine; the returned value must be bound for the sink to take effect"]
-    pub fn with_decision_sink<S>(mut self, sink: S) -> Self
-    where
-        S: SyncDecisionSink + 'static,
-    {
-        self.sink = std::sync::Mutex::new(Box::new(sink));
-        self.tracing_active = true;
-        self.next_step = std::sync::atomic::AtomicU32::new(0);
-        self
-    }
-
     /// Install a CLI-supplied corpus override. Only available when
     /// the engine is built with the `corpus-override` Cargo feature
     /// (CLI-only — `marque-server` rejects override input on every
@@ -321,6 +285,42 @@ impl Engine<CapcoScheme, EngineRecognizer> {
 // `corpus_override_active`). Kept separate from the `EngineRecognizer`-
 // pinned constructor block so generic-`R` call sites resolve.
 impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
+    /// Install a [`DecisionSink`](marque_scheme::DecisionSink) on the
+    /// engine. Every instrumented decision point (per-rule dispatch,
+    /// constraint firing, banner roll-up, document-scope derivation
+    /// cascade, scheme-side `project_with_sink` / `closure_with_sink`)
+    /// emits one [`DecisionEvent`](marque_scheme::DecisionEvent) through
+    /// this sink during a subsequent [`Engine::lint`] call.
+    ///
+    /// Only available when the engine is built with the
+    /// `decision-tracing` Cargo feature. With the feature off the
+    /// method does not exist and the engine carries no sink field —
+    /// Constitution Principle I (SC-001 p95 ≤ 2 ms) is preserved by
+    /// the absence of any per-call-site branch on the hot path.
+    ///
+    /// Returns the engine by value so callers can chain:
+    ///
+    /// ```ignore
+    /// let sink = marque_scheme::RecordingSink::new();
+    /// let engine = Engine::new(config, rules, scheme)?
+    ///     .with_decision_sink(sink);
+    /// ```
+    ///
+    /// Replacing the sink resets the per-document step counter to
+    /// zero — events recorded after this call start a fresh cascade
+    /// graph.
+    #[cfg(feature = "decision-tracing")]
+    #[must_use = "with_decision_sink returns a new Engine; the returned value must be bound for the sink to take effect"]
+    pub fn with_decision_sink<K>(mut self, sink: K) -> Self
+    where
+        K: SyncDecisionSink + 'static,
+    {
+        self.sink = std::sync::Mutex::new(Box::new(sink));
+        self.tracing_active = true;
+        self.next_step = std::sync::atomic::AtomicU32::new(0);
+        self
+    }
+
     /// The topologically-sorted rewrite order computed by the scheduler
     /// at construction time.
     ///
@@ -448,9 +448,21 @@ where
     /// that declares no document artifacts resolves to the empty document
     /// (the CAPCO no-op).
     ///
-    /// Pure: takes `&self`, mutates nothing, emits no diagnostics. The
+    /// Value-pure: mutates no marking value and emits no diagnostics; when
+    /// `decision-tracing` is on and a sink is installed, records
+    /// content-ignorant observability
+    /// [`DecisionEvent`](marque_scheme::DecisionEvent)s through the engine's
+    /// interior-mutable sink (the same surface every other engine decision
+    /// point uses, Constitution V) — the recorded events never alter the
+    /// returned [`ResolvedDocument`](marque_scheme::ResolvedDocument). The
     /// engine surfaces the result on its lint output so a fixing-off lint
     /// still carries the resolution.
+    ///
+    /// The recorded cascade is a **tree projection of the derivation DAG**:
+    /// each firing edge emits its own firing record, but an edge that reads
+    /// from several writers carries a single
+    /// [`triggered_by`](marque_scheme::DecisionEvent::triggered_by) parent —
+    /// the latest-arriving dependency in scheduled order.
     pub fn resolve_document(
         &self,
         doc_rollup: &S::Canonical,
@@ -489,6 +501,9 @@ where
             })
             .filter(|edge| self.firing_active(edge.firing))
             .collect();
+
+        #[cfg(feature = "decision-tracing")]
+        self.record_derivation_cascade(&firing_edges);
 
         let mut artifacts: Vec<ResolvedArtifact<S>> = Vec::with_capacity(kinds.len());
         for &kind in kinds {

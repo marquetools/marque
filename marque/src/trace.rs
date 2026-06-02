@@ -356,6 +356,7 @@ fn kind_label(k: DecisionKind) -> &'static str {
         DecisionKind::RewriteApplied => "RewriteApplied",
         DecisionKind::ClosureFired => "ClosureFired",
         DecisionKind::Recanonicalized => "Recanonicalized",
+        DecisionKind::Derived => "Derived",
     }
 }
 
@@ -378,6 +379,7 @@ fn source_label(s: DecisionSource) -> String {
         DecisionSource::Supersession(name) => format!("supersession:{name}"),
         DecisionSource::BannerRollup => "banner-rollup".to_owned(),
         DecisionSource::RuleCheck(name) => format!("rule-check:{name}"),
+        DecisionSource::Derivation(name) => format!("derivation:{name}"),
     }
 }
 
@@ -453,6 +455,7 @@ mod tests {
         assert_eq!(kind_label(DecisionKind::RewriteApplied), "RewriteApplied");
         assert_eq!(kind_label(DecisionKind::ClosureFired), "ClosureFired");
         assert_eq!(kind_label(DecisionKind::Recanonicalized), "Recanonicalized");
+        assert_eq!(kind_label(DecisionKind::Derived), "Derived");
     }
 
     #[test]
@@ -490,6 +493,10 @@ mod tests {
         assert_eq!(
             source_label(DecisionSource::RuleCheck("r.x")),
             "rule-check:r.x"
+        );
+        assert_eq!(
+            source_label(DecisionSource::Derivation("d.x")),
+            "derivation:d.x"
         );
     }
 
