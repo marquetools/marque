@@ -10,9 +10,14 @@ Reverse validation + "classified up to" `FrontMarking` node via `DiffInput` at `
 Tests: front-marking vs all-pages divergence reported (the #799 motivating `(TS//SI-G//OC/RELIDO)`
 case now fires) — the reverse-validation half of SC-012 (FR-015).
 
+(The task's "at `Scope::Document`" names the *conceptual* comparison scope. `DiffInput` carries no
+`Scope` field — it holds `from` / `to` / `relation` — so the scope is implied by the operands the
+caller supplies, not encoded in the type.)
+
 ## Load-bearing fact (the design crux)
 `MarkingScheme::Marking` **intentionally carries no `JoinSemilattice`/`Eq` bound**
-(`crates/scheme/src/scheme.rs:46` — cross-axis fold is a projection, not a lattice op).
+(per the `MarkingScheme::Marking` doc comment in `crates/scheme/src/scheme.rs` — cross-axis fold
+is a projection, not a lattice op).
 Therefore divergence **cannot** be computed in marking space. It runs in **`S::Canonical`**
 space, which is unbounded at the trait level but `Clone + Default + Eq` at the engine use-site
 (`CanonicalAttrs` derives all three; CapcoScheme overrides the bridges

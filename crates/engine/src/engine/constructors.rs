@@ -566,13 +566,16 @@ where
     /// Reverse-validate a document's "classified up to" front marking against
     /// the rollup of all its pages' markings.
     ///
-    /// Consumes a [`DiffInput`](marque_scheme::DiffInput) at
-    /// [`Scope::Document`](marque_scheme::Scope::Document) — the same diff
-    /// mechanism the banner-vs-portions case
+    /// A document-level comparison driven by the caller-supplied operands of a
+    /// [`DiffInput`](marque_scheme::DiffInput) — its `from` is the front
+    /// marking, its `to` the page rollup. The relation
     /// ([`DiffRelation::BannerOverPortions`](marque_scheme::DiffRelation::BannerOverPortions))
-    /// uses, one scope up. Each operand is projected into canonical space and
-    /// the [`Divergence`](marque_scheme::Divergence) verdict is computed from
-    /// the canonical join + equality. The returned
+    /// is the same one the banner-vs-portions case carries, recorded one scope
+    /// up; the comparison scope is implied by the operands, not encoded in the
+    /// `DiffInput` (which holds no [`Scope`](marque_scheme::Scope)). Each
+    /// operand is projected into canonical space and the
+    /// [`Divergence`](marque_scheme::Divergence) verdict is computed from the
+    /// canonical join + equality. The returned
     /// [`ReverseValidation`](marque_scheme::ReverseValidation) also carries the
     /// resolved front-marking node so a caller sees its fixability.
     ///

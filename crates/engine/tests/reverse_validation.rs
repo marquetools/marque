@@ -144,8 +144,10 @@ fn build() -> Result<Engine<StubScheme, StubRecognizer>, EngineConstructionError
     )
 }
 
-/// Build a `DiffInput` from two unambiguous markings, document scope, the
-/// banner-over-portions relation reused one scope up.
+/// Build the operands for a document-level comparison: a `DiffInput` from two
+/// unambiguous markings, carrying the banner-over-portions relation reused one
+/// scope up. The comparison scope is implied by the operands — `DiffInput`
+/// holds no `Scope`.
 fn diff(front: u32, body: u32) -> DiffInput<StubMarking> {
     DiffInput {
         from: Parsed::Unambiguous(StubMarking(front)),
