@@ -383,3 +383,47 @@ so T028/T029 belong together; B4.1 is genuinely separable.
    Keep the `= CapcoScheme` defaults on `LintResult` / `FixResult` / `EngineError`
    and the internal fix-pass types (ergonomic for the CAPCO common case; they
    don't hide an engine scheme assumption).
+
+---
+
+## 10. As-built notes (B4.2)
+
+- **Audit-render generification (surface-reality delta).** §4.2 assumed
+  `fix_erased` could pre-render audit lines "via the existing
+  `audit_line_to_ndjson`". That function (and its `_json_v1_0` siblings) was in
+  fact pinned to `CapcoScheme` (`scheme: &CapcoScheme`, `line:
+  &AuditLine<CapcoScheme>`) — a §2a-style gap not caught at sign-off. The
+  blanket `ErasedEngine for Engine<S, R>` over an arbitrary `S` therefore could
+  not call it. Resolved by generifying the audit-render functions in place to
+  `S: MarkingScheme<Token = TokenId> + Vocabulary<S>` (the bodies already routed
+  through the generic `Vocabulary<S>::qualified_token_label` + `Canonical<S>` /
+  `scheme.categories()` surfaces; only the `<CapcoScheme as
+  Vocabulary<CapcoScheme>>` qualifier and the signatures were CAPCO-pinned). It
+  is the documented single source of truth for the audit wire form, so
+  duplicating the projection in the erased layer was rejected (DRY + the
+  module's stated single-source invariant). **Byte-identical at CAPCO** (same
+  monomorphized code; all 8 external call sites pass `&CapcoScheme` and resolve
+  `S` by inference, zero call-site churn) — **not** an audit-schema change
+  (`marque-3.2` frozen). Verified by `audit_g13_canary`, `audit`,
+  `audit_completeness`, the wasm `audit_v3_0_parity` / `native_parity` gates,
+  and corpus accuracy.
+- **Blanket-impl bound delta.** §4.3 sketched `S: MarkingScheme +
+  ConstraintBridge`, `S::Canonical: Clone + Default + PartialEq`,
+  `R: Recognizer<S>`. The implemented bound adds `MarkingScheme<Token = TokenId>
+  + Vocabulary<S>` — forced by the audit-render generification above (`Vocabulary`
+  is a separate trait, not a `MarkingScheme` supertrait; the message/canonical
+  token type is the concrete `TokenId`). Both production CAPCO and the
+  `marque_test_utils::stub_scheme::StubScheme` test double satisfy it.
+- **`lint_erased` entry point.** Calls `lint_with_input_context(input,
+  &LintOptions::default(), ctx)` (the §4.3 blanket-impl sketch / code-reviewer
+  note), not `lint_with_options`.
+- **`ErasedLintResult` count accessors.** Ships the four named in §4.1
+  (`is_clean` / `error_count` / `warn_count` / `fix_count`); `fix_count` reads
+  the erased `has_fix` flag in place of `d.fix.is_some()`, faithfully mirroring
+  `LintResult::fix_count`.
+- **Smoke bench.** `benches/multi_grammar.rs` (informational, not gated):
+  `multi_grammar_dispatch_single` ≈ 628 µs, `multi_grammar_dispatch_two` ≈ 611 µs
+  (stub no-op adds nothing measurable), `erased_lint_single` ≈ 590 µs — all far
+  under the 2 ms ceiling; default `StrictOrDecoderRecognizer` (not strict-pinned),
+  so not directly comparable to the strict `lint_10kb` number. Typed hot path
+  unregressed (`fix_latency` ≈ 6.5 µs, matches B4.1).
