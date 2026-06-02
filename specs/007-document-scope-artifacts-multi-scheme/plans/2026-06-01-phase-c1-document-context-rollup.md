@@ -78,14 +78,15 @@ required surface):
 /// Join a slice of per-*page* canonical rollups into a single *document*
 /// rollup — [`Self::canonical_page_join`] one scope up (pages, not portions).
 ///
-/// The default delegates to `canonical_page_join`: page→document is the
-/// identical semilattice join (research D12/LV3), so a scheme that does not
-/// distinguish the two scopes inherits correct behavior. CAPCO does not
-/// override — `join_via_lattice` is scope-agnostic over `&[CanonicalAttrs]`,
-/// so routing page accumulators through it preserves DissemSet unanimity,
-/// JointSet disunity collapse, and NOFORN supersession across the page→doc
-/// fold. The `Clone + Default` bound is on the method (not the associated
-/// type) to keep the trait additive.
+/// The default delegates to `canonical_page_join`: page→document is the same
+/// fold one scope up, so a scheme that does not distinguish the two scopes
+/// inherits correct behavior. Order/grouping independence holds insofar as the
+/// scheme's `canonical_page_join` is a genuine semilattice join (research
+/// D12/LV3) — true for CAPCO (`join_via_lattice` is scope-agnostic over
+/// `&[CanonicalAttrs]`, preserving DissemSet unanimity, JointSet disunity
+/// collapse, and NOFORN supersession across the page→doc fold), but NOT for
+/// the last-element default (order-dependent). The `Clone + Default` bound is
+/// on the method (not the associated type) to keep the trait additive.
 fn canonical_document_join(&self, pages: &[Self::Canonical]) -> Self::Canonical
 where
     Self::Canonical: Clone + Default,
@@ -110,13 +111,17 @@ pub struct DocumentContext<S: SchemeArtifacts + ?Sized> {
 - **Bound `S: SchemeArtifacts + ?Sized`** is forced by the `artifacts` field (mirrors
   `DocumentArtifact<S>` at `artifact.rs:124`). `SchemeArtifacts: MarkingScheme`, so
   `S::Canonical` is in scope.
-- **Hand-write `Debug`/`Clone`/`PartialEq`** bounded on the field projections
-  (`S::Canonical` + `S::ArtifactPayload`), verbatim mirror of the `DocumentArtifact` impls
-  at `artifact.rs:142/158/174`. Do **NOT** `#[derive]` — a blanket derive emits spurious
-  `where S: Debug/Clone/...` bounds (the B3.3b `LintResult<S>` lesson).
-- **No `Default`** on the container — a document context is always built by folding ≥1 page;
-  the empty case is handled inside the fold (`unwrap_or_default` on `rollup`). Advertising
-  `Default` would force `S::Canonical: Default` on the container for no caller.
+- **Hand-write `Debug`/`Clone`/`PartialEq`/`Eq`** bounded on the field projections,
+  mirroring the `DocumentArtifact` impls at `artifact.rs:142/158/174`. Do **NOT** `#[derive]`
+  — a blanket derive emits spurious `where S: Debug/Clone/...` bounds (the B3.3b `LintResult<S>`
+  lesson). Bounds are minimal per impl: `Clone`/`PartialEq`/`Eq` need `S::Canonical` +
+  `S::ArtifactPayload`; `Debug` renders `artifacts` as a node *count* (not a payload), so it
+  needs only `S::Canonical`.
+- **No `Default`** on the container — a document context is built via `from_pages` (which needs
+  the scheme to perform the fold). `from_pages` accepts an empty `pages` slice (handled inside
+  the fold via `unwrap_or_default` on `rollup`, yielding the canonical bottom), so the API does
+  not require ≥1 page. Advertising `Default` would force `S::Canonical: Default` on the container
+  for no caller.
 - **Constructor:**
 
   ```rust

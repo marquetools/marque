@@ -15,13 +15,18 @@
 //! [`MarkingScheme::canonical_page_join`](crate::scheme::MarkingScheme::canonical_page_join).
 //! [`DocumentContext::from_pages`] re-applies that fold one scope up via
 //! [`MarkingScheme::canonical_document_join`](crate::scheme::MarkingScheme::canonical_document_join):
-//! pages → document is the identical semilattice join (research D12 / LV3),
-//! so RELIDO-unanimity, NOFORN supersession, and JointSet disunity collapse
-//! survive the page→document fold *for free* — the fold routes through the
-//! same per-axis lattices the page join uses. The document fold MUST NOT
-//! set-union the flat canonical fields; that "naive re-union" is exactly
-//! what LV3 forbids (it would re-admit dominated tokens and lose RELIDO
-//! unanimity).
+//! pages → document is the same fold one scope up. When the scheme's
+//! `canonical_page_join` is a genuine semilattice join (associative +
+//! commutative + idempotent — research D12 / LV3), as CAPCO's
+//! `join_via_lattice` is, RELIDO-unanimity, NOFORN supersession, and JointSet
+//! disunity collapse survive the page→document fold *for free* — the fold
+//! routes through the same per-axis lattices the page join uses, and the
+//! result is order-independent. (A scheme relying on the *default*
+//! `canonical_page_join` gets last-page-wins, order-dependent semantics — see
+//! [`MarkingScheme::canonical_document_join`](crate::scheme::MarkingScheme::canonical_document_join).)
+//! For lattice schemes, the document fold MUST NOT set-union the flat
+//! canonical fields; that "naive re-union" is exactly what LV3 forbids (it
+//! would re-admit dominated tokens and lose RELIDO unanimity).
 //!
 //! ## Constitution VII (placement)
 //!
@@ -70,9 +75,10 @@ impl<S: SchemeArtifacts + ?Sized> DocumentContext<S> {
     ///
     /// The fold IS
     /// [`MarkingScheme::canonical_document_join`](crate::scheme::MarkingScheme::canonical_document_join)
-    /// — the page→document semilattice join. Artifact nodes are populated
-    /// later (the C2 engine accumulator); `from_pages` leaves `artifacts`
-    /// empty.
+    /// — the page→document fold (a lawful semilattice join for schemes whose
+    /// `canonical_page_join` is one, e.g. CAPCO; last-page-wins for the
+    /// default). Artifact nodes are populated later (the C2 engine
+    /// accumulator); `from_pages` leaves `artifacts` empty.
     pub fn from_pages(scheme: &S, pages: &[S::Canonical]) -> Self
     where
         S::Canonical: Clone + Default,
