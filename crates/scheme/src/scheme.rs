@@ -519,15 +519,21 @@ pub trait MarkingScheme {
     /// (pages, not portions).
     ///
     /// The default delegates to [`Self::canonical_page_join`]: page→document
-    /// is the identical semilattice join (research D12 / LV3 — `join` is
-    /// associative + commutative + idempotent, so a fold of page-joins
-    /// equals a flat fold over all portions; order and grouping do not
-    /// matter), so a scheme that does not distinguish the two scopes
-    /// inherits correct behavior. CAPCO does **not** override —
-    /// `CapcoMarking::join_via_lattice` is scope-agnostic over
+    /// is the same operation one scope up, so a scheme that does not
+    /// distinguish the two scopes inherits correct behavior.
+    ///
+    /// Order/grouping independence holds exactly insofar as the scheme's
+    /// `canonical_page_join` is a genuine semilattice join (associative +
+    /// commutative + idempotent — research D12 / LV3): then a fold of
+    /// page-joins equals a flat fold over all portions. This is the case for
+    /// CAPCO, which overrides `canonical_page_join` with
+    /// `CapcoMarking::join_via_lattice` — scope-agnostic over
     /// `&[CanonicalAttrs]`, so routing per-page accumulators through it
-    /// preserves DissemSet RELIDO-unanimity, JointSet disunity collapse,
-    /// and NOFORN supersession across the page→document fold.
+    /// preserves DissemSet RELIDO-unanimity, JointSet disunity collapse, and
+    /// NOFORN supersession across the page→document fold. It is **not** the
+    /// case for the *default* `canonical_page_join` (which simply returns the
+    /// last element and is therefore order-dependent); a scheme relying on
+    /// that default gets last-page-wins semantics, not a lawful fold.
     ///
     /// The `Clone + Default` bound is on the **method** (not the associated
     /// type) so the trait stays additive, exactly as

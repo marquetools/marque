@@ -41,14 +41,19 @@ use crate::scheme::SchemeArtifacts;
 /// [`DocumentArtifact<S>`] nodes. `SchemeArtifacts: MarkingScheme`, so
 /// `S::Canonical` is in scope for the `rollup` field.
 ///
-/// `Debug` / `Clone` / `PartialEq` are written manually (not derived)
+/// `Debug` / `Clone` / `PartialEq` / `Eq` are written manually (not derived)
 /// because a blanket `#[derive]` over `S` would emit spurious
 /// `where S: Debug + Clone + ...` bounds even though only the field
-/// projections (`S::Canonical` + `S::ArtifactPayload`) actually need them —
-/// the same pattern [`DocumentArtifact`] uses, and the B3.3b `LintResult<S>`
-/// lesson. There is intentionally **no** `Default`: a document context is
-/// always built by folding ≥1 page (the empty case is handled inside the
-/// fold), so advertising `Default` would force `S::Canonical: Default` on
+/// projections need them — the same pattern [`DocumentArtifact`] uses, and
+/// the B3.3b `LintResult<S>` lesson. The bounds are kept minimal per impl:
+/// `Clone` / `PartialEq` / `Eq` need both `S::Canonical` and
+/// `S::ArtifactPayload`, but `Debug` renders `artifacts` as a node *count*
+/// (never a payload), so it needs only `S::Canonical: Debug`.
+///
+/// There is intentionally **no** `Default`: a document context is built via
+/// [`Self::from_pages`] (which needs the scheme to perform the fold; the
+/// empty-`pages` case still routes through the fold and yields the canonical
+/// bottom), so advertising `Default` would force `S::Canonical: Default` on
 /// the container for no caller.
 pub struct DocumentContext<S: SchemeArtifacts + ?Sized> {
     /// Document-level canonical rollup — the join over the page rollups.
@@ -82,8 +87,10 @@ impl<S: SchemeArtifacts + ?Sized> DocumentContext<S> {
 impl<S: SchemeArtifacts + ?Sized> core::fmt::Debug for DocumentContext<S>
 where
     S::Canonical: core::fmt::Debug,
-    S::ArtifactPayload: core::fmt::Debug,
 {
+    // `artifacts` renders as a node count, not its contents, so this impl
+    // does not need `S::ArtifactPayload: Debug` (keeping the bound off lets
+    // `DocumentContext<S>` be debug-formatted for payloads that aren't Debug).
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DocumentContext")
             .field("rollup", &self.rollup)
