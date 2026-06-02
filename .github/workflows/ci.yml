@@ -585,15 +585,7 @@ jobs:
       # fails there with a clear regen message before this step
       # executes. Node is preinstalled on `ubuntu-latest`.
       - name: wasm-pack test --node (parity)
-        # No `--test parity` selector: wasm-pack has no integration-test
-        # binary selector (it neither accepts `--test` itself nor forwards
-        # it to cargo — anything after `--` reaches the wasm-bindgen test
-        # runner, which also rejects `--test`). It isn't needed: `parity.rs`
-        # is the only `#![cfg(target_arch = "wasm32")]` test, and every
-        # sibling is `#![cfg(not(target_arch = "wasm32"))]`, so the wasm run
-        # executes the parity harness (plus empty no-op binaries) and
-        # nothing else.
-        run: wasm-pack test --node crates/wasm
+        run: wasm-pack test --node crates/wasm --test parity
 
       # PR 3d.3 — WASM binary-size regression gate (T058i quality
       # gate, Constitution III). Runs a SEPARATE `wasm-pack build
