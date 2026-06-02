@@ -672,4 +672,25 @@ mod tests {
             other => panic!("expected InvalidThreshold variant, got {other:?}"),
         }
     }
+
+    #[test]
+    fn debug_covers_every_variant() {
+        // Exercises the hand-written `Debug` impl (bounded
+        // `where S::Canonical: Debug`, #799) across all three variants —
+        // the derive was replaced because `DeadlineExceeded` holds a
+        // `LintResult<S>` whose own `Debug` needs the `S::Canonical` bound.
+        let deadline = EngineError::DeadlineExceeded {
+            partial_lint: lint_result_with_counts(3, 5),
+        };
+        let d = format!("{deadline:?}");
+        assert!(d.contains("DeadlineExceeded"), "got: {d}");
+        assert!(d.contains("partial_lint"), "got: {d}");
+
+        let invalid = EngineError::<CapcoScheme>::InvalidThreshold(InvalidThreshold(1.5));
+        let i = format!("{invalid:?}");
+        assert!(i.contains("InvalidThreshold"), "got: {i}");
+
+        let signature = EngineError::<CapcoScheme>::SignatureRequired;
+        assert_eq!(format!("{signature:?}"), "SignatureRequired");
+    }
 }

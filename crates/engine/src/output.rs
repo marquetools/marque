@@ -420,6 +420,40 @@ mod tests {
         assert_eq!(original.diagnostics.len(), 1);
     }
 
+    /// Exercises the hand-written `Debug` impl (bounded
+    /// `where S::Canonical: Debug`, #799) — every field name must appear so
+    /// a field dropped from the impl is caught.
+    #[test]
+    fn debug_renders_every_field() {
+        let result = LintResult::<CapcoScheme> {
+            diagnostics: vec![Diagnostic::new(
+                RuleId::new("test", "synthetic.debug-fixture"),
+                Severity::Warn,
+                Span::new(0, 4),
+                stub_message(),
+                stub_citation(),
+                None,
+            )],
+            truncated: true,
+            candidates_processed: 1,
+            candidates_total: 2,
+            recognized_marking_count: 1,
+            ..Default::default()
+        };
+        let d = format!("{result:?}");
+        assert!(d.contains("LintResult"), "got: {d}");
+        for field in [
+            "diagnostics",
+            "truncated",
+            "candidates_processed",
+            "candidates_total",
+            "recognized_marking_count",
+            "resolved_document",
+        ] {
+            assert!(d.contains(field), "Debug missing field {field}: {d}");
+        }
+    }
+
     #[test]
     fn info_count_isolates_info_from_error_and_warn() {
         // `Severity::Info` diagnostics count in `info_count()`
