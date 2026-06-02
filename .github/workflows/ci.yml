@@ -585,7 +585,10 @@ jobs:
       # fails there with a clear regen message before this step
       # executes. Node is preinstalled on `ubuntu-latest`.
       - name: wasm-pack test --node (parity)
-        run: wasm-pack test --node crates/wasm --test parity
+        # Cargo test args (here, the `--test parity` integration-test
+        # selector) are passed through after `--`; wasm-pack itself does not
+        # accept `--test`.
+        run: wasm-pack test --node crates/wasm -- --test parity
 
       # PR 3d.3 — WASM binary-size regression gate (T058i quality
       # gate, Constitution III). Runs a SEPARATE `wasm-pack build
