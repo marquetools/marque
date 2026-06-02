@@ -386,9 +386,10 @@ where
         // at EOD (the document is ending), so the clone is the only way to
         // feed the fold (#799).
         if !page_portions.is_empty() {
-            doc_join_acc = self
-                .scheme
-                .canonical_document_join(&[std::mem::take(&mut doc_join_acc), page_join_acc.clone()]);
+            doc_join_acc = self.scheme.canonical_document_join(&[
+                std::mem::take(&mut doc_join_acc),
+                page_join_acc.clone(),
+            ]);
         }
 
         if let Some(cached) = &self.corrections_ac {
