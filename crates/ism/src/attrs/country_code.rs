@@ -176,12 +176,13 @@ impl CountryCode {
     /// CAPCO byte set, which is a subset of ASCII / valid UTF-8.
     #[inline]
     pub fn as_str(&self) -> &str {
-        // SAFETY: `CountryCode` can only be constructed via
+        // Invariant: `CountryCode` can only be constructed via
         // `try_new` or constants (e.g. `CountryCode::USA`) that
         // route through `try_new` in const context. Both paths
         // require every active byte to be ASCII uppercase, ASCII
         // digit, or underscore. ASCII is a subset of valid UTF-8.
-        std::str::from_utf8(self.as_bytes()).unwrap()
+        std::str::from_utf8(self.as_bytes())
+            .expect("CountryCode invariant violated: active bytes must be valid UTF-8")
     }
 
     /// Active byte slice (excludes the zero padding).
