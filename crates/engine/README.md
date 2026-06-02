@@ -97,8 +97,13 @@ not submission order — correlate by the echoed `id`.
 |---|---|---|
 | `batch` | on | Enables `BatchEngine` and pulls in `tokio`, `futures`, and `recoco-utils`. Disable for a leaner sync-only build (e.g. WASM). |
 
-A `cache` feature (LMDB-backed incremental cache, opt-in) is planned for v0.2
-but is not yet present in `Cargo.toml`.
+Marque ships no persistent on-disk result cache. An earlier v0.2 plan for an
+opt-in LMDB-backed incremental `LintResult` cache was descoped (constitution
+v1.8.0): a cold lint is already under the 2 ms ceiling, the cache key no
+longer captured every output-determining input, `LintResult` carries a
+`secrecy::SecretSlice` content field that must not be persisted, and no
+workload showed a meaningful hit rate. In-memory dedup / change-detection uses
+the BLAKE3 `Fingerprint` (`marque-utils`) without persisting derived results.
 
 ## WASM compatibility
 

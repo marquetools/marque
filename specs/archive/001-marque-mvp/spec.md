@@ -468,7 +468,7 @@ completeness against this criterion.
 
 - File format extraction (DOCX, PDF, HTML, etc.) and OCR of scanned documents.
 - The REST microservice and its auth/logging/rate-limiting middleware.
-- The incremental LMDB-backed batch cache.
+- The incremental LMDB-backed batch cache. **[Superseded: later descoped entirely — constitution v1.8.0; not a deferred item.]**
 - Office add-ins (Word, Outlook, PowerPoint, Excel) and the browser extension.
 - Document metadata extraction and sanitization (EXIF, XMP, document properties).
 - CUI marking validation, NTK metadata, and TDF validation rule families.

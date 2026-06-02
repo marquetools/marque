@@ -173,9 +173,11 @@ These contracts are enforced by convention and code review, not by the type syst
 
 `BatchEngine` wraps `Engine` behind `Arc` and uses `marque-utils::ConcurrencyController` for row + byte semaphore backpressure. CPU-bound work goes to `tokio::task::spawn_blocking`. Results stream out in **completion order**, not submission order — correlate via the echoed `id`.
 
-### Incremental Cache (planned for v0.2)
+### Caching (no persistent cache)
 
-LMDB (`heed` crate) at `.marque/cache.lmdb`. Cache key = `blake3(content) ++ schema_version ++ config_hash`. Only `LintResult` is cached, never `FixResult`. Opt-in via `--cache` flag. Behind `cache` feature flag in `marque-engine`.
+Marque ships **no persistent on-disk result cache**. The earlier v0.2 plan — an LMDB (`heed`) store at `.marque/cache.lmdb` keyed on `blake3(content) ++ schema_version ++ config_hash`, serializing `LintResult` via `rmp_serde` — was **descoped** (constitution v1.8.0). The case no longer holds: a cold lint is already well under the 2 ms ceiling (`lint_10kb` ≈ 0.9 ms), so a hash + mmap-read + deserialize round-trip is the same order of magnitude as re-linting; the planned key no longer captures every output-determining input (decoder priors fingerprint, `confidence_threshold`, closure-rule overrides, recognizer/decoder version, active grammar set); `LintResult` is not serializable and carries a `secrecy::SecretSlice` content field, so persisting it to disk conflicts with the Principle II wipe-on-drop posture; and no surface has a meaningful hit rate (CLI is one-shot, the server is a transform endpoint, WASM can't run LMDB, batch wants in-memory dedup not persistence).
+
+What remains: the in-memory BLAKE3 `Fingerprint` (`marque-utils`) for change-detection and deduplication, with no derived result persisted to disk. Batch-local in-memory dedup and editor incremental re-lint are separate, not-yet-built features — neither is "the cache." Build-time caching via Cargo `OUT_DIR` is unaffected.
 
 ## Configuration
 
@@ -342,9 +344,11 @@ byte-identical across `marque-3.0`/`3.1`/`3.2`.
 
 **Not frozen** (open scope):
 
-- **v0.2 LMDB incremental cache** (`crates/engine` `cache` feature)
-  — the `LintResult` cache surface is a separable v0.2 line, not
-  part of this stable surface.
+- **In-memory dedup / change-detection** via the BLAKE3
+  `Fingerprint` (`marque-utils`) — open scope. The v0.2 persistent
+  LMDB `LintResult` cache that previously occupied this slot was
+  descoped (constitution v1.8.0); Marque persists no derived result
+  to disk.
 - **`marque-extract` format-extraction backend** — Kreuzberg
   integration is gated on a licensing decision; the scaffolded
   `Extractor` / `ExtractedDocument` / `ExtractionOptions` /
@@ -366,7 +370,7 @@ the migration lands.
 
 MVP complete. Full lint → fix → audit pipeline for raw text with **32 registered CAPCO rules** (issues #261/#250/#251/#501/#545/#677 and PR #578). The exact set is authoritatively gated by the registration pin in `crates/capco/tests/post_3b_registration_pin.rs` against the 2-tuple wire strings; `crates/capco/README.md` provides the narrative rule inventory, and `docs/refactor-006/legacy-rule-id-map.md` decodes older `E### / W### / S### / C###` IDs. CLI (`check`, `fix`) and WASM (`lint`, `fix`) produce byte-identical NDJSON diagnostics. Configurable severity overrides, corrections map, and confidence thresholds. Batch processing via `BatchEngine` with concurrency control. Criterion benchmarks measure interactive latency p95 ≤ 2 ms on 10 KB single-portion inputs (strict/decoder resolution; the 16 ms figure was a retired pre-measurement placeholder) and multi-page projection + two-pass overhead. Missing-portion / absence detection (#420 absence scan) is budgeted separately and independently of resolution — p95 ≤ 1 ms target, 2 ms absolute max on a 10 KB input; the `fix_throughput` linear-scaling gate is active (R² = 0.994 measured; O(N²) accumulation fixed in PR #674, closing #306). Corpus accuracy harness enforces ≥ 95% lint and fix accuracy per-rule against the invalid-fixtures corpus. `cargo-fuzz` target exercises `Engine::lint` on arbitrary `&[u8]`.
 
-**Not yet built**: `marque-extract` is scaffolded (workspace member with `Extractor`, `ExtractedDocument`, `ExtractionOptions`, `MetadataReport` surface) but the Kreuzberg backend is stubbed — `crates/extract/src/extractor.rs` reads raw text only and `crates/extract/Cargo.toml` keeps `kreuzberg` commented out pending a licensing decision. Also outstanding: `metadata` CLI subcommand, incremental LMDB cache (v0.2), server auth middleware.
+**Not yet built**: `marque-extract` is scaffolded (workspace member with `Extractor`, `ExtractedDocument`, `ExtractionOptions`, `MetadataReport` surface) but the Kreuzberg backend is stubbed — `crates/extract/src/extractor.rs` reads raw text only and `crates/extract/Cargo.toml` keeps `kreuzberg` commented out pending a licensing decision. Also outstanding: `metadata` CLI subcommand, server auth middleware. (The v0.2 incremental LMDB cache was descoped — constitution v1.8.0; see "Caching" above.)
 
 ## Active Technologies
 - Rust 1.85+ (edition 2024) — `rust-version = "1.85"` in workspace `Cargo.toml`; constitution Tech Stack pins the floor
@@ -378,7 +382,7 @@ MVP complete. Full lint → fix → audit pipeline for raw text with **32 regist
 - `criterion` 0.8 — benchmarking (interactive-latency and linear-scaling gates)
 - `libfuzzer-sys` 0.4 — fuzz target (requires nightly, not CI-gated)
 - `tokio` (async runtime, `BatchEngine`), `axum` + `tower` (server middleware), `static_assertions` (compile-time `Send + Sync` checks), `blake3` (audit-record digests), `wasm-pack` (WASM target), `secrecy` (zeroize/grepable call sites on all content), `zeroize` (securely dropping internal buffers)
-- No runtime cache on the hot path. Build-time cache via Cargo `OUT_DIR`. The planned LMDB `LintResult` cache is a future v0.2 line.
+- No runtime cache on the hot path; no persistent on-disk result cache (the v0.2 LMDB `LintResult` cache was descoped — constitution v1.8.0). Build-time cache via Cargo `OUT_DIR`. In-memory dedup / change-detection uses the BLAKE3 `Fingerprint` (`marque-utils`).
 
 **Build-time inputs**: ODNI XML pulled from the `ism` and `ism-ismcat` build-deps (vendored in [`marquetools/ism-data`](https://github.com/marquetools/ism-data) at snapshot `20230609.0.0`, package label `ISM-v2022-DEC`); `crates/capco/docs/CAPCO-2016.md` (authoritative manual, vendored); `crates/capco/corpus/` (corpus-derived priors produced by `tools/corpus-analysis/`, regenerated when the corpus changes). **Test inputs**: `tests/fixtures/mangled/` (≥200 labeled mangled cases generated from Enron-corpus high-confidence markings; generator checked in, artifact regenerable).
 
