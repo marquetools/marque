@@ -69,7 +69,10 @@ def _analyze_runner():
     inside the corpus downloaders, and that run exits during profile
     loading before any downloader executes."""
     if shutil.which("uv"):
-        return ["uv", "run", str(ANALYZE_PY)]
+        # `--script` forces PEP-723 inline-metadata mode, matching
+        # analyze.py's own `uv run --script` shebang; bare `uv run <file>`
+        # can resolve against the project env instead and flake.
+        return ["uv", "run", "--script", str(ANALYZE_PY)]
     return [sys.executable, str(ANALYZE_PY)]
 
 

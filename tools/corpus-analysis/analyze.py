@@ -674,19 +674,42 @@ def load_grammar_profile(name: str) -> dict:
         )
         sys.exit(1)
 
-    # `default_marking_corpus` is consumed as a list of relative path
-    # strings. A profile that sets it to a bare string would iterate
-    # character-by-character downstream and surface confusing "corpus
-    # path does not exist" errors; validate the type here so the
-    # failure names the real problem.
+    # Validate field types here so a malformed profile fails closed with
+    # a clear, field-named error instead of a TypeError stack trace deep
+    # in main(): `tokens` feeds a Path join, `default_prose_source` feeds
+    # a str compare, the prefix/generation compose the priors schema
+    # version, and `default_marking_corpus` is iterated as path strings
+    # (a bare string would iterate character-by-character).
+    type_errors: list[str] = []
+    for key, want in (
+        ("grammar", str),
+        ("description", str),
+        ("tokens", str),
+        ("priors_schema_prefix", str),
+        ("priors_schema_generation", int),
+        ("default_prose_source", str),
+    ):
+        # bool is an int subclass; reject it explicitly for int fields.
+        if not isinstance(profile[key], want) or (
+            want is int and isinstance(profile[key], bool)
+        ):
+            type_errors.append(
+                f"`{key}` must be {want.__name__}, got "
+                f"{type(profile[key]).__name__}"
+            )
     marking_corpus = profile["default_marking_corpus"]
     if not isinstance(marking_corpus, list) or not all(
         isinstance(p, str) for p in marking_corpus
     ):
-        print(
-            f"Error: grammar profile {profile_path} field "
+        type_errors.append(
             "`default_marking_corpus` must be a list of path strings, got "
-            f"{type(marking_corpus).__name__}.",
+            f"{type(marking_corpus).__name__}"
+        )
+    if type_errors:
+        print(
+            f"Error: grammar profile {profile_path} has malformed "
+            f"field(s): {'; '.join(type_errors)}. See grammars/capco.json "
+            "for the expected shape.",
             file=sys.stderr,
         )
         sys.exit(1)
