@@ -611,19 +611,27 @@ where
         };
 
         // Resolve the front-marking node through the forward path so
-        // fixability follows derivability uniformly. A scheme declaring no
-        // FrontMarking artifact resolves to an empty document, so the node is
-        // synthesized flag-only.
-        let front = match &rollup_c {
-            Some(rollup) => {
+        // fixability follows derivability uniformly — the node expresses what
+        // an inbound rollup edge *could* derive for the front, computed from
+        // the body rollup (what the front should declare), not from the front
+        // as observed. A scheme declaring no FrontMarking artifact resolves to
+        // an empty document, so the node is synthesized flag-only.
+        //
+        // Only resolve when the verdict is determinate: an `Unresolved`
+        // comparison cannot honestly claim a fixable front, so it always gets
+        // the flag-only synthesis. A determinate verdict guarantees both
+        // operands projected, so `rollup_c` is `Some` here.
+        let front = if divergence == Divergence::Unresolved {
+            None
+        } else {
+            rollup_c.as_ref().and_then(|rollup| {
                 let resolved = self.resolve_document(rollup);
                 resolved
                     .artifacts()
                     .iter()
                     .find(|a| a.kind == ArtifactKind::FrontMarking)
                     .cloned()
-            }
-            None => None,
+            })
         }
         .unwrap_or_else(|| ResolvedArtifact {
             kind: ArtifactKind::FrontMarking,

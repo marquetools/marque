@@ -204,6 +204,28 @@ fn reverse_ambiguous_operand_is_unresolved() {
 
     let result = engine.reverse_validate(&ambiguous_diff);
     assert_eq!(result.divergence, Divergence::Unresolved);
+    // An unresolved comparison cannot claim a fixable front — the node is
+    // synthesized flag-only rather than derived from the (resolved) body.
+    assert_eq!(result.front.fixability, Fixability::FlagOnly);
+    assert_eq!(result.front.derived_value, None);
+}
+
+#[test]
+fn reverse_both_operands_ambiguous_is_unresolved() {
+    let engine = build().expect("stub engine builds");
+    let both_ambiguous = DiffInput {
+        from: Parsed::Ambiguous {
+            candidates: Vec::new(),
+        },
+        to: Parsed::Ambiguous {
+            candidates: Vec::new(),
+        },
+        relation: DiffRelation::BannerOverPortions,
+    };
+
+    let result = engine.reverse_validate(&both_ambiguous);
+    assert_eq!(result.divergence, Divergence::Unresolved);
+    assert_eq!(result.front.fixability, Fixability::FlagOnly);
 }
 
 #[test]
