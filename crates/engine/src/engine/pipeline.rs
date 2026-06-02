@@ -442,6 +442,13 @@ where
             }
         }
 
+        // Document-scope resolution (#799): runs on every completed lint
+        // pass, decoupled from fixing, so a fixing-off `lint()` carries it.
+        // Computed before `doc_join_acc` moves into the return tuple.
+        // Truncation/deadline early returns above leave it `Default` (empty)
+        // — a truncated lint has no complete rollup to resolve against.
+        let resolved_document = self.resolve_document(&doc_join_acc);
+
         (
             LintResult {
                 diagnostics,
@@ -449,6 +456,7 @@ where
                 candidates_processed,
                 candidates_total,
                 recognized_marking_count,
+                resolved_document,
                 ..Default::default()
             },
             parsed_markings,

@@ -80,6 +80,10 @@
 //! - [`derivation`] — `DerivationEdge` (inbound derivation relations with
 //!   `reads` / `writes` dataflow + a `FiringPredicate`), mirroring
 //!   `PageRewrite`'s shape for the Phase C topological scheduler.
+//! - [`resolution`] — document-scope resolution result types
+//!   (`Fixability`, `ResolvedArtifact<S>`, `ResolvedDocument<S>`): the
+//!   pure-data classification of each document-scoped artifact node as
+//!   derivable-and-fixable or flag-only (issue #799).
 //!
 //! ## Status
 //!
@@ -113,6 +117,7 @@ pub mod projection;
 pub mod provenance;
 pub mod recognizer;
 pub mod render_context;
+pub mod resolution;
 pub mod scheme;
 pub mod scope;
 pub mod severity;
@@ -162,6 +167,7 @@ pub use projection::{Projection, categories_in_render_order};
 pub use provenance::{RecognitionProvenance, ValueDerivation};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
 pub use render_context::{EmissionForm, RenderContext, SchemaVersionId};
+pub use resolution::{Fixability, ResolvedArtifact, ResolvedDocument};
 pub use scheme::{ApplyIntentError, MarkingScheme, SchemeArtifacts};
 pub use scope::{DiffInput, DiffRelation, Scope};
 pub use severity::Severity;

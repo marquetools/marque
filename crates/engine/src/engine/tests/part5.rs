@@ -30,6 +30,7 @@ fn assemble_r002_result_carries_pass0_then_pass1_applied_plus_r002_diag() {
         candidates_processed: 0,
         candidates_total: 0,
         recognized_marking_count: 0,
+        ..Default::default()
     };
     let r002 = super::build_r002_diagnostic(
         smallvec::smallvec![RuleId::new(
@@ -96,6 +97,7 @@ fn assemble_r002_result_dryrun_returns_original_source() {
         candidates_processed: 0,
         candidates_total: 0,
         recognized_marking_count: 0,
+        ..Default::default()
     };
     let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
     let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);
@@ -140,6 +142,7 @@ fn assemble_r002_result_carries_through_pass0_dropped_diagnostics() {
         candidates_processed: 0,
         candidates_total: 0,
         recognized_marking_count: 0,
+        ..Default::default()
     };
     let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
     let result = fixer.assemble_r002_result(Vec::new(), dropped, pass1, lint, r002);
@@ -211,6 +214,7 @@ fn assemble_r002_result_filters_fixed_diagnostics_from_remaining() {
         candidates_processed: 0,
         candidates_total: 0,
         recognized_marking_count: 0,
+        ..Default::default()
     };
     let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
     let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);

@@ -284,6 +284,15 @@ pub struct Engine<S: MarkingScheme, R: Recognizer<S>> {
     /// no edges this is the same sequence as `scheduled_rewrites`,
     /// tagged as `PageRewrite` steps.
     scheduled_steps: Box<[ScheduledStep]>,
+    /// The engine modes currently active. A derivation edge whose firing
+    /// predicate is [`FiringPredicate::WhenMode`](marque_scheme::FiringPredicate::WhenMode)
+    /// fires during document-scope resolution only when its mode label is
+    /// in this set; [`FiringPredicate::Always`](marque_scheme::FiringPredicate::Always)
+    /// edges always fire (issue #799). Empty by default — no public
+    /// mode-setter ships yet; the mode taxonomy arrives in a later phase
+    /// (#645). The set is consulted by `firing_active` and never mutated
+    /// after construction outside the crate-internal test setter.
+    active_modes: std::collections::BTreeSet<&'static str>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
     /// the scheme's canonical form. Typed as the generic `R`; for CAPCO it
     /// is [`EngineRecognizer`] — the opaque CAPCO-bound recognizer that
