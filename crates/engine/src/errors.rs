@@ -197,8 +197,10 @@ impl std::fmt::Display for EngineConstructionError {
             }
             Self::AmbiguousCoWriter { axis, nodes } => write!(
                 f,
-                "derivation edge co-writes category {axis:?} with no read forcing order — \
-                 stale-value read hazard: {nodes:?}; declare the consuming edge's reads"
+                "category {axis:?} is co-written by {nodes:?} with no read forcing an order \
+                 between them — stale-value read hazard; make the order explicit by adding \
+                 {axis:?} to the reads of whichever node must run after, or stop one of them \
+                 from writing {axis:?}"
             ),
             Self::UnannotatedCustomAxes { rewrite } => write!(
                 f,
