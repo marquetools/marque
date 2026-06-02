@@ -62,7 +62,7 @@ aho-corasick = "1.1.4"
 # (Apache-2.0 OR MIT) AND BSD-3-Clause — allowed per Constitution dep hygiene.
 encoding_rs = "0.8.35"
 # Text processing / scanning
-memchr = "2.8.0"
+memchr = "2.8.1"
 
 # Inline-capable small vector (FgiMarker::Acknowledged.countries — most FGI
 # lists are <= 4 codes, so we keep them inline instead of heap-allocating).
