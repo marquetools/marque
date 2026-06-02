@@ -13,14 +13,14 @@
 //! real marking logic is required.
 
 use marque_config::Config;
-use marque_engine::{Engine, EngineConstructionError, SystemClock};
+use marque_engine::{Engine, EngineConstructionError, ScheduledStep, SystemClock};
 use marque_rules::{ConstraintBridge, RuleSet};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Citation,
-    Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme, MeetSemilattice,
-    PageRewrite, Parsed, RecanonScope, ReplacementIntent, RewriteId, Scope, SectionLetter,
-    Template, TokenId, TokenRef,
+    Constraint, ConstraintViolation, DerivationEdge, DerivationRelation, FactRef, FiringPredicate,
+    JoinSemilattice, MarkingScheme, MeetSemilattice, PageRewrite, Parsed, RecanonScope,
+    ReplacementIntent, RewriteId, Scope, SectionLetter, Template, TokenId, TokenRef,
 };
 
 // Test-fixture sentinel Citation (Constitution V Principle V test
@@ -58,11 +58,19 @@ impl MeetSemilattice for StubMarking {
 
 struct StubScheme {
     rewrites: Vec<PageRewrite<StubScheme>>,
+    edges: Vec<DerivationEdge>,
 }
 
 impl StubScheme {
     fn new(rewrites: Vec<PageRewrite<StubScheme>>) -> Self {
-        Self { rewrites }
+        Self {
+            rewrites,
+            edges: Vec::new(),
+        }
+    }
+
+    fn with_edges(rewrites: Vec<PageRewrite<StubScheme>>, edges: Vec<DerivationEdge>) -> Self {
+        Self { rewrites, edges }
     }
 }
 
@@ -114,6 +122,9 @@ impl MarkingScheme for StubScheme {
     }
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &self.rewrites
+    }
+    fn derivation_edges(&self) -> &[DerivationEdge] {
+        &self.edges
     }
     fn render_item(&self, _: &Self::Marking) -> String {
         String::new()
@@ -231,6 +242,36 @@ fn declarative_rewrite(
     )
 }
 
+fn derivation_edge(
+    id: &'static str,
+    reads: &'static [CategoryId],
+    writes: &'static [CategoryId],
+    firing: FiringPredicate,
+) -> DerivationEdge {
+    DerivationEdge::new(
+        id,
+        DerivationRelation::Rollup,
+        TEST_CITATION,
+        reads,
+        writes,
+        firing,
+    )
+}
+
+/// Collect the `RewriteId`s of the page-rewrite members of a cycle, in
+/// declaration order. Used by the cycle tests, which assert over the
+/// rewrite participants of a cycle whose members are tagged
+/// [`ScheduledStep`]s.
+fn rewrite_names(members: &[ScheduledStep]) -> Vec<&'static str> {
+    members
+        .iter()
+        .filter_map(|step| match step {
+            ScheduledStep::PageRewrite(id) => Some(*id),
+            ScheduledStep::DerivationEdge(_) => None,
+        })
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Cycle rejection (pair + 3-rewrite variant).
 // ---------------------------------------------------------------------------
@@ -254,7 +295,7 @@ fn cyclic_rewrite_pair_fails_construction() {
     };
     match err {
         EngineConstructionError::RewriteCycle { axis: _, members } => {
-            let mut names: Vec<&str> = members.to_vec();
+            let mut names: Vec<&str> = rewrite_names(&members);
             names.sort();
             assert_eq!(
                 names,
@@ -297,7 +338,7 @@ fn disjoint_cycles_report_one_scc_only() {
     };
     match err {
         EngineConstructionError::RewriteCycle { members, .. } => {
-            let mut names: Vec<&str> = members.to_vec();
+            let mut names: Vec<&str> = rewrite_names(&members);
             names.sort();
             assert_eq!(
                 names,
@@ -335,7 +376,7 @@ fn downstream_blocked_rewrite_not_reported_as_cycle_member() {
     };
     match err {
         EngineConstructionError::RewriteCycle { members, .. } => {
-            let mut names: Vec<&str> = members.to_vec();
+            let mut names: Vec<&str> = rewrite_names(&members);
             names.sort();
             assert_eq!(
                 names,
@@ -370,7 +411,7 @@ fn cyclic_three_rewrite_cycle_reports_all_members() {
     };
     match err {
         EngineConstructionError::RewriteCycle { axis: _, members } => {
-            let mut names: Vec<&str> = members.to_vec();
+            let mut names: Vec<&str> = rewrite_names(&members);
             names.sort();
             assert_eq!(
                 names,
@@ -661,4 +702,62 @@ fn engine_new_accepts_recanonicalize_intent_in_page_rewrite() {
     let engine = try_build(scheme).expect("Recanonicalize-only intent has no FactRefs to validate");
     let order = engine.scheduled_rewrites();
     assert_eq!(order, &["intent-recanonicalize"]);
+}
+
+#[test]
+fn derivation_edges_cycle_checked_at_engine_new() {
+    // A rewrite and a derivation edge form a 2-node cycle through the
+    // combined graph: the rewrite writes X reads Y, the edge writes Y
+    // reads X. `Engine::with_clock_and_recognizer` must reject it.
+    const RW_READS: &[CategoryId] = &[CAT_Y];
+    const RW_WRITES: &[CategoryId] = &[CAT_X];
+    const EDGE_READS: &[CategoryId] = &[CAT_X];
+    const EDGE_WRITES: &[CategoryId] = &[CAT_Y];
+
+    let scheme = StubScheme::with_edges(
+        vec![declarative_rewrite("rw", RW_READS, RW_WRITES)],
+        vec![derivation_edge(
+            "edge",
+            EDGE_READS,
+            EDGE_WRITES,
+            FiringPredicate::Always,
+        )],
+    );
+
+    let err = match try_build(scheme) {
+        Ok(_) => panic!("rewrite/edge cycle must fail construction"),
+        Err(e) => e,
+    };
+    match err {
+        EngineConstructionError::RewriteCycle { members, .. } => {
+            assert!(
+                members.contains(&ScheduledStep::PageRewrite("rw")),
+                "cycle must name the participating rewrite, got {members:?}"
+            );
+            assert!(
+                members.contains(&ScheduledStep::DerivationEdge("edge")),
+                "cycle must name the participating edge, got {members:?}"
+            );
+        }
+        other => panic!("expected RewriteCycle, got {other:?}"),
+    }
+}
+
+#[test]
+fn engine_scheduled_steps_tags_rewrites_when_no_edges() {
+    // For an edge-free scheme, scheduled_steps mirrors
+    // scheduled_rewrites, tagged as PageRewrite steps.
+    let scheme = StubScheme::new(vec![
+        declarative_rewrite("a", &[], &[CAT_X]),
+        declarative_rewrite("b", &[CAT_X], &[CAT_Y]),
+    ]);
+    let engine = try_build(scheme).expect("acyclic edge-free scheme builds");
+    assert_eq!(engine.scheduled_rewrites(), &["a", "b"]);
+    assert_eq!(
+        engine.scheduled_steps(),
+        &[
+            ScheduledStep::PageRewrite("a"),
+            ScheduledStep::PageRewrite("b"),
+        ]
+    );
 }
