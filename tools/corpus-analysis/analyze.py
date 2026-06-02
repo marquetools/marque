@@ -653,6 +653,7 @@ def load_grammar_profile(name: str) -> dict:
     # naming the gap rather than a KeyError stack trace deep in main().
     required_keys = (
         "grammar",
+        "description",
         "tokens",
         "priors_schema_prefix",
         "priors_schema_generation",

@@ -129,7 +129,7 @@ fn emit_priors(parsed: &serde_json::Value, priors_path: &Path) -> String {
     // candidate input — the regression that motivated #258.
     let token_prose_base_rates = require_object(parsed, "token_prose_base_rates", priors_path);
     let template_base_rates = require_object(parsed, "template_base_rates", priors_path);
-    // Country-code base rates land in capco-priors-2 (issue #233). Same
+    // Country-code base rates landed in priors generation 2 (issue #233). Same
     // shape as token_base_rates: ``{token, count, log_prior}``. The
     // decoder consumes this at score time so REL TO fuzzy candidates
     // are weighted by real-world country-code frequency rather than
