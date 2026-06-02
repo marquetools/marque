@@ -70,6 +70,10 @@
 //!   the five-state `ArtifactState<P>` (status enum, not a lattice), and
 //!   `DocumentArtifact<S>` parameterized by the scheme's
 //!   `SchemeArtifacts::ArtifactPayload`.
+//! - [`document_context`] — `DocumentContext<S>`: the document-scope
+//!   rollup (the page→document lattice fold via
+//!   `MarkingScheme::canonical_document_join`) plus document-scoped
+//!   `DocumentArtifact<S>` nodes.
 //! - [`provenance`] — the two orthogonal provenance axes:
 //!   `RecognitionProvenance` (adapter axis) and `ValueDerivation`
 //!   (DAG-node axis).
@@ -99,6 +103,7 @@ pub mod codec;
 pub mod constraint;
 pub mod decision;
 pub mod derivation;
+pub mod document_context;
 pub mod fact_bitmask;
 pub mod fix_intent;
 pub mod input;
@@ -137,6 +142,7 @@ pub use decision::report::{CascadeChain, DecisionReport};
 pub use decision::sinks::{CountingSink, NoopSink, RecordingSink};
 pub use decision::{DecisionEvent, DecisionKind, DecisionSink, DecisionSite, DecisionSource};
 pub use derivation::{DerivationEdge, DerivationRelation, EdgeId, FiringPredicate};
+pub use document_context::DocumentContext;
 pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
 pub use fix_intent::{
     FactRef, RecanonPriorState, RecanonScope, RelocatePriorState, ReplacementIntent,
