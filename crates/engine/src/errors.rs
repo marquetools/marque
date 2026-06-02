@@ -33,6 +33,7 @@
 
 use crate::engine::InvalidThreshold;
 use crate::output::LintResult;
+use crate::scheduler::ScheduledStep;
 use marque_capco::CapcoScheme;
 use marque_scheme::{ApplyIntentError, CategoryId, MarkingScheme, RewriteId};
 
@@ -48,33 +49,51 @@ use marque_scheme::{ApplyIntentError, CategoryId, MarkingScheme, RewriteId};
 /// engine-construction error surface for downstream tooling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineConstructionError {
-    /// A read/write cycle exists among the declared page rewrites.
+    /// A read/write cycle exists among the declared page rewrites and
+    /// derivation edges.
     ///
     /// `axis` is one category in the cycle (there may be several — the
     /// engine reports the first one it hits during the topological
-    /// sort). `members` names **every** rewrite participating in the
-    /// cycle.
+    /// sort). `members` names **every** node participating in the
+    /// cycle, tagged as a page rewrite or a derivation edge so a mixed
+    /// cycle is honest about which kind each member is.
     ///
-    /// The variable-length slice form (not `[RewriteId; 2]`) is
-    /// deliberate: cycles of length ≥ 3 are a real failure mode —
-    /// foundational-plan line 1066 notes the JOINT/FGI/REL-TO
-    /// interaction as one that could plausibly trip this path if
-    /// authored incorrectly.
+    /// The variable-length slice form (not `[ScheduledStep; 2]`) is
+    /// deliberate: cycles of length ≥ 3 are a real failure mode — the
+    /// JOINT/FGI/REL-TO interaction is one that could plausibly trip
+    /// this path if authored incorrectly.
     ///
-    /// The list is owned (`Box<[RewriteId]>`, not `&'static [...]`)
+    /// The list is owned (`Box<[ScheduledStep]>`, not `&'static [...]`)
     /// because cycle membership is computed at engine-construction
-    /// time from the declared rewrite graph, not borrowed from a
-    /// static table. Owning it here avoids the memory-leak /
-    /// lifetime-gymnastics tradeoff a `'static` slice would force on
-    /// the Phase 3 scheduler. `RewriteId` is itself `&'static str`,
-    /// so the per-entry payload is still `'static`; only the
-    /// container is heap-allocated.
+    /// time from the declared graph, not borrowed from a static table.
+    /// Each [`ScheduledStep`] payload is `&'static str`, so the
+    /// per-entry payload is still `'static`; only the container is
+    /// heap-allocated.
     ///
-    /// Fired by the scheduler when `Engine::new` runs Kahn's
-    /// algorithm over the rewrite graph.
+    /// Fired by the scheduler when `Engine::new` runs Kahn's algorithm
+    /// over the combined rewrite + derivation-edge graph.
     RewriteCycle {
         axis: CategoryId,
-        members: Box<[RewriteId]>,
+        members: Box<[ScheduledStep]>,
+    },
+    /// A derivation edge co-writes `axis` with another node (rewrite or
+    /// edge) but no read forces a deterministic order between them — a
+    /// stale-value read hazard. The usual cause is that the edge
+    /// omitted the consumed axis from its `reads` (under-annotation),
+    /// so two producers of the same category run in an arbitrary
+    /// declaration-order tiebreak. A scheme-author defect →
+    /// `EX_UNAVAILABLE` (69).
+    ///
+    /// This detects the annotation-inconsistency form only: it cannot
+    /// detect an edge whose body semantically consumes a category
+    /// absent from BOTH `reads` and `writes`, because the scheduler
+    /// does not introspect edge bodies. The guard reduces, but does not
+    /// eliminate, annotation-error risk.
+    ///
+    /// `nodes` names the co-writing pair (tagged by kind).
+    AmbiguousCoWriter {
+        axis: CategoryId,
+        nodes: Box<[ScheduledStep]>,
     },
     /// A `PageRewrite::custom` was declared without explicit
     /// `reads` / `writes` (or with empty slices).
@@ -151,15 +170,16 @@ impl EngineConstructionError {
     ///   (65). These are user-config defects — the `.marque.toml` refers
     ///   to a rule that doesn't exist, or contradicts itself — and the
     ///   user fixes them by editing their config.
-    /// - `RewriteCycle` / `UnannotatedCustomAxes` → `EX_UNAVAILABLE`
-    ///   (69). These are defects in the declarative scheme the engine
-    ///   was built against (developer / rule-author errors, not
-    ///   user-config errors), so the tool can't honor the request until
-    ///   the developer ships a corrected build.
+    /// - `RewriteCycle` / `UnannotatedCustomAxes` / `AmbiguousCoWriter`
+    ///   → `EX_UNAVAILABLE` (69). These are defects in the declarative
+    ///   scheme the engine was built against (developer / rule-author
+    ///   errors, not user-config errors), so the tool can't honor the
+    ///   request until the developer ships a corrected build.
     pub fn exit_code(&self) -> i32 {
         match self {
             Self::RewriteCycle { .. }
             | Self::UnannotatedCustomAxes { .. }
+            | Self::AmbiguousCoWriter { .. }
             | Self::InvalidIntentInPageRewrite { .. } => 69,
             Self::UnknownRuleOverride { .. } | Self::ConflictingRuleOverride { .. } => 65,
         }
@@ -170,8 +190,16 @@ impl std::fmt::Display for EngineConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::RewriteCycle { axis, members } => {
-                write!(f, "page-rewrite cycle on category {axis:?}: {members:?}")
+                write!(
+                    f,
+                    "rewrite/derivation cycle on category {axis:?}: {members:?}"
+                )
             }
+            Self::AmbiguousCoWriter { axis, nodes } => write!(
+                f,
+                "derivation edge co-writes category {axis:?} with no read forcing order — \
+                 stale-value read hazard: {nodes:?}; declare the consuming edge's reads"
+            ),
             Self::UnannotatedCustomAxes { rewrite } => write!(
                 f,
                 "custom page-rewrite {rewrite:?} was declared without explicit reads/writes"
@@ -380,15 +408,58 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn rewrite_cycle_display_names_axis_and_members() {
+    fn rewrite_cycle_members_are_scheduled_steps() {
+        // Members are tagged ScheduledStep values, so a mixed cycle
+        // (a page rewrite + a derivation edge) renders each member's
+        // kind through the derived Debug.
         let err = EngineConstructionError::RewriteCycle {
             axis: CategoryId(0),
-            members: Box::new(["alpha", "beta"]),
+            members: Box::new([
+                ScheduledStep::PageRewrite("alpha"),
+                ScheduledStep::DerivationEdge("beta"),
+            ]),
         };
         let msg = err.to_string();
-        assert!(msg.contains("page-rewrite cycle"), "got: {msg}");
+        assert!(msg.contains("rewrite/derivation cycle"), "got: {msg}");
         assert!(msg.contains("alpha"), "got: {msg}");
         assert!(msg.contains("beta"), "got: {msg}");
+        assert!(msg.contains("PageRewrite"), "kind must be visible: {msg}");
+        assert!(
+            msg.contains("DerivationEdge"),
+            "kind must be visible: {msg}"
+        );
+    }
+
+    #[test]
+    fn ambiguous_co_writer_exit_code_is_unavailable() {
+        let err = EngineConstructionError::AmbiguousCoWriter {
+            axis: CategoryId(2),
+            nodes: Box::new([
+                ScheduledStep::PageRewrite("r"),
+                ScheduledStep::DerivationEdge("e"),
+            ]),
+        };
+        assert_eq!(
+            err.exit_code(),
+            69,
+            "scheme-author defect (under-annotated co-writing edge) → EX_UNAVAILABLE"
+        );
+    }
+
+    #[test]
+    fn ambiguous_co_writer_display_names_axis_and_nodes() {
+        let err = EngineConstructionError::AmbiguousCoWriter {
+            axis: CategoryId(2),
+            nodes: Box::new([
+                ScheduledStep::PageRewrite("r"),
+                ScheduledStep::DerivationEdge("e"),
+            ]),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("CategoryId(2)"), "axis missing: {msg}");
+        assert!(msg.contains("stale-value read hazard"), "got: {msg}");
+        assert!(msg.contains("\"r\""), "node r missing: {msg}");
+        assert!(msg.contains("\"e\""), "node e missing: {msg}");
     }
 
     #[test]

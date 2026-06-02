@@ -46,6 +46,7 @@ pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
 pub use pipeline::{Sink, Source, SourceError, TextChunk};
 pub use recognizer::StrictRecognizer;
+pub use scheduler::ScheduledStep;
 
 /// Re-export of [`web_time::Instant`].
 ///

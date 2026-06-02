@@ -57,7 +57,11 @@ where
         // at engine-construction time instead of silently no-opping on
         // the first page that triggers the rewrite.
         validate_intent_rewrites(&scheme, scheme.page_rewrites())?;
-        let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
+        // One Kahn pass over the union of page rewrites and derivation
+        // edges. The rewrite order is the projection of the combined
+        // order, so both stay consistent for an edge-bearing scheme.
+        let scheduled_steps = schedule_steps(scheme.page_rewrites(), scheme.derivation_edges())?;
+        let scheduled_rewrites = project_rewrites(&scheduled_steps);
 
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
@@ -130,6 +134,7 @@ where
             corrections_arc,
             corrections_ac,
             scheduled_rewrites,
+            scheduled_steps,
             recognizer,
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
@@ -320,6 +325,17 @@ impl<S: MarkingScheme, R: Recognizer<S>> Engine<S, R> {
     /// walks.
     pub fn scheduled_rewrites(&self) -> &[RewriteId] {
         &self.scheduled_rewrites
+    }
+
+    /// The topologically-sorted union of page-rewrite and
+    /// derivation-edge steps computed by the scheduler at construction
+    /// time.
+    ///
+    /// Exposed for diagnostic / test inspection and consumed by
+    /// document-scope resolution. Tagged so a rewrite and an edge that
+    /// share an id string stay distinct.
+    pub fn scheduled_steps(&self) -> &[ScheduledStep] {
+        &self.scheduled_steps
     }
 
     /// Whether a corpus override is in effect for this engine.

@@ -289,10 +289,14 @@ fn conflicting_rule_override_exit_code_is_dataerr() {
 #[test]
 fn rewrite_cycle_exit_code_is_unavailable() {
     // Scheme defects (not user-config errors) stay on EX_UNAVAILABLE.
+    use crate::scheduler::ScheduledStep;
     use marque_scheme::CategoryId;
     let err = EngineConstructionError::RewriteCycle {
         axis: CategoryId(0),
-        members: Box::new(["a", "b"]),
+        members: Box::new([
+            ScheduledStep::PageRewrite("a"),
+            ScheduledStep::PageRewrite("b"),
+        ]),
     };
     assert_eq!(err.exit_code(), 69);
 }
