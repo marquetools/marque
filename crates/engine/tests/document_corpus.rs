@@ -5,7 +5,7 @@
 //! Structural count test for the documents corpus.
 //!
 //! Pins what Marque parses as a real marking against the per-document
-//! ground truth in `tests/corpus/documents/<stem>.expected.json`:
+//! ground truth in `tests/corpus/capco/documents/<stem>.expected.json`:
 //!
 //! - `expected_portions = sum(pages[].paragraphs where mark != null)`
 //! - `expected_banners  = pages.len() * 2`
@@ -115,7 +115,7 @@ fn scanner_counts_match_ground_truth() {
     let fixtures = marked_document_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "no marked document fixtures found in tests/corpus/documents/marked/"
+        "no marked document fixtures found in tests/corpus/capco/documents/marked/"
     );
 
     let mut violations: Vec<String> = Vec::new();

@@ -15,7 +15,7 @@
 //!
 //! This canary is the empirical sweep that proves the type-level
 //! invariant survives end-to-end: every fixture under
-//! `tests/corpus/{valid,invalid,prose,lattice}/` is fed through
+//! `tests/corpus/capco/{valid,invalid,prose,lattice}/` is fed through
 //! [`Engine::fix`] and every emitted [`AuditLine`] is rendered to its
 //! NDJSON line; the canary scans each line for any contiguous ≥4-byte
 //! sequence from the input that appears anywhere outside the
@@ -369,7 +369,7 @@ fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 
-/// Iterate `tests/corpus/<subdir>/*.txt` paths. Used to walk the
+/// Iterate `tests/corpus/capco/<subdir>/*.txt` paths. Used to walk the
 /// subdirectories that don't have a typed accessor in
 /// `marque-test-utils`.
 fn corpus_subdir_fixtures(subdir: &str) -> Vec<PathBuf> {
@@ -398,7 +398,7 @@ fn canary_passes_on_full_corpus() {
     assert!(
         !fixtures.is_empty(),
         "canary needs at least one corpus fixture — \
-         is tests/corpus/ missing or empty?"
+         is tests/corpus/capco/ missing or empty?"
     );
 
     let mut total_lines_scanned = 0usize;

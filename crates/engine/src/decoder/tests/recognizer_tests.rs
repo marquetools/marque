@@ -252,7 +252,7 @@ fn decoder_suppresses_single_letter_portion_via_null_hypothesis() {
     // (issue #258). The decoder must produce zero candidates so the
     // engine doesn't synthesize a spurious R001 diagnostic.
     //
-    // The marking corpus (`tests/corpus/documents/marked/`) contributes
+    // The marking corpus (`tests/corpus/capco/documents/marked/`) contributes
     // 173 hits for `S`, pushing the marking-side delta to `+2.21`
     // (`S`: marking `-3.28`, prose `-5.49`). A zero-margin filter would
     // let the marking hypothesis win and re-introduce the Federalist

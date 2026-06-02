@@ -8,7 +8,7 @@
 """
 make_specs.py — scaffold per-doc, per-page editable spec files.
 
-For each entry in work/manifest.json, writes ``tests/corpus/documents/specs/<stem>.md``
+For each entry in work/manifest.json, writes ``tests/corpus/capco/documents/specs/<stem>.md``
 with:
   - YAML frontmatter (identifier, title, year, CAB placeholders)
   - One `=== page N ===` section per MinerU page, each starting with
@@ -34,7 +34,7 @@ REPO_ROOT = TOOL_ROOT.parents[1]
 WORK_DIR = TOOL_ROOT / "work"
 MD_ROOT = WORK_DIR / "md"
 MANIFEST = WORK_DIR / "manifest.json"
-DEFAULT_SPECS = REPO_ROOT / "tests" / "corpus" / "documents" / "specs"
+DEFAULT_SPECS = REPO_ROOT / "tests" / "corpus" / "capco" / "documents" / "specs"
 
 
 FRONTMATTER_TEMPLATE = """\
@@ -100,7 +100,7 @@ def main() -> int:
         "--specs",
         type=Path,
         default=DEFAULT_SPECS,
-        help="output directory for spec files (default: tests/corpus/documents/specs)",
+        help="output directory for spec files (default: tests/corpus/capco/documents/specs)",
     )
     args = ap.parse_args()
 

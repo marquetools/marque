@@ -8,7 +8,7 @@
 //!
 //! Every authoritative-source citation declared by
 //! `marque-capco`'s rule + catalog surface MUST be exercised by at
-//! least one corpus fixture under `tests/corpus/`. The gate is
+//! least one corpus fixture under `tests/corpus/capco/`. The gate is
 //! bi-directional — declared ⊆ harvested ∪ whitelist, and the
 //! whitelist itself MUST stay disjoint from harvested (no
 //! "became-covered-but-still-whitelisted" zombies) and a subset of
@@ -29,11 +29,11 @@
 //!
 //! When the gate fails with assertion (a) — declared citation with
 //! no corpus coverage — the default response is to add a fixture
-//! under `tests/corpus/{valid,invalid,foreign,lattice,mangled}/`
+//! under `tests/corpus/capco/{valid,invalid,foreign,lattice,mangled}/`
 //! that exercises the cited authority. The corpus tree's fixture-
 //! add procedure (frontmatter requirements, sidecar `.expected.json`
 //! shape, §-citation re-verification) lives in
-//! `tests/corpus/CORPUS_CONTRACT.md`. Only when the citation is
+//! `tests/corpus/capco/CORPUS_CONTRACT.md`. Only when the citation is
 //! provably unreachable from any fixture (one of the structural
 //! reasons in the whitelist contract below) should the response be
 //! an `EXPECTED_UNCOVERED` carve-out instead.
@@ -41,7 +41,7 @@
 //! ## Harvested set
 //!
 //! `Engine::lint(fixture_bytes)` over every `.txt` file under
-//! `tests/corpus/` (recursive). The harvested set is
+//! `tests/corpus/capco/` (recursive). The harvested set is
 //! `union(Diagnostic.citation)` across every fixture's lint output.
 //!
 //! ## Assertion shape
@@ -111,13 +111,13 @@ use marque_scheme::{
 /// `span: None, severity: None`. The fix wired both fields through
 /// (anchoring on the dominated TFNI token, severity `Fix` mirroring
 /// `e024_rd_precedence`) and added the corpus fixture
-/// `tests/corpus/invalid/e070_frd_tfni_precedence.txt`, so the
+/// `tests/corpus/capco/invalid/e070_frd_tfni_precedence.txt`, so the
 /// citation is now harvested.
 ///
 /// Issue #677 closed: §D.1 p27 (banner-line syntax — Marking Title
 /// OR Authorized Abbreviation) became the primary citation for the
 /// new `PortionFormInBannerRule`, harvested by corpus fixtures
-/// `tests/corpus/invalid/677_*.txt`. Removed from the whitelist —
+/// `tests/corpus/capco/invalid/677_*.txt`. Removed from the whitelist —
 /// the gate now treats the coverage as authoritative.
 const EXPECTED_UNCOVERED: &[(Citation, &str)] = &[
     // Synthetic non-CAPCO sentinels.
@@ -246,7 +246,7 @@ fn corpus_covers_every_declared_authority() {
     let engine = Engine::new(Config::default(), rule_sets, CapcoScheme::new())
         .expect("default CAPCO engine constructs without rewrite cycles");
 
-    let corpus_dir = workspace_root().join("tests").join("corpus");
+    let corpus_dir = workspace_root().join("tests").join("corpus").join("capco");
     let fixtures = collect_txt_fixtures(&corpus_dir);
     assert!(
         !fixtures.is_empty(),
@@ -358,7 +358,7 @@ fn corpus_covers_every_declared_authority() {
                 msg.push_str(&format!("      - {c}\n"));
             }
             msg.push_str(
-                "\n      → Either add a fixture under tests/corpus/{valid,invalid,foreign,\n\
+                "\n      → Either add a fixture under tests/corpus/capco/{valid,invalid,foreign,\n\
                   \x20       lattice,mangled}/ that exercises the cited authority, OR add an\n\
                   \x20       EXPECTED_UNCOVERED entry with a justification anchor in\n\
                   \x20       docs/refactor-006/citation-coverage-report.md.\n\n",
@@ -460,7 +460,7 @@ fn citation_coverage_probe() {
     let engine = Engine::new(Config::default(), rule_sets, CapcoScheme::new())
         .expect("default CAPCO engine");
 
-    let corpus_dir = workspace_root().join("tests").join("corpus");
+    let corpus_dir = workspace_root().join("tests").join("corpus").join("capco");
     let fixtures = collect_txt_fixtures(&corpus_dir);
 
     let mut by_citation: HashMap<Citation, Vec<String>> = HashMap::new();
@@ -516,7 +516,7 @@ fn corpus_directory_exists() {
     // Cheap sanity: the gate depends on the corpus tree being present.
     // Without this, a missing tree would surface as "every citation
     // missing" — clearer to fail explicitly.
-    let corpus_dir = workspace_root().join("tests").join("corpus");
+    let corpus_dir = workspace_root().join("tests").join("corpus").join("capco");
     assert!(
         corpus_dir.is_dir(),
         "corpus directory {} does not exist",
@@ -567,7 +567,7 @@ fn whitelist_anchors_exist_in_report() {
          in {}: {:?}\n\n\
          Either add the missing anchor paragraph to the coverage report, \
          or remove the EXPECTED_UNCOVERED row and add a fixture that \
-         covers the citation (see tests/corpus/CORPUS_CONTRACT.md).",
+         covers the citation (see tests/corpus/capco/CORPUS_CONTRACT.md).",
         report_path.display(),
         missing_anchors,
     );
@@ -593,7 +593,7 @@ fn whitelist_entries_are_unique() {
 // Helpers
 // ===========================================================================
 
-/// Walk `tests/corpus/` recursively and return every `.txt` fixture path.
+/// Walk `tests/corpus/capco/` recursively and return every `.txt` fixture path.
 /// `.expected.json` sidecars and license files are intentionally excluded —
 /// only the `.txt` set is run through the engine.
 fn collect_txt_fixtures(dir: &Path) -> Vec<PathBuf> {

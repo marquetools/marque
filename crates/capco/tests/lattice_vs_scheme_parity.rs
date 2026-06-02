@@ -18,7 +18,7 @@
 //!
 //! ## Why synthetic instead of corpus fixtures
 //!
-//! The corpus fixtures in `tests/corpus/valid/` are designed to
+//! The corpus fixtures in `tests/corpus/capco/valid/` are designed to
 //! exercise the strict-recognizer + rule pipeline end-to-end. The
 //! parity gate's job is to compare TWO projection paths from
 //! pre-parsed per-portion `CanonicalAttrs` values. Synthetic

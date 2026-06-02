@@ -9,7 +9,7 @@
 
 //! Corpus integration test.
 //!
-//! Drives every fixture under `tests/corpus/{invalid,valid}/` through the
+//! Drives every fixture under `tests/corpus/capco/{invalid,valid}/` through the
 //! parser + rule set and asserts that the produced diagnostics
 //! exactly match the sibling `.expected.json` file.
 //!
@@ -221,7 +221,7 @@ fn invalid_corpus_matches_expected_diagnostics() {
     let fixtures = invalid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "tests/corpus/invalid/ is empty — Phase 3 must populate the corpus"
+        "tests/corpus/capco/invalid/ is empty — Phase 3 must populate the corpus"
     );
     for path in fixtures {
         // C001 fixtures require a corrections config — skip in rule-level tests.

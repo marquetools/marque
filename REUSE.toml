@@ -113,10 +113,10 @@ SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 
 [[annotations]]
 path = [
-  "tests/corpus/invalid/**",
-  "tests/corpus/lattice/**",
-  "tests/corpus/valid/**",
-  "tests/corpus/prose/**",
+  "tests/corpus/capco/invalid/**",
+  "tests/corpus/capco/lattice/**",
+  "tests/corpus/capco/valid/**",
+  "tests/corpus/capco/prose/**",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Knitli Inc. <knitli@knitli.com>"

@@ -4,7 +4,7 @@
 
 //! No classifier identity in committed test files.
 //!
-//! Scans every file under `tests/corpus/`, `crates/*/tests/`, and
+//! Scans every file under `tests/corpus/capco/`, `crates/*/tests/`, and
 //! `crates/*/examples/` for classifier-id-shaped strings. Fails if any
 //! real-looking classifier ID is found.
 //!
@@ -130,7 +130,7 @@ fn walkdir(dir: &Path) -> Vec<PathBuf> {
 fn sc006_no_classifier_id_in_committed_test_files() {
     let root = workspace_root();
     let scan_dirs = [
-        root.join("tests").join("corpus"),
+        root.join("tests").join("corpus").join("capco"),
         root.join("crates"),
         root.join("marque").join("tests"),
     ];

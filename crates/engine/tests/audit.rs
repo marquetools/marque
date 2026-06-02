@@ -37,7 +37,7 @@
 //! ## Strategy
 //!
 //! 1. **Corpus sweep.** Run `Engine::fix` over every fixture under
-//!    `tests/corpus/{invalid,valid,prose}/`. For every `AppliedFix`,
+//!    `tests/corpus/capco/{invalid,valid,prose}/`. For every `AppliedFix`,
 //!    grep `proposal.{original, replacement}` against a sentinel list.
 //!
 //! 2. **Marking-in-prose composites.** Synthesize documents by
@@ -66,7 +66,7 @@
 //!
 //! ## Sentinel selection
 //!
-//! Sentinels are phrases from `tests/corpus/prose/article.txt`
+//! Sentinels are phrases from `tests/corpus/capco/prose/article.txt`
 //! (public-domain Federalist Papers prose). Each sentinel is long
 //! and distinctive enough that it cannot appear in any CAPCO/ISM
 //! marking by construction — no classification level, compartment,
@@ -86,7 +86,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 
-/// Prose sentinels drawn from `tests/corpus/prose/article.txt`.
+/// Prose sentinels drawn from `tests/corpus/capco/prose/article.txt`.
 ///
 /// Each phrase is a multi-word English fragment that cannot appear in
 /// any valid CAPCO/ISM marking. A match in any audit field means the

@@ -4,6 +4,6 @@
   "tokens": "tokens/capco.json",
   "priors_schema_prefix": "capco",
   "priors_schema_generation": 3,
-  "default_marking_corpus": ["tests/corpus/valid", "tests/corpus/documents/marked"],
+  "default_marking_corpus": ["tests/corpus/capco/valid", "tests/corpus/capco/documents/marked"],
   "default_prose_source": "enron"
 }

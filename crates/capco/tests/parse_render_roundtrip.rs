@@ -89,7 +89,7 @@ fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
 }
 
 // =============================================================================
-// Fixture classification — every `tests/corpus/valid/*.txt` file is a
+// Fixture classification — every `tests/corpus/capco/valid/*.txt` file is a
 // single well-formed marking on the first non-blank line. The Scanner is
 // the source of truth for whether a string is a portion / banner / CAB
 // (it is the same component the engine uses); we drive it once per fixture
@@ -238,7 +238,7 @@ fn render_and_reparse_classification(
 
 #[test]
 fn classification_round_trips_across_strict_corpus() {
-    // Drive every fixture under `tests/corpus/valid/` through the
+    // Drive every fixture under `tests/corpus/capco/valid/` through the
     // narrow round-trip. The strict-path corpus is the load-bearing
     // input set; classification round-trip is the parse-render-parse
     // idempotence closure scoped to the renderer's current coverage.
@@ -246,7 +246,7 @@ fn classification_round_trips_across_strict_corpus() {
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "valid corpus is empty; check tests/corpus/valid/ scaffold",
+        "valid corpus is empty; check tests/corpus/capco/valid/ scaffold",
     );
 
     let mut counts = [0usize; 4]; // [portion, banner, cab_skipped, other_skipped]
@@ -443,7 +443,7 @@ fn full_attribute_round_trip_across_strict_corpus() {
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
-        "valid corpus is empty; check tests/corpus/valid/ scaffold",
+        "valid corpus is empty; check tests/corpus/capco/valid/ scaffold",
     );
 
     for path in &fixtures {

@@ -10,7 +10,7 @@
 //!
 //! - `e005_fires_on_declass_exemption_in_portion` — portion-scope
 //!   coverage. Banner-scope coverage is already exercised by
-//!   `tests/corpus/invalid/` fixtures; the portion-scope path
+//!   `tests/corpus/capco/invalid/` fixtures; the portion-scope path
 //!   (CAPCO-2016 §C.1 p26 mirrors §D.1 p27 for portions) was originally
 //!   tested via the inline `mod tests` block. No corpus fixture covers
 //!   the portion-scope path, so this

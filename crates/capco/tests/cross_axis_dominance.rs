@@ -280,7 +280,7 @@ fn project_via_scheme(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
 /// from `Unclassified` (the FOUO carrier portion) to `Secret` (the
 /// classified peer) triggers the `capco/classification-evicts-fouo`
 /// PageRewrite. This parallels the `fouo-eviction-class.txt`
-/// fixture under `tests/corpus/lattice/`.
+/// fixture under `tests/corpus/capco/lattice/`.
 ///
 /// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
 /// authorship 2026-05-19 (§H.8 p134, classified-document sub-clause).
@@ -344,7 +344,7 @@ fn class_evicts_fouo_via_classification_ascent() {
 /// LES is a non-IC dissem control per §H.9 p181.
 ///
 /// This parallels the `fouo-eviction-non-fdr.txt` fixture under
-/// `tests/corpus/lattice/`. The `capco/non-fdr-control-evicts-fouo`
+/// `tests/corpus/capco/lattice/`. The `capco/non-fdr-control-evicts-fouo`
 /// PageRewrite is the operative declarative row.
 ///
 /// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
@@ -415,8 +415,8 @@ fn non_fdr_control_evicts_fouo() {
 ///
 /// This is the lattice-design §2 Example 2 + §6 Example 2 + §4.8.5
 /// worked case and parallels the `fgi-banner-rollup.txt` fixture under
-/// `tests/corpus/lattice/`. Issue #276 fixture
-/// `tests/corpus/foreign/mixed_us_foreign_rollup.expected.json` is
+/// `tests/corpus/capco/lattice/`. Issue #276 fixture
+/// `tests/corpus/capco/foreign/mixed_us_foreign_rollup.expected.json` is
 /// the corpus-level analogue.
 ///
 /// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
@@ -493,7 +493,7 @@ fn fgi_banner_rollup_retains_marker_on_cross_classified_page() {
 /// Plus §A.6 pp15-17 (general separator alphabet).
 ///
 /// This is the lattice-design §4 Example 3 worked case and parallels
-/// the `sci-cross-system.txt` fixture under `tests/corpus/lattice/`.
+/// the `sci-cross-system.txt` fixture under `tests/corpus/capco/lattice/`.
 /// The `SciSet::from_markings` path composes both portions' SCI atoms
 /// into a single `SciSet` whose `to_markings` rendering reflects the
 /// canonical numeric-then-alpha order (SI before TK alpha tiebreak).
@@ -613,7 +613,7 @@ fn sci_cross_system_canonicalization() {
 /// classification axis.
 ///
 /// This is the property-test analogue of
-/// `tests/corpus/foreign/mixed_us_foreign_rollup.expected.json`
+/// `tests/corpus/capco/foreign/mixed_us_foreign_rollup.expected.json`
 /// (issue #276 corpus ground truth). The fixture's worked example is
 /// `(S//NF) (//DEU TS//REL TO USA, DEU)`; this test uses the same
 /// shape with `DEU` to mirror the corpus exactly.

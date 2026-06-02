@@ -17,7 +17,7 @@ For each spec file:
   - Each paragraph optionally begins with `(MARK)` — anything else is treated
     as an unmarked / unclassified paragraph (a warning is emitted)
 
-Outputs (all under ``tests/corpus/documents/`` by default):
+Outputs (all under ``tests/corpus/capco/documents/`` by default):
   - marked/<stem>.md        rendered document with per-page banners,
                             portion-marked paragraphs, CAB, and a footer
                             banner per page
@@ -43,7 +43,7 @@ import yaml
 
 TOOL_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = TOOL_ROOT.parents[1]
-DEFAULT_CORPUS_DIR = REPO_ROOT / "tests" / "corpus" / "documents"
+DEFAULT_CORPUS_DIR = REPO_ROOT / "tests" / "corpus" / "capco" / "documents"
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 PAGE_HEADER_RE = re.compile(r"^===\s*page\s+(\d+)\s*===\s*$", re.M)
