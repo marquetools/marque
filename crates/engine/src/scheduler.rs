@@ -341,9 +341,9 @@ where
 ///
 /// Node `i` is rewrite `i` when `i < r`, otherwise edge `i - r`. Both
 /// payload types are `&'static [CategoryId]`.
-fn node_reads<'a, S>(
-    rewrites: &'a [PageRewrite<S>],
-    edges: &'a [DerivationEdge],
+fn node_reads<S>(
+    rewrites: &[PageRewrite<S>],
+    edges: &[DerivationEdge],
     r: usize,
     i: usize,
 ) -> &'static [CategoryId]
@@ -358,9 +358,9 @@ where
 }
 
 /// The `writes` axes of node `i` in the unified index space.
-fn node_writes<'a, S>(
-    rewrites: &'a [PageRewrite<S>],
-    edges: &'a [DerivationEdge],
+fn node_writes<S>(
+    rewrites: &[PageRewrite<S>],
+    edges: &[DerivationEdge],
     r: usize,
     i: usize,
 ) -> &'static [CategoryId]
@@ -432,6 +432,8 @@ where
             }
             let a_writes: BTreeSet<CategoryId> =
                 node_writes(rewrites, edges, r, a).iter().copied().collect();
+            // `shared` ⊆ `a_writes`, so an empty `a_writes` can never
+            // produce a shared category — skip before building `b_writes`.
             if a_writes.is_empty() {
                 continue;
             }
@@ -480,7 +482,7 @@ where
 /// has already had self-edges stripped).
 ///
 /// The implementation is iterative to avoid stack-overflow on
-/// pathological inputs — `CapcoScheme` has ≤10 rewrites today, but a
+/// pathological inputs — `CapcoScheme` has 30 rewrites today, but a
 /// future CUI / NATO scheme may declare more.
 fn tarjan_sccs(n: usize, successors: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
     // Per-node state.
@@ -989,6 +991,42 @@ mod tests {
         // An edge with no reads and no writes is a dataflow no-op: it
         // schedules, trips no guard, and joins no cycle.
         let edges = vec![derivation_edge("e", &[], &[], FiringPredicate::Always)];
+        let order = schedule_steps::<StubScheme>(&[], &edges).unwrap();
+        assert_eq!(order.as_ref(), [ScheduledStep::DerivationEdge("e")]);
+    }
+
+    #[test]
+    fn three_node_cycle_spanning_rewrite_and_two_edges() {
+        // r writes X reads Z; e1 writes Y reads X; e2 writes Z reads Y ⇒
+        // r → e1 → e2 → r. Writes are disjoint, so the co-writer guard
+        // passes and the union cycle is what's reported.
+        let rewrites = vec![declarative("r", &[CAT_Z], &[CAT_X])];
+        let edges = vec![
+            derivation_edge("e1", &[CAT_X], &[CAT_Y], FiringPredicate::Always),
+            derivation_edge("e2", &[CAT_Y], &[CAT_Z], FiringPredicate::Always),
+        ];
+        let err = schedule_steps(&rewrites, &edges).unwrap_err();
+        match err {
+            EngineConstructionError::RewriteCycle { members, .. } => {
+                assert!(members.contains(&ScheduledStep::PageRewrite("r")));
+                assert!(members.contains(&ScheduledStep::DerivationEdge("e1")));
+                assert!(members.contains(&ScheduledStep::DerivationEdge("e2")));
+            }
+            other => panic!("expected RewriteCycle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn edge_self_loop_is_permitted() {
+        // An edge that reads and writes the same category has no in-edge
+        // from itself (the producer == consumer skip applies to edges
+        // too), so it schedules cleanly with no spurious cycle.
+        let edges = vec![derivation_edge(
+            "e",
+            &[CAT_X],
+            &[CAT_X],
+            FiringPredicate::Always,
+        )];
         let order = schedule_steps::<StubScheme>(&[], &edges).unwrap();
         assert_eq!(order.as_ref(), [ScheduledStep::DerivationEdge("e")]);
     }
